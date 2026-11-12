@@ -236,28 +236,86 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
     // --- GPU stage timing ---
     if (!report.gpuStages_.empty()) {
         std::fprintf(f, "--- GPU stage timing ---\n");
+        std::fprintf(f, "Format: %s\n", kGpuStageReportFormat);
         std::fprintf(
             f,
-            "%-36s %9s %9s %9s %7s\n",
+            "Avg/Min/Max(ms) are exclusive time, while the stage's own encoders executed: the "
+            "stage's cost.\n"
+            "Window(ms) spans its first encoder's start to its last encoder's end and includes "
+            "other stages' work; it is not a cost.\n"
+            "Samples counts invocations with exclusive time; WindowOnly counts invocations with a "
+            "window only.\n"
+            "Each row is one sampled invocation per frame, not a frame total for a stage run on "
+            "several canvases.\n"
+        );
+        std::fprintf(
+            f,
+            "%-36s %9s %9s %9s %7s %10s %10s\n",
             "Stage",
             "Avg(ms)",
             "Min(ms)",
             "Max(ms)",
-            "Samples"
+            "Samples",
+            "Window(ms)",
+            "WindowOnly"
         );
 
-        for (auto &stage : report.gpuStages_) {
-            if (stage.sampleCount_ == 0)
+        double exclusiveSumMs = 0.0;
+        for (const auto &stage : report.gpuStages_) {
+            if (stage.windowSampleCount_ == 0)
                 continue;
-            float avgMs = stage.totalMs_ / static_cast<float>(stage.sampleCount_);
+            const float windowAvgMs =
+                stage.windowTotalMs_ / static_cast<float>(stage.windowSampleCount_);
+            const uint32_t windowOnly = stage.windowSampleCount_ - stage.sampleCount_;
+            if (stage.sampleCount_ == 0) {
+                std::fprintf(
+                    f,
+                    "%-36s %9s %9s %9s %7u %10.3f %10u window-only\n",
+                    stage.name_.c_str(),
+                    "-",
+                    "-",
+                    "-",
+                    0u,
+                    windowAvgMs,
+                    windowOnly
+                );
+                continue;
+            }
+            const float avgMs = stage.totalMs_ / static_cast<float>(stage.sampleCount_);
+            exclusiveSumMs += avgMs;
             std::fprintf(
                 f,
-                "%-36s %9.3f %9.3f %9.3f %7u\n",
+                "%-36s %9.3f %9.3f %9.3f %7u %10.3f %10u\n",
                 stage.name_.c_str(),
                 avgMs,
                 stage.minMs_,
                 stage.maxMs_,
-                stage.sampleCount_
+                stage.sampleCount_,
+                windowAvgMs,
+                windowOnly
+            );
+        }
+
+        const GpuStageEntry *spans = nullptr;
+        for (const auto &metric : report.gpuFrameTimings_) {
+            if (metric.name_ == "commandBufferSpans" && metric.sampleCount_ > 0) {
+                spans = &metric;
+            }
+        }
+        if (spans != nullptr) {
+            const double spanAvgMs = spans->totalMs_ / static_cast<double>(spans->sampleCount_);
+            std::fprintf(
+                f,
+                "Exclusive sum: %.3f ms; commandBufferSpans: %.3f ms (%.1f%%)\n",
+                exclusiveSumMs,
+                spanAvgMs,
+                spanAvgMs > 0.0 ? 100.0 * exclusiveSumMs / spanAvgMs : 0.0
+            );
+        } else {
+            std::fprintf(
+                f,
+                "Exclusive sum: %.3f ms; commandBufferSpans: unavailable\n",
+                exclusiveSumMs
             );
         }
         std::fprintf(f, "\n");

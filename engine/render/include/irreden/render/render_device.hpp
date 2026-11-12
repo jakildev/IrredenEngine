@@ -32,6 +32,17 @@ enum class TimestampReadStatus {
     INVALID,
 };
 
+// One resolved stage invocation. `exclusiveMs_` is time during which the
+// stage's own encoders were executing; `windowMs_` runs from its first encoder's
+// start to its last encoder's end and can contain other stages' work. A backend
+// whose pair cannot overlap earlier work reports the same value in both.
+// `exclusiveValid_` is false when only the window is known for this invocation.
+struct GpuTimestampSample {
+    float exclusiveMs_ = 0.0f;
+    float windowMs_ = 0.0f;
+    bool exclusiveValid_ = false;
+};
+
 class RenderDevice {
   public:
     virtual ~RenderDevice() = default;
@@ -174,6 +185,16 @@ class RenderDevice {
     virtual TimestampReadStatus pollTimestampPairMs(GpuTimestampHandle handle, float &outMs) {
         return readTimestampPairMs(handle, outMs) ? TimestampReadStatus::READY
                                                   : TimestampReadStatus::PENDING;
+    }
+    // Same completion contract as pollTimestampPairMs.
+    virtual TimestampReadStatus
+    pollTimestampSample(GpuTimestampHandle handle, GpuTimestampSample &out) {
+        float ms = 0.0f;
+        const TimestampReadStatus status = pollTimestampPairMs(handle, ms);
+        if (status == TimestampReadStatus::READY) {
+            out = {ms, ms, true};
+        }
+        return status;
     }
 
   protected:

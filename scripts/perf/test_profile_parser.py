@@ -5,7 +5,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from compare_perf_runs import CellReport, parse_report, render_markdown
+from compare_perf_runs import (
+    GPU_STAGE_FORMAT_EXCLUSIVE,
+    GPU_STAGE_FORMAT_WINDOW,
+    CellReport,
+    parse_report,
+    render_markdown,
+)
 from repeat_profile import yaw_pose_mismatch
 
 
@@ -249,6 +255,120 @@ class RunWitnessParserTest(unittest.TestCase):
             '"Steady frame time (first %zu of %zu frames excluded):   avg=%.2fms   p50=%.2fms   "',
             '"--- Frame times (ms, in order) ---\\n"',
             '"--- Update ticks (per frame, in order) ---\\n"',
+        ):
+            self.assertIn(written, writer)
+
+
+NEW_FORMAT_STAGES = (
+    "--- GPU frame timing ---\n"
+    "Metric Avg(ms) Min(ms) Max(ms) Samples\n"
+    "commandBufferSpans 18.300 17.900 32.100 120\n"
+    "\n"
+    "--- GPU stage timing ---\n"
+    "Format: exclusive+window\n"
+    "Avg/Min/Max(ms) are exclusive time, while the stage's own encoders executed: the "
+    "stage's cost.\n"
+    "Window(ms) spans its first encoder's start to its last encoder's end and includes "
+    "other stages' work; it is not a cost.\n"
+    "Samples counts invocations with exclusive time; WindowOnly counts invocations with a "
+    "window only.\n"
+    "Each row is one sampled invocation per frame, not a frame total for a stage run on "
+    "several canvases.\n"
+    "Stage                                  Avg(ms)   Min(ms)   Max(ms) Samples Window(ms) "
+    "WindowOnly\n"
+    "computeLightVolume                       0.445     0.231     0.759     119      8.855"
+    "          0\n"
+    "voxelStage1                              5.103     5.000     5.300     117      5.104"
+    "          2\n"
+    "voxelPerAxisOverflow                         -         -         -       0     15.852"
+    "        119 window-only\n"
+    "Exclusive sum: 5.548 ms; commandBufferSpans: 18.300 ms (30.3%)\n"
+    "\n"
+    "=== END REPORT ===\n"
+)
+
+OLD_FORMAT_STAGES = (
+    "--- GPU stage timing ---\n"
+    "Stage                                  Avg(ms)   Min(ms)   Max(ms) Samples\n"
+    "computeLightVolume                      17.060    16.900    17.300     299\n"
+    "voxelStage1                              5.120     5.000     5.300     299\n"
+    "\n"
+    "=== END REPORT ===\n"
+)
+
+
+class ExclusiveStageFormatTest(unittest.TestCase):
+    def parse(self, text, cell_id="fixture"):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profile.txt"
+            path.write_text(text)
+            return parse_report(path, cell_id)
+
+    def test_new_format_reads_exclusive_as_the_cost_and_keeps_the_window(self):
+        report = self.parse(NEW_FORMAT_STAGES)
+        self.assertEqual(report.gpu_stage_format, GPU_STAGE_FORMAT_EXCLUSIVE)
+        light = report.gpu_by_name("computeLightVolume")
+        self.assertEqual((light.avg_ms, light.min_ms, light.max_ms), (0.445, 0.231, 0.759))
+        self.assertEqual((light.samples, light.window_ms, light.window_only), (119, 8.855, 0))
+        raster = report.gpu_by_name("voxelStage1")
+        self.assertEqual((raster.samples, raster.window_only), (117, 2))
+        self.assertAlmostEqual(report.gpu_exclusive_sum_ms, 5.548)
+        # The frame metric table above the stage table is not read as stages.
+        self.assertEqual([m.name for m in report.gpu_frame.metrics], ["commandBufferSpans"])
+
+    def test_a_window_only_row_is_marked_and_never_read_as_a_cost(self):
+        report = self.parse(NEW_FORMAT_STAGES)
+        self.assertIsNone(report.gpu_by_name("voxelPerAxisOverflow"))
+        self.assertEqual([s.name for s in report.gpu_stages], ["computeLightVolume", "voxelStage1"])
+        (window_only,) = report.gpu_window_only_stages
+        self.assertEqual(window_only.name, "voxelPerAxisOverflow")
+        self.assertEqual((window_only.samples, window_only.window_ms, window_only.window_only),
+                         (0, 15.852, 119))
+
+    def test_old_format_still_parses_and_is_identified_as_windows(self):
+        report = self.parse(OLD_FORMAT_STAGES)
+        self.assertEqual(report.gpu_stage_format, GPU_STAGE_FORMAT_WINDOW)
+        light = report.gpu_by_name("computeLightVolume")
+        self.assertEqual((light.avg_ms, light.samples), (17.06, 299))
+        self.assertIsNone(light.window_ms)
+        self.assertIsNone(report.gpu_exclusive_sum_ms)
+
+    def test_a_report_with_no_stage_rows_has_no_format(self):
+        self.assertIsNone(self.parse("=== END REPORT ===\n").gpu_stage_format)
+
+    def test_comparing_across_formats_prints_deltas_without_marks(self):
+        base = {"cell": self.parse(OLD_FORMAT_STAGES, "cell")}
+        head = {"cell": self.parse(NEW_FORMAT_STAGES, "cell")}
+        text = render_markdown(Path("base"), Path("head"), base, head, 5.0, 5.0, True, False)
+        section = text.split("## GPU stage timing")[1]
+        self.assertIn("carry no stage marks: `cell`", section)
+        self.assertIn("17.06→0.45", section)
+        self.assertIn("5.12→5.10", section)
+        stage_row = next(line for line in section.splitlines() if line.startswith("| `cell`"))
+        self.assertNotIn("⚠", stage_row)
+        self.assertNotIn("↓", stage_row)
+
+    def test_comparing_within_one_format_keeps_marks(self):
+        base = {"cell": self.parse(OLD_FORMAT_STAGES, "cell")}
+        faster = OLD_FORMAT_STAGES.replace("17.060", "8.000")
+        head = {"cell": self.parse(faster, "cell")}
+        text = render_markdown(Path("base"), Path("head"), base, head, 5.0, 5.0, True, False)
+        section = text.split("## GPU stage timing")[1]
+        self.assertNotIn("carry no stage marks", section)
+        stage_row = next(line for line in section.splitlines() if line.startswith("| `cell`"))
+        self.assertIn("17.06→8.00 ↓", stage_row)
+
+    def test_the_parsed_stage_lines_are_the_lines_the_engine_writes(self):
+        root = Path(__file__).resolve().parents[2]
+        writer = (root / "engine/profile/src/profile_report.cpp").read_text()
+        header = (root / "engine/profile/include/irreden/profile/profile_report.hpp").read_text()
+        self.assertIn(f'kGpuStageReportFormat = "{GPU_STAGE_FORMAT_EXCLUSIVE}"', header)
+        for written in (
+            '"Format: %s\\n"',
+            '"%-36s %9s %9s %9s %7u %10.3f %10u window-only\\n"',
+            '"%-36s %9.3f %9.3f %9.3f %7u %10.3f %10u\\n"',
+            '"Exclusive sum: %.3f ms; commandBufferSpans: %.3f ms (%.1f%%)\\n"',
+            '"Exclusive sum: %.3f ms; commandBufferSpans: unavailable\\n"',
         ):
             self.assertIn(written, writer)
 

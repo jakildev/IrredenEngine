@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from compare_perf_runs import parse_report
-from repeat_profile import percentile
+from repeat_profile import percentile, window_label
 
 
 def summarize(
@@ -83,8 +83,9 @@ def write_gpu_summary(path: Path, reports_by_case: dict[str, list], note: str) -
             stages = [report.gpu_by_name(stage_name) for report in reports]
             if all(stage is not None and stage.samples != 0 for stage in stages):
                 values = [stage.avg_ms for stage in stages]
+                label = stage_name + window_label(reports)
                 lines.append(
-                    f"| {name} | {stage_name} | {statistics.mean(values):.3f} "
+                    f"| {name} | {label} | {statistics.mean(values):.3f} "
                     f"| {min(values):.3f}–{max(values):.3f} |"
                 )
     path.write_text("\n".join(lines) + "\n")

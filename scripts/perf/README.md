@@ -217,6 +217,30 @@ sources:
   runner has this fingerprint, so only a run on that machine compares against
   it.
 
+## Read GPU stage rows as exclusive time
+
+The `--- GPU stage timing ---` section carries two figures per stage.
+`Avg(ms)` / `Min(ms)` / `Max(ms)` / `Samples` are exclusive time, the time the
+stage's own encoders were executing: the stage's cost. `Window(ms)` runs from
+the stage's first encoder start to its last encoder end and includes other
+stages' work. `WindowOnly` counts invocations that resolved a window only (a
+stage with more encoders than its sample capacity); a row marked `window-only`
+has no cost figure. The `Exclusive sum:` line puts the sum of the exclusive rows
+beside the mean `commandBufferSpans`. The reading rules are in
+[`docs/design/gpu-stage-timing-cost-model.md`](../../docs/design/gpu-stage-timing-cost-model.md#reading-rules).
+
+`parse_report` reads `gpu_stages[*].avg_ms` as the stage cost in both report
+generations. A report with a `Format: exclusive+window` line gives exclusive
+time, `window_ms` and `window_only`, and sets `gpu_stage_format` to
+`exclusive+window`. An older report has no `Format:` line: its rows are windows,
+`gpu_stage_format` is `window`, and the window fields are `None`. Window-only
+rows are kept in `gpu_window_only_stages`, out of `gpu_stages`.
+`compare_perf_runs.py` prints the stage deltas of a cell whose two reports
+differ in format without regression or improvement marks. `repeat_profile.py`
+and `profile_matrix.py` label older-format stage rows `(window)`.
+`repeat_profile.py` also summarizes the exclusive sum. Executor:
+`python3 scripts/perf/test_profile_parser.py`.
+
 ## Split a system row with `IR_PROFILE_SCOPE`
 
 The `--- CPU phase timing ---` section of every cell's report lists the fixed

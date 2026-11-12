@@ -24,7 +24,12 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from compare_perf_runs import CellReport, RunWitness, parse_report  # noqa: E402
+from compare_perf_runs import (  # noqa: E402
+    GPU_STAGE_FORMAT_WINDOW,
+    CellReport,
+    RunWitness,
+    parse_report,
+)
 from verify_common import platform_launch_argv  # noqa: E402
 
 TARGETS = {
@@ -253,6 +258,13 @@ def shape_measurement_failure(values: dict[str, str], report: CellReport) -> str
     if stage_samples != expected:
         return "GPU stage samples disagree with the selected timing preset"
     return None
+
+
+def window_label(reports: list[CellReport]) -> str:
+    """" (window)" when any report's stage rows are windows rather than exclusive time."""
+    if any(report.gpu_stage_format == GPU_STAGE_FORMAT_WINDOW for report in reports):
+        return " (window)"
+    return ""
 
 
 def directory_digest(directory: Path) -> str:
@@ -1065,11 +1077,16 @@ def main() -> int:
                   for row in rows]
         if all(value is not None for value in values):
             metrics[f"GPU frame {name}"] = values
+    sums = [row.gpu_exclusive_sum_ms for row in rows]
+    if all(value is not None for value in sums):
+        metrics["GPU exclusive stage sum"] = sums
     names = sorted({stage.name for row in rows for stage in row.gpu_stages})
     for name in names:
         stages = [row.gpu_by_name(name) for row in rows]
         if all(stage is not None for stage in stages):
-            metrics[f"GPU {name}"] = [stage.avg_ms for stage in stages]
+            # An older report's stage rows are windows, not costs.
+            label = f"GPU {name}" + window_label(rows)
+            metrics[label] = [stage.avg_ms for stage in stages]
     lines = ["| Measurement | Mean ms | Run min–max ms | One-sided 95% upper bound ms |",
              "|---|---:|---:|---:|"]
     for name, values in metrics.items():

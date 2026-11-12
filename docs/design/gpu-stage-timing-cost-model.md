@@ -45,18 +45,43 @@ waits and adds no lookup to the per-frame timing brackets.
   gpu_stage_timing.hpp`); `GpuStageTimingObserver` writes a START timestamp
   before the tick and an END after it
   (`gpu_stage_timing_observer.hpp`).
+- **Each row reports two figures: exclusive time, the stage's cost, and its
+  window.** Exclusive time is the time during which the stage's own encoders
+  were executing on the GPU. The window runs from the stage's first encoder
+  start to its last encoder end. The GPU runs other stages' encoders inside that
+  window, so a window is not a cost: on Metal at the million 45-degree control,
+  `computeVoxelAoPerAxis` measured 0.04 ms exclusive inside a 17.3 ms window
+  (#4948). The report's `Avg(ms)` / `Min(ms)` / `Max(ms)` / `Samples` columns
+  are exclusive; `Window(ms)` is the window, and `WindowOnly` counts invocations
+  that resolved a window only. One line under the table gives the sum of the
+  exclusive rows beside the mean `commandBufferSpans`, so missing or
+  double-counted time shows in every report. A `Format: exclusive+window` line
+  identifies the layout; a report without it predates exclusive time, and its
+  single figure is the window.
 - **The samples are genuine GPU-timeline times, not CPU encode times.** On
-  Metal each pair is an `MTL::CounterSampleBuffer` attached at encoder
-  boundaries (`engine/render/src/metal/metal_render_impl.cpp`): the stage's
-  first encoder claims the start boundary and every subsequent encoder
-  re-writes the end, so the resolved pair spans [first encoder starts on
-  GPU, last encoder ends on GPU] (#1746). OpenGL uses the device timestamp
-  pairs in `opengl_render_impl.cpp`. OpenGL uses three pairs in flight; Metal
-  uses one because presentation currently waits for the frame to complete.
+  Metal each stage owns one `MTL::CounterSampleBuffer` of
+  `kTimestampEncoderPairCapacity` start/end pairs
+  (`engine/render/src/metal/metal_render_impl.cpp`). Every encoder of the stage
+  (compute, blit and render pass) samples its own pair, and
+  `resolveGpuEncoderIntervals` (`gpu_encoder_intervals.hpp`) reports the length
+  of the union of those intervals as exclusive time. Encoders beyond the
+  capacity share the last pair, which still bounds the window but not the union:
+  that invocation is window-only, and a row whose every invocation is
+  window-only is marked `window-only` with no cost figure. An encoder whose
+  pair holds no sample newer than the previous invocation never ran on the GPU
+  (Metal writes nothing for an empty encoder) and is skipped. The device caps
+  the number of sample buffers, so stages grow their own buffer rather than
+  taking more. OpenGL writes a `GL_TIMESTAMP` query at stage start and end;
+  that pair resolves after every earlier command, so it reports the same value
+  as both figures. OpenGL uses three pairs in flight; Metal uses one because
+  presentation currently waits for the frame to complete.
   Polling gates Metal readback on the owning command buffer's completion and
-  rejects zero, reversed or stale boundaries. A completed invalid sample frees
-  its slot without entering statistics. Empty scopes have no GPU duration.
-  the overlay shows the most recent *resolved* sample, and per-stage
+  rejects zero, reversed or stale boundaries: a pair with one such sample
+  discards the whole invocation rather than reading a partial union. A
+  completed invalid sample frees its slot without entering statistics. Empty
+  scopes have no GPU duration. The overlay and the Lua pass-timing calls show
+  the most recent resolved exclusive sample (a window-only invocation leaves
+  them unchanged), and per-stage
   accumulators build the shutdown avg/min/max (#1738). A `finish()`-bracket
   legacy path exists for devices without timestamp support
   (`legacyFinishTiming_`).
@@ -133,22 +158,30 @@ raw timestamps and producer boundaries before choosing a timer or scheduling fix
 
 ### Reading rules
 
-1. A **0.000 row** may be unwired, have no completed valid GPU samples, or
+1. **Rank stages by the exclusive column, never by `Window(ms)`.** A window
+   contains other stages' work. When the exclusive sum departs from
+   `commandBufferSpans`, the gap is time no row measured (gaps, untagged work,
+   rows sampling one of several canvases) or concurrency both rows counted:
+   two stages whose encoders share the GPU each count the shared time.
+   A report without a `Format:` line carries windows only; compare it with an
+   exclusive report stage by stage only after re-measuring.
+2. A **0.000 row** may be unwired, have no completed valid GPU samples, or
    contain durations rounded by the report. Check the sample count and scope
-   before interpreting it as free work.
-2. A **historical bundle row** (`shapePass1`) cannot attribute cost to a sub-dispatch.
+   before interpreting it as free work. A `window-only` row has no cost figure
+   at all.
+3. A **historical bundle row** (`shapePass1`) cannot attribute cost to a sub-dispatch.
    The voxel path is no longer a bundle: since #2280, `voxelStage1` /
    `voxelCompact` / `canvasClear` / `voxelStage2` are per-dispatch GPU rows,
    so "stage-1's raster is the cost" IS answerable from `voxelStage1` alone
    (it measured ~65 ms of the ~140 ms at zoom 16 — see §2).
-3. Rows describe sampled invocations, not necessarily frame totals. Reusing a
+4. Rows describe sampled invocations, not necessarily frame totals. Reusing a
    Metal timer within one uncommitted frame cannot read a fresh result; its
    single busy slot skips later invocations. Multi-canvas rows therefore do
    not establish total canvas cost. Do not sum overlapping CPU/GPU scopes.
-4. Older Metal reports can include unwritten startup timestamps or stale
+5. Older Metal reports can include unwritten startup timestamps or stale
    same-frame samples. Re-measure a suspected bottleneck with the validity
    checks before using historical stage values as an optimization baseline.
-5. Cull counters separate unique retained candidates from repeated axis entries.
+6. Cull counters separate unique retained candidates from repeated axis entries.
    The ratio includes separate shadow feeders and uses the producing dispatch's
    pool-slot domain. Old reports use different units; see
    [voxel cull work units](../perf/voxel-cull-work-units.md) before comparing them.

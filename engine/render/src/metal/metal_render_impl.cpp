@@ -1,5 +1,6 @@
 #include <irreden/render/metal/metal_render_impl.hpp>
 #include <irreden/render/buffer.hpp>
+#include <irreden/render/gpu_encoder_intervals.hpp>
 #include <irreden/render/metal/metal_cocoa_bridge.hpp>
 #include <irreden/render/metal/metal_runtime.hpp>
 #include <irreden/render/offscreen_frame_pacer.hpp>
@@ -8,6 +9,7 @@
 
 #include <irreden/profile/scope_timer.hpp>
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -24,6 +26,10 @@ namespace {
 constexpr std::uint32_t kMaxMetalBindings = 32;
 constexpr NS::UInteger kTimestampAttachmentIndex = 0;
 constexpr std::string_view kOffscreenPacingPhase = "offscreenPacing";
+// Sample pairs per stage counter buffer. The device caps how many counter sample
+// buffers exist, so a stage grows its own buffer instead of taking one per
+// encoder. The largest stage at the million rotated control creates 72 encoders.
+constexpr NS::UInteger kTimestampEncoderPairCapacity = 128;
 
 struct MetalTimestampPair {
     MTL::CounterSampleBuffer *sampleBuffer_ = nullptr;
@@ -32,24 +38,36 @@ struct MetalTimestampPair {
     MTL::CommandBuffer *completionBuffer_ = nullptr;
     MTL::CommandBufferStatus completionStatus_ = MTL::CommandBufferStatusNotEnqueued;
     std::uint64_t previousBoundary_ = 0;
-    bool hasEncoders_ = false;
+    NS::UInteger encoderCount_ = 0;
     bool loggedInvalid_ = false;
 };
 
+// The stage now between writeTimestamp START and END. Its GPU encoders execute
+// concurrently with other stages' encoders, so each encoder samples its own
+// start and end; the stage's cost is the union of those intervals.
 struct MetalTimestampSampleAttachment {
     MTL::CounterSampleBuffer *sampleBuffer_ = nullptr;
-    NS::UInteger startSampleIndex_ = 0;
-    NS::UInteger endSampleIndex_ = 1;
-    // Sticky across every encoder of a stage (the window between
-    // writeTimestamp START and END): the first encoder claims the start
-    // boundary; every encoder re-writes the end boundary. Sequential GPU
-    // execution makes the last encoder's end write win, so the resolved pair
-    // spans [first-encoder start, last-encoder end] — the whole stage, not
-    // just its first encoder.
-    bool firstEncoder_ = true;
+    NS::UInteger encoderCount_ = 0;
 };
 
 MetalTimestampSampleAttachment g_nextComputeTimestampAttachment;
+
+struct MetalEncoderSampleIndices {
+    NS::UInteger start_ = MTL::CounterDontSample;
+    NS::UInteger end_ = MTL::CounterDontSample;
+};
+
+// Encoders past the capacity share the last pair: the first of them writes its
+// start and each re-writes the end, so that pair still bounds the window.
+MetalEncoderSampleIndices claimEncoderSampleIndices() {
+    auto &attachment = g_nextComputeTimestampAttachment;
+    const NS::UInteger encoder = attachment.encoderCount_++;
+    const NS::UInteger pair = IRMath::min(encoder, kTimestampEncoderPairCapacity - 1);
+    return {
+        encoder <= kTimestampEncoderPairCapacity - 1 ? pair * 2 : MTL::CounterDontSample,
+        pair * 2 + 1
+    };
+}
 
 MTL::PrimitiveType toMetalPrimitiveType(DrawMode drawMode) {
     switch (drawMode) {
@@ -143,31 +161,22 @@ MTL::ComputeCommandEncoder *createComputeEncoder(MTL::CommandBuffer *commandBuff
         return commandBuffer->computeCommandEncoder();
     }
 
+    const MetalEncoderSampleIndices indices = claimEncoderSampleIndices();
     auto *descriptor = MTL::ComputePassDescriptor::alloc()->init();
     auto *attachment = descriptor->sampleBufferAttachments()->object(kTimestampAttachmentIndex);
     attachment->setSampleBuffer(g_nextComputeTimestampAttachment.sampleBuffer_);
-    attachment->setStartOfEncoderSampleIndex(
-        g_nextComputeTimestampAttachment.firstEncoder_
-            ? g_nextComputeTimestampAttachment.startSampleIndex_
-            : MTL::CounterDontSample
-    );
-    attachment->setEndOfEncoderSampleIndex(g_nextComputeTimestampAttachment.endSampleIndex_);
+    attachment->setStartOfEncoderSampleIndex(indices.start_);
+    attachment->setEndOfEncoderSampleIndex(indices.end_);
     auto *encoder = commandBuffer->computeCommandEncoder(descriptor);
     descriptor->release();
-
-    // Stay sticky for the rest of the stage's encoders (each re-writes the end
-    // boundary; the last one wins). writeTimestamp(END) clears the attachment.
-    g_nextComputeTimestampAttachment.firstEncoder_ = false;
     return encoder;
 }
 
 // Blit twin of createComputeEncoder: when a timestamp attachment is active
-// (a per-system observer pair or an intra-tick GpuSubStageScope), attach the
-// sticky sample buffer to the blit pass so a blit-only stage — the per-frame
-// distance-texture clear that backs the `canvasClear` sub-row — still
-// resolves a non-zero pair. Same first-encoder-claims-start / last-encoder-wins-
-// end semantics as the compute path. Returns a plain blit encoder when
-// no attachment is active.
+// (a per-system observer pair or an intra-tick GpuSubStageScope), the blit pass
+// samples its own pair so a blit-only stage — the per-frame distance-texture
+// clear that backs the `canvasClear` sub-row — still resolves. Returns a plain
+// blit encoder when no attachment is active.
 MTL::BlitCommandEncoder *createBlitEncoder(MTL::CommandBuffer *commandBuffer) {
     if (commandBuffer == nullptr) {
         return nullptr;
@@ -176,19 +185,14 @@ MTL::BlitCommandEncoder *createBlitEncoder(MTL::CommandBuffer *commandBuffer) {
         return commandBuffer->blitCommandEncoder();
     }
 
+    const MetalEncoderSampleIndices indices = claimEncoderSampleIndices();
     auto *descriptor = MTL::BlitPassDescriptor::alloc()->init();
     auto *attachment = descriptor->sampleBufferAttachments()->object(kTimestampAttachmentIndex);
     attachment->setSampleBuffer(g_nextComputeTimestampAttachment.sampleBuffer_);
-    attachment->setStartOfEncoderSampleIndex(
-        g_nextComputeTimestampAttachment.firstEncoder_
-            ? g_nextComputeTimestampAttachment.startSampleIndex_
-            : MTL::CounterDontSample
-    );
-    attachment->setEndOfEncoderSampleIndex(g_nextComputeTimestampAttachment.endSampleIndex_);
+    attachment->setStartOfEncoderSampleIndex(indices.start_);
+    attachment->setEndOfEncoderSampleIndex(indices.end_);
     auto *encoder = commandBuffer->blitCommandEncoder(descriptor);
     descriptor->release();
-
-    g_nextComputeTimestampAttachment.firstEncoder_ = false;
     return encoder;
 }
 
@@ -197,18 +201,11 @@ void attachTimestampSamples(MTL::RenderPassDescriptor *descriptor) {
         return;
     }
 
+    const MetalEncoderSampleIndices indices = claimEncoderSampleIndices();
     auto *attachment = descriptor->sampleBufferAttachments()->object(kTimestampAttachmentIndex);
     attachment->setSampleBuffer(g_nextComputeTimestampAttachment.sampleBuffer_);
-    attachment->setStartOfVertexSampleIndex(
-        g_nextComputeTimestampAttachment.firstEncoder_
-            ? g_nextComputeTimestampAttachment.startSampleIndex_
-            : MTL::CounterDontSample
-    );
-    attachment->setEndOfFragmentSampleIndex(g_nextComputeTimestampAttachment.endSampleIndex_);
-    // Sticky across the stage's encoders (the shared global means a stage that
-    // mixes compute + render encoders has its first-executed encoder claim the
-    // start boundary). writeTimestamp(END) clears the attachment.
-    g_nextComputeTimestampAttachment.firstEncoder_ = false;
+    attachment->setStartOfVertexSampleIndex(indices.start_);
+    attachment->setEndOfFragmentSampleIndex(indices.end_);
 }
 
 MTL::RenderCommandEncoder *createRenderEncoder() {
@@ -1132,7 +1129,7 @@ class MetalRenderDevice final : public RenderDevice {
 
         auto *descriptor = MTL::CounterSampleBufferDescriptor::alloc()->init();
         descriptor->setCounterSet(m_timestampCounterSet);
-        descriptor->setSampleCount(2);
+        descriptor->setSampleCount(kTimestampEncoderPairCapacity * 2);
         descriptor->setStorageMode(MTL::StorageModeShared);
 
         NS::Error *error = nullptr;
@@ -1204,28 +1201,19 @@ class MetalRenderDevice final : public RenderDevice {
 
         if (slot == TimestampSlot::START) {
             releaseTimestampCompletion(*pair);
-            g_nextComputeTimestampAttachment = {
-                pair->sampleBuffer_,
-                0,
-                1,
-                /*firstEncoder_=*/true
-            };
+            g_nextComputeTimestampAttachment = {pair->sampleBuffer_, 0};
             pair->hasStart_ = true;
             pair->hasEnd_ = false;
-            pair->hasEncoders_ = false;
+            pair->encoderCount_ = 0;
         } else {
-            // Stop tagging once the stage ends: clear the sticky attachment so
-            // encoders created in the gap before the next START stay untracked
-            // after the end boundary is attached. Every encoder in the stage
-            // already carries that boundary, so the last one's index-1 write
-            // bounds the pair.
-            pair->hasEncoders_ = !g_nextComputeTimestampAttachment.firstEncoder_;
+            pair->encoderCount_ = g_nextComputeTimestampAttachment.encoderCount_;
             pair->completionBuffer_ = metalCommandBuffer();
             pair->completionStatus_ = MTL::CommandBufferStatusError;
             if (pair->completionBuffer_ != nullptr) {
                 pair->completionStatus_ = pair->completionBuffer_->status();
                 pair->completionBuffer_->retain();
             }
+            // Encoders created before the next START stay untracked.
             g_nextComputeTimestampAttachment = {};
             pair->hasEnd_ = true;
         }
@@ -1236,6 +1224,16 @@ class MetalRenderDevice final : public RenderDevice {
     }
 
     TimestampReadStatus pollTimestampPairMs(GpuTimestampHandle handle, float &outMs) override {
+        GpuTimestampSample sample;
+        const TimestampReadStatus status = pollTimestampSample(handle, sample);
+        if (status == TimestampReadStatus::READY) {
+            outMs = sample.exclusiveValid_ ? sample.exclusiveMs_ : sample.windowMs_;
+        }
+        return status;
+    }
+
+    TimestampReadStatus
+    pollTimestampSample(GpuTimestampHandle handle, GpuTimestampSample &out) override {
         MetalTimestampPair *pair = findTimestampPair(handle);
         if (pair == nullptr || pair->sampleBuffer_ == nullptr) {
             return TimestampReadStatus::INVALID;
@@ -1243,7 +1241,7 @@ class MetalRenderDevice final : public RenderDevice {
         if (!pair->hasStart_ || !pair->hasEnd_) {
             return TimestampReadStatus::PENDING;
         }
-        if (!pair->hasEncoders_) {
+        if (pair->encoderCount_ == 0) {
             releaseTimestampCompletion(*pair);
             return TimestampReadStatus::INVALID;
         }
@@ -1259,39 +1257,52 @@ class MetalRenderDevice final : public RenderDevice {
             return TimestampReadStatus::PENDING;
         }
         releaseTimestampCompletion(*pair);
-        NS::Data *data = pair->sampleBuffer_->resolveCounterRange(NS::Range::Make(0, 2));
-        if (data == nullptr || data->length() < sizeof(MTL::CounterResultTimestamp) * 2) {
+        const NS::UInteger pairCount =
+            IRMath::min(pair->encoderCount_, kTimestampEncoderPairCapacity);
+        NS::Data *data =
+            pair->sampleBuffer_->resolveCounterRange(NS::Range::Make(0, pairCount * 2));
+        if (data == nullptr ||
+            data->length() < sizeof(MTL::CounterResultTimestamp) * pairCount * 2) {
             return TimestampReadStatus::INVALID;
         }
-        auto *samples = static_cast<MTL::CounterResultTimestamp *>(data->mutableBytes());
+        auto *samples = static_cast<const std::uint64_t *>(data->mutableBytes());
         if (samples == nullptr) {
             return TimestampReadStatus::INVALID;
         }
-        const auto start = samples[0].timestamp;
-        const auto end = samples[1].timestamp;
-        const bool valid = start != MTL::CounterErrorValue && end != MTL::CounterErrorValue &&
-                           start > pair->previousBoundary_ && end >= start;
+        static_assert(sizeof(MTL::CounterResultTimestamp) == sizeof(std::uint64_t));
+        static_assert(MTL::CounterErrorValue == kGpuCounterErrorValue);
+        std::array<GpuEncoderInterval, kTimestampEncoderPairCapacity> scratch{};
+        const GpuEncoderIntervalResult resolved = resolveGpuEncoderIntervals(
+            std::span<const std::uint64_t>(samples, pairCount * 2),
+            pair->encoderCount_,
+            kTimestampEncoderPairCapacity,
+            pair->previousBoundary_,
+            scratch
+        );
         const auto previousBoundary = pair->previousBoundary_;
-        if (start != MTL::CounterErrorValue) {
-            pair->previousBoundary_ = IRMath::max(pair->previousBoundary_, start);
+        for (NS::UInteger i = 0; i < pairCount * 2; ++i) {
+            if (samples[i] != kGpuCounterErrorValue) {
+                pair->previousBoundary_ = IRMath::max(pair->previousBoundary_, samples[i]);
+            }
         }
-        if (end != MTL::CounterErrorValue) {
-            pair->previousBoundary_ = IRMath::max(pair->previousBoundary_, end);
-        }
-        if (!valid) {
+        if (!resolved.valid_) {
             if (!pair->loggedInvalid_) {
                 IR_LOG_WARN(
-                    "Discarded Metal GPU timestamp pair {}: start={}, end={}, previousBoundary={}",
+                    "Discarded Metal GPU timestamp pair {}: {} encoders, first start={}, "
+                    "first end={}, previousBoundary={}",
                     handle,
-                    start,
-                    end,
+                    pair->encoderCount_,
+                    samples[0],
+                    samples[1],
                     previousBoundary
                 );
                 pair->loggedInvalid_ = true;
             }
             return TimestampReadStatus::INVALID;
         }
-        outMs = static_cast<float>(end - start) / 1'000'000.0f;
+        out.exclusiveMs_ = static_cast<float>(resolved.exclusiveTicks_) / 1'000'000.0f;
+        out.windowMs_ = static_cast<float>(resolved.windowTicks_) / 1'000'000.0f;
+        out.exclusiveValid_ = resolved.exclusiveValid_;
         return TimestampReadStatus::READY;
     }
 

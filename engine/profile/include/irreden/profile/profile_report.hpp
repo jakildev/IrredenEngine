@@ -21,14 +21,27 @@ struct SystemTimingEntry {
     uint64_t totalEntityCount_ = 0;
 };
 
-/// Per-GPU-stage timing entry.
+/// Per-GPU-stage timing entry. The top-level figures are exclusive time (the
+/// stage's own encoders executing), the stage's cost; the `window*` figures span
+/// first encoder start to last encoder end and include other stages' work.
+/// `windowSampleCount_` counts every resolved invocation, so the difference from
+/// `sampleCount_` is the invocations that resolved a window only. A GPU frame
+/// metric uses the top-level figures alone.
 struct GpuStageEntry {
     std::string name_;
     float totalMs_ = 0.0f;
     float minMs_ = 0.0f;
     float maxMs_ = 0.0f;
     uint32_t sampleCount_ = 0;
+    float windowTotalMs_ = 0.0f;
+    float windowMinMs_ = 0.0f;
+    float windowMaxMs_ = 0.0f;
+    uint32_t windowSampleCount_ = 0;
 };
+
+/// Value of the `Format:` line in the GPU stage section. A report without the
+/// line predates exclusive time: its stage rows are windows.
+inline constexpr const char *kGpuStageReportFormat = "exclusive+window";
 
 /// Named CPU phase timing entry for manually instrumented system sub-blocks.
 struct CpuPhaseEntry {

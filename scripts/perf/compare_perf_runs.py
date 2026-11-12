@@ -53,6 +53,20 @@ SYSTEM_RE = re.compile(
     r"([\d.]+)\s+(\d+)\s+(\d+)"
 )
 GPU_SAMPLED_RE = re.compile(r"^(\S+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+(\d+)\s*$")
+# An exclusive+window stage row: exclusive avg/min/max/samples, window avg, and
+# the invocations that resolved a window only.
+GPU_EXCLUSIVE_RE = re.compile(
+    r"^(\S+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+(\d+)\s+([\d.]+)\s+(\d+)\s*$"
+)
+GPU_WINDOW_ONLY_RE = re.compile(r"^(\S+)\s+-\s+-\s+-\s+0\s+([\d.]+)\s+(\d+)\s+window-only\s*$")
+GPU_STAGE_FORMAT_RE = re.compile(r"^Format: (\S+)$")
+GPU_EXCLUSIVE_SUM_RE = re.compile(
+    r"^Exclusive sum: ([\d.]+) ms; commandBufferSpans: (?:([\d.]+) ms|unavailable)"
+)
+# The `Format:` value of a report whose stage cost is exclusive time; a report
+# without the line wrote windows as the cost (profile_report.hpp).
+GPU_STAGE_FORMAT_EXCLUSIVE = "exclusive+window"
+GPU_STAGE_FORMAT_WINDOW = "window"
 GPU_RE = re.compile(r"^(\S+)\s+([\d.]+)\s+([\d.]+)\s*$")
 GPU_FRAME_COVERAGE_RE = re.compile(
     r"^Coverage: supported=(0|1) attempted=(\d+) valid=(\d+) "
@@ -97,11 +111,17 @@ class SystemTiming:
 
 @dataclass
 class GpuStage:
+    """One stage row. `avg_ms` is the stage's cost: exclusive time in an
+    exclusive+window report, the window in an older one (its report's
+    `gpu_stage_format` says which). `window_ms` and `window_only` are None in an
+    older report."""
     name: str
     avg_ms: float
     max_ms: float
     min_ms: Optional[float] = None
     samples: Optional[int] = None
+    window_ms: Optional[float] = None
+    window_only: Optional[int] = None
 
 
 @dataclass
@@ -174,6 +194,12 @@ class CellReport:
     archetype_count: int = 0
     systems: List[SystemTiming] = field(default_factory=list)
     gpu_stages: List[GpuStage] = field(default_factory=list)
+    # Stages whose every invocation resolved a window only: no cost figure, so
+    # they are kept out of gpu_stages. avg_ms holds the window.
+    gpu_window_only_stages: List[GpuStage] = field(default_factory=list)
+    # GPU_STAGE_FORMAT_EXCLUSIVE or GPU_STAGE_FORMAT_WINDOW; None with no stage rows.
+    gpu_stage_format: Optional[str] = None
+    gpu_exclusive_sum_ms: Optional[float] = None
     gpu_frame: GpuFrameTiming = field(default_factory=GpuFrameTiming)
     cull: CullStats = field(default_factory=CullStats)
     raw: str = ""
@@ -301,6 +327,34 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
                     samples=int(metric.group(5)),
                 ))
         elif section == "gpu":
+            fmt = GPU_STAGE_FORMAT_RE.match(s)
+            if fmt:
+                report.gpu_stage_format = fmt.group(1)
+                continue
+            total = GPU_EXCLUSIVE_SUM_RE.match(s)
+            if total:
+                report.gpu_exclusive_sum_ms = float(total.group(1))
+                continue
+            window_only = GPU_WINDOW_ONLY_RE.match(s)
+            if window_only:
+                window = float(window_only.group(2))
+                report.gpu_window_only_stages.append(GpuStage(
+                    name=window_only.group(1), avg_ms=window, max_ms=window, samples=0,
+                    window_ms=window, window_only=int(window_only.group(3)),
+                ))
+                continue
+            exclusive = GPU_EXCLUSIVE_RE.match(s)
+            if exclusive:
+                report.gpu_stages.append(GpuStage(
+                    name=exclusive.group(1),
+                    avg_ms=float(exclusive.group(2)),
+                    min_ms=float(exclusive.group(3)),
+                    max_ms=float(exclusive.group(4)),
+                    samples=int(exclusive.group(5)),
+                    window_ms=float(exclusive.group(6)),
+                    window_only=int(exclusive.group(7)),
+                ))
+                continue
             sampled = GPU_SAMPLED_RE.match(s)
             m = sampled or GPU_RE.match(s)
             if m:
@@ -379,6 +433,8 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
             report.frame_times_ms.extend(float(value) for value in s.split())
         elif section == "frame_update_ticks":
             report.frame_update_ticks.extend(int(value) for value in s.split())
+    if report.gpu_stage_format is None and (report.gpu_stages or report.gpu_window_only_stages):
+        report.gpu_stage_format = GPU_STAGE_FORMAT_WINDOW
     return report
 
 
@@ -1099,6 +1155,18 @@ def render_markdown(
         if gpu_names:
             out.append("## GPU stage timing (avg ms per sampled invocation)")
             out.append("")
+            mixed = sorted(
+                cell_id for cell_id in matched
+                if None not in (base[cell_id].gpu_stage_format, head[cell_id].gpu_stage_format)
+                and base[cell_id].gpu_stage_format != head[cell_id].gpu_stage_format
+            )
+            if mixed:
+                out.append(
+                    "Window rows on one side and exclusive rows on the other measure different "
+                    "things, so these cells carry no stage marks: "
+                    + ", ".join(f"`{cell_id}`" for cell_id in mixed) + "."
+                )
+                out.append("")
             header = "| cell | " + " | ".join(gpu_names) + " |"
             sep = "|------|" + "|".join(["----"] * len(gpu_names)) + "|"
             out.append(header)
@@ -1113,7 +1181,7 @@ def render_markdown(
                         continue
                     bv = sb.avg_ms if sb else 0.0
                     hv = sh.avg_ms if sh else 0.0
-                    stage_mark = ("" if cell_id in ungraded
+                    stage_mark = ("" if cell_id in ungraded or cell_id in mixed
                                   else mark(pct_delta(bv, hv), regress_pct, improve_pct))
                     row.append(f"{bv:.2f}→{hv:.2f}{stage_mark}")
                 out.append("| " + " | ".join(row) + " |")

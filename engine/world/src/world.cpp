@@ -666,8 +666,8 @@ void World::buildAndWriteProfileReport() {
         // running sum / min / max across every sampled frame — not the old
         // last-frame-snapshot approximation, which reported Avg == Max on every
         // stage because `GpuStageTiming::*Ms_` only retains the latest sample
-        // Stages with no resolved samples (no writer, or readback never
-        // ready) stay at sampleCount_ == 0 and are skipped by the report writer.
+        // Stages with no resolved invocation (no writer, or readback never
+        // ready) stay at windowSampleCount_ == 0 and are skipped by the report writer.
         const auto &accumulators = IRRender::gpuStageAccumulators();
         const auto &registry = IRRender::gpuStageRegistry();
         for (std::size_t i = 0; i < registry.size(); ++i) {
@@ -678,6 +678,10 @@ void World::buildAndWriteProfileReport() {
             stage.minMs_ = acc.minMs_;
             stage.maxMs_ = acc.maxMs_;
             stage.sampleCount_ = acc.sampleCount_;
+            stage.windowTotalMs_ = static_cast<float>(acc.window_.sumMs_);
+            stage.windowMinMs_ = acc.window_.minMs_;
+            stage.windowMaxMs_ = acc.window_.maxMs_;
+            stage.windowSampleCount_ = acc.window_.sampleCount_;
             report.gpuStages_.push_back(std::move(stage));
         }
     }

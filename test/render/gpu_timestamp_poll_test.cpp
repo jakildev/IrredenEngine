@@ -89,6 +89,19 @@ class TimestampDevice : public RenderDevice {
         const auto found = statuses_.find(handle);
         return found == statuses_.end() ? status_ : found->second;
     }
+    TimestampReadStatus
+    pollTimestampSample(GpuTimestampHandle handle, GpuTimestampSample &out) override {
+        if (!sample_.has_value()) {
+            return RenderDevice::pollTimestampSample(handle, out);
+        }
+        const auto found = statuses_.find(handle);
+        const auto status = found == statuses_.end() ? status_ : found->second;
+        if (status == TimestampReadStatus::READY) {
+            out = *sample_;
+        }
+        return status;
+    }
+    std::optional<GpuTimestampSample> sample_;
     TimestampReadStatus status_ = TimestampReadStatus::PENDING;
     std::unordered_map<GpuTimestampHandle, TimestampReadStatus> statuses_;
     std::vector<GpuTimestampHandle> startHandles_;
@@ -109,7 +122,9 @@ TEST(GpuTimestampRingTest, BusySlotsSurviveUntilTheirOwnResultsComplete) {
     ring.initialize(&device);
     std::vector<float> samples;
     auto cycle = [&] {
-        ring.begin(device, [&](float ms) { samples.push_back(ms); });
+        ring.begin(device, [&](const GpuTimestampSample &sample) {
+            samples.push_back(sample.exclusiveMs_);
+        });
         ring.end(device);
     };
     for (int i = 0; i < 4; ++i) {
@@ -138,7 +153,9 @@ TEST(GpuTimestampRingTest, AllocationFailuresStayInertAndAreNotDestroyed) {
         IRRender::detail::GpuTimestampRing ring;
         ring.initialize(&device);
         for (int i = 0; i < 4; ++i) {
-            ring.begin(device, [](float) { FAIL() << "Pending samples cannot be recorded"; });
+            ring.begin(device, [](const GpuTimestampSample &) {
+                FAIL() << "Pending samples cannot be recorded";
+            });
             ring.end(device);
         }
         EXPECT_EQ(device.starts_, static_cast<int>(limit));
@@ -163,7 +180,9 @@ TEST(GpuTimestampRingTest, DeviceRecommendationIsClampedAndUnsupportedIsInert) {
     IRRender::detail::GpuTimestampRing ring;
     ring.initialize(nullptr);
     ring.initialize(&device);
-    ring.begin(device, [](float) { FAIL() << "Unsupported devices cannot record samples"; });
+    ring.begin(device, [](const GpuTimestampSample &) {
+        FAIL() << "Unsupported devices cannot record samples";
+    });
     ring.end(device);
     ring.release(nullptr);
     EXPECT_EQ(device.allocations_, 0u);
@@ -257,6 +276,42 @@ TEST_F(GpuTimestampPollTest, CardinalElectionRecordsOnlyItsOwnStage) {
         EXPECT_EQ(accumulators[i].sampleCount_, elected ? 1u : 0u);
         EXPECT_DOUBLE_EQ(accumulators[i].sumMs_, elected ? 2.5 : 0.0);
     }
+}
+
+TEST_F(GpuTimestampPollTest, WindowOnlyInvocationFeedsTheWindowButNotTheCost) {
+    GpuStageTimingObserver observer;
+    observer.tagStage(0, gpuStageRegistry()[0]);
+    const auto field = gpuStageRegistry()[0].field_;
+    gpuStageTiming().*field = 7.0f;
+    device_.status_ = TimestampReadStatus::READY;
+    device_.sample_ = GpuTimestampSample{0.0f, 16.0f, false};
+    observer.onBeforeTick(0);
+    observer.onAfterTick(0);
+    observer.onBeforeTick(0);
+    observer.onAfterTick(0);
+    const auto &acc = gpuStageAccumulators()[0];
+    EXPECT_EQ(acc.sampleCount_, 0u);
+    EXPECT_EQ(acc.window_.sampleCount_, 1u);
+    EXPECT_DOUBLE_EQ(acc.window_.sumMs_, 16.0);
+    EXPECT_FLOAT_EQ(gpuStageTiming().*field, 7.0f);
+
+    device_.sample_ = GpuTimestampSample{0.5f, 17.0f, true};
+    observer.onBeforeTick(0);
+    observer.onAfterTick(0);
+    EXPECT_EQ(acc.sampleCount_, 1u);
+    EXPECT_DOUBLE_EQ(acc.sumMs_, 0.5);
+    EXPECT_EQ(acc.window_.sampleCount_, 2u);
+    EXPECT_FLOAT_EQ(acc.window_.maxMs_, 17.0f);
+    EXPECT_FLOAT_EQ(gpuStageTiming().*field, 0.5f);
+}
+
+TEST_F(GpuTimestampPollTest, APairOnlyBackendReportsTheSameFigureInBothColumns) {
+    device_.status_ = TimestampReadStatus::READY;
+    GpuTimestampSample sample;
+    EXPECT_EQ(device_.pollTimestampSample(1, sample), TimestampReadStatus::READY);
+    EXPECT_TRUE(sample.exclusiveValid_);
+    EXPECT_FLOAT_EQ(sample.exclusiveMs_, 2.5f);
+    EXPECT_FLOAT_EQ(sample.windowMs_, 2.5f);
 }
 
 TEST_F(GpuTimestampPollTest, ExistingBooleanBackendAdaptsToPolling) {
