@@ -88,6 +88,13 @@ fleet workflow.
   `~/.fleet/state/jobs/<pane>/`. Profiles are fixed — there is no
   arbitrary-command form. `fleet-build --detach` enters the build profile.
   Contract: `docs/agents/FLEET-RUNTIME.md` § "Long-running jobs".
+- **`fleet-scratch`** — a pane's own cleanup, bounded by its assignment
+  (`FLEET_ASSIGNED_WORKTREE`): `dir [<name>]` creates and prints
+  `/tmp/fleet-<pane>[/<name>]`; `rm <path>...` deletes only inside that
+  scratch root or, in the pane's worktrees, `build*/`, git-ignored and
+  `__pycache__` paths holding no tracked file (all arguments checked before
+  any is deleted); `reap <pid>` stops one process the caller owns whose
+  working directory is in those roots. `fleet-scratch --help` for the rules.
 - **`fleet-health`** — read-only report on whether the fleet is spending
   its panes on work. Per role: dispatches launched vs productive vs no-op
   (with durations and the claude/codex split), who armed each trigger
