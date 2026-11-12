@@ -62,7 +62,7 @@ grid, GPU-side work, and any reduction in the bytes a resident occupies
 | Derived state | Derived pose plus everything computed from it: pool global positions, the owner-id range, queued position ranges, cull bounds, the GRID-rotated raster, and the fog and LOD gates on the voxel set. |
 | Pose writer | A system that declares a write to a pose input. |
 | Deriving system | A system that maintains derived state. |
-| Round | One dispatch of every registered deriving system, completed in pipeline order. |
+| Round | One completed dispatch of every deriving system registered in a pipeline, group by group in pipeline order. |
 
 ## The mechanism
 
@@ -84,8 +84,9 @@ read only by the transition step, and only for settling rows (see
 | Settled | `C_Static`, `C_Settled` | no | no, or gated |
 
 `C_Static` is the owner's declaration. It carries one engine-owned field,
-`std::uint32_t settleStamp_`, zero until the transition step first sees the
-entity. `C_Settled` is empty and engine-owned: only the engine adds or removes
+`std::uint64_t settleStamp_`, zero until the transition step first sees the
+entity (the width is fixed under [§ Settle](#settle-settling-to-settled),
+"Counter width"). `C_Settled` is empty and engine-owned: only the engine adds or removes
 it, and it never exists without `C_Static`.
 
 Why two tags and not one. Removing the pose writers and removing the
@@ -165,19 +166,57 @@ that a settling entity is promoted only after a complete round that opened
 after its inputs last changed. A round that was already open when they
 changed never counts, however far it had got.
 
-**Rounds.** A round is one dispatch, in pipeline order, of every deriving
-system that is a member of a registered pipeline (INPUT, then UPDATE, then
-RENDER, in declaration order within each). Which systems are deriving
-systems is defined in [§ The matching policy](#the-matching-policy). The
-system manager counts rounds with two integers and a cursor:
+**Rounds.** A round is counted over *deriving groups*. A deriving group is
+a pipeline group with at least one deriving-system member: `registerPipeline`
+gives every system its own group, and `registerPipelineGroups` may put several
+in one. Which systems are deriving systems is defined in
+[§ The matching policy](#the-matching-policy). A round is one completion of
+every deriving group in pipeline order (INPUT, then UPDATE, then RENDER, in
+group order within each). The system manager counts rounds with two integers
+and a cursor over the deriving groups. Each deriving group also has a
+*pending set*: the ids of its deriving members, taken from pipeline
+registration.
 
-- `roundsOpened_` advances when a pipeline starts and no round is open, and
-  the cursor moves to the first deriving system in pipeline order.
-- A dispatch of the deriving system under the cursor moves the cursor to the
-  next one. A dispatch of any other deriving system does not move it, and
-  neither does an off-cadence pass.
-- When the cursor passes the last deriving system the round closes and
+- `roundsOpened_` advances when a pipeline starts and no round is open. The
+  cursor moves to the first deriving group, and that group's pending set is
+  refilled.
+- After a group's dispatch has joined, and before that group's structural
+  flush, the main thread checks the group. If it is the group under the
+  cursor, every deriving member that dispatched in this pass leaves the
+  pending set. A member that was off cadence stays in it. When the set is
+  empty the cursor moves to the next deriving group and refills its set. A
+  dispatch of a deriving group not under the cursor changes nothing.
+- When the cursor passes the last deriving group the round closes and
   `roundsCompleted_` becomes `roundsOpened_`.
+
+The counters, the cursor and the pending sets are main-thread state. A
+member of a multi-system group runs on a worker, but none of this is written
+from its dispatch: it is written once per group, after `executePipeline`'s
+fan-out returns (`engine/system/src/system_manager.cpp`, the `parallelFor`
+over the due members). The order in which the members of one group finish,
+concurrent or in the serial no-worker fallback, cannot change what any of
+them derives. `validateAllPipelineGroups` rejects a multi-system group in
+which two members write the same component or one writes a component another
+reads, so no member reads another's output. A `PARALLEL_FOR` deriving system
+is always alone in its group, because the same validator rejects it in a
+multi-system group. It is counted after its own join.
+
+A change to round membership abandons the open round: a pipeline is
+registered, cleared or composed (`appendToPipeline`, the insert forms), or
+`addSystemExcludeTag` makes a system deriving. No round completes from the
+abandoned one, and the next pipeline start opens a new round. Settling
+entities wait longer, which is never wrong.
+
+**Counter width.** `roundsOpened_`, `roundsCompleted_`, `globalFloor_`,
+`globalModifierRevision_` and `C_Static::settleStamp_` are all
+`std::uint64_t`. They are compared with ordinary ordering and never reset. At
+1,000 rounds a second they wrap after about 585 million years, so the design
+has no wrap-safe comparison and no rollover rule. A 32-bit stamp was
+rejected. At 60 rounds a second it wraps in about 2.3 years, and after the
+wrap an old high floor or stamp would hold new residents indefinitely. A
+32-bit stamp beside 64-bit counters would instead truncate when it was
+stored. The extra 4 bytes per static resident are counted in
+[§ The bytes](#the-bytes).
 
 With every deriving system at cadence 1 a round is one frame that runs at
 least one fixed update, so promotion follows freeze by one to two frames.
@@ -211,7 +250,9 @@ the next frame, one round later than necessary, and is never early.
 modifiers, which are not an input of any one entity. The global-modifier
 mutators ([§ Engine mutators](#engine-mutators)) advance a monotonic
 `globalModifierRevision_`. When the drain finds a revision it has not seen,
-it sets one world-scoped integer, `globalFloor_ = roundsOpened_ + 1`. A
+it sets one world-scoped integer, `globalFloor_ = roundsOpened_ + 1`. It does
+this before it evaluates any promotion (step 2 of the drain, below), so no
+row can be judged against the floor that predates the change. A
 global change therefore restarts every settling entity at once, with no
 per-entity write. That includes a push that lands after
 `MODIFIER_RESOLVE_GLOBAL` has dispatched and before the promotion flush.
@@ -256,23 +297,30 @@ pipelines. In order, it:
    or not static is dropped, and on a voxel-set note it clears
    `ownerStatic_`. A note whose entity is settled queues the removal of
    `C_Settled`. Every other note stamps its entity.
-2. Walks the settling archetype nodes (`C_Static` without `C_Settled`).
+2. Compares the global-modifier revision and, on a new one, raises
+   `globalFloor_`.
+3. Walks the settling archetype nodes (`C_Static` without `C_Settled`).
    Rows whose stamp is zero are new: it stamps them, runs the eligibility
    check, and adopts the owner of every voxel set on them (below). Then it
-   collects the rows that can be promoted.
-3. Compares the global-modifier revision.
+   collects the rows that can be promoted, against the floor step 2 left.
 4. Promotes, lowest stamp first, up to the budget.
 5. Flushes the removals and additions it queued.
 
+The order of steps 2 and 3 is the cutover for global changes. A push that
+lands after `MODIFIER_RESOLVE_GLOBAL` has dispatched, or after the round has
+closed, is seen at step 2 of the next drain, before any row is collected.
+No system runs between steps 2 and 5, so no later push can land inside the
+drain.
+
 Its cost is proportional to the settling population and the staged notes. At
-steady state that is zero rows. The walk reads the 4-byte stamp column, not
+steady state that is zero rows. The walk reads the 8-byte stamp column, not
 a hash table. A loop that never drains promotes nothing, which is always
 correct.
 
 **Owner adoption.** Today `UPDATE_VOXEL_SET_CHILDREN` sets
 `C_VoxelSetNew::ownerEntityId_` lazily, and only for a set with voxels
 (`system_update_voxel_set_children.hpp`, the `ownerEntityId_ ==
-kNullEntity` branch). Step 2 adopts the owner of every set it stamps,
+kNullEntity` branch). Step 3 adopts the owner of every set it stamps,
 including an empty one, and sets the set's `ownerStatic_` bit (below). It
 goes through one helper, `IRPrefab::Voxel::adoptOwner(set, entity)`, which
 both callers share so the pool's owner-id range is registered exactly as
@@ -417,6 +465,10 @@ is roughly ten times cheaper. Freezing a live entity is two moves (freeze,
 then settle), about 0.5 µs. Creating an entity static is one move beyond
 creation. A million moves in one flush still take 200 to 275 ms (measured,
 same runs), which is why promotion is capped per round.
+
+The probe's tag is empty. `C_Static` carries the 8-byte stamp, which adds
+under 2 % to the roughly 500 bytes each move copies (estimated from
+[§ The bytes](#the-bytes), not measured).
 
 ## What each system and reader may assume
 
@@ -616,7 +668,7 @@ startup.
 | `IREntity::kClearedByForeignMove<T>` | Entity, same header | The archetype-move rule above is a move-time rule |
 | `C_Static`, `C_Settled` | System, `engine/system/include/irreden/system/components/component_static.hpp` | The exclusion adds `C_Static`'s id to exclude archetypes and the round tracker reads `C_Settled` in them. The system layer resolves both with `IREntity::getComponentType<…>()`. |
 | The exclusion: one function, `IRSystem::detail::applyStaticExclusion(include, exclude, writes)` | System | Every lane below calls it. It is the only implementation. |
-| Rounds | System, on `SystemManager` | Membership and the cursor come from pipeline registration and dispatch |
+| Rounds | System, on `SystemManager` | Membership, the pending sets and the cursor come from pipeline registration, and the cursor moves at each group's join inside `executePipeline` |
 | Freeze, thaw, resettle, notes, drain, eligibility, `C_StaticSettings` | Prefab, `IRPrefab::Static` in `engine/prefabs/irreden/common/` | Eligibility reads rotation mode, GPU slots and skeletons, all of which are prefab knowledge |
 
 **The lanes.** Each lane differs only in how it knows what the system
@@ -636,7 +688,9 @@ The function runs when a system is created and again whenever
 `addSystemExcludeTag` changes its exclude archetype. So
 `addSystemExcludeTag<C_Settled>` after creation turns a derived-pose writer
 into a deriving system, and it stops being excluded from static rows. The
-round tracker recomputes membership when a pipeline is registered.
+round tracker recomputes membership, and abandons the open round, whenever a
+pipeline's composition or a member's exclude archetype changes
+([§ Settle](#settle-settling-to-settled)).
 
 **Initialization order.** None. The compiled lanes evaluate the trait at
 compile time. The runtime lanes read the per-`ComponentId` table, which the
@@ -684,10 +738,13 @@ The scheduler gains three things:
    [§ The matching policy](#the-matching-policy): one exclusion function
    called from every registration and query lane, reading a guard the
    entity layer records per component.
-2. **Round tracking.** `roundsOpened_`, `roundsCompleted_` and the cursor
-   over the deriving systems in pipeline order
-   ([§ Settle](#settle-settling-to-settled)), read through
-   `IRSystem::roundsOpened()` and `IRSystem::roundsCompleted()`.
+2. **Round tracking.** `roundsOpened_` and `roundsCompleted_`
+   (`std::uint64_t`), the cursor over the deriving groups in pipeline order
+   and each group's pending set ([§ Settle](#settle-settling-to-settled)),
+   read through `IRSystem::roundsOpened()` and `IRSystem::roundsCompleted()`.
+   `executePipeline` advances the cursor on the main thread after each
+   group's dispatch joins, so grouped deriving systems need no shared
+   counter.
 3. **A `Walked` count.** The profile report's `Entities` column sums matched
    node lengths (`engine/system/src/system_manager.cpp`, the loop in
    `executeSystem`), not the rows a tick touched. A batch-form system
@@ -795,9 +852,9 @@ Per settled single-voxel resident with the million control's component set.
 | Pool, per voxel | 68 | 68 | Read from source (`component_voxel_pool.hpp`: owner id 8, local position 16, offset 12, global position 16, record 12, transform index 4) |
 | Entity id column | 8 | 8 | Measured `sizeof` |
 | Entity index entry | about 54 | about 54 | Estimated: the ticket's 490-byte total less its itemised sizes; not re-measured |
-| `C_Static`, `C_Settled` columns | 0 | 5 | Read from source: a column is a `std::vector` of the component; `C_Static` holds the 4-byte `settleStamp_`, and the empty `C_Settled` occupies one byte |
+| `C_Static`, `C_Settled` columns | 0 | 9 | Read from source: a column is a `std::vector` of the component; `C_Static` holds the 8-byte `settleStamp_`, and the empty `C_Settled` occupies one byte |
 | `C_VoxelSetNew::ownerEntityId_`, `ownerStatic_` | (in the 200) | (in the 200) | Read from source: an existing field, now written for every set of a static entity, and one bool in an existing padding byte; the header's `static_assert` holds the size |
-| **Resident in memory** | **about 498** | **about 503** | Sum |
+| **Resident in memory** | **about 498** | **about 507** | Sum |
 | **Read by the GPU** | 36 | 36 | Read from source: position 16, record 12, id 8 |
 | **Streamed per fixed update** | about 760 | 0 | Before: the ticket's derived estimate for the four systems. After: no deriving system or pose writer matches the row. |
 | **Position bytes uploaded per rendered frame** | 16 | 0 | Read from source: one `VoxelGpuPosition` per voxel, re-queued by every `UPDATE_VOXEL_SET_CHILDREN` dispatch today |
@@ -956,6 +1013,29 @@ system at a time:
   rounds. When the pushes stop, promotion follows after one complete round.
 - **Hold.** A staged set is held until seeded, and promotion follows the
   first round after the seed.
+- **Global push between the round's close and the drain, ordered.** The
+  push lands after the last deriving group has joined, so the entity's own
+  stamp is satisfied at that drain (`roundsCompleted_ >= settleStamp_`) and
+  only the floor can hold it. The test asserts that it is not promoted at
+  that drain, which fails if the drain collects candidates before it reads
+  the revision.
+- **Grouped deriving systems.** Two non-conflicting deriving systems share
+  one `registerPipelineGroups` group, with a worker pool and again with the
+  serial fallback. The round does not close until both have dispatched under
+  the cursor. With the two at cadences 1 and 2, it closes only after the
+  cadence-2 member has dispatched. A mutation after the group joins and
+  before the drain restarts the stamp exactly as for a singleton group. An
+  assert build checks that the round state is written only on the main
+  thread.
+- **Membership change.** `appendToPipeline` of a new deriving system in the
+  middle of a round abandons it, and promotion follows the next complete
+  round, which includes the new system.
+- **Counter width.** A test-only setter starts the round counters just below
+  2^32. Freeze, settle, resettle and settle again run across that boundary,
+  with a global push in between. The stamps, the floor and the counters read
+  back above 2^32 and promotion happens on the same rounds as in an unseeded
+  run, which fails if any of them is stored narrower than 64 bits. The
+  header `static_assert`s the field types.
 - **Mutation right after promotion.** A `resettle` in the first group after
   the promoting drain leaves the entity settling from the next flush. A
   `C_VoxelSetNew` edit made at the same point leaves it settling from that
