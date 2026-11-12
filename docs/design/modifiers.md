@@ -127,6 +127,17 @@ modifier struct turns it into a small interpreter; we already have a
 better interpreter — the host language and the source entity's tick
 function.
 
+A finite lifetime enters a `C_Modifiers` only through `push`,
+`pushFrameLocal` or `pushOneFrame` (the Lua reflection binding's
+`C_Modifiers.modifiers` and `Modifier.ticksRemaining` writes count as
+pushes). Each such push arms a world-wide flag on the field registry;
+`MODIFIER_DECAY` skips every row while it is clear, and only a decay pass
+that leaves no finite lifetime behind clears it. Upserts write `-1` and do
+not arm. One live finite modifier anywhere keeps the whole scan on. A
+finite lifetime written straight into a vector while the flag is clear
+fails the next decay pass in assert builds; a release build would never
+expire it.
+
 ### Singleton globals + archetype-routed exemption
 
 A singleton entity carries `C_GlobalModifiers`. Per-entity opt-out is

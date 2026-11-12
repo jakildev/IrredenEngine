@@ -2,8 +2,15 @@
 
 #include <irreden/common/modifier_lua.hpp>
 #include <irreden/common/components/component_modifiers.hpp>
+#include <irreden/common/components/component_modifiers_lua.hpp>
+#include <irreden/common/modifier.hpp>
+#include <irreden/common/modifier_field_registry.hpp>
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_system.hpp>
+#include <irreden/ir_time.hpp>
 #include <irreden/script/lua_script.hpp>
+#include <irreden/system/system_manager.hpp>
+#include <irreden/time/time_manager.hpp>
 
 namespace {
 
@@ -265,6 +272,106 @@ TEST_F(ModifierLuaGlobalTest, PushGlobalAddsModifierToGlobalsEntity) {
     EXPECT_EQ(g->modifiers_[0].field_, m_field_id);
     EXPECT_FLOAT_EQ(g->modifiers_[0].param_, 5.0f);
     EXPECT_EQ(g->modifiers_[0].kind_, IRComponents::TransformKind::ADD);
+}
+
+// ---- Reflection binding arms MODIFIER_DECAY ---------------------------------
+
+// A finite lifetime that enters through the reflection binding (the live
+// `C_Modifiers.modifiers` vector, or `Modifier.ticksRemaining`) must still
+// expire with MODIFIER_DECAY skipping rows while its flag is clear.
+class ModifierLuaReflectionDecayTest : public ModifierLuaTest {
+  protected:
+    ModifierLuaReflectionDecayTest() {
+        m_lua.registerTypeFromTraits<IRComponents::Modifier>();
+        m_lua.registerTypeFromTraits<C_Modifiers>();
+        m_field_id = IRPrefab::Modifier::registerField("lua.reflection.decay");
+        m_entity = IREntity::createEntity(C_Modifiers{});
+        m_lua.lua()["testField"] = static_cast<lua_Integer>(m_field_id);
+        m_system_manager.registerPipeline(
+            IRTime::Events::UPDATE,
+            {IRSystem::createSystem<IRSystem::MODIFIER_DECAY>()}
+        );
+    }
+
+    void pass() {
+        m_system_manager.executePipeline(IRTime::Events::UPDATE);
+    }
+
+    static bool decayArmed() {
+        return IRPrefab::Modifier::detail::globalFieldRegistry().decayArmed();
+    }
+
+    C_Modifiers &mods() {
+        return IREntity::getComponent<C_Modifiers>(m_entity);
+    }
+
+    IRTime::TimeManager m_time_manager;
+    IRSystem::SystemManager m_system_manager;
+    FieldBindingId m_field_id = 0;
+    EntityId m_entity = 0;
+};
+
+TEST_F(ModifierLuaReflectionDecayTest, ModifierAddedThroughVectorExpires) {
+    pass();
+    ASSERT_FALSE(decayArmed());
+
+    // The entry is built on the C++ side so only the vector path can arm.
+    m_lua.lua()["mods"] = &mods();
+    m_lua.lua()["stray"] =
+        IRComponents::Modifier{m_field_id, TransformKind::ADD, 1.0f, IREntity::kNullEntity, 3};
+    auto result = m_lua.lua().safe_script("mods.modifiers:add(stray)");
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    ASSERT_EQ(mods().modifiers_.size(), 1u);
+    EXPECT_EQ(mods().modifiers_[0].ticksRemaining_, 3);
+    EXPECT_TRUE(decayArmed());
+
+    pass();
+    pass();
+    EXPECT_EQ(mods().modifiers_.size(), 1u);
+    pass();
+    EXPECT_TRUE(mods().modifiers_.empty());
+    EXPECT_FALSE(decayArmed());
+}
+
+TEST_F(ModifierLuaReflectionDecayTest, LifetimeWrittenOnHeldEntryExpires) {
+    IRPrefab::Modifier::upsertBySource(
+        m_entity,
+        m_field_id,
+        TransformKind::ADD,
+        1.0f,
+        IREntity::kNullEntity
+    );
+    pass();
+    ASSERT_FALSE(decayArmed());
+
+    m_lua.lua()["entry"] = &mods().modifiers_[0];
+    auto result = m_lua.lua().safe_script("entry.ticksRemaining = 2");
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    EXPECT_TRUE(decayArmed());
+
+    pass();
+    EXPECT_EQ(mods().modifiers_.size(), 1u);
+    pass();
+    EXPECT_TRUE(mods().modifiers_.empty());
+    EXPECT_FALSE(decayArmed());
+}
+
+TEST_F(ModifierLuaReflectionDecayTest, SteadyLifetimeWriteDoesNotArm) {
+    IRPrefab::Modifier::upsertBySource(
+        m_entity,
+        m_field_id,
+        TransformKind::ADD,
+        1.0f,
+        IREntity::kNullEntity
+    );
+    pass();
+    ASSERT_FALSE(decayArmed());
+
+    m_lua.lua()["entry"] = &mods().modifiers_[0];
+    auto result = m_lua.lua().safe_script("entry.ticksRemaining = -1; return entry.ticksRemaining");
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    EXPECT_EQ(result.get<int>(), -1);
+    EXPECT_FALSE(decayArmed());
 }
 
 } // namespace

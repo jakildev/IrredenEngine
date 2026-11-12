@@ -6,7 +6,12 @@
 // behavior API ships separately. See docs/design/modifiers.md.
 
 #include <irreden/common/components/component_modifiers.hpp>
+#include <irreden/common/modifier_field_registry.hpp>
 #include <irreden/script/lua_script.hpp>
+
+#include <cstdint>
+#include <utility>
+#include <vector>
 
 namespace IRScript {
 
@@ -39,13 +44,24 @@ template <> inline void bindLuaType<IRComponents::Modifier>(LuaScript &luaScript
         }
     );
 
-    luaScript.registerType<Modifier, Modifier()>(
+    sol::usertype<Modifier> type = luaScript.registerType<Modifier, Modifier()>(
         "Modifier",
-        "field",          &Modifier::field_,
-        "kind",            &Modifier::kind_,
-        "param",           &Modifier::param_,
-        "source",          &Modifier::source_,
-        "ticksRemaining",  &Modifier::ticksRemaining_
+        "field",
+        &Modifier::field_,
+        "kind",
+        &Modifier::kind_,
+        "param",
+        &Modifier::param_,
+        "source",
+        &Modifier::source_
+    );
+    // A finite lifetime written here must arm MODIFIER_DECAY like a push.
+    type["ticksRemaining"] = sol::property(
+        [](const Modifier &mod) { return mod.ticksRemaining_; },
+        [](Modifier &mod, std::int32_t ticksRemaining) {
+            mod.ticksRemaining_ = ticksRemaining;
+            IRPrefab::Modifier::detail::armDecayFor(ticksRemaining);
+        }
     );
 }
 
@@ -73,9 +89,20 @@ template <> inline void bindLuaType<IRComponents::ResolvedField>(LuaScript &luaS
 
 template <> inline void bindLuaType<IRComponents::C_Modifiers>(LuaScript &luaScript) {
     using IRComponents::C_Modifiers;
-    luaScript.registerType<C_Modifiers, C_Modifiers()>(
-        "C_Modifiers",
-        "modifiers", &C_Modifiers::modifiers_
+    using IRComponents::Modifier;
+    sol::usertype<C_Modifiers> type =
+        luaScript.registerType<C_Modifiers, C_Modifiers()>("C_Modifiers");
+    // The live vector is writable from Lua, so handing it out arms
+    // MODIFIER_DECAY: a script may add a finite-lifetime entry through it.
+    type["modifiers"] = sol::property(
+        [](C_Modifiers &c) -> std::vector<Modifier> & {
+            IRPrefab::Modifier::detail::globalFieldRegistry().armDecay();
+            return c.modifiers_;
+        },
+        [](C_Modifiers &c, std::vector<Modifier> modifiers) {
+            c.modifiers_ = std::move(modifiers);
+            IRPrefab::Modifier::detail::globalFieldRegistry().armDecay();
+        }
     );
 }
 
