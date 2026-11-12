@@ -861,6 +861,13 @@ inline void stepGhostLifecycle(
     }
 }
 
+/// Whether a held ghost pose is exactly the subject's own pose.
+inline bool samePose(
+    const IRComponents::C_WorldTransform &a, const IRComponents::C_WorldTransform &b
+) {
+    return a.translation_ == b.translation_ && a.rotation_ == b.rotation_ && a.scale_ == b.scale_;
+}
+
 /// The 8-bit carrier form of a BODY reveal factor: round half up of
 /// `factor * 255`, so 1.0 pins 255 and 0.0 pins 0.
 inline std::uint8_t quantizeRevealFactor(float factor) {

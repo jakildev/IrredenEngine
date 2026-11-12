@@ -242,7 +242,7 @@ template <> struct System<FOG_REVEAL_EVAL_CANVAS> : IRPrefab::detail::DetachedCa
         return registerSystem<
             FOG_REVEAL_EVAL_CANVAS,
             IRComponents::C_FogRevealed,
-            IRComponents::C_WorldTransform,
+            const IRComponents::C_WorldTransform,
             IRComponents::C_EntityCanvas,
             Exclude<IRComponents::C_FogGhost>>("FogRevealEvalCanvas");
     }
@@ -264,7 +264,7 @@ template <> struct System<FOG_REVEAL_EVAL_CANVAS_GHOST> : detail::FogRevealEvalC
             FOG_REVEAL_EVAL_CANVAS_GHOST,
             IRComponents::C_FogRevealed,
             IRComponents::C_FogGhost,
-            IRComponents::C_WorldTransform,
+            const IRComponents::C_WorldTransform,
             IRComponents::C_EntityCanvas>("FogRevealEvalCanvasGhost");
     }
 };

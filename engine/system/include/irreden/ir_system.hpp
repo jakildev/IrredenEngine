@@ -258,9 +258,27 @@ template <typename T, typename L> struct MakeMemberTickFn;
 //   2. tick(EntityId, Cs&...)                        — per-entity-id
 //   3. tick(const Archetype&, std::vector<EntityId>&,
 //          std::vector<Cs>&...)                      — per-archetype batch
+//
+// A `GatesSettled` system decides per archetype node whether to walk its
+// rows, so it registers the per-archetype form even when it also declares a
+// row-form `tick` overload for its own use (`WholeNodeOnly`).
 template <typename T, typename... Cs> struct MakeMemberTickFn<T, TypeList<Cs...>> {
-    static auto build(T *p) {
-        if constexpr (requires(T &s, Cs &...cs) { s.tick(cs...); }) {
+    template <bool WholeNodeOnly = false> static auto build(T *p) {
+        if constexpr (WholeNodeOnly) {
+            static_assert(
+                requires(
+                    T &s,
+                    const Archetype &a,
+                    std::vector<EntityId> &ids,
+                    std::vector<Cs> &...cols
+                ) { s.tick(a, ids, cols...); },
+                "registerSystem<N, ..., GatesSettled>: System<N> must declare "
+                "tick(const Archetype&, std::vector<EntityId>&, std::vector<Cs>&...)."
+            );
+            return [p](const Archetype &a, std::vector<EntityId> &ids, std::vector<Cs> &...cols) {
+                p->tick(a, ids, cols...);
+            };
+        } else if constexpr (requires(T &s, Cs &...cs) { s.tick(cs...); }) {
             return [p](Cs &...cs) { p->tick(cs...); };
         } else if constexpr (requires(T &s, EntityId id, Cs &...cs) { s.tick(id, cs...); }) {
             return [p](EntityId id, Cs &...cs) { p->tick(id, cs...); };
@@ -419,7 +437,9 @@ registerSystem(std::string name, RelationParams<RelationComponents...> relationP
     auto instance = std::make_unique<SystemT>();
     SystemT *p = instance.get();
 
-    auto tickFn = detail::MakeMemberTickFn<SystemT, IncludedList>::build(p);
+    constexpr bool gatesSettled = (detail::IsGatesSettledTag<Components>::value || ...);
+    auto tickFn =
+        detail::MakeMemberTickFn<SystemT, IncludedList>::template build<gatesSettled>(p);
     auto beginFn = detail::makeMemberBeginTickFn<SystemT>(p);
     auto endFn = detail::makeMemberEndTickFn<SystemT>(p);
     auto relationFn = detail::makeMemberRelationTickFn<SystemT, RelationComponents...>(p);
