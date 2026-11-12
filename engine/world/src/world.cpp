@@ -11,6 +11,7 @@
 #include <irreden/profile/profile_report.hpp>
 #include <irreden/video/auto_screenshot.hpp>
 #include <irreden/input/components/component_entity_event_handlers.hpp>
+#include <irreden/common/static_audit.hpp>
 #include <irreden/common/static_residents.hpp>
 
 #include <irreden/world.hpp>
@@ -493,6 +494,7 @@ void World::update() {
     m_commandManager.executeDeviceMidiNoteCommandsAll();
     m_systemManager.executePipeline(IRTime::Events::UPDATE);
     IRPrefab::Static::drain();
+    IRPrefab::Static::audit();
     m_entityManager.destroyMarkedEntities();
     m_videoManager.notifyFixedUpdate();
     m_timeManager.endEvent<IRTime::UPDATE>();

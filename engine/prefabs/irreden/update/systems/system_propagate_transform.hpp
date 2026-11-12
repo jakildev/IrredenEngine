@@ -196,7 +196,10 @@ template <> struct System<PROPAGATE_TRANSFORM> {
                         translationField,
                         scaleField,
                         resolvedFieldsComponentId,
-                        modifiersComponentId
+                        modifiersComponentId,
+                        IREntity::getComponentData<IRComponents::C_WorldTransform>(
+                            levelNodes[nodeIndex]
+                        )
                     );
                 }
             );
@@ -209,6 +212,93 @@ template <> struct System<PROPAGATE_TRANSFORM> {
         const std::vector<IRComponents::C_LocalTransform> &,
         std::vector<IRComponents::C_WorldTransform> &
     ) {}
+
+    // Composes C_WorldTransform for rows [rowBegin, rowEnd) of node into
+    // `worlds`, indexed by row: the node's own column for the system, a
+    // scratch column for the static-resident audit, which compares the two.
+    // The per-node column fetches and isRootArchetype check are cheap
+    // relative to the row loop, so re-deriving them per chunk when a
+    // large node is split costs nothing meaningful.
+    static void composeNodeRows(
+        IREntity::ArchetypeNode *node,
+        const IRComponents::C_WorldTransform &parentWorld,
+        int rowBegin,
+        int rowEnd,
+        IRComponents::FieldBindingId translationField,
+        IRComponents::FieldBindingId scaleField,
+        IREntity::ComponentId resolvedFieldsComponentId,
+        IREntity::ComponentId modifiersComponentId,
+        std::vector<IRComponents::C_WorldTransform> &worlds
+    ) {
+        const auto &locals = IREntity::getComponentData<IRComponents::C_LocalTransform>(node);
+
+        // Resolved-field and modifier columns are both optional. Resolved
+        // wins when the creation registered the resolver pipeline +
+        // attached C_ResolvedFields; otherwise we fall back to composing
+        // directly from C_Modifiers so the per-frame additive offset
+        // (idle bob, gizmo nudge) still reaches the world transform
+        // without forcing every creation to wire the resolver pipeline.
+        // Reading both columns once per node keeps the inner loop on the
+        // batched cache-friendly path.
+        const std::vector<IRComponents::C_ResolvedFields> *resolvedCol = nullptr;
+        if (node->type_.contains(resolvedFieldsComponentId)) {
+            resolvedCol = &IREntity::getComponentData<IRComponents::C_ResolvedFields>(node);
+        }
+        const std::vector<IRComponents::C_Modifiers> *modifiersCol = nullptr;
+        if (resolvedCol == nullptr && node->type_.contains(modifiersComponentId)) {
+            modifiersCol = &IREntity::getComponentData<IRComponents::C_Modifiers>(node);
+        }
+
+        // parentWorld == identity for root archetypes, so quatMul and
+        // rotateVectorByQuat are both no-ops. Hoist the check out of the
+        // inner loop and skip the quat math — only meaningful with CHILD_OF.
+        const bool isRootArchetype =
+            (IREntity::getParentEntityFromArchetype(node->type_) == IREntity::kNullEntity);
+
+        for (int i = rowBegin; i < rowEnd; ++i) {
+            const auto &local = locals[i];
+
+            IRMath::vec3 modTranslation(0.0f);
+            IRMath::vec3 modScale(1.0f);
+            if (resolvedCol != nullptr) {
+                modTranslation = (*resolvedCol)[i].getVec3(translationField, IRMath::vec3(0.0f));
+                modScale = (*resolvedCol)[i].getVec3(scaleField, IRMath::vec3(1.0f));
+            } else if (modifiersCol != nullptr) {
+                const auto &modsVec3 = (*modifiersCol)[i].modifiersVec3_;
+                modTranslation = IRPrefab::Modifier::detail::composeForFieldVec3(
+                    IRMath::vec3(0.0f),
+                    translationField,
+                    modsVec3
+                );
+                modScale = IRPrefab::Modifier::detail::composeForFieldVec3(
+                    IRMath::vec3(1.0f),
+                    scaleField,
+                    modsVec3
+                );
+            }
+
+            if (isRootArchetype) {
+                worlds[i] = IRComponents::C_WorldTransform{
+                    local.translation_ + modTranslation,
+                    local.rotation_,
+                    local.scale_ * modScale,
+                };
+                continue;
+            }
+
+            const IRMath::vec3 worldScale = parentWorld.scale_ * local.scale_ * modScale;
+            const IRMath::vec4 worldRotation =
+                IRMath::quatMul(parentWorld.rotation_, local.rotation_);
+            const IRMath::vec3 worldTranslation = parentWorld.translation_ +
+                                                  IRMath::rotateVectorByQuat(
+                                                      parentWorld.scale_ * local.translation_,
+                                                      parentWorld.rotation_
+                                                  ) +
+                                                  modTranslation;
+
+            worlds[i] = IRComponents::C_WorldTransform{worldTranslation, worldRotation, worldScale};
+        }
+    }
 
     static SystemId create() {
         return registerSystem<
@@ -311,90 +401,6 @@ template <> struct System<PROPAGATE_TRANSFORM> {
         }
     }
 
-    // Composes C_WorldTransform for rows [rowBegin, rowEnd) of node.
-    // The per-node column fetches and isRootArchetype check are cheap
-    // relative to the row loop, so re-deriving them per chunk when a
-    // large node is split costs nothing meaningful.
-    static void composeNodeRows(
-        IREntity::ArchetypeNode *node,
-        const IRComponents::C_WorldTransform &parentWorld,
-        int rowBegin,
-        int rowEnd,
-        IRComponents::FieldBindingId translationField,
-        IRComponents::FieldBindingId scaleField,
-        IREntity::ComponentId resolvedFieldsComponentId,
-        IREntity::ComponentId modifiersComponentId
-    ) {
-        const auto &locals = IREntity::getComponentData<IRComponents::C_LocalTransform>(node);
-        auto &worlds = IREntity::getComponentData<IRComponents::C_WorldTransform>(node);
-
-        // Resolved-field and modifier columns are both optional. Resolved
-        // wins when the creation registered the resolver pipeline +
-        // attached C_ResolvedFields; otherwise we fall back to composing
-        // directly from C_Modifiers so the per-frame additive offset
-        // (idle bob, gizmo nudge) still reaches the world transform
-        // without forcing every creation to wire the resolver pipeline.
-        // Reading both columns once per node keeps the inner loop on the
-        // batched cache-friendly path.
-        const std::vector<IRComponents::C_ResolvedFields> *resolvedCol = nullptr;
-        if (node->type_.contains(resolvedFieldsComponentId)) {
-            resolvedCol = &IREntity::getComponentData<IRComponents::C_ResolvedFields>(node);
-        }
-        const std::vector<IRComponents::C_Modifiers> *modifiersCol = nullptr;
-        if (resolvedCol == nullptr && node->type_.contains(modifiersComponentId)) {
-            modifiersCol = &IREntity::getComponentData<IRComponents::C_Modifiers>(node);
-        }
-
-        // parentWorld == identity for root archetypes, so quatMul and
-        // rotateVectorByQuat are both no-ops. Hoist the check out of the
-        // inner loop and skip the quat math — only meaningful with CHILD_OF.
-        const bool isRootArchetype =
-            (IREntity::getParentEntityFromArchetype(node->type_) == IREntity::kNullEntity);
-
-        for (int i = rowBegin; i < rowEnd; ++i) {
-            const auto &local = locals[i];
-
-            IRMath::vec3 modTranslation(0.0f);
-            IRMath::vec3 modScale(1.0f);
-            if (resolvedCol != nullptr) {
-                modTranslation = (*resolvedCol)[i].getVec3(translationField, IRMath::vec3(0.0f));
-                modScale = (*resolvedCol)[i].getVec3(scaleField, IRMath::vec3(1.0f));
-            } else if (modifiersCol != nullptr) {
-                const auto &modsVec3 = (*modifiersCol)[i].modifiersVec3_;
-                modTranslation = IRPrefab::Modifier::detail::composeForFieldVec3(
-                    IRMath::vec3(0.0f),
-                    translationField,
-                    modsVec3
-                );
-                modScale = IRPrefab::Modifier::detail::composeForFieldVec3(
-                    IRMath::vec3(1.0f),
-                    scaleField,
-                    modsVec3
-                );
-            }
-
-            if (isRootArchetype) {
-                worlds[i] = IRComponents::C_WorldTransform{
-                    local.translation_ + modTranslation,
-                    local.rotation_,
-                    local.scale_ * modScale,
-                };
-                continue;
-            }
-
-            const IRMath::vec3 worldScale = parentWorld.scale_ * local.scale_ * modScale;
-            const IRMath::vec4 worldRotation =
-                IRMath::quatMul(parentWorld.rotation_, local.rotation_);
-            const IRMath::vec3 worldTranslation = parentWorld.translation_ +
-                                                  IRMath::rotateVectorByQuat(
-                                                      parentWorld.scale_ * local.translation_,
-                                                      parentWorld.rotation_
-                                                  ) +
-                                                  modTranslation;
-
-            worlds[i] = IRComponents::C_WorldTransform{worldTranslation, worldRotation, worldScale};
-        }
-    }
 };
 
 } // namespace IRSystem

@@ -22,6 +22,7 @@
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_stopwatch.hpp>
 #include <irreden/common/components/component_timer.hpp>
+#include <irreden/system/components/component_static.hpp>
 #include <irreden/world/save_serialize.hpp>
 #include <irreden/world/save_serialize_common.hpp>
 
@@ -32,6 +33,17 @@
 #include <utility>
 
 namespace IRWorld {
+
+// A static resident saves as its tag alone. The settle stamp names a round
+// of the saving session, so a loaded entity starts unstamped and settles by
+// the ordinary rule (docs/design/static-residents.md, "World snapshots").
+template <> struct SaveSerialize<IRComponents::C_Static> {
+    static void write(IRAsset::BinaryWriter &, const IRComponents::C_Static &) {}
+
+    static IRAsset::Result<IRComponents::C_Static> read(IRAsset::BinaryReader &) {
+        return IRAsset::Result<IRComponents::C_Static>::success(IRComponents::C_Static{});
+    }
+};
 
 template <> struct SaveSerialize<IRComponents::C_Name> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_Name &value) {

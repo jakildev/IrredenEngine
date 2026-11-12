@@ -54,18 +54,27 @@ struct LuaCppColumnAccessor {
 class LuaCppColumnView {
   public:
     LuaCppColumnView() = default;
+    /// `readOnly` marks a column the system declared under `reads`: `setAt`
+    /// raises instead of writing.
     LuaCppColumnView(
-        IREntity::IComponentData *data, const LuaCppColumnAccessor *accessor, int length
+        IREntity::IComponentData *data,
+        const LuaCppColumnAccessor *accessor,
+        int length,
+        bool readOnly = false
     )
         : m_data{data}
         , m_accessor{accessor}
-        , m_length{length} {}
+        , m_length{length}
+        , m_readOnly{readOnly} {}
 
     sol::object at(int row, sol::this_state ts) const {
         return m_accessor->reader_(sol::state_view{ts}, m_data, row);
     }
 
     void setAt(int row, const sol::object &value, sol::this_state ts) const {
+        if (m_readOnly) {
+            throw sol::error{"setAt on a column the system listed under 'reads'"};
+        }
         m_accessor->replacer_(sol::state_view{ts}, m_data, row, value);
     }
 
@@ -77,6 +86,7 @@ class LuaCppColumnView {
     IREntity::IComponentData *m_data = nullptr;
     const LuaCppColumnAccessor *m_accessor = nullptr;
     int m_length = 0;
+    bool m_readOnly = false;
 };
 
 // View of one Lua-defined component column inside an archetype tick.
@@ -85,9 +95,10 @@ class LuaCppColumnView {
 class LuaTypedColumnView {
   public:
     LuaTypedColumnView() = default;
-    LuaTypedColumnView(IComponentDataLuaTyped *data, int length)
+    LuaTypedColumnView(IComponentDataLuaTyped *data, int length, bool readOnly = false)
         : m_data{data}
-        , m_length{length} {}
+        , m_length{length}
+        , m_readOnly{readOnly} {}
 
     sol::object getField(int row, const std::string &fieldName, sol::this_state ts) const {
         const int fieldIdx = m_data->findFieldIndex(fieldName);
@@ -98,6 +109,9 @@ class LuaTypedColumnView {
     }
 
     void setField(int row, const std::string &fieldName, const sol::object &value) const {
+        if (m_readOnly) {
+            throw sol::error{"setField on a column the system listed under 'reads'"};
+        }
         const int fieldIdx = m_data->findFieldIndex(fieldName);
         if (fieldIdx < 0) {
             return;
@@ -110,6 +124,9 @@ class LuaTypedColumnView {
     }
 
     void setRow(int row, const sol::table &values) const {
+        if (m_readOnly) {
+            throw sol::error{"setRow on a column the system listed under 'reads'"};
+        }
         m_data->writeRowFromTable(row, values);
     }
 
@@ -120,6 +137,7 @@ class LuaTypedColumnView {
   private:
     IComponentDataLuaTyped *m_data = nullptr;
     int m_length = 0;
+    bool m_readOnly = false;
 };
 
 } // namespace IRScript
