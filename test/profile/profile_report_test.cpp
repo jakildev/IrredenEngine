@@ -102,6 +102,19 @@ TEST(ProfileReportGpuStages, TheSumLineSaysWhenThereIsNoSpan) {
     ) << text;
 }
 
+TEST(ProfileReportVoxelCull, SunFaceAdmittedRowCarriesAverageMaximumAndSamples) {
+    IRProfile::ProfileReport report;
+    report.voxelCullStats_.sunFaceAdmittedSum_ = 1536;
+    report.voxelCullStats_.maxSunFaceAdmitted_ = 1024;
+    report.voxelCullStats_.sampleCount_ = 2;
+    const std::string text = writeAndRead(report);
+
+    EXPECT_NE(
+        text.find("SunFaceAdmit          768.0           1024          2\n"),
+        std::string::npos
+    ) << text;
+}
+
 TEST(ProfileReportWitness, SteadyLineExcludesTheLeadingQuarter) {
     IRProfile::ProfileReport report;
     report.frameTimesMs_ = {100.0f, 90.0f, 20.0f, 21.0f, 19.0f, 20.0f, 22.0f, 20.0f};
