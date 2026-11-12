@@ -1,0 +1,53 @@
+name: Probe 5023 libjack link
+
+# Throwaway planning probe for engine #5023. Fires only on its own branch.
+on:
+  push:
+    branches: [probe/5023-libjack-link]
+
+permissions:
+  contents: read
+
+jobs:
+  link:
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [ubuntu-24.04, ubuntu-26.04, ubuntu-latest]
+    runs-on: ${{ matrix.image }}
+    timeout-minutes: 25
+    steps:
+      - name: Install gcc-13 and libjack
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-13 g++-13 libjack-jackd2-dev
+      - name: Report toolchain and libjack
+        run: |
+          set +e
+          grep -E '^(VERSION|VERSION_ID)=' /etc/os-release
+          echo "IMAGE_OS=$ImageOS IMAGE_VERSION=$ImageVersion"
+          dpkg-query -W -f='${Package} ${Version}\n' libjack-jackd2-0 libjack-jackd2-dev libstdc++6 gcc-13 g++-13 'libstdc++-*-dev' 2>/dev/null
+          echo "default g++: $(g++ --version | head -1)"
+          ls /usr/bin/g++-* 2>/dev/null
+          apt-cache policy g++-14 g++-15 g++-16 | grep -E '^g\+\+|Candidate'
+          echo "gcc-13 libstdc++.so -> $(readlink -f /usr/lib/gcc/x86_64-linux-gnu/13/libstdc++.so)"
+          file /usr/lib/gcc/x86_64-linux-gnu/13/libstdc++.so
+          head -c 300 /usr/lib/gcc/x86_64-linux-gnu/13/libstdc++.so | strings | head -5
+          echo "system libstdc++.so.6 -> $(readlink -f /usr/lib/x86_64-linux-gnu/libstdc++.so.6)"
+          echo "CXXABI_1.3.15 in system libstdc++.so.6: $(strings /usr/lib/x86_64-linux-gnu/libstdc++.so.6 | grep -c '^CXXABI_1.3.15$')"
+          echo "CXXABI_1.3.15 in gcc-13 libstdc++.so target: $(strings "$(readlink -f /usr/lib/gcc/x86_64-linux-gnu/13/libstdc++.so)" | grep -c '^CXXABI_1.3.15$')"
+          echo "libjack needs: $(objdump -T "$(readlink -f /usr/lib/x86_64-linux-gnu/libjack.so)" | grep -c 'CXXABI_1.3.15')"
+          objdump -T "$(readlink -f /usr/lib/x86_64-linux-gnu/libjack.so)" | grep cxa_call_terminate
+      - name: Link a jack client with g++-13
+        run: |
+          set +e
+          printf '#include <jack/jack.h>\n#include <cstdio>\nint main(){ std::puts(jack_get_version_string()); }\n' > t.cpp
+          g++-13 -std=c++23 t.cpp -o t13 -Wl,--no-as-needed -ljack -Wl,--verbose 2>&1 | grep -E 'libstdc\+\+|undefined reference|error' | head -8
+          g++-13 -std=c++23 t.cpp -o t13 -Wl,--no-as-needed -ljack
+          echo "G13_LINK_EXIT=$?"
+          g++ -std=c++23 t.cpp -o tdef -Wl,--no-as-needed -ljack
+          echo "DEFAULT_GXX_LINK_EXIT=$?"
+          for v in 14 15 16; do
+            if command -v g++-$v >/dev/null; then g++-$v -std=c++23 t.cpp -o t$v -Wl,--no-as-needed -ljack; echo "G${v}_LINK_EXIT=$?"; fi
+          done
+          exit 0
