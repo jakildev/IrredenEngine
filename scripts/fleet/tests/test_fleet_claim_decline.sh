@@ -120,6 +120,13 @@ assert_eq "$(decline task 42 pool-3 --reason "see secret/FakeRepo")" "1" \
 assert_eq "$(cat "$GH_LOG" "$REL_LOG")" "" "refusal writes no comment and changes no claim"
 assert_contains "$(cat "$TMPROOT/out")" "foreign-repository line 1" \
     "refusal names the class and line"
+reset_state
+assert_eq "$(decline task 42 pool-3 --reason "see jakildev/IrredenEngine#12")" "0" \
+    "engine decline with its own slug posts"
+assert_contains "$(cat "$GH_LOG")" "jakildev/IrredenEngine#12" \
+    "engine-slug reason reaches the engine comment"
+assert_eq "$(cat "$REL_LOG")" "release 42" \
+    "engine-slug reason releases the claim"
 REPO_NS=game
 assert_eq "$(decline task 42 pool-3 --reason "see secret/FakeRepo")" "0" \
     "the same text is allowed on the non-public namespace"

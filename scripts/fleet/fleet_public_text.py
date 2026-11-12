@@ -61,6 +61,10 @@ def _ignored_creation_paths(lines, git_root):
     return set(result.stdout.splitlines()) if result.returncode in (0, 1) else set()
 
 
+def _slug_pattern(slug):
+    return re.compile(rf"(?<![\w.-]){re.escape(slug.casefold())}(?![\w.-])")
+
+
 def find_public_text(text, target_repo, repo_map=None, term_file=None, git_root=None):
     repos = dict(repo_map or load_repo_map(os.environ.get("FLEET_PUBLIC_TEXT_REPO_MAP")))
     public_slug = repos.get("engine")
@@ -70,7 +74,8 @@ def find_public_text(text, target_repo, repo_map=None, term_file=None, git_root=
 
     lines = text.splitlines()
     ignored = _ignored_creation_paths(lines, git_root)
-    foreign = [(key, slug) for key, slug in repos.items()
+    target_slug_pattern = _slug_pattern(target_slug)
+    foreign = [(key, slug, _slug_pattern(slug)) for key, slug in repos.items()
                if slug.lower() != target_slug.lower()]
     literals = _terms(term_file or os.environ.get("FLEET_PUBLIC_TEXT_TERM_FILE")
                       or DEFAULT_TERM_FILE)
@@ -85,8 +90,9 @@ def find_public_text(text, target_repo, repo_map=None, term_file=None, git_root=
 
     for number, line in enumerate(lines, 1):
         folded = line.casefold()
-        for key, slug in foreign:
-            has_slug = slug.casefold() in folded
+        foreign_text = target_slug_pattern.sub("", folded)
+        for key, slug, slug_pattern in foreign:
+            has_slug = slug_pattern.search(foreign_text) is not None
             if has_slug:
                 add("foreign-repository", number, line)
             names = {key, slug.rsplit("/", 1)[-1]}

@@ -59,6 +59,27 @@ class PublicTextCase(unittest.TestCase):
         text = "example/Public#12\n#123\ncreations/tracked/note.txt\n"
         self.assertEqual(self.find(text), [])
 
+    def test_real_repo_map_does_not_treat_public_slug_as_foreign_prefix(self):
+        public_slug = fleet_public_text.REPO_SLUGS["engine"]
+        foreign_slug = fleet_public_text.REPO_SLUGS["game"]
+        public_text = "\n".join((
+            f"https://github.com/{public_slug}/issues/12",
+            f"{public_slug}#12",
+            f"https://raw.githubusercontent.com/{public_slug}/media/capture.png",
+        ))
+        self.assertEqual(
+            fleet_public_text.find_public_text(
+                public_text, "engine", fleet_public_text.REPO_SLUGS, self.terms, self.repo),
+            [],
+        )
+        findings = fleet_public_text.find_public_text(
+            f"{foreign_slug}#5", "engine", fleet_public_text.REPO_SLUGS,
+            self.terms, self.repo)
+        self.assertEqual(
+            [(finding.kind, finding.line) for finding in findings],
+            [("foreign-repository", 1)],
+        )
+
     def test_non_public_target_is_not_checked(self):
         self.assertEqual(self.find("secret/FakeRepo#1", target="other"), [])
 
