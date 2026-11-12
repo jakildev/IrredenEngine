@@ -44,6 +44,12 @@ fleet-claim [--repo game] decline $FLEET_DISPATCH_KIND $FLEET_DISPATCH_NUMBER <b
 then exit through shutdown; a claim left standing with no record counts
 as abandoned ([`FLEET.md § How a launch ends`](FLEET.md)).
 
+The completion verdict is `finished` when the target shows progress (or a
+task/stack has an open PR), `noop` when a released claim left only claim-label
+churn on the target, `declined` for the explicit record above, `abandoned` for
+a standing claim with no record, and `unknown` when the timeline cannot be
+read. Noop, declined, and abandoned exits count as empty for lane backoff.
+
 | kind | the dispatcher ran | you release with |
 |---|---|---|
 | `task` | `claim <N> <basename>` — FS lock, `fleet:claim-*`, a fresh worktree reservation with no branch | `release <N>` |

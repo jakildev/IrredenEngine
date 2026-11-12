@@ -1570,12 +1570,13 @@ derive_dispatch_outcome() {
 # discharged it — never the pane: `declined` (a `declined:` comment from this
 # pane since dispatch, written by `fleet-claim decline`), `abandoned` (the
 # lane's claim label for this pane still standing with no record — for a
-# task, with no open PR referencing it), or `finished`. Read off GitHub: the
-# issue itself (labels + updated_at; the issues endpoint serves PRs too), its
-# comments since dispatch, and — for the kinds whose claim label rides a PR,
-# the ones FLEET_TARGET_RELEASE releases with plain `release` — the repo's
-# open-PR list, fetched at most once per cleanup pass. `unknown` when gh
-# cannot answer, which keeps the marker verdict.
+# task, with no open PR referencing it), `noop` (claim released with only
+# claim-label churn since dispatch), or `finished` (the target shows progress).
+# Read off GitHub: the issue itself (labels + updated_at; the issues endpoint
+# serves PRs too), its comments and paginated timeline, and — for the kinds
+# whose claim label rides a PR, the ones FLEET_TARGET_RELEASE releases with
+# plain `release` — the repo's open-PR list, fetched at most once per cleanup
+# pass. `unknown` when gh cannot answer, which keeps the marker verdict.
 HOST_KEY=""
 host_key() {  # this host's claim-label key (mac|linux|windows), derived once
     [[ -n "$HOST_KEY" ]] || HOST_KEY=$(fleet-claim host 2>/dev/null || echo unknown)
@@ -1606,7 +1607,7 @@ assess_prs_file() {
 }
 
 # Sets ASSESS_LINE to `<verdict>\t<updated_at>\t<detail>`: verdict finished|
-# declined|abandoned, or `unknown` with the rest empty. A variable rather
+# declined|abandoned|noop, or `unknown`. A variable rather
 # than stdout so the caller stays in this shell and the pass cache persists.
 # $1 = target, $2 = agent (the worktree basename the claim was taken
 # under), $3 = dispatch epoch.
@@ -1617,8 +1618,8 @@ assess_target_completion() {
     fleet_parse_target "$target" || return 0
     command -v gh >/dev/null 2>&1 || return 0
     [[ -n "$ASSESS_TMP" ]] || assess_pass_begin
-    local slug key since_iso out
-    local -a prs_arg=()
+    local slug key since_iso out timeline_file
+    local -a prs_arg=() timeline_arg=()
     slug=$(plan_repo_slug "$FLEET_TARGET_REPO")
     key=$(fleet_target_key "$target")
     since_iso=$(date -u -d "@$since" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
@@ -1640,15 +1641,25 @@ assess_target_completion() {
             prs_arg=(--kind merge)
         fi
     fi
+    if [[ "$FLEET_TARGET_KIND" != merge ]]; then
+        timeline_file="$ASSESS_TMP/$key.timeline.json"
+        if ! gh api --paginate \
+                "repos/$slug/issues/$FLEET_TARGET_NUM/timeline?per_page=100" \
+                > "$timeline_file" 2>/dev/null; then
+            printf 'null\n' > "$timeline_file"
+        fi
+        timeline_arg=(--timeline-json "$timeline_file")
+    fi
     out=$(python3 "$FLEET_LIB_DIR/fleet_completion.py" assess \
         --claim-label "${FLEET_TARGET_LABEL[$FLEET_TARGET_KIND]:-fleet:claim-}$(host_key)-$agent" \
         --host-agent "$(host_key)-$agent" --since "$since" \
         --number "$FLEET_TARGET_NUM" --repo "$FLEET_TARGET_REPO" \
         --issue-json "$ASSESS_TMP/$key.issue.json" \
         --comments-json "$ASSESS_TMP/$key.comments.json" \
+        ${timeline_arg[@]+"${timeline_arg[@]}"} \
         ${prs_arg[@]+"${prs_arg[@]}"} 2>/dev/null) || out=""
     case "${out%%$'\t'*}" in
-        finished|declined|abandoned) ASSESS_LINE="$out" ;;
+        finished|declined|abandoned|noop|unknown) ASSESS_LINE="$out" ;;
     esac
 }
 
@@ -1953,6 +1964,7 @@ cleanup_stale_dispatches() {
             IFS=$'\t' read -r verdict updated detail <<< "$ASSESS_LINE"
             case "$verdict" in
                 finished)  claimed=yes; target_complete "$target" ;;
+                noop)      claimed=no ;;
                 declined)
                     claimed=no
                     remember_decline "$target" "$updated" "$detail" "$role" "$shadow" "$runtime"
@@ -4973,7 +4985,7 @@ case "${1:-}" in
     --assess-target)
         # Test/debug: the completion contract's line for one finished
         # dispatch — `<verdict>\t<updated_at>\t<detail>`, verdict finished /
-        # declined / abandoned / unknown — exactly as cleanup_stale_dispatches
+        # noop / declined / abandoned / unknown — exactly as cleanup_stale_dispatches
         # reads it. gh and fleet-claim come from PATH (tests stub them).
         if [[ -z "${2:-}" || -z "${3:-}" || -z "${4:-}" ]]; then
             echo "usage: fleet-dispatcher --assess-target <target> <agent> <dispatch-epoch>" >&2
@@ -4982,6 +4994,19 @@ case "${1:-}" in
         assess_target_completion "$2" "$3" "$4"
         printf '%s\n' "$ASSESS_LINE"
         assess_pass_end
+        exit 0
+        ;;
+    --claim-target)
+        # Test/debug: run the live dispatch-cap and claim arm for one target.
+        if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+            echo "usage: fleet-dispatcher --claim-target <target> <agent>" >&2
+            exit 2
+        fi
+        if claim_target "$2" "$3"; then
+            echo claimed
+        else
+            echo "${CLAIM_TARGET_ERROR:-not claimed}"
+        fi
         exit 0
         ;;
     --handle-abandoned)
