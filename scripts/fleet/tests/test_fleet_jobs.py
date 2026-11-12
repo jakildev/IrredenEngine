@@ -338,6 +338,14 @@ class Lifecycle(JobsCase):
                     lines = lines[1:]
                 self.assertEqual("\n".join(lines).strip(), line)
 
+    def test_display_discovery_reports_engine_domain_mismatch(self):
+        subject = load_subject()
+        with mock.patch.object(subject.sys, "platform", "darwin"), \
+                mock.patch.object(subject, "display_counts", return_value=(1, 0, 0)):
+            message = subject.display_discovery()
+        self.assertIn("1 online CoreGraphics display(s), awake=0, NSScreen=0", message)
+        self.assertIn("MISMATCH: engine monitor discovery will see 0", message)
+
     def test_one_live_display_verifier_per_pane(self):
         release = self.root / "release"
         held = ["render-verify", "--", "--target", "IRAnalyticOracle",

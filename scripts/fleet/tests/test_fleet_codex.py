@@ -223,15 +223,21 @@ class Transport(unittest.TestCase):
     def test_display_probe_reads_online_displays_on_macos_only(self):
         self.assertIsNone(doctor.probe_display("linux"))
         with patch.object(doctor.subprocess, "run",
-                          return_value=Mock(stdout="2\n", stderr="")) as run:
+                          return_value=Mock(stdout="2 2 2\n", stderr="")) as run:
             self.assertEqual(doctor.probe_display("darwin"), 2)
         self.assertIn("CGGetOnlineDisplayList", run.call_args.args[0][-1])
-        for stdout in ("0\n", "-1000\n", ""):
+        for stdout in ("0 0 0\n", "-1000 -1000 -1000\n", ""):
             with self.subTest(stdout=stdout), \
                     patch.object(doctor.subprocess, "run",
                                  return_value=Mock(stdout=stdout, stderr="")):
                 with self.assertRaisesRegex(ValueError, "no display session.*--doctor"):
                     doctor.probe_display("darwin")
+
+    def test_display_classifier_names_engine_invisible_sessions(self):
+        self.assertEqual(doctor.classify_display(1, 1, 1), "ok")
+        self.assertEqual(doctor.classify_display(1, 0, 1), "mismatch")
+        self.assertEqual(doctor.classify_display(1, 1, 0), "mismatch")
+        self.assertEqual(doctor.classify_display(0, 0, 0), "none")
 
     def test_display_validators_run_outside_the_sandbox(self):
         with tempfile.TemporaryDirectory() as temp:
