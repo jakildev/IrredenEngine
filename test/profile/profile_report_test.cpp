@@ -2,11 +2,13 @@
 
 #include <irreden/profile/profile_report.hpp>
 #include <irreden/profile/scope_timer.hpp>
+#include <irreden/render/gpu_stage_timing.hpp>
 
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -42,6 +44,43 @@ stageEntry(const char *name, float avg, uint32_t samples, float windowAvg, uint3
     entry.windowMaxMs_ = windowAvg;
     entry.windowSampleCount_ = windowSamples;
     return entry;
+}
+
+TEST(VoxelCullAccumulator, WinnerSamplesAccumulateSeparatelyAndReset) {
+    IRRender::VoxelCullAccumulator counts;
+    counts.record(500, 1000, 100);
+    counts.recordWinners(5, 100);
+    counts.recordWinners(8, 200);
+    EXPECT_EQ(counts.winnersSum_, 13u);
+    EXPECT_EQ(counts.winnerCandidatesSum_, 300u);
+    EXPECT_EQ(counts.maxWinners_, 8u);
+    EXPECT_EQ(counts.winnerSampleCount_, 2u);
+    EXPECT_EQ(counts.visibleSum_, 500u);
+    counts.reset();
+    EXPECT_EQ(counts.winnersSum_, 0u);
+    EXPECT_EQ(counts.winnerCandidatesSum_, 0u);
+    EXPECT_EQ(counts.maxWinners_, 0u);
+    EXPECT_EQ(counts.winnerSampleCount_, 0u);
+}
+
+TEST(VoxelCullAccumulator, RejectsMoreWinnersThanAdmittedCandidates) {
+    IRRender::VoxelCullAccumulator counts;
+    EXPECT_THROW(counts.recordWinners(101, 100), std::runtime_error);
+    EXPECT_EQ(counts.winnerSampleCount_, 0u);
+}
+
+TEST(ProfileReportVoxelWinners, UsesOnlyTheCandidatesPairedWithWinnerSamples) {
+    IRProfile::ProfileReport report;
+    auto &counts = report.voxelCullStats_;
+    counts.sampleCount_ = 8;
+    counts.visibleSum_ = 8000;
+    counts.winnersSum_ = 10;
+    counts.winnerCandidatesSum_ = 100;
+    counts.maxWinners_ = 6;
+    counts.winnerSampleCount_ = 2;
+    const auto text = writeAndRead(report);
+    EXPECT_NE(text.find("Winners"), std::string::npos);
+    EXPECT_NE(text.find("Winner ratio: 0.100000"), std::string::npos);
 }
 
 TEST(ProfileReportGpuStages, RowsCarryExclusiveTimeAndTheWindowBesideIt) {
