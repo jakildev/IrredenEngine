@@ -10,6 +10,8 @@
 #include <irreden/render/active_canvas.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
+#include <irreden/system/components/component_static.hpp>
+#include <irreden/voxel/voxel_owner.hpp>
 
 #include <cstddef>
 #include <unordered_map>
@@ -20,15 +22,15 @@ using namespace IRMath;
 
 namespace IRSystem {
 template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
-    // This 262K-entity position loop is one of the two dominant
-    // UPDATE costs, so it runs Concurrency::PARALLEL_FOR. The tick
-    // keeps the per-entity-id form for the one-time owner registration
-    // (`setEntityIdForRange` → GPU picking buffer), which makes the
-    // registration validator demand the `IRSystem::ParallelSafe` opt-in. The
-    // body is thread-safe: `beginTick` pre-resolves the pool lookup on the
-    // main thread and a per-worker deferred merge covers the shared
-    // `queuePositionRange` vector.
-    static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
+    // A deriving system for static residents (docs/design/static-residents.md):
+    // it excludes C_Settled, so a settled entity's positions are written
+    // and queued once, when it settles. The tick is whole-node so the
+    // dynamic / settling decision is one branch per archetype node, never a
+    // per-row test; it fans its rows out across the worker pool itself, in
+    // `kGrainSize` chunks. The row bodies are thread-safe: `beginTick`
+    // pre-resolves the pool lookup on the main thread and a per-worker
+    // deferred merge covers the shared `queuePositionRange` vector.
+    static constexpr int kGrainSize = kDefaultGrainSize;
 
     // One deferred `queuePositionRange` call. The pool's
     // `m_pendingPositionRanges.emplace_back` is the lone cross-set shared-
@@ -67,6 +69,8 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
     // canvas): skip the per-entity map lookup and read this cached pointer.
     // The map is only consulted for sets with an explicit canvasEntity_ override.
     C_VoxelPool *activePool_ = nullptr;
+    // Null until a registration names C_Static; no node can hold it before.
+    IREntity::ComponentId staticTag_ = IREntity::kNullComponent;
 
     // Per-worker pending-range accumulators, indexed by IRJob::workerId()
     // (slot 0 = main thread, 1..N = IRJob workers). Sized in beginTick;
@@ -94,6 +98,7 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         activeCanvas_ = IRRender::getActiveCanvasEntityOrNull();
         auto activeIt = canvasToPool_.find(activeCanvas_);
         activePool_ = activeIt != canvasToPool_.end() ? activeIt->second : nullptr;
+        staticTag_ = IREntity::getEntityManager().findComponentType<C_Static>();
 
         // Size + clear the per-worker accumulators (workerCount() is 0 with no
         // job pool → one main-thread slot, matching workerId() == 0).
@@ -121,42 +126,97 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
     }
 
     void tick(
-        IREntity::EntityId &entityId,
-        C_VoxelSetNew &voxelSet,
-        const C_WorldTransform &worldTransform
+        const Archetype &type,
+        std::vector<IREntity::EntityId> &entities,
+        std::vector<C_VoxelSetNew> &voxelSets,
+        const std::vector<C_WorldTransform> &worldTransforms
+    ) {
+        // The archetype excludes C_Settled, so a node carrying C_Static
+        // holds settling rows only.
+        const bool settling =
+            staticTag_ != IREntity::kNullComponent && type.contains(staticTag_);
+        const int rowCount = static_cast<int>(entities.size());
+        const auto rows = [&](int rowBegin, int rowEnd) {
+            if (settling) {
+                for (int i = rowBegin; i < rowEnd; ++i) {
+                    tickSettlingRow(entities[i], voxelSets[i], worldTransforms[i]);
+                }
+            } else {
+                for (int i = rowBegin; i < rowEnd; ++i) {
+                    tickDynamicRow(entities[i], voxelSets[i], worldTransforms[i]);
+                }
+            }
+        };
+        if (rowCount > kGrainSize && IRJob::workerCount() > 0 && IRJob::isMainThread()) {
+            IRJob::parallelFor(0, rowCount, kGrainSize, rows);
+        } else {
+            rows(0, rowCount);
+        }
+    }
+
+    // A dynamic entity's set: frozen while hidden or LOD-culled, and skipped
+    // while none of its pool chunks are in the shadow-feeder cull viewport.
+    void tickDynamicRow(
+        IREntity::EntityId entityId, C_VoxelSetNew &voxelSet, const C_WorldTransform &worldTransform
     ) {
         if (!voxelSet.renders() || voxelSet.numVoxels_ <= 0) {
             return;
         }
-
-        // Resolve the pool from the read-only map built on the main thread in
-        // beginTick — no EntityManager access from the worker. The active
-        // canvas is the dominant case, so take the cached pointer and only hit
-        // the map for an explicit canvasEntity_ override.
-        IREntity::EntityId canvas = voxelSet.canvasEntity_;
-        C_VoxelPool *poolPtr = activePool_;
-        if (canvas != IREntity::kNullEntity && canvas != activeCanvas_) {
-            auto poolIt = canvasToPool_.find(canvas);
-            poolPtr = poolIt != canvasToPool_.end() ? poolIt->second : nullptr;
-        }
+        C_VoxelPool *poolPtr = poolFor(voxelSet);
         if (poolPtr == nullptr) {
             return; // no pool for this canvas (headless / pre-canvas set)
         }
-        C_VoxelPool &pool = *poolPtr;
-
-        // Cull gate: skip the CPU→GPU position update when none of this
-        // set's pool chunks are in the camera viewport. On-screen sets
-        // re-upload every frame (unconditional per ECS no-dirty-flags rule).
-        // cullValid_ is false before the first render frame — fail-safe to
-        // doing the work rather than silently dropping geometry at startup.
-        if (cullValid_ && !pool.isRangeVisible(
+        // On-screen sets re-upload every frame (unconditional per ECS
+        // no-dirty-flags rule). cullValid_ is false before the first render
+        // frame — fail-safe to doing the work rather than silently dropping
+        // geometry at startup.
+        if (cullValid_ && !poolPtr->isRangeVisible(
                               voxelSet.voxelStartIdx_,
                               static_cast<std::size_t>(voxelSet.allocatedVoxels_),
                               viewport_
                           )) {
             return;
         }
+        writeRow(entityId, voxelSet, worldTransform, *poolPtr);
+    }
 
+    // A settling static entity's set: no later dispatch makes up for a
+    // skipped one, so neither the cull gate nor the `renders()` gate applies
+    // and a hidden or culled set is written too. A ghost-held set keeps its
+    // ghost positions; the fog evaluator holds the entity while that pose is
+    // not its own.
+    void tickSettlingRow(
+        IREntity::EntityId entityId, C_VoxelSetNew &voxelSet, const C_WorldTransform &worldTransform
+    ) {
+        if (voxelSet.ghostHeld_ || voxelSet.numVoxels_ <= 0) {
+            return;
+        }
+        C_VoxelPool *poolPtr = poolFor(voxelSet);
+        if (poolPtr == nullptr) {
+            return;
+        }
+        writeRow(entityId, voxelSet, worldTransform, *poolPtr);
+    }
+
+    // Resolved from the read-only map built on the main thread in beginTick —
+    // no EntityManager access from a worker. The active canvas is the
+    // dominant case, so take the cached pointer and only hit the map for an
+    // explicit canvasEntity_ override.
+    C_VoxelPool *poolFor(const C_VoxelSetNew &voxelSet) const {
+        const IREntity::EntityId canvas = voxelSet.canvasEntity_;
+        if (canvas == IREntity::kNullEntity || canvas == activeCanvas_) {
+            return activePool_;
+        }
+        const auto poolIt = canvasToPool_.find(canvas);
+        return poolIt != canvasToPool_.end() ? poolIt->second : nullptr;
+    }
+
+    void writeRow(
+        IREntity::EntityId entityId,
+        C_VoxelSetNew &voxelSet,
+        const C_WorldTransform &worldTransform,
+        C_VoxelPool &pool
+    ) {
         // updateAsChild writes only this set's disjoint pool span
         // [voxelStartIdx_, voxelStartIdx_ + safeCount) — safe under
         // concurrency. Returns the number of positions actually written
@@ -195,12 +255,7 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
             voxelSet.numVoxels_ > 0) {
             // Disjoint per-set span fill + idempotent dirty bool — benign
             // under concurrency (each set owns [voxelStartIdx_, +allocatedVoxels_)).
-            voxelSet.ownerEntityId_ = entityId;
-            pool.setEntityIdForRange(
-                voxelSet.voxelStartIdx_,
-                static_cast<std::size_t>(voxelSet.allocatedVoxels_),
-                entityId
-            );
+            IRPrefab::Voxel::adoptOwner(voxelSet, entityId, pool);
         }
     }
 
@@ -224,16 +279,15 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
     }
 
     static SystemId create() {
-        // ParallelSafe: the body is audited thread-safe (disjoint span writes +
-        // a per-worker deferred merge for the one shared-vector hazard). The
-        // tag opts past the PARALLEL_FOR + usesEntityId_ validator and is
-        // stripped from the archetype/tick signature by detail::FilterTags_t
-        // (ir_system.hpp).
+        // MainThread: the tick drives IRJob::parallelFor itself, which
+        // cannot fan out from a worker, so the system stays out of
+        // multi-system groups.
         return registerSystem<
             UPDATE_VOXEL_SET_CHILDREN,
             C_VoxelSetNew,
-            C_WorldTransform,
-            ParallelSafe>("UpdateVoxelSetChildren");
+            const C_WorldTransform,
+            Exclude<C_Settled>,
+            MainThread>("UpdateVoxelSetChildren");
     }
 };
 } // namespace IRSystem

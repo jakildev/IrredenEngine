@@ -11,6 +11,7 @@
 #include <irreden/profile/profile_report.hpp>
 #include <irreden/video/auto_screenshot.hpp>
 #include <irreden/input/components/component_entity_event_handlers.hpp>
+#include <irreden/common/static_residents.hpp>
 
 #include <irreden/world.hpp>
 #include <irreden/world/main_loop_frame.hpp>
@@ -441,6 +442,7 @@ void World::input() {
     m_audioManager.getAudioPlayback().tickPlayback();
 
     m_systemManager.executePipeline(IRTime::Events::INPUT);
+    IRPrefab::Static::drain();
 }
 
 void World::start() {
@@ -490,6 +492,7 @@ void World::update() {
     m_commandManager.executeDeviceMidiCCCommandsAll();
     m_commandManager.executeDeviceMidiNoteCommandsAll();
     m_systemManager.executePipeline(IRTime::Events::UPDATE);
+    IRPrefab::Static::drain();
     m_entityManager.destroyMarkedEntities();
     m_videoManager.notifyFixedUpdate();
     m_timeManager.endEvent<IRTime::UPDATE>();
@@ -503,6 +506,7 @@ void World::render() {
     m_inputManager.advanceInputState(IRTime::Events::RENDER);
     m_renderer.beginFrame();
     m_renderer.renderFrame();
+    IRPrefab::Static::drain();
     m_videoManager.render();
     m_renderer.presentFrame();
 

@@ -22,7 +22,7 @@ template <> struct System<MODIFIER_RESOLVE_EXEMPT> {
     static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
 
     void tick(
-        IRComponents::C_Modifiers &m,
+        const IRComponents::C_Modifiers &m,
         IRComponents::C_ResolvedFields &resolved,
         [[maybe_unused]] IRComponents::C_NoGlobalModifiers &
     ) {
@@ -49,9 +49,10 @@ template <> struct System<MODIFIER_RESOLVE_EXEMPT> {
     static SystemId create() {
         return registerSystem<
             MODIFIER_RESOLVE_EXEMPT,
-            IRComponents::C_Modifiers,
+            const IRComponents::C_Modifiers,
             IRComponents::C_ResolvedFields,
-            IRComponents::C_NoGlobalModifiers>("ModifierResolveExempt");
+            IRComponents::C_NoGlobalModifiers,
+            Exclude<IRComponents::C_Settled>>("ModifierResolveExempt");
     }
 };
 

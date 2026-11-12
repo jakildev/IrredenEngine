@@ -55,6 +55,12 @@
 // pairs; stable scenes skip the partition pass entirely. The
 // per-tick parent-world resolve and the parallel composition itself
 // always run — that's the hot work.
+//
+// A deriving system for static residents (docs/design/static-residents.md):
+// it excludes C_Settled, both in its registration and in the candidate
+// query below, so a settled entity is composed once when it settles and not
+// again. A settled parent is outside the candidate set and is read like any
+// other non-candidate parent.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_job.hpp>
@@ -66,6 +72,7 @@
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/common/modifier_compose.hpp>
 #include <irreden/common/transform_modifier_fields.hpp>
+#include <irreden/system/components/component_static.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -129,7 +136,10 @@ template <> struct System<PROPAGATE_TRANSFORM> {
 
         const auto archetype = IREntity::
             getArchetype<IRComponents::C_LocalTransform, IRComponents::C_WorldTransform>();
-        auto nodes = IREntity::queryArchetypeNodesSimple(archetype);
+        auto nodes = IREntity::queryArchetypeNodesSimple(
+            archetype,
+            IREntity::getArchetype<IRComponents::C_Settled>()
+        );
 
         buildSignature(nodes, scratchSignature_);
         if (scratchSignature_ != cachedSignature_) {
@@ -196,15 +206,16 @@ template <> struct System<PROPAGATE_TRANSFORM> {
     void tick(
         const IREntity::Archetype &,
         std::vector<IREntity::EntityId> &,
-        std::vector<IRComponents::C_LocalTransform> &,
+        const std::vector<IRComponents::C_LocalTransform> &,
         std::vector<IRComponents::C_WorldTransform> &
     ) {}
 
     static SystemId create() {
         return registerSystem<
             PROPAGATE_TRANSFORM,
-            IRComponents::C_LocalTransform,
-            IRComponents::C_WorldTransform>("PropagateTransform");
+            const IRComponents::C_LocalTransform,
+            IRComponents::C_WorldTransform,
+            Exclude<IRComponents::C_Settled>>("PropagateTransform");
     }
 
   private:
@@ -314,7 +325,7 @@ template <> struct System<PROPAGATE_TRANSFORM> {
         IREntity::ComponentId resolvedFieldsComponentId,
         IREntity::ComponentId modifiersComponentId
     ) {
-        auto &locals = IREntity::getComponentData<IRComponents::C_LocalTransform>(node);
+        const auto &locals = IREntity::getComponentData<IRComponents::C_LocalTransform>(node);
         auto &worlds = IREntity::getComponentData<IRComponents::C_WorldTransform>(node);
 
         // Resolved-field and modifier columns are both optional. Resolved
@@ -325,11 +336,11 @@ template <> struct System<PROPAGATE_TRANSFORM> {
         // without forcing every creation to wire the resolver pipeline.
         // Reading both columns once per node keeps the inner loop on the
         // batched cache-friendly path.
-        std::vector<IRComponents::C_ResolvedFields> *resolvedCol = nullptr;
+        const std::vector<IRComponents::C_ResolvedFields> *resolvedCol = nullptr;
         if (node->type_.contains(resolvedFieldsComponentId)) {
             resolvedCol = &IREntity::getComponentData<IRComponents::C_ResolvedFields>(node);
         }
-        std::vector<IRComponents::C_Modifiers> *modifiersCol = nullptr;
+        const std::vector<IRComponents::C_Modifiers> *modifiersCol = nullptr;
         if (resolvedCol == nullptr && node->type_.contains(modifiersComponentId)) {
             modifiersCol = &IREntity::getComponentData<IRComponents::C_Modifiers>(node);
         }

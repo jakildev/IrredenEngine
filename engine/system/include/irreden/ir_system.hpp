@@ -33,6 +33,15 @@ template <typename... Cs> struct CallCreateSystem<TypeList<Cs...>> {
     }
 };
 
+// A `const C` in a registration pack declares a read. Storage, archetype
+// matching and column access all name the bare component, so the const is
+// dropped before the pack reaches them; the tick still takes `const C &`.
+template <typename L> struct StripConstImpl;
+template <typename... Cs> struct StripConstImpl<TypeList<Cs...>> {
+    using type = TypeList<std::remove_const_t<Cs>...>;
+};
+template <typename L> using StripConst_t = typename StripConstImpl<L>::type;
+
 template <typename L> struct ArchetypeFromList;
 template <typename... Cs> struct ArchetypeFromList<TypeList<Cs...>> {
     static IREntity::Archetype value() {
@@ -193,7 +202,8 @@ constexpr SystemId createSystem(
     // PartitionExcludes<Pack...>::Included whenever the pack carries no tag
     // types (proof: test/system/system_access_test.cpp). The Excluded half
     // (`Partition::Excluded`, above) still drives the exclude archetype.
-    return detail::CallCreateSystem<detail::FilterTags_t<TickComponents...>>::run(
+    return detail::CallCreateSystem<
+        detail::StripConst_t<detail::FilterTags_t<TickComponents...>>>::run(
         getSystemManager(),
         std::move(name),
         std::move(functionTick),
@@ -404,7 +414,7 @@ registerSystem(std::string name, RelationParams<RelationComponents...> relationP
     // staying byte-identical to `PartitionExcludes::Included` for tag-free
     // packs. The `createSystem<Components...>` call below still sees the full
     // pack, so the tag still flips `parallelSafe_` in the access descriptor.
-    using IncludedList = detail::FilterTags_t<Components...>;
+    using IncludedList = detail::StripConst_t<detail::FilterTags_t<Components...>>;
 
     auto instance = std::make_unique<SystemT>();
     SystemT *p = instance.get();
@@ -600,7 +610,7 @@ void executeQuery(FunctionTick &&tick) {
     using Partition = detail::PartitionExcludes<QueryComponents...>;
     IREntity::Archetype excludeArchetype =
         detail::ArchetypeFromList<typename Partition::Excluded>::value();
-    using IncludedList = detail::FilterTags_t<QueryComponents...>;
+    using IncludedList = detail::StripConst_t<detail::FilterTags_t<QueryComponents...>>;
     IREntity::Archetype includeArchetype = detail::ArchetypeFromList<IncludedList>::value();
     detail::applyStaticExclusion(
         includeArchetype,

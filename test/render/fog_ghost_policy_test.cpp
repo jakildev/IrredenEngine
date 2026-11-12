@@ -377,7 +377,7 @@ TEST(FogGhostPolicyTest, VoxelRouteRetainsAlphaMaskAndExploredCarrier) {
     IRSystem::System<IRSystem::UPDATE_VOXEL_SET_CHILDREN> positionSystem;
     positionSystem.canvasToPool_[canvas] = &pool;
     positionSystem.pendingByWorker_.resize(1);
-    positionSystem.tick(entity, voxelSet, transform);
+    positionSystem.tickDynamicRow(entity, voxelSet, transform);
     const auto frozenPositions = pool.getPositionGlobals();
 
     transform.translation_ = {10.0f, 0.0f, 0.0f};
@@ -391,7 +391,7 @@ TEST(FogGhostPolicyTest, VoxelRouteRetainsAlphaMaskAndExploredCarrier) {
     EXPECT_TRUE(voxelSet.ghostHeld_);
     EXPECT_FALSE(voxelSet.visible_);
     EXPECT_EQ(pool.getActiveMask()[0] & 0x3u, 0x1u);
-    positionSystem.tick(entity, voxelSet, transform);
+    positionSystem.tickDynamicRow(entity, voxelSet, transform);
     ASSERT_EQ(pool.getPositionGlobals().size(), frozenPositions.size());
     EXPECT_EQ(
         std::memcmp(
