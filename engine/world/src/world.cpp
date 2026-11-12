@@ -50,6 +50,12 @@ constexpr std::array<std::pair<const char *, BufferWriteCounter>, 6> kBufferWrit
     {"bufferMidFrameWaits", &IRRender::BufferWriteStats::midFrameWaits_},
 }};
 
+using DeviceErrorCounter = std::uint64_t IRRender::DeviceErrorStats::*;
+constexpr std::array<std::pair<const char *, DeviceErrorCounter>, 2> kDeviceErrorCounters{{
+    {"commandBufferErrors", &IRRender::DeviceErrorStats::commandBufferErrors_},
+    {"skippedFrames", &IRRender::DeviceErrorStats::skippedFrames_},
+}};
+
 } // namespace
 
 World::World(
@@ -540,6 +546,9 @@ void World::enableFrameTiming(bool enabled) {
         m_frameBufferWrites.clear();
         m_frameBufferWrites.reserve(1024);
         m_bufferWritesAtLastFrame = IRRender::device()->deviceStats().bufferWrites_;
+        m_frameDeviceErrors.clear();
+        m_frameDeviceErrors.reserve(1024);
+        m_deviceErrorsAtLastFrame = IRRender::device()->deviceStats().errors_;
         m_gpuProcessPeakBytes = 0;
         m_systemManager.resetTimingStats();
         IRRender::computeLightVolumeTiming().reset();
@@ -556,13 +565,20 @@ void World::enableFrameTiming(bool enabled) {
 }
 
 void World::recordDeviceCounters() {
-    const IRRender::BufferWriteStats current = IRRender::device()->deviceStats().bufferWrites_;
+    const IRRender::RenderDeviceStats currentStats = IRRender::device()->deviceStats();
+    const IRRender::BufferWriteStats current = currentStats.bufferWrites_;
     IRRender::BufferWriteStats delta;
     for (const auto &[name, counter] : kBufferWriteCounters) {
         delta.*counter = current.*counter - m_bufferWritesAtLastFrame.*counter;
     }
     m_frameBufferWrites.push_back(delta);
     m_bufferWritesAtLastFrame = current;
+    IRRender::DeviceErrorStats errorDelta;
+    for (const auto &[name, counter] : kDeviceErrorCounters) {
+        errorDelta.*counter = currentStats.errors_.*counter - m_deviceErrorsAtLastFrame.*counter;
+    }
+    m_frameDeviceErrors.push_back(std::move(errorDelta));
+    m_deviceErrorsAtLastFrame = currentStats.errors_;
     m_gpuProcessPeakBytes = IRMath::max<uint64_t>(
         m_gpuProcessPeakBytes,
         IRRender::device()->gpuMemoryStats().processAllocatedBytes_
@@ -606,6 +622,19 @@ void World::buildAndWriteProfileReport() {
         }
         report.deviceCounters_.push_back(std::move(entry));
     }
+    for (const auto &[name, counter] : kDeviceErrorCounters) {
+        IRProfile::DeviceCounterEntry entry{name};
+        for (size_t frame = 0; frame < m_frameDeviceErrors.size(); ++frame) {
+            const uint64_t value = m_frameDeviceErrors[frame].*counter;
+            entry.total_ += value;
+            entry.steadyTotal_ += frame >= warmupFrames ? value : 0;
+            entry.maxPerFrame_ = IRMath::max(entry.maxPerFrame_, value);
+        }
+        report.deviceCounters_.push_back(std::move(entry));
+    }
+    const IRRender::DeviceErrorStats errors = IRRender::device()->deviceStats().errors_;
+    report.firstCommandBufferErrorFrame_ = errors.firstCommandBufferErrorFrame_;
+    report.firstCommandBufferError_ = std::string(errors.firstCommandBufferError_);
     report.frameTimesMs_ = std::move(m_frameTimesMs);
     report.frameUpdateTicks_ = std::move(m_frameUpdateTicks);
     report.totalUpdateTicks_ = m_frameTotalUpdateTicks;

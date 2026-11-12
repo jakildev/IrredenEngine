@@ -6,11 +6,19 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 
 namespace IRRender {
 
 class RenderDevice;
 struct BufferWriteStats;
+struct DeviceErrorStats;
+
+enum class MetalAllocationKind {
+    BUFFER,
+    TEXTURE_2D,
+    TEXTURE_3D,
+};
 
 // Creates a windowless Metal device, initializes the runtime with a null layer,
 // wires IRRender::device(), and opens an initial command buffer — everything a
@@ -76,6 +84,31 @@ MTL::CommandBuffer *metalCommandBuffer();
 MTL::BlitCommandEncoder *createMetalBlitEncoder();
 CA::MetalDrawable *metalDrawable();
 MTL::DepthStencilState *currentMetalDepthStencilState();
+
+MTL::Buffer *newMetalBuffer(
+    std::size_t byteCount,
+    MTL::ResourceOptions options,
+    std::string_view resourceKind
+);
+MTL::Texture *newMetalTexture(
+    MTL::TextureDescriptor *descriptor,
+    MetalAllocationKind kind,
+    std::string_view resourceKind
+);
+void failNextMetalAllocationForTesting(MetalAllocationKind kind);
+void recordMetalCommandBufferCompletion(
+    MTL::CommandBufferStatus status,
+    std::int64_t errorCode,
+    std::string_view errorText,
+    std::uint64_t frameNumber
+);
+void recordMetalSkippedFrame();
+DeviceErrorStats &metalDeviceErrorStats();
+void compileMetalRenderPipelineForTesting(
+    const char *vertexShaderPath, const char *fragmentShaderPath
+);
+void failNextMetalRenderPipelineForTesting();
+bool consumeMetalRenderPipelineFailureForTesting();
 
 void setMetalCommandBuffer(MTL::CommandBuffer *commandBuffer);
 void setMetalDrawable(CA::MetalDrawable *drawable);

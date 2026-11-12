@@ -98,9 +98,15 @@ class MetalTexture2DImpl final : public Texture2DImpl {
         descriptor->setUsage(defaultTextureUsage(format));
         descriptor->setStorageMode(MTL::StorageModeShared);
 
-        m_texture = metalDevice()->newTexture(descriptor);
+        try {
+            m_texture = newMetalTexture(
+                descriptor, MetalAllocationKind::TEXTURE_2D, "2D texture"
+            );
+        } catch (...) {
+            descriptor->release();
+            throw;
+        }
         descriptor->release();
-        IR_ASSERT(m_texture != nullptr, "Failed to create Metal 2D texture");
     }
 
     ~MetalTexture2DImpl() override {
@@ -287,9 +293,15 @@ class MetalTexture3DImpl final : public Texture3DImpl {
         descriptor->setPixelFormat(toMetalTextureFormat(format));
         descriptor->setUsage(defaultTextureUsage(format));
         descriptor->setStorageMode(MTL::StorageModeShared);
-        m_texture = metalDevice()->newTexture(descriptor);
+        try {
+            m_texture = newMetalTexture(
+                descriptor, MetalAllocationKind::TEXTURE_3D, "3D texture"
+            );
+        } catch (...) {
+            descriptor->release();
+            throw;
+        }
         descriptor->release();
-        IR_ASSERT(m_texture != nullptr, "Failed to create Metal 3D texture");
     }
 
     ~MetalTexture3DImpl() override {

@@ -259,14 +259,16 @@ MTL::Library *loadMetalLibrary(const std::string &filepath) {
     NS::Error *error = nullptr;
     NS::String *nsSource = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
     MTL::Library *library = metalDevice()->newLibrary(nsSource, nullptr, &error);
-    if (error != nullptr) {
+    if (library == nullptr) {
         const char *description =
-            error->localizedDescription() != nullptr ? error->localizedDescription()->utf8String()
-                                                     : "<unknown>";
-        IRE_LOG_FATAL("Metal shader compile failed for '{}': {}", filepath, description);
-        IR_ASSERT(false, "Metal shader compile failed.");
+            error != nullptr && error->localizedDescription() != nullptr
+                ? error->localizedDescription()->utf8String()
+                : "<unknown Metal compiler error>";
+        IRE_LOG_ERROR("Metal shader compile failed for '{}': {}", filepath, description);
+        throw std::runtime_error(
+            "Metal shader library creation failed for '" + filepath + "': " + description
+        );
     }
-    IR_ASSERT(library != nullptr, "Failed to create Metal shader library");
     s_libraryCache[filepath] = library;
     return library;
 }
@@ -302,7 +304,12 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
             MTL::Library *library = loadMetalLibrary(metalFile);
             NS::String *nsFunctionName = NS::String::string(functionName.c_str(), NS::UTF8StringEncoding);
             MTL::Function *function = library->newFunction(nsFunctionName);
-            IR_ASSERT(function != nullptr, "Failed to load Metal shader function");
+            if (function == nullptr) {
+                throw std::runtime_error(
+                    "Metal shader function '" + functionName + "' was not found in '" +
+                    metalFile + "'"
+                );
+            }
 
             switch (stage.getType()) {
                 case ShaderType::VERTEX:
@@ -417,21 +424,32 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
         }
 
         NS::Error *error = nullptr;
-        MTL::RenderPipelineState *pipelineState = metalDevice()->newRenderPipelineState(
-            descriptor,
-            &error
-        );
+        MTL::RenderPipelineState *pipelineState =
+            consumeMetalRenderPipelineFailureForTesting()
+                ? nullptr
+                : metalDevice()->newRenderPipelineState(descriptor, &error);
         descriptor->release();
 
-        if (error != nullptr) {
+        if (pipelineState == nullptr) {
             const char *description =
-                error->localizedDescription() != nullptr ? error->localizedDescription()->utf8String()
-                                                         : "<unknown>";
-            IRE_LOG_FATAL("Metal render pipeline creation failed: {}", description);
-            IR_ASSERT(false, "Metal render pipeline creation failed.");
+                error != nullptr && error->localizedDescription() != nullptr
+                    ? error->localizedDescription()->utf8String()
+                    : "<unknown Metal pipeline error>";
+            const std::string pipelineDescription =
+                "vertex='" + std::string(m_vertexFunction->name()->utf8String()) +
+                "', fragment='" + std::string(m_fragmentFunction->name()->utf8String()) +
+                "', colorFormat=" + std::to_string(static_cast<int>(colorPixelFormat)) +
+                ", depthFormat=" + std::to_string(static_cast<int>(depthPixelFormat));
+            IRE_LOG_ERROR(
+                "Metal render pipeline creation failed ({}): {}",
+                pipelineDescription,
+                description
+            );
+            throw std::runtime_error(
+                "Metal render pipeline creation failed (" + pipelineDescription + "): " +
+                description
+            );
         }
-
-        IR_ASSERT(pipelineState != nullptr, "Failed to create Metal render pipeline state");
         m_renderStates[key] = pipelineState;
         return pipelineState;
     }
@@ -486,6 +504,28 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
 
 std::unique_ptr<ShaderPipelineImpl> createShaderPipelineImpl(const std::vector<ShaderStage> &stages) {
     return std::make_unique<MetalShaderPipelineImpl>(stages);
+}
+
+void compileMetalRenderPipelineForTesting(
+    const char *vertexShaderPath, const char *fragmentShaderPath
+) {
+    MetalShaderPipelineImpl pipeline({
+        ShaderStage{vertexShaderPath, ShaderType::VERTEX},
+        ShaderStage{fragmentShaderPath, ShaderType::FRAGMENT},
+    });
+    auto *vertexDescriptor = MTL::VertexDescriptor::alloc()->init();
+    try {
+        pipeline.getRenderPipelineState(
+            MTL::PixelFormatBGRA8Unorm,
+            MTL::PixelFormatInvalid,
+            vertexDescriptor,
+            false
+        );
+    } catch (...) {
+        vertexDescriptor->release();
+        throw;
+    }
+    vertexDescriptor->release();
 }
 
 } // namespace IRRender

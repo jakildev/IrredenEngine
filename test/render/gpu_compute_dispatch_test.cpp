@@ -274,6 +274,87 @@ class MetalGpuComputeDispatchTest : public ::testing::Test {
     IRRender::RenderDevice *device_ = nullptr;
 };
 
+using MetalDeviceErrorsTest = MetalGpuComputeDispatchTest;
+
+TEST_F(MetalDeviceErrorsTest, BufferAllocationFailureNamesKindAndSize) {
+    IRRender::failNextMetalAllocationForTesting(IRRender::MetalAllocationKind::BUFFER);
+    try {
+        IRRender::Buffer buffer{nullptr, 64, IRRender::BUFFER_STORAGE_NONE};
+        FAIL() << "the injected Metal buffer allocation succeeded";
+    } catch (const std::runtime_error &error) {
+        EXPECT_NE(std::string(error.what()).find("buffer"), std::string::npos);
+        EXPECT_NE(std::string(error.what()).find("64 bytes"), std::string::npos);
+    }
+}
+
+TEST_F(MetalDeviceErrorsTest, TextureAllocationFailuresNameDimensions) {
+    IRRender::failNextMetalAllocationForTesting(IRRender::MetalAllocationKind::TEXTURE_2D);
+    try {
+        IRRender::Texture2D
+            texture{IRRender::TextureKind::TEXTURE_2D, 17, 19, IRRender::TextureFormat::RGBA8};
+        FAIL() << "the injected Metal 2D texture allocation succeeded";
+    } catch (const std::runtime_error &error) {
+        EXPECT_NE(std::string(error.what()).find("2D texture"), std::string::npos);
+        EXPECT_NE(std::string(error.what()).find("17x19x1"), std::string::npos);
+    }
+
+    IRRender::failNextMetalAllocationForTesting(IRRender::MetalAllocationKind::TEXTURE_3D);
+    try {
+        IRRender::Texture3D
+            texture{IRRender::TextureKind::TEXTURE_3D, 7, 11, 13, IRRender::TextureFormat::RGBA8};
+        FAIL() << "the injected Metal 3D texture allocation succeeded";
+    } catch (const std::runtime_error &error) {
+        EXPECT_NE(std::string(error.what()).find("3D texture"), std::string::npos);
+        EXPECT_NE(std::string(error.what()).find("7x11x13"), std::string::npos);
+    }
+}
+
+TEST_F(MetalDeviceErrorsTest, ShaderLibraryFailureNamesPathAndCompilerError) {
+    const std::string shaderPath =
+        std::string(IR_TEST_GPU_SHADER_DIR) + "/invalid_device_error.glsl";
+    try {
+        IRRender::ShaderProgram program{
+            std::vector{IRRender::ShaderStage{shaderPath.c_str(), IRRender::ShaderType::COMPUTE}}
+        };
+        FAIL() << "the invalid Metal shader compiled";
+    } catch (const std::runtime_error &error) {
+        EXPECT_NE(std::string(error.what()).find("invalid_device_error.metal"), std::string::npos);
+        EXPECT_NE(std::string(error.what()).find("Metal shader library"), std::string::npos);
+    }
+}
+
+TEST_F(MetalDeviceErrorsTest, RenderPipelineFailureNamesItsDescription) {
+    const std::string vertexPath =
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/v_framebuffer_to_screen.glsl";
+    const std::string fragmentPath =
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/f_framebuffer_to_screen.glsl";
+    IRRender::failNextMetalRenderPipelineForTesting();
+    try {
+        IRRender::compileMetalRenderPipelineForTesting(vertexPath.c_str(), fragmentPath.c_str());
+        FAIL() << "the invalid Metal render attachment format compiled";
+    } catch (const std::runtime_error &error) {
+        EXPECT_NE(std::string(error.what()).find("render pipeline"), std::string::npos);
+        EXPECT_NE(std::string(error.what()).find("colorFormat"), std::string::npos);
+    }
+}
+
+TEST_F(MetalDeviceErrorsTest, CommandBufferAndSkippedFrameCountersAreReported) {
+    const IRRender::DeviceErrorStats before = IRRender::device()->deviceStats().errors_;
+    IRRender::recordMetalCommandBufferCompletion(
+        MTL::CommandBufferStatusError,
+        777,
+        "injected command failure",
+        23
+    );
+    IRRender::recordMetalSkippedFrame();
+
+    const IRRender::DeviceErrorStats after = IRRender::device()->deviceStats().errors_;
+    EXPECT_EQ(after.commandBufferErrors_, before.commandBufferErrors_ + 1);
+    EXPECT_EQ(after.skippedFrames_, before.skippedFrames_ + 1);
+    EXPECT_EQ(after.firstCommandBufferErrorFrame_, 23u);
+    EXPECT_EQ(after.firstCommandBufferError_, "injected command failure");
+}
+
 void snapshotClearTexture(
     const IRRender::Texture2D &texture, IRRender::Buffer &snapshot, std::size_t pixelBytes
 ) {
