@@ -12,14 +12,15 @@ else (no flag, no other variable) moves a root. Its roots:
   * the pane's worktrees: the assigned one and the same-named worktree of the
     engine clone or of the game clone nested in it, where one exists.
 
-`rm` deletes a path inside the scratch root, or inside a pane worktree when the
-path is under a top-level build* directory, is ignored by git, or lies in a
-__pycache__ directory, and in every worktree case holds no tracked file. A
-worktree root and any .git path are never deletable. Each argument is made
-absolute, collapsed lexically, and has every component but the last resolved
-through symlinks; containment is tested on that result, and that result is what
-gets deleted. A final-component symlink is unlinked, never followed. Every
-argument is checked before any is deleted: one refusal deletes nothing.
+`rm` deletes a path inside the scratch root when that root is a real directory
+the caller owns, or inside a pane worktree when the path is under a top-level
+build* directory, is ignored by git, or lies in a __pycache__ directory, and in
+every worktree case holds no tracked file. A worktree root and any .git path
+are never deletable. Each argument is made absolute, collapsed lexically, and
+has every component but the last resolved through symlinks; containment is
+tested on that result, and that result is what gets deleted. A final-component
+symlink is unlinked, never followed. Every argument is checked before any is
+deleted: one refusal deletes nothing.
 
 `reap` signals a pid only when the caller's user owns it, its working directory
 resolves inside a pane root, and it is not pid 1, the caller, or an ancestor of
@@ -182,20 +183,28 @@ def pane_from_env(environ=None, tmp=None):
 # dir
 # ---------------------------------------------------------------------------
 
+def _check_private_dir(path):
+    """Accept an existing real directory the caller owns. Anything else (a
+    symlink, a file, another user's directory, nothing) is refused, since /tmp
+    is shared and anyone may pre-create the predictable name."""
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        raise Refusal(f"'{path}' does not exist") from None
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+        raise Refusal(f"'{path}' exists and is not a directory")
+    if hasattr(os, "getuid") and info.st_uid != os.getuid():
+        raise Refusal(f"'{path}' exists and belongs to another user")
+
+
 def _ensure_private_dir(path):
-    """Create `path` owner-only, or accept an existing real directory the
-    caller owns. Anything else (a symlink, a file, another user's directory)
-    is refused, since /tmp is shared."""
+    """Create `path` owner-only, or accept what `_check_private_dir` accepts."""
     try:
         os.mkdir(path, 0o700)
         return
     except FileExistsError:
         pass
-    info = os.lstat(path)
-    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
-        raise Refusal(f"'{path}' exists and is not a directory")
-    if hasattr(os, "getuid") and info.st_uid != os.getuid():
-        raise Refusal(f"'{path}' exists and belongs to another user")
+    _check_private_dir(path)
 
 
 def cmd_dir(pane, name=None):
@@ -257,6 +266,7 @@ def check_rm_target(pane, arg, cwd=None):
     """The canonical path to delete for `arg`, or raise Refusal."""
     target = canonical(arg, cwd)
     if pane.scratch_root and is_within(target, pane.scratch_root):
+        _check_private_dir(pane.scratch_root)
         return target
     for worktree in pane.worktrees:
         if not is_within(target, worktree):

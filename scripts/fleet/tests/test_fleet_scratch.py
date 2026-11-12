@@ -16,6 +16,7 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = ROOT / "fleet-scratch"
@@ -181,6 +182,7 @@ class RmPositive(unittest.TestCase):
         self.assertFalse(pyc.parent.exists())
 
     def test_absent_path_is_reported_not_refused(self):
+        S["scratch"].mkdir(mode=0o700, exist_ok=True)
         result = run("rm", str(S["scratch"] / "never-made"))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("absent", result.stdout)
@@ -250,6 +252,45 @@ class RmEscapes(unittest.TestCase):
     def test_tracked_source(self):
         arg = str(S["wt"] / "src")
         self.assertRefused(run("rm", arg), arg, S["wt"] / "src" / "a.txt")
+
+
+class RmScratchRoot(unittest.TestCase):
+    """The scratch root's name is predictable in a shared /tmp, so rm accepts a
+    path under it only once the root itself is a real directory the caller owns."""
+
+    def planted_pane(self, label):
+        root = S["tmp"] / f"planted-{label}"
+        return root, fs.Pane(name=S["pane"], scratch_root=str(root), worktrees=(str(S["wt"]),))
+
+    def assertNothingDeleted(self, pane, arg, *survivors):
+        self.assertEqual(fs.cmd_rm(pane, [str(arg)]), fs.EXIT_REFUSED)
+        for path in survivors:
+            self.assertTrue(os.path.lexists(path), f"{path} was deleted")
+
+    @unittest.skipUnless(hasattr(os, "getuid"), "ownership needs a uid")
+    def test_root_owned_by_another_user_is_refused(self):
+        root, planted = self.planted_pane("foreign")
+        root.mkdir(mode=0o777)
+        theirs = _touch(root / "theirs.txt", "keep")
+        self.assertIsNotNone(fs.check_rm_target(planted, str(theirs)))
+        with mock.patch.object(fs.os, "getuid", return_value=os.getuid() + 1):
+            self.assertNothingDeleted(planted, theirs, theirs)
+            with self.assertRaisesRegex(fs.Refusal, "belongs to another user"):
+                fs.check_rm_target(planted, str(root))
+
+    def test_absent_root_is_refused(self):
+        _, planted = self.planted_pane("absent")
+        with self.assertRaisesRegex(fs.Refusal, "does not exist"):
+            fs.check_rm_target(planted, str(Path(planted.scratch_root) / "f.txt"))
+
+    def test_root_that_is_a_symlink_or_file_is_refused(self):
+        kept = _touch(S["outside"] / "root-link-target" / "kept.txt")
+        root, planted = self.planted_pane("link")
+        root.symlink_to(kept.parent)
+        self.assertNothingDeleted(planted, root, root, kept)
+        root.unlink()
+        _touch(root, "keep")
+        self.assertNothingDeleted(planted, root, root)
 
 
 class RmSymlinks(unittest.TestCase):
