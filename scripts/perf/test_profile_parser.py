@@ -144,6 +144,14 @@ WITNESSED_REPORT = (
     "Camera pivot: explicit focus on 8 of 8 frames\n"
     "Per-axis overflow: maxEntries=630842 maxDropped=7 cap=1048576 samples=8\n"
     "\n"
+    "--- Static residents ---\n"
+    "Population: static=990000 settling=0 settled=990000\n"
+    "Transitions: promoted=990000 thawed=3 resettled=2 restarted=1 held=4 held_by_global=5 "
+    "refused=6\n"
+    "Transition cost: promotion_ms_max=2.250 drain_ms_max=3.500\n"
+    "Position upload: bytes=1280000 max_frame_bytes=160000 frames=8 of 8\n"
+    "Cull bounds: slots_rebuilt=4096 max_frame_slots=512 frames=7 of 8\n"
+    "\n"
     "--- Frame times (ms, in order) ---\n"
     "102.000 32.000 21.000 20.000 19.000\n"
     "19.000 18.000 18.000\n"
@@ -187,6 +195,46 @@ class RunWitnessParserTest(unittest.TestCase):
         self.assertEqual(report.steady_frame_times_ms(), [21.0, 20.0, 19.0, 19.0, 18.0, 18.0])
         # The series must not leak into the stage table above it.
         self.assertEqual([stage.name for stage in report.gpu_stages], ["voxelStage1"])
+
+    def test_static_resident_witnesses_are_read(self):
+        residents = self.parse(WITNESSED_REPORT).static_residents
+        self.assertEqual(
+            (residents.static, residents.settling, residents.settled), (990000, 0, 990000)
+        )
+        self.assertEqual(
+            (residents.promoted, residents.thawed, residents.resettled, residents.restarted,
+             residents.held, residents.held_by_global, residents.refused),
+            (990000, 3, 2, 1, 4, 5, 6),
+        )
+        self.assertEqual((residents.promotion_ms_max, residents.drain_ms_max), (2.25, 3.5))
+        self.assertEqual(
+            (residents.position_bytes, residents.position_max_frame_bytes,
+             residents.position_upload_frames),
+            (1280000, 160000, 8),
+        )
+        self.assertEqual(
+            (residents.cull_slots, residents.cull_max_frame_slots,
+             residents.cull_rebuild_frames, residents.pool_frames),
+            (4096, 512, 7, 8),
+        )
+
+    def test_a_report_without_the_static_section_reads_absent_never_zero(self):
+        text = WITNESSED_REPORT.split("--- Static residents ---")[0] + "=== END REPORT ===\n"
+        residents = self.parse(text).static_residents
+        self.assertIsNone(residents.settling)
+        self.assertIsNone(residents.position_bytes)
+        self.assertIsNone(residents.cull_max_frame_slots)
+
+    def test_the_walked_column_is_read_and_optional(self):
+        rows = (
+            "--- Per-system timing (by pipeline, then total descending) ---\n"
+            "Pipeline System Total(ms) Avg(ms) Min(ms) Max(ms) Calls Entities Walked\n"
+            "UPDATE   FogRevealEval   12.00   0.040   0.010   0.200   300   300000000   1000\n"
+            "RENDER   UpdateVoxelSetChildren   9.00   0.030   0.010   0.100   300   2000000\n"
+        )
+        fog, children = self.parse(rows).systems
+        self.assertEqual((fog.entities, fog.walked), (300000000, 1000))
+        self.assertEqual((children.entities, children.walked), (2000000, None))
 
     def test_a_report_without_the_sections_reads_absent_never_zero(self):
         report = self.parse(WITNESSED_REPORT.split("--- Run witness ---")[0].replace(
@@ -253,6 +301,14 @@ class RunWitnessParserTest(unittest.TestCase):
             '"Camera zoom range: min=%.3f max=%.3f\\n"',
             '"Camera pivot: explicit focus on %u of %u frames\\n"',
             '"Per-axis overflow: maxEntries=%u maxDropped=%u cap=%u samples=%u\\n"',
+            '"--- Static residents ---\\n"',
+            '"Population: static=%llu settling=%llu settled=%llu\\n"',
+            '"Transitions: promoted=%llu thawed=%llu resettled=%llu restarted=%llu held=%llu "',
+            '"held_by_global=%llu refused=%llu\\n"',
+            '"Transition cost: promotion_ms_max=%.3f drain_ms_max=%.3f\\n"',
+            '"Position upload: bytes=%llu max_frame_bytes=%llu frames=%u of %u\\n"',
+            '"Cull bounds: slots_rebuilt=%llu max_frame_slots=%llu frames=%u of %u\\n"',
+            '"%-8s %-36s %10.2f %9.3f %9.3f %9.3f %7u %10llu %10llu\\n"',
             '"Steady frame time (first %zu of %zu frames excluded):   avg=%.2fms   p50=%.2fms   "',
             '"--- Frame times (ms, in order) ---\\n"',
             '"--- Update ticks (per frame, in order) ---\\n"',

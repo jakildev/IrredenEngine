@@ -15,6 +15,8 @@
 #include <irreden/common/components/component_modifiers.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_static_settings.hpp>
+#include <irreden/common/static_residents.hpp>
 #include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
@@ -555,6 +557,37 @@ void logDefaultShotDiagnostics(int shotIndex) {
 // render-verify regression tier needs the frozen static twin instead. Off by
 // default -> flagless spawn path is untouched (byte-identical to master).
 bool g_waveFreeze = false;
+
+// Static-resident fixtures (docs/design/static-residents.md, "Fixtures").
+// A frozen cell (--wave-freeze, and not one of the moving cells) is created
+// with C_Static unless --no-static asks for the all-dynamic twin of the same
+// scene.
+bool g_noStatic = false;
+// --moving-fraction F: every round(1/F)-th cell by index stays dynamic and
+// carries the per-cell wave; zero keeps every cell frozen.
+int g_movingStride = 0;
+// --static-cycle: every kStaticCycleStride-th cell is thawed, raised two
+// cells and frozen again, keyed on the fixed-update count.
+bool g_staticCycle = false;
+constexpr int kStaticCycleStride = 100;
+constexpr int kStaticCycleThawUpdate = 4;
+constexpr int kStaticCycleMoveUpdate = 6;
+// --recolor-every-update: every voxel set is recolored to its own color on
+// every fixed update, which bounds what the mutator route costs an entity
+// that is not static.
+bool g_recolorEveryUpdate = false;
+bool g_staticCells = false;
+bool g_staticFixture = false;
+bool g_staticBudgetLifted = false;
+bool g_staticWindowOpen = false;
+int g_staticFixtureUpdates = 0;
+int g_staticFixtureFrames = 0;
+int g_staticFixtureExitCode = 0;
+// A fixture that has not settled this many frames in has a script or a hold
+// that never finishes.
+constexpr int kStaticFixtureMaxWarmupFrames = 4000;
+std::vector<EntityId> g_staticCycleCells;
+
 bool g_fogReveal = false;
 bool g_fogGhostHeavy = false;
 bool g_fogGhostSighting = false;
@@ -889,6 +922,26 @@ void registerCliArgs() {
         "deterministic (#2332)"
     );
     args.flag(
+        "--no-static",
+        "Create the --wave-freeze cells dynamic instead of static: the all-dynamic "
+        "twin of every static-resident fixture"
+    );
+    args.number(
+        "--moving-fraction",
+        "With --wave-freeze, the fraction of cells (every round(1/F)-th by index) "
+        "that stays dynamic and carries the per-cell wave",
+        0.0f
+    );
+    args.flag(
+        "--static-cycle",
+        "With --wave-freeze, thaw every hundredth cell, raise it two cells and "
+        "freeze it again, keyed on the fixed-update count"
+    );
+    args.flag(
+        "--recolor-every-update",
+        "Recolor every voxel set to its own color on every fixed update"
+    );
+    args.flag(
         "--fog-reveal",
         "Tag every voxel-set entity for entity-anchor fog evaluation against 8 outside circles"
     );
@@ -1055,6 +1108,12 @@ void readCliArgs() {
     g_debugOverlay = IRRender::debugOverlayModeFromString(args.getEnum("--debug-overlay").c_str());
     g_noPerVoxelOcclusion = args.getFlag("--no-per-voxel-occlusion");
     g_waveFreeze = args.getFlag("--wave-freeze");
+    g_noStatic = args.getFlag("--no-static");
+    g_staticCycle = args.getFlag("--static-cycle");
+    g_recolorEveryUpdate = args.getFlag("--recolor-every-update");
+    const float movingFraction = args.getFloat("--moving-fraction");
+    g_movingStride =
+        movingFraction > 0.0f ? IRMath::max(1, IRMath::roundHalfUp(1.0f / movingFraction)) : 0;
     g_fogReveal = args.getFlag("--fog-reveal");
     g_fogGhostSighting = args.getFlag("--fog-ghost-sighting");
     g_fogGhostHeavy = args.getFlag("--fog-ghost-heavy") || g_fogGhostSighting;
@@ -1120,7 +1179,9 @@ void readCliArgs() {
     // driven yaw two writers would fight over it each frame; and the two pivot
     // flags name opposite pivots, one of which is only the default's control.
     const char *conflict = nullptr;
-    if (drivenYaw && args.autoScreenshotWarmupFrames() > 0) {
+    if ((g_movingStride > 0 || g_staticCycle) && !g_waveFreeze) {
+        conflict = "--moving-fraction and --static-cycle need --wave-freeze";
+    } else if (drivenYaw && args.autoScreenshotWarmupFrames() > 0) {
         conflict = "--yaw-step and --yaw-first-frame cannot be combined with --auto-screenshot";
     } else if (g_cliOverrides.pivotOrigin_ && g_cliOverrides.defaultPivot_) {
         conflict = "--pivot-origin and --default-pivot name opposite pivots";
@@ -1422,11 +1483,13 @@ void createGridEntities() {
             for (int x = 0; x < n; ++x) {
                 vec3 pos = positionForCell(x, y, z);
                 const Color color = colorForCell(x, y, z, n);
+                const int cellIndex = (z * n + y) * n + x;
                 // --wave-freeze: bake the phase-0 offset into the spawn
-                // position and skip attaching C_PeriodicIdle, so the scene is
-                // fully static. Absent the flag, this branch is untouched and
-                // the idle-driven path below is byte-identical to master.
-                if (g_waveFreeze) {
+                // position and skip attaching C_PeriodicIdle, so the cell
+                // never moves. A --moving-fraction cell keeps the live wave.
+                const bool frozenCell =
+                    g_waveFreeze && !(g_movingStride > 0 && cellIndex % g_movingStride == 0);
+                if (frozenCell) {
                     pos += waveFreezeOffset(x, y, z);
                 }
                 const vec3 ghostPose = pos;
@@ -1436,7 +1499,14 @@ void createGridEntities() {
 
                 if (g_settings.mode_ == PerfGridMode::VoxelSet) {
                     EntityId cellEntity;
-                    if (g_waveFreeze) {
+                    if (frozenCell && g_staticCells) {
+                        cellEntity = IREntity::createEntity(
+                            C_LocalTransform{pos},
+                            C_VoxelSetNew{ivec3(1, 1, 1), color, false},
+                            C_Modifiers{},
+                            C_Static{}
+                        );
+                    } else if (frozenCell) {
                         cellEntity = IREntity::createEntity(
                             C_LocalTransform{pos},
                             C_VoxelSetNew{ivec3(1, 1, 1), color, false},
@@ -1489,6 +1559,9 @@ void createGridEntities() {
                             cellSet.value()->voxels_[0].flags_ |= occluded;
                         }
                     }
+                    if (g_staticCycle && cellIndex % kStaticCycleStride == 0) {
+                        g_staticCycleCells.push_back(cellEntity);
+                    }
                     if (g_fogReveal) {
                         IRPrefab::Fog::setEntityRevealGoverned(cellEntity);
                         if (g_fogGhostHeavy) {
@@ -1502,7 +1575,15 @@ void createGridEntities() {
                         }
                     }
                 } else {
-                    if (g_waveFreeze) {
+                    if (frozenCell && g_staticCells) {
+                        IREntity::createEntity(
+                            C_LocalTransform{pos},
+                            makeFogGovernedBox(color),
+                            C_FogRevealed{},
+                            C_Modifiers{},
+                            C_Static{}
+                        );
+                    } else if (frozenCell) {
                         IREntity::createEntity(
                             C_LocalTransform{pos},
                             makeFogGovernedBox(color),
@@ -1798,6 +1879,10 @@ void configureLightingAndCanvas() {
 void initSystems();
 void initCommands();
 void initEntities();
+void driveStaticFixtureScript();
+bool staticFixtureReady();
+void failStaticFixture(const char *what);
+void watchStaticFixture();
 
 int main(int argc, char **argv) {
     // Register custom flags, then let init parse common + custom in one pass
@@ -1922,7 +2007,7 @@ int main(int argc, char **argv) {
     );
 
     IREngine::gameLoop();
-    return 0;
+    return g_staticFixtureExitCode;
 }
 
 void initSystems() {
@@ -1938,12 +2023,21 @@ void initSystems() {
     // PERIODIC_IDLE), then PROPAGATE_TRANSFORM composes C_WorldTransform, which the fog reveal
     // systems read. UPDATE_VOXEL_SET_CHILDREN copies that transform into the pool in RENDER, so
     // it runs once per rendered frame however many fixed updates the frame ran.
-    std::vector<std::vector<IRSystem::SystemId>> updateGroups = {
+    std::vector<std::vector<IRSystem::SystemId>> updateGroups;
+    if (g_staticCycle || g_recolorEveryUpdate) {
+        updateGroups.push_back({IRSystem::createSystem<C_Name>(
+            "StaticFixtureScript",
+            [](C_Name &) {},
+            []() { driveStaticFixtureScript(); }
+        )});
+    }
+    const std::vector<std::vector<IRSystem::SystemId>> transformGroups = {
         {IRSystem::createSystem<IRSystem::PERIODIC_IDLE>()},
         {IRSystem::createSystem<IRSystem::MODIFIER_DECAY>()},
         {IRSystem::createSystem<IRSystem::PERIODIC_IDLE_POSITION_OFFSET>()},
         {IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>()},
     };
+    updateGroups.insert(updateGroups.end(), transformGroups.begin(), transformGroups.end());
     for (IRSystem::SystemId id : IRPrefab::Fog::revealSystems()) {
         updateGroups.push_back({id});
     }
@@ -2066,6 +2160,21 @@ void initSystems() {
             "AutoProfile",
             [](C_Name &) {},
             []() {
+                // A static-resident fixture's profile window opens once the
+                // usual warm-up has passed and the fixture is ready, so every
+                // frame the report covers is a settled frame.
+                if (g_staticFixture && !g_staticWindowOpen) {
+                    if (g_staticFixtureFrames < g_autoProfileFrames / 4 || !staticFixtureReady()) {
+                        if (g_staticFixtureFrames > kStaticFixtureMaxWarmupFrames) {
+                            failStaticFixture("the profile window");
+                        }
+                        return;
+                    }
+                    g_staticWindowOpen = true;
+                    g_autoProfileCount = g_autoProfileFrames / 4;
+                    IREngine::enableFrameTiming(true);
+                    return;
+                }
                 ++g_autoProfileCount;
                 // Discard the first quarter of the window as warmup — shader
                 // compile, first-touch allocation and the GPU timer-query ramp
@@ -2210,6 +2319,16 @@ void initSystems() {
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
     }
 
+    if (g_waveFreeze || g_recolorEveryUpdate) {
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_Name>(
+                "StaticFixtureWatch",
+                [](C_Name &) {},
+                []() { watchStaticFixture(); }
+            )
+        );
+    }
+
     if (g_fogLos == FogLosFixture::ENABLED) {
         renderPipeline.push_front(
             IRSystem::createSystem<C_Name>(
@@ -2245,7 +2364,81 @@ void initCommands() {
     IRCommand::registerCaptureCommands();
 }
 
+// Once per fixed update, ahead of every other UPDATE system.
+void driveStaticFixtureScript() {
+    ++g_staticFixtureUpdates;
+    if (g_recolorEveryUpdate) {
+        IREntity::forEachComponent<C_VoxelSetNew>([](C_VoxelSetNew &set) {
+            if (set.numVoxels_ > 0) {
+                set.changeVoxelColorAll(set.voxels_[0].color_);
+            }
+        });
+    }
+    if (!g_staticCycle) {
+        return;
+    }
+    if (g_staticFixtureUpdates == kStaticCycleThawUpdate) {
+        for (EntityId cell : g_staticCycleCells) {
+            IRPrefab::Static::thaw(cell);
+        }
+    } else if (g_staticFixtureUpdates == kStaticCycleMoveUpdate) {
+        for (EntityId cell : g_staticCycleCells) {
+            IREntity::getComponent<C_LocalTransform>(cell).translation_.z +=
+                2.0f * g_settings.spacing_;
+            if (g_staticCells) {
+                IRPrefab::Static::freeze(cell);
+            }
+        }
+    }
+}
+
+bool staticFixtureScriptFinished() {
+    return !g_staticCycle || g_staticFixtureUpdates >= kStaticCycleMoveUpdate;
+}
+
+// True once the fixture's script has run and every static cell has settled.
+bool staticFixtureReady() {
+    return staticFixtureScriptFinished() && IRPrefab::Static::stats().settling_ == 0;
+}
+
+void failStaticFixture(const char *what) {
+    const IRPrefab::Static::Stats stats = IRPrefab::Static::stats();
+    std::fprintf(
+        stderr,
+        "IRPerfGrid: static-resident fixture not ready at %s: settling=%llu updates=%d\n",
+        what,
+        static_cast<unsigned long long>(stats.settling_),
+        g_staticFixtureUpdates
+    );
+    g_staticFixtureExitCode = 3;
+    IRWindow::closeWindow();
+}
+
+// Once per rendered frame, at the render front. Restores the promotion cap
+// the control lifts while it spawns, and holds the capture fixtures to their
+// start condition: no entity settling and the script finished when the first
+// capture begins.
+void watchStaticFixture() {
+    ++g_staticFixtureFrames;
+    if (g_staticBudgetLifted && staticFixtureReady()) {
+        IREntity::singleton<C_StaticSettings>() = C_StaticSettings{};
+        g_staticBudgetLifted = false;
+    }
+    if (g_autoWarmupFrames > 0 && g_staticFixtureFrames == g_autoWarmupFrames &&
+        !staticFixtureReady()) {
+        failStaticFixture("the first capture");
+    }
+}
+
 void initEntities() {
+    g_staticCells = g_waveFreeze && !g_noStatic && !g_fogGhostHeavy && !g_fogGhostHeavyHide;
+    g_staticFixture = g_waveFreeze || g_recolorEveryUpdate;
+    if (g_staticCells && g_movingStride == 0 && !g_staticCycle) {
+        // The control promotes its whole population at once and accepts one
+        // long frame; the mostly-static fixture keeps the default cap.
+        IREntity::singleton<C_StaticSettings>().promotionsPerRound_ = 0;
+        g_staticBudgetLifted = true;
+    }
     createGridEntities();
     configureLightingAndCanvas();
 }

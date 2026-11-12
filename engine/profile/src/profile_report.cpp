@@ -260,7 +260,7 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
         std::fprintf(f, "--- Per-system timing (by pipeline, then total descending) ---\n");
         std::fprintf(
             f,
-            "%-8s %-36s %10s %9s %9s %9s %7s %10s\n",
+            "%-8s %-36s %10s %9s %9s %9s %7s %10s %10s\n",
             "Pipeline",
             "System",
             "Total(ms)",
@@ -268,7 +268,8 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
             "Min(ms)",
             "Max(ms)",
             "Calls",
-            "Entities"
+            "Entities",
+            "Walked"
         );
 
         for (auto *entry : sorted) {
@@ -281,7 +282,7 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
 
             std::fprintf(
                 f,
-                "%-8s %-36s %10.2f %9.3f %9.3f %9.3f %7u %10llu\n",
+                "%-8s %-36s %10.2f %9.3f %9.3f %9.3f %7u %10llu %10llu\n",
                 entry->pipeline_.c_str(),
                 entry->name_.c_str(),
                 totalMs,
@@ -289,7 +290,8 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
                 minMs,
                 maxMs,
                 entry->callCount_,
-                static_cast<unsigned long long>(entry->totalEntityCount_)
+                static_cast<unsigned long long>(entry->totalEntityCount_),
+                static_cast<unsigned long long>(entry->totalWalkedCount_)
             );
         }
         std::fprintf(f, "\n");
@@ -514,6 +516,52 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
         w.maxOverflowDropped_,
         w.overflowCap_,
         w.overflowSamples_
+    );
+    std::fprintf(f, "\n");
+
+    // Parsed by scripts/perf/compare_perf_runs.py like the section above.
+    const auto &residents = report.staticResidents_;
+    std::fprintf(f, "--- Static residents ---\n");
+    std::fprintf(
+        f,
+        "Population: static=%llu settling=%llu settled=%llu\n",
+        static_cast<unsigned long long>(residents.static_),
+        static_cast<unsigned long long>(residents.settling_),
+        static_cast<unsigned long long>(residents.settled_)
+    );
+    std::fprintf(
+        f,
+        "Transitions: promoted=%llu thawed=%llu resettled=%llu restarted=%llu held=%llu "
+        "held_by_global=%llu refused=%llu\n",
+        static_cast<unsigned long long>(residents.promoted_),
+        static_cast<unsigned long long>(residents.thawed_),
+        static_cast<unsigned long long>(residents.resettled_),
+        static_cast<unsigned long long>(residents.restarted_),
+        static_cast<unsigned long long>(residents.held_),
+        static_cast<unsigned long long>(residents.heldByGlobal_),
+        static_cast<unsigned long long>(residents.refused_)
+    );
+    std::fprintf(
+        f,
+        "Transition cost: promotion_ms_max=%.3f drain_ms_max=%.3f\n",
+        residents.promotionMsMax_,
+        residents.drainMsMax_
+    );
+    std::fprintf(
+        f,
+        "Position upload: bytes=%llu max_frame_bytes=%llu frames=%u of %u\n",
+        static_cast<unsigned long long>(residents.positionBytes_),
+        static_cast<unsigned long long>(residents.maxFramePositionBytes_),
+        residents.positionUploadFrames_,
+        residents.poolFrames_
+    );
+    std::fprintf(
+        f,
+        "Cull bounds: slots_rebuilt=%llu max_frame_slots=%llu frames=%u of %u\n",
+        static_cast<unsigned long long>(residents.cullSlots_),
+        static_cast<unsigned long long>(residents.maxFrameCullSlots_),
+        residents.cullRebuildFrames_,
+        residents.poolFrames_
     );
     std::fprintf(f, "\n");
 
