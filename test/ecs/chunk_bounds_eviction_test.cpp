@@ -134,6 +134,26 @@ TEST_F(ChunkBoundsEvictionTest, ContinuousYawViewportHasNoDepthCutoff) {
     }
 }
 
+TEST_F(ChunkBoundsEvictionTest, SunFaceMaskAdmitsCasterInsideShadowThrow) {
+    const IsoBounds2D rasterViewport{vec2(-4.0f), vec2(4.0f)};
+    const vec3 sunDirection(-0.3f, -0.2f, -0.93f);
+    const IsoBounds2D sunFaceViewport = IRMath::shadowFeederIsoBounds(
+        rasterViewport,
+        sunDirection,
+        IRPrefab::SunShadow::kSunShadowMaxDistance
+    );
+    const vec2 casterIso = (sunFaceViewport.min_ + rasterViewport.min_) * 0.5f;
+    ASSERT_TRUE(sunFaceViewport.contains(casterIso));
+    ASSERT_FALSE(rasterViewport.contains(casterIso));
+
+    C_VoxelPool pool = makeTwoChunkPool(IRMath::isoPixelToPos3D(casterIso, 0.0f));
+    const auto rasterMask = IRSystem::buildChunkVisibilityMask(pool, rasterViewport)[0];
+    const auto sunFaceMask = IRSystem::buildChunkVisibilityMask(pool, sunFaceViewport)[0];
+
+    EXPECT_EQ(rasterMask, 0u);
+    EXPECT_EQ(sunFaceMask, 1u);
+}
+
 TEST_F(ChunkBoundsEvictionTest, SpatialViewportCullsOffscreenChunksAtEveryDepth) {
     C_VoxelPool pool = makeTwoChunkPool();
     const IsoBounds2D viewport{vec2(-4), vec2(4)};
