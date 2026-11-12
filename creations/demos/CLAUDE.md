@@ -78,5 +78,5 @@ silently absent from every sweep (#2919). Schema + flow:
   load-bearing `static_assert` on the geometric/config relationship (or
   a startup assert) — never a comment (#2617; verify the assert is
   load-bearing by restoring the bad value and watching the build fail).
-  General rule: [`docs/agents/CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md)
+  General rule: [`docs/agents/CODE-CONVENTIONS.md`](../../docs/agents/CODE-CONVENTIONS.md)
   §"Encode contracts in code, not in comments".

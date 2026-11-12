@@ -54,13 +54,29 @@ Concretely:
    etc.) are the **stable identifiers**. Renaming a heading is a
    breaking change to the opt-out API and requires a sweep of every
    creation that references the old name.
+4. The baseline holds in full only what every session needs. Sections
+   needed only for one kind of edit live in files read on demand
+   beside it: `docs/agents/CODE-CONVENTIONS.md` (`## Naming`,
+   `## Style`, `## Encode contracts in code, not in comments`,
+   `## Deprecation markers`; read before editing source) and
+   `docs/agents/INSTRUCTION-AUTHORING.md` (`## What belongs in
+   agent-facing docs`; read before editing an instruction file). Each
+   moved section keeps its heading in the baseline as a **stub**: the
+   rule in one sentence, when to read the full text, and the link. An
+   opt-out that names a stub heading opts out of the section the stub
+   points to.
 
 ### Why this shape
 
-The harness only auto-loads the worktree's root `CLAUDE.md`. It does
-not traverse upward or follow includes. Whatever mechanism we pick
-must therefore be agent-readable text — agents follow pointers in
-prose, they do not parse markdown directives.
+The Claude Code harness loads the worktree's root `CLAUDE.md` at
+startup, a nested `CLAUDE.md` when a file in its directory is first
+touched, and a `.claude/rules/` file when a path matching its
+`paths:` frontmatter is opened. It does not follow links or include
+directives, and the Codex runtime gets no path-scoped injection at
+all (`AGENTS.md`). Whatever mechanism we pick must therefore be
+agent-readable text — agents follow pointers in prose, they do not
+parse markdown directives — and a pointer must say when to read its
+target, not only where it is.
 
 That ruled out three alternatives:
 
@@ -160,6 +176,14 @@ but recreates the duplication problem this design exists to fix.
 The cost is one extra Read tool call per agent invocation. The
 benefit is that every baseline edit reaches every creation
 automatically.
+
+The on-demand files are found two ways: the baseline stub under each
+moved heading names its trigger, and the nested `CLAUDE.md` files
+that govern source code (`engine/`, `creations/`, `test/`,
+`scripts/fleet/`) point at `CODE-CONVENTIONS.md`, so the harness
+surfaces the pointer when an agent first touches code there. A
+session that edits neither source nor instruction files reads only
+the baseline.
 
 The project-root `CLAUDE.md` follows the same pattern: a top-of-file
 pointer at the baseline, then the engine-fleet-specific sections
