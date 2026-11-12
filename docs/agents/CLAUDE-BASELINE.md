@@ -265,6 +265,8 @@ explicitly approves. A creation in its own private repo participates by
 treating its repo as the private side; one outside the engine fleet may opt
 out.
 
+Fleet publication gates use `scripts/fleet/fleet_public_text.py` to reject agent-supplied text before an engine write; mixed-repository summaries omit private rows. The check derives repository names from the fleet map and optional host-local literals from `~/.fleet/public-text-terms`, which is never checked in.
+
 ---
 
 ## Engine API removal rule

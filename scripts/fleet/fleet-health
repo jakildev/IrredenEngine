@@ -814,6 +814,9 @@ def render_text(report):
         o.append(line)
     o.append(f"  mode        {d['mode']}")
     o.append(f"  profile     {d.get('profile', 'full')}")
+    terms = report["public_text_terms"]
+    o.append(f"  public text terms {'configured' if terms['configured'] else 'not configured'} "
+             f"({terms['path']})")
     o.append("")
     o.append("## Dispatches (per role)")
     roles = report["roles"]
@@ -1003,6 +1006,10 @@ def build_report(args):
         "alerts": alerts,
         "worktree_leaks": worktrees,
         "github": collect_github(state_dir / "gh-accounting", since, now_utc()),
+        "public_text_terms": {
+            "path": str(fleet_dir / "public-text-terms"),
+            "configured": (fleet_dir / "public-text-terms").is_file(),
+        },
     }
     report["warnings"] = derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts,
                                      worktrees, automerge)
