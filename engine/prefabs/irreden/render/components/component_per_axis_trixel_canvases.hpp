@@ -316,9 +316,7 @@ struct PerAxisCanvasStore {
     std::pair<ResourceId, Buffer *> overflowDrawArgs_{0, nullptr};
     // Settled ctrl-block copies for the CPU drop/count readback, one write per
     // rotating frame; a slot is read only once its submission has completed,
-    // so the read never waits. The sort-span bound it feeds lags by however
-    // many frames the backend queues and leans on overflowSortDispatchSpan's
-    // headroom; until the first sample lands the bound is the cap.
+    // so the read never waits. This diagnostic path never controls rendering.
     struct OverflowCtrlProducer {
         std::uint64_t frame_ = 0;
     };
@@ -327,7 +325,6 @@ struct PerAxisCanvasStore {
         overflowCtrlRing_{};
     std::vector<std::pair<ResourceId, Buffer *>> overflowCtrlBuffers_;
     std::uint64_t overflowCtrlFrames_ = 0;
-    bool overflowCtrlSampled_ = false;
     int ctrlBaseUints_ = 0;
     static constexpr std::size_t kOverflowCtrlUints = 8;
     std::ptrdiff_t ctrlOffsetBytes() const {
@@ -345,9 +342,8 @@ struct PerAxisCanvasStore {
     static_assert(
         kOverflowControlUints % kScratchAlignUints == 0, "overflow entries must be 256-byte aligned"
     );
-    // Completed-frame count bounding the next sort's encoded merge stages; the
-    // cap on the first rotating frame after allocate() (nothing completed yet).
-    std::uint32_t laggedOverflowCount_ = 0;
+    // Newest completed-frame count retained for diagnostics and run witnesses.
+    std::uint32_t settledOverflowCount_ = 0;
 
     // Allocation state is the texture handles themselves — no separate bool to
     // drift out of sync (cf. the no-dirty-flags rule in .claude/rules/cpp-ecs.md).
@@ -536,9 +532,6 @@ struct PerAxisCanvasStore {
         );
         // Seed the ctrl block so the first rotating frame's pre-reset counter
         // readback (the cap-overflow warn) reads zeros, not uninitialized data.
-        // Word 0 stays zero only until the first rotating frame's reset writes
-        // the quad index count; the sort-span bound reads a zero there as "no
-        // completed frame" and encodes the full merge ladder.
         const std::array<std::uint32_t, kOverflowCtrlUints> ctrlSeed{};
         winnerIds_.second->subData(
             static_cast<std::ptrdiff_t>(ctrlBaseUints_) * sizeof(std::uint32_t),
@@ -563,7 +556,6 @@ struct PerAxisCanvasStore {
         overflowCtrlRing_ = {};
         overflowCtrlBuffers_.reserve(kMaxOverflowCtrlSlots);
         overflowCtrlFrames_ = 0;
-        overflowCtrlSampled_ = false;
     }
 
     // Release all three axis texture sets + the resolve texture and reset to the
@@ -622,12 +614,11 @@ struct PerAxisCanvasStore {
         overflowCtrlBuffers_.clear();
         overflowCtrlRing_ = {};
         overflowCtrlFrames_ = 0;
-        overflowCtrlSampled_ = false;
 
         ctrlBaseUints_ = 0;
         entriesBaseUints_ = 0;
         overflowCap_ = 0;
-        laggedOverflowCount_ = 0;
+        settledOverflowCount_ = 0;
         size_ = ivec2{0, 0};
         mainSize_ = ivec2{0, 0};
     }

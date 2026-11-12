@@ -963,7 +963,7 @@ struct GlitchSubjectFixture {
             markedTiles[0],
             markedTiles[1],
             markedTiles[2],
-            axes != nullptr ? axes->laggedOverflowCount_ : 0u,
+            axes != nullptr ? axes->settledOverflowCount_ : 0u,
             framebuffer != nullptr ? framebuffer->frameDraws_ : -1,
             IRRender::gpuStageTiming().trixelGlitchMs_,
             IRRender::gpuStageTiming().trixelGlitchPerAxisMs_
@@ -1192,7 +1192,7 @@ struct GlitchSubjectFixture {
                 markedTiles[0],
                 markedTiles[1],
                 markedTiles[2],
-                axes != nullptr ? axes->laggedOverflowCount_ : 0u,
+                axes != nullptr ? axes->settledOverflowCount_ : 0u,
                 perAxisGlitchBytes,
                 yawPass
             );

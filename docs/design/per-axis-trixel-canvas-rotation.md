@@ -446,16 +446,12 @@ record-equality coincide and equal records need no ordering at all.
 **The sort is eligible when `storeTiesPossible_` is set.** Current-frame
 GPU counts generate indirect grids for fill, local sort and each remaining
 stage. Empty lists and stages wider than the active power-of-two span have
-zero-sized grids. The completed prior-frame count bounds CPU command encoding
-to twice its power-of-two span, floored at one 1,024-entry local block. Current
-GPU counts size the indirect grids within that encoded prefix. The first
-rotating frame after an allocation has no completed frame behind it (the ctrl
-block's index-count word is still the zero seed) and encodes every stage to the
-cap, so the first rotated frame on a fresh set draws the settled pose's order;
-an unparked set keeps its pre-park frame's count as the bound. Growth
-within the two-times headroom is fully sorted; a larger jump between two
-rotating frames remains a valid permutation and becomes fully sorted on the next
-frame. `sortFaceRecords` guarantees the sort's own completion on every
+zero-sized grids. CPU command encoding is bounded in the same frame by three
+records per voxel slot in admitted chunks, clamped to the live voxel count and
+the lane capacity. Current GPU counts size the indirect grids within that
+encoded prefix, so every frame's complete list is sorted before a consumer can
+read it, including frames where the admitted population grows abruptly.
+`sortFaceRecords` guarantees the sort's own completion on every
 backend: work encoded after it sees the sorted list, and no consumer may rely
 on a later clear or dispatch to finish the sort. On OpenGL that takes one
 extra direct argument-preparation dispatch at the end of the sequence, because

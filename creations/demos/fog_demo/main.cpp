@@ -1493,7 +1493,7 @@ void probeExploredDecay(int shotIndex) {
         ninthMatch = countExploredDecayPerAxis(axes, g_exploredDecayNinthMatch);
         ninthDisjoint = countExploredDecayPerAxis(axes, g_exploredDecayNinthDisjoint);
         overflow = countExploredDecayPerAxis(axes, g_exploredDecayOverflow);
-        overflowEntries = axes.laggedOverflowCount_;
+        overflowEntries = axes.settledOverflowCount_;
     } else {
         memory = countExploredDecayPanel(g_exploredDecayMemory);
         shielded = countExploredDecayPanel(g_exploredDecayShielded);

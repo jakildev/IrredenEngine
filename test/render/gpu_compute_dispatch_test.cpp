@@ -1906,22 +1906,22 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
     };
     struct SortCase {
         std::uint32_t count;
-        std::uint32_t laggedCount;
-        bool fullySorted;
+        std::uint32_t admittedChunks;
+        std::uint32_t liveVoxels;
     };
     for (const SortCase sortCase : {
-             SortCase{0u, 0u, true},
-             SortCase{1024u, 0u, true},
-             SortCase{4097u, 0u, false},
-             SortCase{4097u, 4097u, true},
-             SortCase{1u, 4097u, true},
-             SortCase{0u, 1u, true},
-             SortCase{262145u, 262145u, true},
-             SortCase{4097u, IRSystem::detail::overflowSortLaggedBound({}, cap), true},
+             SortCase{0u, 0u, 0u},
+             SortCase{1024u, 4u, 1024u},
+             SortCase{4097u, 6u, 1366u},
+             SortCase{12291u, 17u, 4097u},
+             SortCase{1u, 1u, 1u},
+             SortCase{0u, 1u, 1u},
+             SortCase{262145u, 342u, 87382u},
          }) {
         const std::uint32_t count = sortCase.count;
         SCOPED_TRACE(
-            ::testing::Message() << "count=" << count << " lagged=" << sortCase.laggedCount
+            ::testing::Message() << "count=" << count << " admittedChunks="
+                                 << sortCase.admittedChunks << " liveVoxels=" << sortCase.liveVoxels
         );
         words[ctrl + 1] = count;
         std::vector<Record> expected;
@@ -1971,25 +1971,22 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
             ENG_API->glMemoryBarrier(GL_ALL_BARRIER_BITS);
 #endif
         };
-        const auto dispatchSpan =
-            IRSystem::detail::overflowSortDispatchSpan(sortCase.laggedCount, cap);
-        std::uint32_t mergeDispatches = 0;
+        const auto entryBound = IRSystem::detail::overflowSortEntryBound(
+            sortCase.admittedChunks,
+            sortCase.liveVoxels,
+            cap
+        );
+        const auto dispatchSpan = IRSystem::detail::overflowSortDispatchSpan(entryBound, cap);
+        EXPECT_GE(entryBound, count);
         IRSystem::detail::forEachOverflowSortStep(
             dispatchSpan,
             [&](int mode,
                 std::uint32_t k,
                 std::uint32_t pLo,
                 std::uint32_t pHi,
-                std::uint32_t commandIndex) {
-                step(mode, k, pLo, pHi, commandIndex);
-                if (mode == 2)
-                    ++mergeDispatches;
-            }
+                std::uint32_t commandIndex) { step(mode, k, pLo, pHi, commandIndex); }
         );
-        if (sortCase.laggedCount == 0u) {
-            EXPECT_EQ(dispatchSpan, 1u << Axes::kOverflowSortBlockBits);
-            EXPECT_EQ(mergeDispatches, 0u);
-        }
+        EXPECT_GE(dispatchSpan, count);
 #if defined(IR_GRAPHICS_METAL)
         device_->finish();
 #else
@@ -2009,12 +2006,7 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
                 }
             );
         }
-        if (sortCase.fullySorted)
-            EXPECT_EQ(observed, expected);
-        else {
-            std::sort(observed.begin(), observed.end(), recordLess);
-            EXPECT_EQ(observed, expected);
-        }
+        EXPECT_EQ(observed, expected);
         for (std::uint32_t i = 0; i < static_cast<std::uint32_t>(entries - ctrl); ++i)
             EXPECT_EQ(actual[ctrl + i], words[ctrl + i]);
         std::vector<std::uint32_t> grids(argsUints);
@@ -2030,33 +2022,14 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
     }
 }
 
-// The allocation seed has no completed frame behind it, so the first rotating
-// frame encodes the full ladder; a completed block keeps the lagged bound.
-TEST(OverflowSortBoundTest, AllocationSeedEncodesFullLadderCompletedFrameKeepsLaggedBound) {
+TEST(OverflowSortBoundTest, UsesAdmittedVoxelSlotsAndClampsToLiveCountAndCapacity) {
     constexpr std::uint32_t cap = 1u << 23;
-    const std::array<std::uint32_t, 8> seed{};
-    EXPECT_EQ(IRSystem::detail::overflowSortLaggedBound(seed, cap), cap);
-    EXPECT_EQ(
-        IRSystem::detail::overflowSortDispatchSpan(
-            IRSystem::detail::overflowSortLaggedBound(seed, cap),
-            cap
-        ),
-        cap
-    );
-    for (const std::uint32_t count : {0u, 1u, 2048u, 4097u, 846673u, cap}) {
-        SCOPED_TRACE(::testing::Message() << "count=" << count);
-        const std::array<std::uint32_t, 8> completed{
-            static_cast<std::uint32_t>(IRShapes2D::kQuadIndicesLength),
-            count,
-            0u,
-            0u,
-            0u,
-            0u,
-            0u,
-            0u
-        };
-        EXPECT_EQ(IRSystem::detail::overflowSortLaggedBound(completed, cap), count);
-    }
+    EXPECT_EQ(IRSystem::detail::overflowSortEntryBound(0u, 0u, cap), 0u);
+    EXPECT_EQ(IRSystem::detail::overflowSortEntryBound(1u, 1u, cap), 3u);
+    EXPECT_EQ(IRSystem::detail::overflowSortEntryBound(1u, 256u, cap), 768u);
+    EXPECT_EQ(IRSystem::detail::overflowSortEntryBound(2u, 257u, cap), 771u);
+    EXPECT_EQ(IRSystem::detail::overflowSortEntryBound(8u, 17u, cap), 51u);
+    EXPECT_EQ(IRSystem::detail::overflowSortEntryBound(8u, 2048u, 4096u), 4096u);
 }
 
 TEST_F(PositionUploadTest, OverflowLightingDispatchUsesCurrentCountAndPreservesDrawArguments) {
