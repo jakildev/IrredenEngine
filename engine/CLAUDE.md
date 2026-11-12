@@ -68,7 +68,7 @@ target — every engine arg goes through `IRArgs`.
 
 Every prefab system that uses the `System<NAME>::create()` template pattern
 must have its `NAME` added to the `SystemName` enum in
-`engine/system/include/irreden/ir_system_types.hpp`. If you add a new prefab
+`engine/system/include/irreden/system/ir_system_types.hpp`. If you add a new prefab
 system under `engine/prefabs/**/systems/` and the enum value doesn't exist,
 the specialization won't link. Add the enum value **first**.
 

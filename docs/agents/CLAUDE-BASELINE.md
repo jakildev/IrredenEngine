@@ -225,7 +225,7 @@ gates; each form below prompts or misbehaves under unattended operation.
 - **Never root a tree search at `creations/` or `.claude/`.** Both own an
   ignore-then-negate block in `.gitignore`; ripgrep's walker (which also
   backs the Grep tool) prunes the children and reports a clean pass over
-  ~2 of 273 files. Root at the repo top or a child (`creations/demos`), or
+  a handful of the several hundred tracked files. Root at the repo top or a child (`creations/demos`), or
   use `fleet-rules-sweep` (resolves files via `git ls-files`, exits 2 when a
   scope covers nothing) — [`.claude/rules/README.md`](../../.claude/rules/README.md).
 - **`--repo owner/name`** on any `gh` call against a repo other than cwd's.
@@ -374,10 +374,10 @@ restrictions.
   `CLAUDE.md` pointer directs you there; never in a feature PR's diff
   (`.fleet/status/README.md`).
 - **Edit/Write paths stay inside your worktree.** The parent clone
-  `/Users/evinjkill/src/IrredenEngine/` shares the tree shape, so an edit
+  `<engine-clone>/` shares the tree shape, so an edit
   aimed there succeeds silently while your build sees nothing. Prefer
   relative paths; an absolute path starts with
-  `/Users/evinjkill/src/IrredenEngine/.claude/worktrees/<your-basename>/`.
+  `<engine-clone>/.claude/worktrees/<your-basename>/`.
 - **Mutating git flows assert their worktree first.** `commit-and-push`,
   `start-next-task`, and `fleet-pr-checkout-detached` run
   `fleet-assert-worktree` (exit 1 outside a `.claude/worktrees/*` tree);
