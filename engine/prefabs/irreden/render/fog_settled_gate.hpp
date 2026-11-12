@@ -49,6 +49,9 @@ struct SettledGate {
     std::uint32_t armedDispatchesLeft_ = 0;
     bool primed_ = false;
     std::uint64_t seenRevision_ = 0;
+    // A replaced fog component restarts its revision; its field is a new
+    // allocation, so the pair tells the two instances apart.
+    const WorldField *seenField_ = nullptr;
     IRComponents::C_FogRevealSettings seenSettings_{};
     IREntity::EntityId seenCanvas_ = IREntity::kNullEntity;
     const IRComponents::C_VoxelPool *seenPool_ = nullptr;
@@ -69,8 +72,10 @@ struct SettledGate {
         settledTag_ = entities.findComponentType<IRComponents::C_Settled>();
         const std::uint64_t revision = fog != nullptr ? fog->revision_ : 0;
         const bool fogAttached = fog != nullptr;
+        const WorldField *field = fog != nullptr ? fog->field_.get() : nullptr;
         const bool changed =
-            !primed_ || revision != seenRevision_ || fogAttached != seenFogAttached_ ||
+            !primed_ || revision != seenRevision_ || field != seenField_ ||
+            fogAttached != seenFogAttached_ ||
             activeCanvas != seenCanvas_ || pool != seenPool_ ||
             settings.showThreshold_ != seenSettings_.showThreshold_ ||
             settings.hideThreshold_ != seenSettings_.hideThreshold_ ||
@@ -78,6 +83,7 @@ struct SettledGate {
         if (changed) {
             primed_ = true;
             seenRevision_ = revision;
+            seenField_ = field;
             seenFogAttached_ = fogAttached;
             seenCanvas_ = activeCanvas;
             seenPool_ = pool;

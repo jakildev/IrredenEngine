@@ -17,6 +17,22 @@ struct WalkReport {
     bool reported_ = false;
 };
 thread_local WalkReport *t_walkReport = nullptr;
+
+// Installs a report for the dispatch running on this thread and restores the
+// outer one on every exit, a throwing tick included.
+struct WalkReportScope {
+    WalkReport report_;
+    WalkReport *const outer_ = t_walkReport;
+
+    WalkReportScope() {
+        t_walkReport = &report_;
+    }
+    ~WalkReportScope() {
+        t_walkReport = outer_;
+    }
+    WalkReportScope(const WalkReportScope &) = delete;
+    WalkReportScope &operator=(const WalkReportScope &) = delete;
+};
 } // namespace
 
 void SystemManager::reportRowsWalked(std::uint64_t rows) {
@@ -732,9 +748,8 @@ void SystemManager::executeSystem(SystemId system) {
         t0 = Clock::now();
     }
 
-    WalkReport walkReport;
-    WalkReport *const outerWalkReport = t_walkReport;
-    t_walkReport = &walkReport;
+    const WalkReportScope walkScope;
+    const WalkReport &walkReport = walkScope.report_;
 
     m_beginTicks[system].functionBeginTick_();
     std::vector<ArchetypeNode *> nodes;
@@ -820,7 +835,6 @@ void SystemManager::executeSystem(SystemId system) {
         }
     }
     m_endTicks[system].functionEndTick_();
-    t_walkReport = outerWalkReport;
 
     if (m_timingEnabled) {
         auto elapsed = Clock::now() - t0;

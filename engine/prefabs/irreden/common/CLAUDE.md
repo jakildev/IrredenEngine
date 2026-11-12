@@ -83,6 +83,12 @@ any of it; the short form:
 - A system that only maintains state derived from pose adds
   `Exclude<C_Settled>`; that includes a creation's `C_ResolvedFields`
   seeder, or the resolver composes a settling row from an unseeded value.
+- A one-shot query (`executeQuery`, `executeQueryDynamic`) never derives. One
+  that writes `C_WorldTransform` or `C_ResolvedFields` visits no static row,
+  so a command thaws the entity first or changes its inputs through a
+  mutator.
+- A destroyed parent's static children keep their link, resettle, and derive
+  as roots, as dynamic children do.
 - A global modifier pushed after an entity settles does not reach it.
 - A component method reaches its entity through `static_notes.hpp`
   (`noteChanged(id)`), never a lookup.

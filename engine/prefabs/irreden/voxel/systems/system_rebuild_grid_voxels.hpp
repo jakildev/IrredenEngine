@@ -217,10 +217,12 @@ template <> struct System<REBUILD_GRID_VOXELS> {
             return;
         }
         if (!voxelSet.renders()) {
-            // A hidden, culled or ghost-held set is not rasterized. At
-            // identity its authored span is already the raster; a rotated
-            // settling set waits until it is shown.
-            if (settlingNode_ && !IRPrefab::GridRotation::isIdentityTransform(worldTransform)) {
+            // A hidden, culled or ghost-held set is not rasterized. A set
+            // at identity that never rotated already holds its raster in
+            // the authored span. A settling set that is rotated, or still
+            // carries a rotated raster to restore, waits until it is shown.
+            if (settlingNode_ && (!IRPrefab::GridRotation::isIdentityTransform(worldTransform) ||
+                                  !voxelSet.rotationSourceVoxels_.empty())) {
                 IRPrefab::Static::noteHeld(voxelSet.ownerEntityId_);
             }
             return;

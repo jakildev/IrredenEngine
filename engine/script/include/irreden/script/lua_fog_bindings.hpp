@@ -241,13 +241,25 @@ requireFogEntity(sol::object value, const char *function, std::size_t index) {
 struct FogVisionTarget {
     IRComponents::FrameDataFogObservers *observers_ = nullptr;
     IRPrefab::Fog::WorldField *field_ = nullptr;
+    /// The owning component's change revision, null for a target with no
+    /// component behind it. The entries below write the observers through
+    /// the static overloads, which cannot advance it themselves.
+    std::uint64_t *revision_ = nullptr;
+
+    /// Call after any write a fog evaluator reads, so the gated passes
+    /// re-walk settled subjects.
+    void markChanged() const {
+        if (revision_ != nullptr) {
+            ++*revision_;
+        }
+    }
 };
 
 using FogVisionTargetResolver = std::function<FogVisionTarget()>;
 
 inline FogVisionTarget activeFogVisionTarget() {
     if (auto *fog = IRPrefab::Fog::detail::activeFogComponent()) {
-        return {&fog->observers_, fog->field_.get()};
+        return {&fog->observers_, fog->field_.get(), &fog->revision_};
     }
     return {};
 }
@@ -270,6 +282,7 @@ applyFogVision(const sol::variadic_args &args, bool replace, const FogVisionTarg
     if (target.observers_ == nullptr) {
         return -1;
     }
+    target.markChanged();
     if (replace) {
         IRComponents::C_CanvasFogOfWar::clearVisionCircles(*target.observers_, *target.field_);
     }
@@ -313,9 +326,8 @@ inline float requireFogUnitFloat(sol::object value, const char *function, std::s
 /// `IRFog.setVisionLineOfSight(slot, losEyeHeight[, losSoftness])`: validates
 /// in Lua what `C_CanvasFogOfWar::setVisionCircleLineOfSight` asserts, so an
 /// unregistered slot raises a named error instead of reaching the assert.
-inline void applyFogVisionLineOfSight(
-    const sol::variadic_args &args, IRComponents::FrameDataFogObservers *observers
-) {
+inline void applyFogVisionLineOfSight(const sol::variadic_args &args, const FogVisionTarget &target) {
+    IRComponents::FrameDataFogObservers *observers = target.observers_;
     constexpr const char *function = "setVisionLineOfSight";
     requireFogArity(function, args.size(), 2, 3);
     const int slot = requireFogInt(args[0], function, 0);
@@ -325,6 +337,7 @@ inline void applyFogVisionLineOfSight(
         return;
     }
     requireFogVisionSlot(*observers, slot, function);
+    target.markChanged();
     IRComponents::C_CanvasFogOfWar::setVisionCircleLineOfSight(
         *observers,
         slot,
@@ -335,9 +348,8 @@ inline void applyFogVisionLineOfSight(
 
 /// `IRFog.setVisionCeiling(slot, ceilingHeight[, fadeHeight])`: a negative
 /// height disables the slot's ceiling; a negative fade is an error.
-inline void applyFogVisionCeiling(
-    const sol::variadic_args &args, IRComponents::FrameDataFogObservers *observers
-) {
+inline void applyFogVisionCeiling(const sol::variadic_args &args, const FogVisionTarget &target) {
+    IRComponents::FrameDataFogObservers *observers = target.observers_;
     constexpr const char *function = "setVisionCeiling";
     requireFogArity(function, args.size(), 2, 3);
     const int slot = requireFogInt(args[0], function, 0);
@@ -350,6 +362,7 @@ inline void applyFogVisionCeiling(
         return;
     }
     requireFogVisionSlot(*observers, slot, function);
+    target.markChanged();
     IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(
         *observers,
         slot,
@@ -458,10 +471,10 @@ bindFog(LuaScript &script, FogVisionTargetResolver resolveTarget = activeFogVisi
         return applyFogVision(args, false, resolveTarget());
     });
     fog["setVisionLineOfSight"] = statefulLuaFunction([resolveTarget](sol::variadic_args args) {
-        applyFogVisionLineOfSight(args, resolveTarget().observers_);
+        applyFogVisionLineOfSight(args, resolveTarget());
     });
     fog["setVisionCeiling"] = statefulLuaFunction([resolveTarget](sol::variadic_args args) {
-        applyFogVisionCeiling(args, resolveTarget().observers_);
+        applyFogVisionCeiling(args, resolveTarget());
     });
     fog["getVisionCeiling"] = statefulLuaFunction([resolveTarget](sol::variadic_args args) {
         return queryFogVisionCeiling(args, resolveTarget().observers_);
@@ -510,6 +523,7 @@ bindFog(LuaScript &script, FogVisionTargetResolver resolveTarget = activeFogVisi
         requireFogArity("clearVisions", args.size(), 0, 0);
         const FogVisionTarget target = resolveTarget();
         if (target.observers_ != nullptr) {
+            target.markChanged();
             IRComponents::C_CanvasFogOfWar::clearVisionCircles(*target.observers_, *target.field_);
         }
     });

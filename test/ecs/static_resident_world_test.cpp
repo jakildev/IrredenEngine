@@ -616,6 +616,42 @@ TEST(StaticWorld, ARotatedGridEntityIsRasterizedWhenItSettlesAndMatchesItsTwin) 
     h.expectTwin(pair, "later frames");
 }
 
+// A set that cannot render keeps whatever raster its pool span last held. A
+// span still holding a rotated raster is not the identity raster, so the
+// entity may not settle until the rebuild has restored it.
+TEST(StaticWorld, AHiddenSetStillHoldingARotatedRasterIsHeldUntilItIsShown) {
+    Harness h;
+    const Harness::Pair pair{h.makeBody(false), h.makeBody(false)};
+    const IRMath::vec4 quarterTurn = IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), IRMath::kHalfPi);
+    for (const EntityId entity : {pair.entity_, pair.twin_}) {
+        h.set(entity).setLodBand(LodLevel::LOD_4, LodLevel::LOD_3);
+        IREntity::getComponent<C_LocalTransform>(entity).rotation_ = quarterTurn;
+    }
+    h.frames(2);
+    ASSERT_FALSE(h.set(pair.entity_).rotationSourceVoxels_.empty());
+
+    const LodLevel shownTier = IREntity::singleton<C_ActiveLodLevel>().current_;
+    IREntity::singleton<C_ActiveLodLevel>().current_ = LodLevel::LOD_0;
+    for (const EntityId entity : {pair.entity_, pair.twin_}) {
+        IREntity::getComponent<C_LocalTransform>(entity).rotation_ = IRMath::vec4(0, 0, 0, 1);
+    }
+    h.frame();
+    ASSERT_TRUE(h.set(pair.entity_).lodCulled_);
+    ASSERT_FALSE(h.set(pair.entity_).rotationSourceVoxels_.empty())
+        << "the culled set was not rasterized back to identity";
+
+    ASSERT_EQ(Static::freeze(pair.entity_), Static::FreezeResult::FROZEN);
+    h.frames(4);
+    EXPECT_FALSE(Static::isSettled(pair.entity_));
+    EXPECT_GT(h.stats().counters_.held_, 0u);
+
+    IREntity::singleton<C_ActiveLodLevel>().current_ = shownTier;
+    h.frames(3);
+    EXPECT_TRUE(Static::isSettled(pair.entity_));
+    EXPECT_TRUE(h.set(pair.entity_).rotationSourceVoxels_.empty());
+    h.expectTwin(pair, "shown again at identity");
+}
+
 TEST(StaticWorld, AGlobalModifierPushedAfterSettlingDoesNotReachTheEntity) {
     Harness h;
     const Harness::Pair pair = h.makeSettledPair();
@@ -1435,6 +1471,20 @@ TEST(StaticWorld, ASettledSubjectIsWalkedOnlyWhenAFogInputChanged) {
 
     IREntity::removeComponent<C_CanvasFogOfWar>(h.canvas_);
     EXPECT_EQ(h.evalWalked(), 1u) << "fog was detached from the active canvas";
+    EXPECT_EQ(h.evalWalked(), 0u);
+}
+
+TEST(StaticWorld, AReplacedFogComponentArmsThePassAtAnEqualRevision) {
+    FogHarness h;
+    const EntityId entity = h.makeBody(true);
+    h.frames(4);
+    ASSERT_TRUE(Static::isSettled(entity));
+    ASSERT_EQ(h.evalWalked(), 0u);
+    const std::uint64_t revision = h.fog().revision_;
+
+    IREntity::setComponent(h.canvas_, C_CanvasFogOfWar{C_CanvasFogOfWar::HeadlessInit{}});
+    h.fog().revision_ = revision;
+    EXPECT_EQ(h.evalWalked(), 1u) << "a new field behind the same revision";
     EXPECT_EQ(h.evalWalked(), 0u);
 }
 
