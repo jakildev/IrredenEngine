@@ -596,6 +596,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // The canvas whose pool ids voxelEntityIdBuf_ last received.
     IREntity::EntityId voxelEntityIdBufCanvas_ = IREntity::kNullEntity;
     Buffer *chunkVisBuf_ = nullptr;
+    // Frustum-only mask retained while the optional occlusion pre-pass mutates
+    // ChunkVisibilityBuffer in place for raster compaction.
+    Buffer *sunFaceChunkVisBuf_ = nullptr;
     Buffer *indirectBuf_ = nullptr;
     // Copy of indirectBuf_ that no program binds: NVIDIA GL drains the queue
     // on the CPU before an indirect dispatch whose argument buffer a shader
@@ -615,6 +618,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     struct CullStatsProducer {
         bool perAxis_ = false;
         std::uint32_t poolSlots_ = 0;
+        std::uint32_t sunFaceAdmitted_ = 0;
     };
     IRRender::detail::GpuReadbackRing<CullStatsProducer, kMaxCullStatsSlots> cullStatsRing_{};
     std::vector<Buffer *> cullStatsBuffers_;
@@ -1769,7 +1773,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         gpuStageTiming().totalVoxelCount_ = producer.poolSlots_;
         gpuStageTiming().axisEntryCount_ = axisEntries;
         gpuStageTiming().feederVoxelCount_ = feeder;
-        voxelCullAccumulator().record(visible, producer.poolSlots_, feeder, axisEntries);
+        gpuStageTiming().sunFaceAdmittedVoxelCount_ = producer.sunFaceAdmitted_;
+        voxelCullAccumulator()
+            .record(visible, producer.poolSlots_, feeder, axisEntries, producer.sunFaceAdmitted_);
     }
 
     void tick(
@@ -2007,6 +2013,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // while this path still reads them.
         const bool rotating = IRRender::isSpatialViewEnabled() || frameData_.residualYaw_ != 0.0f;
         std::uint32_t admittedChunkCount = 0;
+        std::uint32_t sunFaceAdmittedCount = 0;
         if (revoxInverse || canvasLocalRotation.isDetached()) {
             // Model-space canvas domain: EVERY detached canvas (forward-scatter
             // and re-voxelize alike, at any rotation) rasters its pool in its
@@ -2027,6 +2034,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 static_cast<std::size_t>(chunkWords) * sizeof(std::uint32_t),
                 allVisibleChunkScratch_.data()
             );
+            if (voxelFaceBaker_ != nullptr) {
+                sunFaceChunkVisBuf_->subData(
+                    0,
+                    static_cast<std::size_t>(chunkWords) * sizeof(std::uint32_t),
+                    allVisibleChunkScratch_.data()
+                );
+                sunFaceAdmittedCount = static_cast<std::uint32_t>(effectiveVoxelCount);
+            }
         } else {
             const bool spatial = IRRender::isSpatialViewEnabled();
             const auto view = spatial
@@ -2042,6 +2057,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 admittedChunkCount
             );
             chunkVisBuf_->subData(0, uploadMask.size() * sizeof(std::uint32_t), uploadMask.data());
+            if (voxelFaceBaker_ != nullptr) {
+                sunFaceChunkVisBuf_
+                    ->subData(0, uploadMask.size() * sizeof(std::uint32_t), uploadMask.data());
+                sunFaceAdmittedCount = admittedChunkCount * IRRender::kVoxelChunkSize;
+                const int tailSlots = effectiveVoxelCount % IRRender::kVoxelChunkSize;
+                if (tailSlots != 0 && uploadMask.back() != 0u) {
+                    sunFaceAdmittedCount -=
+                        IRRender::kVoxelChunkSize - static_cast<std::uint32_t>(tailSlots);
+                }
+            }
         }
 
         constexpr int kGpuMargin = 4;
@@ -2294,12 +2319,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 IRRender::GpuSubStageScope gpuScope("voxelSunFaces");
                 voxelFaceBaker_->bakeVoxelFaces(
                     effectiveVoxelCount,
+                    *sunFaceChunkVisBuf_,
                     renderMode == 0 ? 1 : effectiveSub,
                     canvasLocalRotation,
                     triangleCanvasTextures.renderedCellOffset_,
                     skipSingleCanvasVoxels
                 );
             }
+            chunkVisBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ChunkVisibility);
             winnerPlaceholderBuf_->bindBase(
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_PerAxisResolveScratch
@@ -2421,7 +2448,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         if (gpuStageTiming().enabled_) {
             const int slot = cullStatsRing_.write(
                 IRRender::device()->submissionSerial(),
-                {perAxisSplit, static_cast<std::uint32_t>(effectiveVoxelCount)}
+                {perAxisSplit,
+                 static_cast<std::uint32_t>(effectiveVoxelCount),
+                 sunFaceAdmittedCount}
             );
             if (slot == static_cast<int>(cullStatsBuffers_.size())) {
                 cullStatsBuffers_.push_back(
@@ -2973,6 +3002,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             kBufferIndex_ChunkVisibility
         );
         IRRender::createNamedResource<Buffer>(
+            "SunFaceChunkVisibilityBuffer",
+            nullptr,
+            maxVoxelPoolChunks * sizeof(std::uint32_t),
+            BUFFER_STORAGE_DYNAMIC
+        );
+        IRRender::createNamedResource<Buffer>(
             "CompactedVoxelIndices",
             nullptr,
             maxSingleVoxels * sizeof(std::uint32_t),
@@ -3132,6 +3167,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->voxelActiveMaskBuf_ = IRRender::getNamedResource<Buffer>("VoxelActiveMaskBuffer");
         p->voxelEntityIdBuf_ = IRRender::getNamedResource<Buffer>("VoxelEntityIdBuffer");
         p->chunkVisBuf_ = IRRender::getNamedResource<Buffer>("ChunkVisibilityBuffer");
+        p->sunFaceChunkVisBuf_ = IRRender::getNamedResource<Buffer>("SunFaceChunkVisibilityBuffer");
         p->indirectBuf_ = IRRender::getNamedResource<Buffer>("IndirectDispatchParams");
         p->indirectArgsBuf_ = IRRender::getNamedResource<Buffer>("IndirectDispatchArgs");
         p->cullStatsBuffers_.reserve(kMaxCullStatsSlots);
