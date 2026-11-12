@@ -59,6 +59,7 @@
       "Bash(fleet-campaign-status:*)", "Bash(fleet-start-next-task:*)",
       "Bash(fleet-clip:*)",
       "Bash(fleet-jobs:*)",
+      "Bash(fleet-scratch:*)",
       "Bash(witness:*)",
 
       "Bash(tmux list-:*)", "Bash(tmux display-message:*)",
