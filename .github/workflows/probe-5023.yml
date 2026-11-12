@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [ubuntu-24.04, ubuntu-26.04, ubuntu-latest]
+        image: [ubuntu-24.04]
     runs-on: ${{ matrix.image }}
     timeout-minutes: 25
     steps:
@@ -37,7 +37,7 @@ jobs:
           echo "CXXABI_1.3.15 in system libstdc++.so.6: $(strings /usr/lib/x86_64-linux-gnu/libstdc++.so.6 | grep -c '^CXXABI_1.3.15$')"
           echo "CXXABI_1.3.15 in gcc-13 libstdc++.so target: $(strings "$(readlink -f /usr/lib/gcc/x86_64-linux-gnu/13/libstdc++.so)" | grep -c '^CXXABI_1.3.15$')"
           echo "libjack needs: $(objdump -T "$(readlink -f /usr/lib/x86_64-linux-gnu/libjack.so)" | grep -c 'CXXABI_1.3.15')"
-          objdump -T "$(readlink -f /usr/lib/x86_64-linux-gnu/libjack.so)" | grep cxa_call_terminate
+          objdump -T "$(readlink -f /usr/lib/x86_64-linux-gnu/libjack.so)" | grep cxa_call_terminate || echo 'libjack has no __cxa_call_terminate reference'
       - name: Link a jack client with g++-13
         run: |
           set +e
