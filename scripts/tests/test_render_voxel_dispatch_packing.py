@@ -172,7 +172,8 @@ class VoxelDispatchPackingTest(unittest.TestCase):
         names = set(re.findall(r'functionName == "([^"]+)"', registry[start:end]))
         self.assertEqual(names, {
             "c_voxel_to_trixel_stage_1", "c_voxel_to_trixel_stage_1_feeder",
-            "c_voxel_to_trixel_stage_1_winner_resolve", "c_voxel_to_trixel_stage_2",
+            "c_voxel_to_trixel_stage_1_winner_resolve",
+            "c_voxel_to_trixel_stage_1_overflow_append", "c_voxel_to_trixel_stage_2",
             "c_voxel_to_trixel_stage_2_winner",
         })
         self.assertEqual(int(re.match(r"return MTL::Size\(2, 3, (\d+)\)", registry[end:])[1]),

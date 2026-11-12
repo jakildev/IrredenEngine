@@ -111,6 +111,23 @@ struct RunWitnessSummary {
     uint32_t poseSamples_ = 0;
     /// Pose samples rendered with an explicit yaw pivot focus.
     uint32_t explicitPivotSamples_ = 0;
+    /// Overflow-lane rejection on the frame with the most candidates (exposed
+    /// faces that lost their cardinal store cell): rejected with no
+    /// framebuffer sample in the footprint, rejected behind the occluder
+    /// prepass, and kept as lane entries.
+    uint32_t rejectionCandidates_ = 0;
+    uint32_t rejectionUnsampled_ = 0;
+    uint32_t rejectionHidden_ = 0;
+    uint32_t rejectionSurviving_ = 0;
+    /// Overflow-lane owner census, from the frame with the most owning
+    /// records; samples are 0 unless the census diagnostic ran. Owners is an
+    /// upper bound; interior is the owners with an owned sample inside their
+    /// quad proper.
+    uint32_t censusSamples_ = 0;
+    uint32_t censusRecords_ = 0;
+    uint32_t censusOwners_ = 0;
+    uint32_t censusInterior_ = 0;
+    uint32_t censusUnsampled_ = 0;
     uint32_t overflowSamples_ = 0;
     uint32_t maxOverflowEntries_ = 0;
     uint32_t maxOverflowDropped_ = 0;

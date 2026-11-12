@@ -237,6 +237,37 @@ TEST_F(CameraZoomPolicyTest, ARedundantSetLeavesTheZoomAndThePhaseAlone) {
     EXPECT_EQ(frameState().sample_.phase_, carried);
 }
 
+// A stage ahead of the publishing system reads the sample it is about to
+// publish, without publishing it.
+TEST_F(CameraZoomPolicyTest, TheUpcomingSampleIsTheOneThePrepareThenPublishes) {
+    EXPECT_FALSE(IRPrefab::Camera::upcomingZoomFrame(vec2(17.3f), vec2(2.5f)).has_value());
+
+    IRPrefab::Camera::setZoomContinuous(true);
+    // No history yet: the first sample starts with a zero phase.
+    const auto first = IRPrefab::Camera::upcomingZoomFrame(vec2(17.3f), vec2(2.5f));
+    ASSERT_TRUE(first.has_value());
+    EXPECT_FALSE(frameState().published_);
+    IRPrefab::Camera::prepareZoomFrame(vec2(17.3f), vec2(2.5f));
+    EXPECT_EQ(first->cameraIso_, frameState().sample_.cameraIso_);
+    EXPECT_EQ(first->pitch_, frameState().sample_.pitch_);
+    EXPECT_EQ(first->phase_, frameState().sample_.phase_);
+
+    // A zoom change carries a phase; the peek leaves the published one alone.
+    const dvec2 publishedPhase = frameState().sample_.phase_;
+    const auto next = IRPrefab::Camera::upcomingZoomFrame(vec2(17.3f), vec2(2.7f));
+    ASSERT_TRUE(next.has_value());
+    EXPECT_EQ(frameState().sample_.phase_, publishedPhase);
+    IRPrefab::Camera::prepareZoomFrame(vec2(17.3f), vec2(2.7f));
+    EXPECT_NE(frameState().sample_.phase_, dvec2(0.0));
+    EXPECT_EQ(next->phase_, frameState().sample_.phase_);
+    EXPECT_EQ(next->pitch_, frameState().sample_.pitch_);
+
+    // After the publish, the same pose reads back the published sample.
+    const auto same = IRPrefab::Camera::upcomingZoomFrame(vec2(17.3f), vec2(2.7f));
+    ASSERT_TRUE(same.has_value());
+    EXPECT_EQ(same->phase_, frameState().sample_.phase_);
+}
+
 TEST_F(CameraZoomPolicyTest, APolicyChangeDropsTheCarriedPhase) {
     IRPrefab::Camera::setZoomContinuous(true);
     IRPrefab::Camera::prepareZoomFrame(vec2(17.3f), vec2(2.5f));

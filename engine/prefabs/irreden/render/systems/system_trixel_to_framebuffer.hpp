@@ -114,7 +114,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // The GUI canvas while GUI_CANVAS_TO_SCREEN composites it at screen
     // resolution; kNullEntity when it composites here, into the framebuffer.
     IREntity::EntityId guiCanvasOnScreen_ = IREntity::kNullEntity;
-    const C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
+    C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
     // This frame's continuous-zoom placement sample, copied out in beginTick.
     // `zoomFrame_` is meaningful only while `continuousPlacement_` is set.
@@ -148,6 +148,18 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         IRRender::GatherFilterDiagnostic::NEAREST;
     ShaderProgram *hoverResolveProgram_ = nullptr;
     bool scatterHoverPending_ = false;
+    // IR_PERAXIS_OVERFLOW_CENSUS=1: after each scatter draw, count the overflow
+    // records that own a framebuffer pixel into the run witness. The readback
+    // waits for the GPU every frame, so a census run's timings are not a
+    // measurement. Resolved once in create(); the program and its counter
+    // buffer exist only while it is set.
+    bool overflowCensusEnabled_ = false;
+    ShaderProgram *overflowCensusProgram_ = nullptr;
+    static constexpr std::size_t kOverflowCensusCounters = 4;
+    std::unique_ptr<Buffer> overflowCensusBuffer_;
+    // The last census logged, so a held pose logs one line and a sweep one per
+    // change.
+    std::array<std::uint32_t, kOverflowCensusCounters> lastOverflowCensusLogged_{};
 
     void resolveScatterHover(
         C_TrixelCanvasFramebuffer &framebuffer, C_FrameDataTrixelToFramebuffer &frameData, int mode
@@ -170,6 +182,55 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         IRRender::device()->dispatchCompute(1, 1, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         framebuffer.bindFramebuffer();
+        program_->use();
+    }
+
+    // Runs c_per_axis_overflow_census over the settled lane against the depth
+    // the scatter just wrote, and records the counts. Leaves the framebuffer
+    // unbound; the caller rebinds it.
+    void countOverflowOwners(
+        C_TrixelCanvasFramebuffer &framebuffer, const C_PerAxisTrixelCanvases &axes
+    ) {
+        framebuffer.framebuffer_.second->unbind();
+        IRRender::device()->memoryBarrier(BarrierType::ALL);
+        const std::size_t counterBytes = kOverflowCensusCounters * sizeof(std::uint32_t);
+        IRRender::device()->fillBuffer(overflowCensusBuffer_.get(), counterBytes, 0x00);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        axes.axes_[0].distances_.second->bind(0);
+        framebuffer.getTextureDepth().bind(1);
+        axes.winnerIds_.second->bindRange(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_PerAxisResolveScratch,
+            axes.ctrlOffsetBytes(),
+            (C_PerAxisTrixelCanvases::kOverflowControlUints +
+             static_cast<std::size_t>(axes.overflowCap_) * 4u) *
+                sizeof(std::uint32_t)
+        );
+        overflowCensusBuffer_->bindBase(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_IndirectDispatchParams
+        );
+        overflowCensusProgram_->use();
+        IRRender::device()->dispatchComputeIndirect(
+            axes.cellIndirectArgs_.second,
+            kOverflowLightingDispatchArgsOffsetBytes
+        );
+        IRRender::device()->memoryBarrier(BarrierType::ALL);
+        IRRender::device()->finish();
+        std::array<std::uint32_t, kOverflowCensusCounters> counts{};
+        overflowCensusBuffer_->getSubData(0, counterBytes, counts.data());
+        renderRunWitness().recordOverflowCensus(counts[0], counts[1], counts[3], counts[2]);
+        if (counts != lastOverflowCensusLogged_) {
+            IRE_LOG_INFO(
+                "[overflow-census] records {} owners {} interior {} unsampled {}",
+                counts[0],
+                counts[1],
+                counts[3],
+                counts[2]
+            );
+            lastOverflowCensusLogged_ = counts;
+        }
+        restoreVoxelCompactionSlots();
         program_->use();
     }
 
@@ -298,6 +359,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 logicalCanvasSize,
                 framebufferResolution
             );
+            if (overflowCensusEnabled_ && !overflowDrawDisabled_) {
+                countOverflowOwners(framebuffer, *perAxisCanvases_);
+            }
             framebuffer.bindFramebuffer();
             if (behavior.mouseHoverEnabled_) {
                 resolveScatterHover(framebuffer, frameData, 0);
@@ -511,95 +575,29 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // The draw uses the compacted non-empty cell indices and indirect draw args.
     void drawPerAxisScatter(
         C_FrameDataTrixelToFramebuffer &frameData,
-        const C_PerAxisTrixelCanvases &axes,
+        C_PerAxisTrixelCanvases &axes,
         const ivec2 mainCanvasSize,
         const vec2 framebufferResolution
     ) {
-        // stores the per-axis face-local lattice at BASE (world-unit)
-        // resolution. Camera zoom is not baked into the lattice, so the
-        // scatter's screen scale is the FULL camera zoom. canvasZoomLevel_ has
-        // effSub divided out (for the subdivided cardinal canvas the gather
-        // reads); multiply it back, then rescale component-wise for the larger
-        // per-axis texture extent. The effSub/cappedDensity rescale
-        // assumed a density-scaled lattice; against the base-resolution store
-        // it cancelled zoom entirely — zooming while rotated shrank the cull
-        // viewport (crop) without magnifying content.
-        const int effSub = IRMath::max(IRRender::getVoxelRenderEffectiveSubdivisions(), 1);
-        const vec2 zoomEff = frameData.frameData_.canvasZoomLevel_ * static_cast<float>(effSub) *
-                             vec2(axes.size_) / vec2(mainCanvasSize);
-
-        // Per-axis scatter inputs. `perAxisStoreFrame_` MUST be the frame
-        // VOXEL_TO_TRIXEL_STAGE_1 keyed the store in, so the vertex shader's
-        // world-origin recovery is bit-consistent with where the cells were
-        // written. visualYaw + visibleFaceIds mirror buildVoxelFrameData.
-        frameData.frameData_.perAxisStoreFrame_ = IRPrefab::PerAxisCanvas::storeFrame(axes.size_);
-        const float visualYaw = IRPrefab::Camera::getYaw();
-        const auto cardinalIndex =
-            IRMath::rasterYawCardinalIndex(IRPrefab::Camera::computeYawSplit(visualYaw).first);
-        const auto visibleFaces =
-            IRRender::isSpatialViewEnabled()
-                ? IRMath::visibleTriplet(IRMath::quatInverse(IRRender::getViewRotation()))
-                : IRMath::visibleFaceTripletCardinal(cardinalIndex);
-        frameData.frameData_.cameraViewRotation_ =
-            IRRender::isSpatialViewEnabled() ? IRRender::getViewRotation() : vec4(0.0f);
-        // Whole-iso screen anchor of the recovered faces. The per-axis canvases
-        // are base-resolution, so it is the whole-iso camera offset
-        // `floor(cameraIso)` — exactly the cardinal path's anchor — NOT scaled by
-        // the subdivision density.
-        const vec2 cameraIso = IRRender::getEffectiveCameraIso();
-        const vec2 anchorFloor = IRMath::floor(cameraIso);
-        frameData.frameData_.perAxisBase_ =
-            IRMath::trixelOriginOffsetZ1(axes.size_) + ivec2(anchorFloor);
-
-        // Sub-cell camera pan. `perAxisBase_` places content in whole store
-        // cells, and the model scale makes one cell span the zoom pitch in
-        // framebuffer pixels. The camera's offset inside its cell lands in
-        // whole framebuffer pixels here and `FRAMEBUFFER_TO_SCREEN` adds the
-        // remainder; the y term carries the iso-to-screen flip the scatter
-        // applies to cornerIso (quadPos.y = 0.5 - cornerIso.y/size.y).
-        //
-        // The pitch is the exact one every snapped stage floors against, never
-        // `framebufferResolution * zoomEff / axes.size_`: that round trip
-        // through the store extent can land one ulp under the whole number,
-        // which costs the floor a whole pixel.
-        const vec2 cameraOffsetPx = perAxisScatterCameraOffset(
-            continuousPlacement_ ? &zoomFrame_ : nullptr,
-            cameraIso,
-            vec2(IRMath::cameraZoomPitch(IRRender::getCameraZoom()))
-        );
-        mat4 perAxisModel = translate(
-            mat4(1.0f),
-            vec3(
-                framebufferResolution.x * 0.5f + cameraOffsetPx.x,
-                framebufferResolution.y * 0.5f + cameraOffsetPx.y,
-                0.0f
-            )
-        );
-        perAxisModel = scale(
-            perAxisModel,
-            vec3(framebufferResolution.x * zoomEff.x, framebufferResolution.y * zoomEff.y, 1.0f)
-        );
-        frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) * perAxisModel;
-        frameData.frameData_.visualYaw_ = visualYaw;
-        frameData.frameData_.visibleFaceIds_ = ivec4(
-            static_cast<int>(visibleFaces[0]),
-            static_cast<int>(visibleFaces[1]),
-            static_cast<int>(visibleFaces[2]),
-            0
-        );
-        frameData.frameData_.distanceOffset_ = 0;
-        // Subdivided composite-depth scale. The per-axis
-        // store is BASE-resolution (rawDist>>10 = world units), but the SDF
-        // floor + cardinal voxel gather encode depth SUBDIVIDED (worldDepth×effSub).
-        // At high zoom the floor's depth out-scaled the base scatter ~effSub× and
-        // clipped the voxels into the floor. Carry effSub in effectiveSubdivisions-
-        // ForHover_.x so the scatter (v_peraxis_scatter) lifts its iso-depth to the
-        // same subdivided magnitude. The store + the frac bits keep the
-        // recovered worldCorner sub-cell-exact, so the scale-up preserves precision.
-        // The .y stays 0 → the fall-through gather clamps its depthScale to 1
-        // (unchanged main-canvas path); .x only feeds hover, which is gated off here.
-        frameData.frameData_.effectiveSubdivisionsForHover_ =
-            vec2(static_cast<float>(effSub), 0.0f);
+        const IRComponents::PerAxisScatterPlacement placement =
+            IRPrefab::PerAxisCanvas::scatterPlacement(
+                axes.size_,
+                mainCanvasSize,
+                framebufferResolution,
+                frameData.frameData_.canvasZoomLevel_,
+                continuousPlacement_ ? &zoomFrame_ : nullptr
+            );
+        // VOXEL_TO_TRIXEL_STAGE_1 derived the same placement unless the camera
+        // was written between the two systems. A frame whose append rejected
+        // overflow faces is drawn at the placement they were tested at, so
+        // that after such a write the voxel content shows the pose it was
+        // built for; the append then keeps every candidate while the writes
+        // continue, and this system's own placement stands.
+        if (axes.scatterPlacementDerived_ && axes.scatterPlacement_ != placement) {
+            axes.rejectionStandDownFrames_ = C_PerAxisTrixelCanvases::kRejectionStandDownFrames;
+        }
+        (axes.scatterPlacementTested_ ? axes.scatterPlacement_ : placement)
+            .applyTo(frameData.frameData_);
         // The scatter shader reads the framebuffer extent and visibility-pass
         // flags from this shared std140 field.
         const bool visibilityPrepass = visibilityPrepassEnabled_ && scatterLightingEnabled_;
@@ -1114,15 +1112,27 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         }
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
         sys->overflowDrawDisabled_ = std::getenv("IR_PERAXIS_OVERFLOW_DISABLE") != nullptr;
+        const char *overflowCensus = std::getenv("IR_PERAXIS_OVERFLOW_CENSUS");
+        sys->overflowCensusEnabled_ =
+            overflowCensus != nullptr && overflowCensus[0] == '1' && overflowCensus[1] == '\0';
+        if (sys->overflowCensusEnabled_) {
+            sys->overflowCensusProgram_ =
+                IRRender::createNamedResource<ShaderProgram>(
+                    "PerAxisOverflowCensusProgram",
+                    std::vector{
+                        ShaderStage{IRRender::kFileCompPerAxisOverflowCensus, ShaderType::COMPUTE}
+                    }
+                ).second;
+            sys->overflowCensusBuffer_ = std::make_unique<Buffer>(
+                nullptr,
+                kOverflowCensusCounters * sizeof(std::uint32_t),
+                BUFFER_STORAGE_DYNAMIC
+            );
+        }
         sys->gatherFilterDiagnostic_ = IRPrefab::GatherFilter::diagnosticFromEnvironment();
         // NOT observer-tagged: the tick owns GpuSubStageScopes, which
         // reuse the observer's timestamp attachment slot.
         return id;
-    }
-
-    static mat4 calcProjectionMatrix(const vec2 &resolution) {
-        mat4 projection = ortho(0.0f, resolution.x, 0.0f, resolution.y, -1.0f, 100.0f);
-        return projection;
     }
 
     // Game-pixel half of the snapped-zoom anti-vibration decomposition (see
@@ -1137,29 +1147,18 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         return vec2(sub.framebufferGamePxOffset_);
     }
 
-    // Framebuffer offset (Y-up) the per-axis scatter adds for the camera's
-    // position inside its anchor cell; the scatter's anchor has already placed
-    // `floor(cameraIso)` whole cells.
-    //
-    // Under either policy it is the whole-pixel offset detached canvases place
-    // with (plus the carried phase when @p zoomFrame is the frame's continuous
-    // sample; null means the snapped policy), so the upscale residual that
-    // `FRAMEBUFFER_TO_SCREEN` adds on top is the remainder of THIS offset. An
-    // unrounded offset under that residual counts the sub-pixel fraction
-    // twice, and an edge steps back a screen pixel each time the two round at
-    // different camera positions.
-    //
-    // @p framebufferPxPerCell is read under the snapped policy only and must
-    // be the exact `IRMath::cameraZoomPitch` of the camera zoom.
+    // IRPrefab::PerAxisCanvas::scatterCameraOffset, under the name this
+    // system's callers use.
     static vec2 perAxisScatterCameraOffset(
         const IRMath::CameraRasterPhase *zoomFrame,
         const vec2 &cameraIso,
         const vec2 &framebufferPxPerCell
     ) {
-        if (zoomFrame != nullptr) {
-            return vec2(IRMath::cameraRasterDetachedOffset(*zoomFrame));
-        }
-        return IRMath::cameraSnappedDetachedOffset(cameraIso, framebufferPxPerCell);
+        return IRPrefab::PerAxisCanvas::scatterCameraOffset(
+            zoomFrame,
+            cameraIso,
+            framebufferPxPerCell
+        );
     }
 
     // Framebuffer translation of one canvas's gather quad. @p zoomFrame is the
