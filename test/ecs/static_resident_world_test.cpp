@@ -31,8 +31,10 @@
 #include <irreden/voxel/components/component_skeleton.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/voxel/systems/system_rebuild_grid_voxels.hpp>
 #include <irreden/voxel/systems/system_seed_staged_voxels.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
+#include <irreden/world/main_loop_frame.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -98,6 +100,8 @@ enum Slot {
     AFTER_EVAL,
     AFTER_EVAL_GHOST,
     AFTER_SEED_STAGED,
+    // After the last RENDER system, the grid rebuild that follows
+    // UPDATE_VOXEL_SET_CHILDREN: the round has closed by then.
     AFTER_CHILDREN,
     SLOT_COUNT,
 };
@@ -169,7 +173,10 @@ struct Harness {
         systems_.registerPipeline(IRTime::Events::UPDATE, update);
         systems_.registerPipeline(
             IRTime::Events::RENDER,
-            {IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(), probe(AFTER_CHILDREN)}
+            {IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
+             IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
+             IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>(),
+             probe(AFTER_CHILDREN)}
         );
     }
 
@@ -594,6 +601,54 @@ TEST(StaticWorld, StampsFloorAndCountersCrossThirtyTwoBitsWithoutChangingBehavio
     EXPECT_GT(floor, boundary);
 }
 
+TEST(StaticWorld, ARotatedGridEntityIsRasterizedWhenItSettlesAndMatchesItsTwin) {
+    Harness h;
+    const Harness::Pair pair = h.makePair();
+    const IRMath::vec4 quarterTurn = IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), IRMath::kHalfPi);
+    for (const EntityId entity : {pair.entity_, pair.twin_}) {
+        IREntity::getComponent<C_LocalTransform>(entity).rotation_ = quarterTurn;
+    }
+    h.frames(3);
+    ASSERT_TRUE(Static::isSettled(pair.entity_));
+    EXPECT_EQ(h.set(pair.entity_).allocatedVoxels_, h.set(pair.twin_).allocatedVoxels_);
+    h.expectTwin(pair, "rotated and settled");
+    h.frames(3);
+    h.expectTwin(pair, "later frames");
+}
+
+TEST(StaticWorld, AGlobalModifierPushedAfterSettlingDoesNotReachTheEntity) {
+    Harness h;
+    const Harness::Pair pair = h.makeSettledPair();
+    Modifier::pushGlobal(h.translation_, TransformKind::ADD, kGlobalOffset, 0);
+    h.frames(3);
+    EXPECT_TRUE(Static::isSettled(pair.entity_));
+    const auto resolved = [&h](EntityId entity) {
+        return IREntity::getComponent<C_ResolvedFields>(entity).getVec3(h.translation_, vec3(9.0f));
+    };
+    EXPECT_EQ(resolved(pair.entity_), vec3(0.0f)) << "the settled values are those of its round";
+    EXPECT_EQ(resolved(pair.twin_), kGlobalOffset);
+
+    Static::thaw(pair.entity_);
+    h.frames(2);
+    EXPECT_EQ(resolved(pair.entity_), kGlobalOffset) << "a thawed entity resolves it again";
+    h.expectTwin(pair, "thawed under a global");
+}
+
+TEST(StaticWorld, AStaticEntitysModifierLifetimesDoNotAdvance) {
+    Harness h;
+    const Harness::Pair pair = h.makePair();
+    for (const EntityId entity : {pair.entity_, pair.twin_}) {
+        IREntity::getComponent<C_Modifiers>(entity).modifiersVec3_.push_back(
+            IRComponents::ModifierVec3{h.translation_, TransformKind::ADD, kMove, 0, 3}
+        );
+    }
+    h.frames(6);
+    const auto &frozen = IREntity::getComponent<C_Modifiers>(pair.entity_).modifiersVec3_;
+    ASSERT_EQ(frozen.size(), 1u) << "MODIFIER_DECAY never matches a static entity";
+    EXPECT_EQ(frozen[0].ticksRemaining_, 3);
+    EXPECT_TRUE(IREntity::getComponent<C_Modifiers>(pair.twin_).modifiersVec3_.empty());
+}
+
 // ---- Parents and children ------------------------------------------------
 
 TEST(StaticWorld, StaticChildOfStaticParentAndDynamicChildMatchTheirTwins) {
@@ -639,35 +694,253 @@ TEST(StaticWorld, StaticChildOfStaticParentAndDynamicChildMatchTheirTwins) {
     expectChildren("frozen again");
 }
 
-TEST(StaticWorld, ReparentingOrLosingAParentThawsAStaticEntity) {
+// A root with a child and a grandchild at fixed local offsets, so a static
+// tree and a dynamic twin tree agree relative to whatever the child hangs
+// under.
+struct Tree {
+    EntityId root_;
+    EntityId child_;
+    EntityId grandchild_;
+};
+constexpr vec3 kChildLocal{1.0f, 2.0f, 0.0f};
+constexpr vec3 kGrandchildLocal{0.0f, 1.0f, 1.0f};
+
+Tree makeTree(Harness &h, bool isStatic) {
+    const Tree tree{h.makeBody(isStatic), h.makeBody(isStatic), h.makeBody(isStatic)};
+    IREntity::getComponent<C_LocalTransform>(tree.child_).translation_ = kChildLocal;
+    IREntity::getComponent<C_LocalTransform>(tree.grandchild_).translation_ = kGrandchildLocal;
+    IREntity::setParent(tree.child_, tree.root_);
+    IREntity::setParent(tree.grandchild_, tree.child_);
+    return tree;
+}
+
+vec3 worldOf(EntityId entity) {
+    return IREntity::getComponent<C_WorldTransform>(entity).translation_;
+}
+
+// The child and grandchild sit where `parent` (or the origin) puts them,
+// and the static tree's voxels match the twin tree's.
+void expectTreeUnder(
+    Harness &h, const Tree &tree, const Tree &twin, vec3 parentWorld, vec3 twinParentWorld,
+    const char *step
+) {
+    EXPECT_EQ(worldOf(tree.child_), parentWorld + kChildLocal) << step;
+    EXPECT_EQ(worldOf(tree.grandchild_), parentWorld + kChildLocal + kGrandchildLocal) << step;
+    EXPECT_EQ(worldOf(twin.child_), twinParentWorld + kChildLocal) << step;
+    EXPECT_EQ(worldOf(twin.grandchild_), twinParentWorld + kChildLocal + kGrandchildLocal) << step;
+    EXPECT_EQ(h.relativeGlobals(tree.child_), h.relativeGlobals(twin.child_)) << step;
+    EXPECT_EQ(h.relativeGlobals(tree.grandchild_), h.relativeGlobals(twin.grandchild_)) << step;
+}
+
+TEST(StaticWorld, AStaticTreeCreatedWithItsParentsSettlesAndStaysStatic) {
     Harness h;
-    const EntityId parent = h.makeBody(true);
+    const Tree tree = makeTree(h, true);
+    const Tree twin = makeTree(h, false);
+    h.frames(3);
+    for (const EntityId entity : {tree.root_, tree.child_, tree.grandchild_}) {
+        EXPECT_TRUE(Static::isSettled(entity));
+    }
+    EXPECT_EQ(h.stats().counters_.refused_, 0u);
+    expectTreeUnder(h, tree, twin, worldOf(tree.root_), worldOf(twin.root_), "settled");
+}
+
+void expectReparentResettlesTheSubtree(bool settledTree) {
+    Harness h;
+    const Tree tree = makeTree(h, true);
+    const Tree twin = makeTree(h, false);
     const EntityId other = h.makeBody(true);
-    const EntityId child = h.makeBody(true);
-    IREntity::setParent(child, parent);
-    h.frames(3);
-    ASSERT_TRUE(Static::isSettled(child)) << "a parent set before the first drain keeps it static";
+    const EntityId twinOther = h.makeBody(false);
+    const auto reparent = [&]() {
+        IREntity::setParent(tree.child_, other);
+        IREntity::setParent(twin.child_, twinOther);
+    };
+    if (settledTree) {
+        h.frames(3);
+        ASSERT_TRUE(Static::isSettled(tree.grandchild_));
+        reparent();
+        EXPECT_TRUE(Static::isSettled(tree.root_)) << "the old root is untouched";
+        EXPECT_TRUE(Static::isSettled(other));
+    } else {
+        // A settling tree, after PROPAGATE_TRANSFORM has dispatched in the
+        // open round.
+        h.frame();
+        h.after(AFTER_PROPAGATE, reparent);
+        h.update();
+        h.render();
+    }
+    EXPECT_FALSE(Static::isSettled(tree.child_));
+    EXPECT_FALSE(Static::isSettled(tree.grandchild_));
+    Static::drain();
+    EXPECT_FALSE(Static::isSettled(tree.child_)) << "not promoted at the drain that follows";
+    EXPECT_FALSE(Static::isSettled(tree.grandchild_));
+    h.frames(2);
+    EXPECT_TRUE(Static::isSettled(tree.child_));
+    EXPECT_TRUE(Static::isSettled(tree.grandchild_));
+    EXPECT_TRUE(Static::isStatic(tree.child_));
+    expectTreeUnder(h, tree, twin, worldOf(other), worldOf(twinOther), "under the new parent");
+}
 
-    IREntity::setParent(child, other);
-    h.frame();
-    EXPECT_FALSE(Static::isStatic(child)) << "setParent thaws";
+TEST(StaticWorld, ReparentingASettledSubtreeResettlesItUnderTheNewParent) {
+    expectReparentResettlesTheSubtree(true);
+}
 
-    ASSERT_EQ(Static::freeze(child), Static::FreezeResult::FROZEN);
-    h.frames(3);
-    ASSERT_TRUE(Static::isSettled(child));
-    h.entities_.clearParent(child);
-    h.frame();
-    EXPECT_FALSE(Static::isStatic(child)) << "clearParent thaws";
+TEST(StaticWorld, ReparentingASettlingSubtreeRestartsItsWait) {
+    expectReparentResettlesTheSubtree(false);
+}
 
-    IREntity::setParent(child, other);
-    h.frame();
-    ASSERT_EQ(Static::freeze(child), Static::FreezeResult::FROZEN);
+TEST(StaticWorld, UnparentingResettlesTheSubtreeAsARoot) {
+    for (const bool detach : {false, true}) {
+        Harness h;
+        const Tree tree = makeTree(h, true);
+        const Tree twin = makeTree(h, false);
+        h.frames(3);
+        ASSERT_TRUE(Static::isSettled(tree.grandchild_));
+        if (detach) {
+            h.entities_.detachChildren(tree.root_);
+            h.entities_.detachChildren(twin.root_);
+        } else {
+            h.entities_.clearParent(tree.child_);
+            h.entities_.clearParent(twin.child_);
+        }
+        EXPECT_FALSE(Static::isSettled(tree.child_));
+        EXPECT_FALSE(Static::isSettled(tree.grandchild_));
+        h.frames(2);
+        EXPECT_TRUE(Static::isSettled(tree.child_));
+        EXPECT_TRUE(Static::isSettled(tree.grandchild_));
+        expectTreeUnder(h, tree, twin, vec3(0.0f), vec3(0.0f), detach ? "detached" : "cleared");
+    }
+}
+
+TEST(StaticWorld, ReparentingUnderADynamicEntityMakesTheSubtreeDynamic) {
+    Harness h;
+    const Tree tree = makeTree(h, true);
+    const Tree twin = makeTree(h, false);
+    const EntityId mover = h.makeBody(false);
+    const EntityId twinMover = h.makeBody(false);
     h.frames(3);
-    ASSERT_TRUE(Static::isSettled(child));
-    IREntity::destroyEntity(other);
-    h.entities_.destroyMarkedEntities();
-    IREntity::flushStructuralChanges();
-    EXPECT_FALSE(Static::isStatic(child)) << "destroying the parent thaws its children";
+    ASSERT_TRUE(Static::isSettled(tree.grandchild_));
+    IREntity::setParent(tree.child_, mover);
+    IREntity::setParent(twin.child_, twinMover);
+    h.frame();
+    EXPECT_FALSE(Static::isStatic(tree.child_));
+    EXPECT_FALSE(Static::isStatic(tree.grandchild_));
+    EXPECT_EQ(h.stats().counters_.refused_, 2u);
+    for (const EntityId entity : {mover, twinMover}) {
+        IREntity::getComponent<C_LocalTransform>(entity).translation_ += kMove;
+    }
+    h.frame();
+    expectTreeUnder(h, tree, twin, worldOf(mover), worldOf(twinMover), "following the mover");
+}
+
+TEST(StaticWorld, DestroyingAParentResettlesTheChildrenThatSurviveIt) {
+    for (const bool eager : {true, false}) {
+        Harness h;
+        const Tree tree = makeTree(h, true);
+        h.frames(3);
+        ASSERT_TRUE(Static::isSettled(tree.grandchild_));
+        if (eager) {
+            h.entities_.destroyEntity(tree.root_);
+        } else {
+            IREntity::destroyEntity(tree.root_);
+            h.entities_.destroyMarkedEntities();
+        }
+        for (const EntityId entity : {tree.child_, tree.grandchild_}) {
+            EXPECT_TRUE(Static::isStatic(entity));
+            EXPECT_FALSE(Static::isSettled(entity));
+        }
+        Static::drain();
+        EXPECT_FALSE(Static::isSettled(tree.child_)) << "restamped, not promoted, at the drain";
+        EXPECT_EQ(h.stamp(tree.child_), h.systems_.roundsOpened() + 1);
+    }
+}
+
+TEST(StaticWorld, ReparentingToTheSameParentLeavesTheChildSettled) {
+    Harness h;
+    const Tree tree = makeTree(h, true);
+    h.frames(3);
+    IREntity::setParent(tree.child_, tree.root_);
+    EXPECT_TRUE(Static::isSettled(tree.child_));
+    EXPECT_TRUE(Static::isSettled(tree.grandchild_));
+}
+
+TEST(StaticWorld, AnAttachOnALongSettledEntityWaitsForARoundThatOpensAfterIt) {
+    struct C_Unrelated {};
+    Harness h;
+    const EntityId entity = h.makeBody(true);
+    h.frames(6);
+    ASSERT_TRUE(Static::isSettled(entity));
+    IREntity::setComponent(entity, C_Unrelated{});
+    Static::drain();
+    EXPECT_FALSE(Static::isSettled(entity)) << "its old stamp is long satisfied";
+    EXPECT_EQ(h.stamp(entity), h.systems_.roundsOpened() + 1);
+    h.update();
+    EXPECT_FALSE(Static::isSettled(entity)) << "the round that opened after it is still open";
+    h.render();
+    EXPECT_TRUE(Static::isSettled(entity));
+}
+
+// One main-loop frame as World runs it: INPUT then UPDATE for each due
+// tick, then RENDER, with the drain after every pipeline.
+struct LoopStages {
+    Harness &h_;
+    EntityId watched_;
+    int dueTicks_;
+    bool promotedBeforeRender_ = false;
+    std::uint64_t completedAtStart_ = 0;
+    bool completedMovedBeforeRender_ = false;
+
+    void note() {
+        promotedBeforeRender_ = promotedBeforeRender_ || Static::isSettled(watched_);
+        completedMovedBeforeRender_ = completedMovedBeforeRender_ ||
+                                      h_.systems_.roundsCompleted() != completedAtStart_;
+    }
+    bool shouldUpdate() {
+        return dueTicks_-- > 0;
+    }
+    void pollEvents() {}
+    void input() {
+        h_.systems_.executePipeline(IRTime::Events::INPUT);
+        Static::drain();
+        note();
+    }
+    bool holdForFirstInput() {
+        return false;
+    }
+    void update() {
+        h_.update();
+        note();
+    }
+    void render() {
+        h_.render();
+    }
+    bool halted() {
+        return false;
+    }
+};
+
+TEST(StaticWorld, ARoundSpansThePipelinesAndOnlyTheRenderJoinClosesIt) {
+    for (const bool frameWithoutUpdate : {false, true}) {
+        Harness h;
+        const Harness::Pair pair = h.makePair();
+        h.frame();
+        ASSERT_FALSE(Static::isSettled(pair.entity_));
+        if (frameWithoutUpdate) {
+            LoopStages renderOnly{h, pair.entity_, 0};
+            renderOnly.completedAtStart_ = h.systems_.roundsCompleted();
+            IREngine::runMainLoopFrame(renderOnly);
+            EXPECT_FALSE(Static::isSettled(pair.entity_))
+                << "the UPDATE groups stay under the cursor";
+            EXPECT_EQ(h.systems_.roundsCompleted(), renderOnly.completedAtStart_);
+        }
+        LoopStages stages{h, pair.entity_, 3};
+        stages.completedAtStart_ = h.systems_.roundsCompleted();
+        EXPECT_EQ(IREngine::runMainLoopFrame(stages), 3u);
+        EXPECT_FALSE(stages.promotedBeforeRender_)
+            << "no INPUT or UPDATE drain of the round may promote";
+        EXPECT_FALSE(stages.completedMovedBeforeRender_);
+        EXPECT_TRUE(Static::isSettled(pair.entity_)) << "promoted at the RENDER drain";
+        h.expectTwin(pair, "after the cross-pipeline round");
+    }
 }
 
 // ---- Gate 5: forbidden writes ---------------------------------------------

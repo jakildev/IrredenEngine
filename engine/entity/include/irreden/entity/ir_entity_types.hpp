@@ -54,6 +54,14 @@ template <typename Component> inline constexpr StaticGuard kStaticGuard = Static
 /// parent relation, drops it from the destination archetype.
 template <typename Component> inline constexpr bool kClearedByForeignMove = false;
 
+/// True for a component whose entity depends on its `CHILD_OF` chain not
+/// changing. When the parent link of such an entity changes, or its parent
+/// is destroyed, the entity layer drops the cleared-by-foreign-move
+/// components of the entity and of every descendant that carries a
+/// component with this trait, and records each id in the tracked-change log
+/// (`EntityManager::takeTrackedChanges`).
+template <typename Component> inline constexpr bool kTracksParentChain = false;
+
 struct CreateEntityExtraParams {
     std::pair<Relation, EntityId> relation = {NONE, kNullEntity};
 };

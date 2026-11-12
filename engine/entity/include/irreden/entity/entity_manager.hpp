@@ -37,7 +37,6 @@ struct PendingComponentRemoval {
 };
 
 using PreDestroyHook = std::function<void(EntityId)>;
-using RelationChangeHook = std::function<void(EntityId)>;
 using PreDestroyHookId = std::uint32_t;
 inline constexpr PreDestroyHookId kInvalidPreDestroyHookId = 0;
 
@@ -269,7 +268,8 @@ class EntityManager {
         recordComponentTraits(
             componentId,
             kStaticGuard<std::remove_cv_t<Component>>,
-            kClearedByForeignMove<std::remove_cv_t<Component>>
+            kClearedByForeignMove<std::remove_cv_t<Component>>,
+            kTracksParentChain<std::remove_cv_t<Component>>
         );
         IRE_LOG_INFO(
             "Regestered component type={}, sizeof={} with id={}",
@@ -339,6 +339,21 @@ class EntityManager {
                    componentType
                ) != m_foreignClearedComponents.end();
     }
+
+    /// Whether `componentType` was registered with `kTracksParentChain`.
+    bool tracksParentChain(ComponentId componentType) const {
+        return std::find(
+                   m_parentChainComponents.begin(),
+                   m_parentChainComponents.end(),
+                   componentType
+               ) != m_parentChainComponents.end();
+    }
+
+    /// Moves the tracked-change log onto the end of `out`: the id of every
+    /// entity that lost a cleared-by-foreign-move component to a move that
+    /// did not name it, or was handled by the parent-chain rule, since the
+    /// last call. Main thread only; every archetype move runs there.
+    void takeTrackedChanges(std::vector<EntityId> &out);
 
     template <typename Component> ComponentId getComponentType() {
         const std::size_t slot = componentTypeSlot<std::remove_cv_t<Component>>();
@@ -656,12 +671,6 @@ class EntityManager {
     PreDestroyHookId registerPreDestroyHook(PreDestroyHook hook);
     void unregisterPreDestroyHook(PreDestroyHookId id);
 
-    /// Register a hook that fires when an entity's `CHILD_OF` parent is
-    /// about to change (`setRelation`, `clearParent`, `detachChildren`),
-    /// before the archetype move, with the child's id. The hook may queue
-    /// deferred operations; it must not move or destroy the child. Hooks
-    /// fire in registration order and live as long as the manager.
-    void registerRelationChangeHook(RelationChangeHook hook);
 
     /// Singleton-component support. One entity per component type, cached
     /// by `ComponentId`. The cache is lazily validated: if the cached
@@ -734,7 +743,8 @@ class EntityManager {
     std::atomic<EntityId> m_nextEntityId{IR_RESERVED_ENTITIES};
     std::unordered_map<ComponentId, StaticGuard> m_staticGuards;
     std::vector<ComponentId> m_foreignClearedComponents;
-    std::vector<RelationChangeHook> m_relationChangeHooks;
+    std::vector<ComponentId> m_parentChainComponents;
+    std::vector<EntityId> m_trackedChanges;
     std::vector<PreDestroyHookEntry> m_preDestroyHooks;
     PreDestroyHookId m_nextPreDestroyHookId{1};
     bool m_preDestroyHookIterating{false};
@@ -756,16 +766,28 @@ class EntityManager {
     ComponentId registerComponentImpl(const std::string &typeName, smart_ComponentData impl);
     static std::size_t allocateComponentTypeSlot();
     void cacheComponentType(std::size_t slot, ComponentId componentType);
-    void recordComponentTraits(ComponentId componentType, StaticGuard guard, bool foreignCleared);
+    void recordComponentTraits(
+        ComponentId componentType, StaticGuard guard, bool foreignCleared, bool tracksParentChain
+    );
+    // The parent-chain rule for one entity whose link changed or whose
+    // parent died: drops its cleared-by-foreign-move components, logs it,
+    // and descends into every child whose node tracks the parent chain.
+    void handleParentChainChange(EntityId entity);
+    void handleParentChainChangeOfChildren(EntityId parent);
     // Removes from `type` every cleared-by-foreign-move component of
     // `fromNode` other than `named`. True when it removed one.
     bool eraseForeignCleared(
         const ArchetypeNode *fromNode, ComponentId named, Archetype &type
     ) const;
     // Drops row `row` of each cleared-by-foreign-move column `fromNode` has
-    // and `toNode` lacks, other than `named`, whose row the caller removes.
+    // and `toNode` lacks, other than `named`, whose row the caller removes,
+    // and logs `entity` in the tracked-change log.
     void removeForeignClearedRows(
-        ArchetypeNode *fromNode, const ArchetypeNode *toNode, ComponentId named, unsigned int row
+        ArchetypeNode *fromNode,
+        const ArchetypeNode *toNode,
+        ComponentId named,
+        unsigned int row,
+        EntityId entity
     );
     // Moves the entity to the node that adds `componentType`, without
     // filling the new column's row.

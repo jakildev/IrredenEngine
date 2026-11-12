@@ -37,7 +37,6 @@ struct C_StaticState {
     /// Next settled row the audit checks, as a running offset over the
     /// settled population.
     std::uint64_t auditCursor_ = 0;
-    bool hooksArmed_ = false;
     StaticCounters counters_;
 
     // Scratch reused across drains; capacity persists.

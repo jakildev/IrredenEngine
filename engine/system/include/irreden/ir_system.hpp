@@ -217,7 +217,7 @@ constexpr SystemId createSystem(
         cadence,
         offset,
         accessDescriptor,
-        detail::guardedWrites<TickComponents...>()
+        detail::writeGuardOf<TickComponents...>()
     );
 }
 
@@ -583,9 +583,17 @@ void executeQueryDynamic(
     const IREntity::Archetype &excludeArchetype,
     PerNodeFn &&body
 ) {
-    IREntity::Archetype exclude = excludeArchetype;
-    detail::applyStaticExclusion(includeArchetype, exclude, includeArchetype, false, "query");
-    detail::walkQueryNodes(includeArchetype, exclude, std::forward<PerNodeFn>(body));
+    const IREntity::StaticGuard writeGuard = detail::writeGuardOf(includeArchetype);
+    IR_ASSERT(
+        !detail::derivingWritesPoseInput(excludeArchetype, writeGuard, false),
+        "executeQueryDynamic: a query that excludes C_Settled cannot include a pose input; "
+        "every included component counts as written."
+    );
+    detail::walkQueryNodes(
+        includeArchetype,
+        detail::applyStaticExclusion(excludeArchetype, writeGuard, false),
+        std::forward<PerNodeFn>(body)
+    );
 }
 
 namespace detail {
@@ -649,16 +657,15 @@ void executeQuery(FunctionTick &&tick) {
         detail::ArchetypeFromList<typename Partition::Excluded>::value();
     using IncludedList = detail::StripConst_t<detail::FilterTags_t<QueryComponents...>>;
     IREntity::Archetype includeArchetype = detail::ArchetypeFromList<IncludedList>::value();
-    detail::applyStaticExclusion(
-        includeArchetype,
-        excludeArchetype,
-        detail::guardedWrites<QueryComponents...>(),
-        false,
-        "query"
+    constexpr IREntity::StaticGuard writeGuard = detail::writeGuardOf<QueryComponents...>();
+    IR_ASSERT(
+        !detail::derivingWritesPoseInput(excludeArchetype, writeGuard, false),
+        "executeQuery: a query that excludes C_Settled declares a write to a pose input. "
+        "Declare the input const."
     );
     detail::RunQueryRows<IncludedList>::run(
         includeArchetype,
-        excludeArchetype,
+        detail::applyStaticExclusion(excludeArchetype, writeGuard, false),
         std::forward<FunctionTick>(tick)
     );
 }

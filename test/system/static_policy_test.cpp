@@ -223,6 +223,42 @@ TEST_F(StaticPolicy, ExcludingSettledAfterCreationMakesADerivedWriterDeriving) {
     EXPECT_EQ(visits(system), 2);
 }
 
+TEST_F(StaticPolicy, DeclaredExclusionsSurviveReclassification) {
+    makePopulation();
+    const IREntity::Archetype settledOnly = IREntity::getArchetype<C_Settled>();
+    const IREntity::Archetype both = IREntity::getArchetype<C_Static, C_Settled>();
+    const auto writer = [](const char *name) {
+        return IRSystem::createSystem<C_WorldTransform>(name, [](C_WorldTransform &) {});
+    };
+    for (const bool settledFirst : {false, true}) {
+        const SystemId plain = writer("Plain");
+        const SystemId declared = IRSystem::createSystem<C_WorldTransform, Exclude<C_Static>>(
+            "Declared",
+            [](C_WorldTransform &) {}
+        );
+        const SystemId later = writer("Later");
+        if (settledFirst) {
+            IRSystem::addSystemExcludeTag<C_Settled>(later);
+            IRSystem::addSystemExcludeTag<C_Static>(later);
+        } else {
+            IRSystem::addSystemExcludeTag<C_Static>(later);
+            IRSystem::addSystemExcludeTag<C_Settled>(later);
+        }
+        IRSystem::addSystemExcludeTag<C_Settled>(plain);
+        IRSystem::addSystemExcludeTag<C_Settled>(declared);
+
+        EXPECT_EQ(visits(plain), 2) << "settling rows are visited once it is deriving";
+        EXPECT_EQ(visits(declared), 1) << "the declared C_Static exclusion is kept";
+        EXPECT_EQ(visits(later), 1);
+        for (const SystemId system : {plain, declared, later}) {
+            EXPECT_TRUE(m_systemManager.isDerivingSystem(system));
+        }
+        EXPECT_EQ(m_systemManager.getDeclaredExcludeArchetype(plain), settledOnly);
+        EXPECT_EQ(m_systemManager.getDeclaredExcludeArchetype(declared), both);
+        EXPECT_EQ(m_systemManager.getDeclaredExcludeArchetype(later), both);
+    }
+}
+
 #ifndef IR_RELEASE
 TEST_F(StaticPolicy, ADerivingSystemThatWritesAPoseInputIsARegistrationError) {
     const auto registerBadDeriving = [] {

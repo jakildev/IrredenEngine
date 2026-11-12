@@ -128,6 +128,31 @@ TEST_F(LuaStatic, AnEvalSystemWritesWhatItListsUnlessItIsUnderReads) {
     EXPECT_FALSE(global<bool>("readerWrote")) << "setAt on a reads column raises";
 }
 
+TEST_F(LuaStatic, AnEvalSystemsDeclaredStaticExclusionSurvivesReclassification) {
+    IREntity::createEntity();
+    IREntity::createEntity(C_Static{});
+    IREntity::createEntity(C_Static{}, C_Settled{});
+    ASSERT_TRUE(runOk(R"lua(
+        rows = 0
+        excluding = IRSystem.registerSystem({
+            name = 'LuaExcluding',
+            components = {},
+            reads = { IRComponent.C_LocalTransform },
+            excludes = { IRComponent.C_Static },
+            tick = function(arch) rows = rows + arch.length end,
+        })
+    )lua"));
+    const auto system = static_cast<IRSystem::SystemId>(global<int>("excluding"));
+    IRSystem::addSystemExcludeTag<C_Settled>(system);
+    m_system_manager.executeSystem(system);
+    EXPECT_EQ(global<int>("rows"), 1);
+    EXPECT_TRUE(m_system_manager.isDerivingSystem(system));
+    EXPECT_EQ(
+        m_system_manager.getDeclaredExcludeArchetype(system),
+        (IREntity::getArchetype<C_Static, C_Settled>())
+    );
+}
+
 TEST_F(LuaStatic, LodBandPropertiesResettleASettledOwner) {
     m_lua.registerType<IRMath::Color, IRMath::Color(int, int, int, int)>("Color");
     m_lua.registerType<IRMath::ivec3, IRMath::ivec3(int, int, int)>("ivec3");

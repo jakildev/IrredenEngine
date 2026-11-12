@@ -143,6 +143,7 @@ template <typename Component, typename Function> void forEachComponent(Function 
 
 bool isPureComponent(ComponentId component);
 bool isClearedByForeignMove(ComponentId component);
+bool tracksParentChain(ComponentId component);
 bool isChildOfRelation(RelationId relation);
 NodeId getParentNodeFromRelation(RelationId relation);
 

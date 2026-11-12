@@ -6,7 +6,6 @@
 #include <irreden/system/components/component_static.hpp>
 #include <irreden/system/system_access.hpp>
 
-#include <string_view>
 #include <tuple>
 #include <type_traits>
 
@@ -18,34 +17,50 @@ namespace IRSystem {
 
 namespace detail {
 
-template <typename T> void appendGuardedWrite(IREntity::Archetype &out) {
-    using Bare = std::remove_cvref_t<T>;
-    if constexpr (IREntity::kStaticGuard<Bare> != IREntity::StaticGuard::NONE) {
-        out.insert(IREntity::getComponentType<Bare>());
-    }
+constexpr IREntity::StaticGuard strongerGuard(IREntity::StaticGuard a, IREntity::StaticGuard b) {
+    // INPUT outranks DERIVED outranks NONE.
+    const auto rank = [](IREntity::StaticGuard guard) {
+        return guard == IREntity::StaticGuard::INPUT
+                   ? 2
+                   : (guard == IREntity::StaticGuard::DERIVED ? 1 : 0);
+    };
+    return rank(a) >= rank(b) ? a : b;
 }
 
 template <typename... Extras>
-void appendGuardedWrites(IREntity::Archetype &out, const std::tuple<Extras...> *) {
-    (appendGuardedWrite<Extras>(out), ...);
+constexpr IREntity::StaticGuard extrasWriteGuard(const std::tuple<Extras...> *) {
+    IREntity::StaticGuard guard = IREntity::StaticGuard::NONE;
+    ((guard = strongerGuard(guard, IREntity::kStaticGuard<std::remove_cvref_t<Extras>>)), ...);
+    return guard;
 }
 
-template <typename T> void appendPackWrite(IREntity::Archetype &out) {
+template <typename T> constexpr IREntity::StaticGuard packEntryWriteGuard() {
     if constexpr (IsAlsoWrites<T>::value) {
-        appendGuardedWrites(out, static_cast<const typename IsAlsoWrites<T>::Types *>(nullptr));
-    } else if constexpr (!kIsTag<T> && !std::is_const_v<T>) {
-        appendGuardedWrite<T>(out);
+        return extrasWriteGuard(static_cast<const typename IsAlsoWrites<T>::Types *>(nullptr));
+    } else if constexpr (kIsTag<T> || std::is_const_v<T>) {
+        return IREntity::StaticGuard::NONE;
+    } else {
+        return IREntity::kStaticGuard<std::remove_cvref_t<T>>;
     }
 }
 
-/// The guarded components a registration pack declares a write to: its
-/// non-const component types plus `AlsoWrites<...>`, kept only where
-/// `IREntity::kStaticGuard` is not `NONE`. The guard is read at compile
-/// time, so an unguarded pack resolves no component id here.
-template <typename... Pack> IREntity::Archetype guardedWrites() {
-    IREntity::Archetype out;
-    (appendPackWrite<Pack>(out), ...);
-    return out;
+/// The highest `kStaticGuard` over the components a registration pack
+/// declares a write to: its non-const component types plus
+/// `AlsoWrites<...>`. Compile-time, so it resolves no component id.
+template <typename... Pack> constexpr IREntity::StaticGuard writeGuardOf() {
+    IREntity::StaticGuard guard = IREntity::StaticGuard::NONE;
+    ((guard = strongerGuard(guard, packEntryWriteGuard<Pack>())), ...);
+    return guard;
+}
+
+/// The same reduction for a lane that knows its write set only as ids.
+inline IREntity::StaticGuard writeGuardOf(const IREntity::Archetype &writes) {
+    const IREntity::EntityManager &entities = IREntity::getEntityManager();
+    IREntity::StaticGuard guard = IREntity::StaticGuard::NONE;
+    for (IREntity::ComponentId component : writes) {
+        guard = strongerGuard(guard, entities.staticGuard(component));
+    }
+    return guard;
 }
 
 /// `C_Settled`'s id if any registration has named it, else
@@ -55,65 +70,39 @@ inline IREntity::ComponentId settledComponentOrNull() {
 }
 
 /// A deriving system maintains state derived from a static resident's pose
-/// inputs: it excludes `C_Settled`, or it carries `GatesSettled`.
-inline bool isDeriving(const IREntity::Archetype &exclude, bool gatesSettled) {
+/// inputs: its declared exclusions contain `C_Settled`, or it carries
+/// `GatesSettled`.
+inline bool isDeriving(const IREntity::Archetype &declaredExclude, bool gatesSettled) {
     if (gatesSettled) {
         return true;
     }
     const IREntity::ComponentId settled = settledComponentOrNull();
-    return settled != IREntity::kNullComponent && exclude.contains(settled);
+    return settled != IREntity::kNullComponent && declaredExclude.contains(settled);
 }
 
-/// Adds `C_Static` to `exclude` when the system or query may not match a
-/// static archetype: it writes a pose input, or it writes derived pose and
-/// is not a deriving system. `writes` is the lane's declared write set;
-/// only guarded components in it matter. Returns true when it added the
-/// component. A deriving system that writes a pose input is a registration
-/// error, because it would exclude itself from the rows it must derive.
-inline bool applyStaticExclusion(
-    const IREntity::Archetype &include,
-    IREntity::Archetype &exclude,
-    const IREntity::Archetype &writes,
-    bool gatesSettled = false,
-    std::string_view name = {}
+/// A deriving system that writes a pose input would exclude itself from
+/// the rows it must derive: a registration error every lane asserts on.
+inline bool derivingWritesPoseInput(
+    const IREntity::Archetype &declaredExclude, IREntity::StaticGuard writeGuard, bool gatesSettled
 ) {
-    IREntity::EntityManager &entities = IREntity::getEntityManager();
-    IREntity::ComponentId inputWrite = IREntity::kNullComponent;
-    bool writesDerived = false;
-    for (IREntity::ComponentId component : writes) {
-        const IREntity::StaticGuard guard = entities.staticGuard(component);
-        if (guard == IREntity::StaticGuard::INPUT) {
-            inputWrite = component;
-        } else if (guard == IREntity::StaticGuard::DERIVED) {
-            writesDerived = true;
-        }
+    return writeGuard == IREntity::StaticGuard::INPUT && isDeriving(declaredExclude, gatesSettled);
+}
+
+/// The effective exclude archetype of a system or query: what it declared,
+/// plus `C_Static` when it may not match a static archetype. That is when
+/// it writes a pose input, or writes derived pose without being a deriving
+/// system. A pure function of its arguments, so it is re-run whenever the
+/// declared set changes.
+inline IREntity::Archetype applyStaticExclusion(
+    const IREntity::Archetype &declaredExclude, IREntity::StaticGuard writeGuard, bool gatesSettled
+) {
+    IREntity::Archetype effective = declaredExclude;
+    if (writeGuard == IREntity::StaticGuard::INPUT ||
+        (writeGuard == IREntity::StaticGuard::DERIVED &&
+         !isDeriving(declaredExclude, gatesSettled))) {
+        effective.insert(IREntity::getComponentType<IRComponents::C_Static>());
     }
-    if (inputWrite == IREntity::kNullComponent && !writesDerived) {
-        return false;
-    }
-    const bool deriving = isDeriving(exclude, gatesSettled);
-    IR_ASSERT(
-        !(deriving && inputWrite != IREntity::kNullComponent),
-        "System '{}' is a deriving system (it excludes C_Settled or carries "
-        "GatesSettled) and declares a write to pose input component {}. A pose "
-        "writer never matches a static entity, so it could not derive the rows "
-        "it claims. Declare the input const.",
-        name,
-        IREntity::makeComponentString(IREntity::Archetype{inputWrite})
-    );
-    if (deriving && inputWrite == IREntity::kNullComponent) {
-        return false;
-    }
-    const IREntity::ComponentId staticTag = IREntity::getComponentType<IRComponents::C_Static>();
-    IR_ASSERT(
-        !include.contains(staticTag),
-        "System '{}' includes C_Static and declares a write to a guarded pose "
-        "component without being a deriving system, so it can never match. "
-        "Declare the pose components const, or exclude C_Settled if the system "
-        "derives from them.",
-        name
-    );
-    return exclude.insert(staticTag).second;
+    return effective;
 }
 
 } // namespace detail

@@ -94,8 +94,9 @@ inline FreezeResult nodeEligibility(const IREntity::ArchetypeNode *node) {
     const IREntity::EntityId parent =
         IREntity::getEntityManager().getParentEntityFromArchetype(node->type_);
     if (parent != IREntity::kNullEntity) {
+        // A child that outlived its parent still names it, and is a root.
         const IREntity::EntityRecord *parentRecord = placedRecord(parent);
-        if (parentRecord == nullptr || !nodeHas(parentRecord->archetypeNode, staticTagOrNull())) {
+        if (parentRecord != nullptr && !nodeHas(parentRecord->archetypeNode, staticTagOrNull())) {
             return FreezeResult::PARENT_NOT_STATIC;
         }
     }
@@ -215,6 +216,8 @@ inline FreezeResult freeze(IREntity::EntityId entity) {
 /// Make a static entity dynamic again: removes both tags at the next
 /// structural flush, in one archetype move, for the entity and every static
 /// descendant. A no-op on a dynamic entity. Main thread or worker tick.
+/// Changing an entity's parent does not need it: the entity layer resettles
+/// the static subtree inside the call.
 inline void thaw(IREntity::EntityId entity) {
     if (!isStatic(entity)) {
         return;
@@ -253,37 +256,25 @@ inline void resettle(IREntity::EntityId entity) {
 
 namespace detail {
 
-// Reparenting a static entity, or destroying its parent, makes its world
-// transform depend on something that is no longer fixed. A settling row
-// the drain has not stamped yet is exempt: it is still being built, and the
-// drain checks its parent when it stamps it.
-inline void armHooks(IRComponents::C_StaticState &drainState) {
-    if (drainState.hooksArmed_) {
+// Makes an entity the drain found ineligible dynamic, with every static
+// descendant: a descendant's world transform would depend on a parent that
+// can now move.
+inline void refuseSubtree(IRComponents::C_StaticState &drainState, IREntity::EntityId entity) {
+    if (!isStatic(entity)) {
         return;
     }
-    drainState.hooksArmed_ = true;
-    IREntity::EntityManager &entities = IREntity::getEntityManager();
-    entities.registerRelationChangeHook([](IREntity::EntityId child) {
-        const IREntity::EntityRecord *record = placedRecord(child);
-        if (record == nullptr || !nodeHas(record->archetypeNode, staticTagOrNull())) {
-            return;
-        }
-        const bool settled = nodeHas(record->archetypeNode, settledTagOrNull());
-        const std::uint64_t stamp =
-            IREntity::getComponentData<IRComponents::C_Static>(record->archetypeNode)[record->row]
-                .settleStamp_;
-        if (settled || stamp != 0) {
-            thaw(child);
-        }
-    });
-    static_cast<void>(entities.registerPreDestroyHook([](IREntity::EntityId destroyed) {
-        for (IREntity::EntityId child : IREntity::getEntityManager().getChildren(destroyed)) {
-            thaw(child);
-        }
-    }));
+    IREntity::getEntityManager().removeComponent<IRComponents::C_Static>(entity);
+    ++drainState.counters_.refused_;
+    for (IREntity::EntityId child : IREntity::getEntityManager().getChildren(entity)) {
+        refuseSubtree(drainState, child);
+    }
 }
 
-// Step 1 of the drain: apply the staged change notes and holds.
+// Step 1 of the drain: apply the staged change notes and holds, then the
+// entity layer's tracked-change log. Every entry that names a static entity
+// restarts its settle stamp, so no row enters the settling state carrying a
+// stamp written before its last change. A row the drain has never stamped
+// is left for the walk, which treats it as new.
 inline void applyNotes(IRComponents::C_StaticState &drainState, std::uint64_t nextRound) {
     IREntity::EntityManager &entities = IREntity::getEntityManager();
     drainState.notes_.clear();
@@ -308,9 +299,11 @@ inline void applyNotes(IRComponents::C_StaticState &drainState, std::uint64_t ne
             }
             continue;
         }
+        std::uint64_t &stamp =
+            IREntity::getComponentData<IRComponents::C_Static>(node)[record->row].settleStamp_;
         if (nodeHas(node, settledTag)) {
-            // Lands in the settling node with a zero stamp, so the walk
-            // below treats it as a new settling row.
+            // Stamped before the removal that returns it to settling.
+            stamp = nextRound;
             entities.removeComponent<IRComponents::C_Settled>(entity);
             ++drainState.counters_.resettled_;
             continue;
@@ -318,8 +311,6 @@ inline void applyNotes(IRComponents::C_StaticState &drainState, std::uint64_t ne
         if (kind == NoteKind::RESETTLED) {
             ++drainState.counters_.resettled_;
         }
-        std::uint64_t &stamp =
-            IREntity::getComponentData<IRComponents::C_Static>(node)[record->row].settleStamp_;
         if (stamp == 0) {
             continue;
         }
@@ -329,6 +320,29 @@ inline void applyNotes(IRComponents::C_StaticState &drainState, std::uint64_t ne
         } else if (kind == NoteKind::CHANGED) {
             ++drainState.counters_.restarted_;
         }
+    }
+
+    // A component attached or detached on a settled entity, a parent
+    // change, a parent's destruction: the entity layer dropped C_Settled
+    // and logged the id. The entity may no longer be eligible.
+    drainState.notes_.clear();
+    entities.takeTrackedChanges(drainState.notes_);
+    for (const IREntity::EntityId entity : drainState.notes_) {
+        const IREntity::EntityRecord *record = placedRecord(entity);
+        if (record == nullptr || !nodeHas(record->archetypeNode, staticTag)) {
+            continue;
+        }
+        std::uint64_t &stamp =
+            IREntity::getComponentData<IRComponents::C_Static>(record->archetypeNode)[record->row]
+                .settleStamp_;
+        if (stamp == 0) {
+            continue;
+        }
+        if (eligibility(*record) != FreezeResult::FROZEN) {
+            refuseSubtree(drainState, entity);
+            continue;
+        }
+        stamp = nextRound;
     }
 }
 
@@ -376,7 +390,6 @@ inline void drain() {
     const std::uint32_t cap =
         IREntity::singleton<IRComponents::C_StaticSettings>().promotionsPerRound_;
     IRComponents::C_StaticState &drainState = detail::state();
-    detail::armHooks(drainState);
     const std::uint64_t roundsCompleted = IRSystem::roundsCompleted();
     const std::uint64_t nextRound = IRSystem::roundsOpened() + 1;
 
@@ -471,8 +484,7 @@ inline void drain() {
     }
 
     for (const IREntity::EntityId entity : drainState.refused_) {
-        entities.removeComponent<IRComponents::C_Static>(entity);
-        ++drainState.counters_.refused_;
+        detail::refuseSubtree(drainState, entity);
     }
 
     if (!candidates.empty()) {
@@ -481,11 +493,6 @@ inline void drain() {
             std::sort_heap(candidates.begin(), candidates.end(), higherStamp);
         }
         for (const IRComponents::C_StaticState::Candidate &candidate : candidates) {
-            // A settled row carries a zero stamp, so whatever returns it to
-            // settling is seen by the walk above as a new row.
-            const IREntity::EntityRecord &record = entities.getRecord(candidate.entity_);
-            IREntity::getComponentData<IRComponents::C_Static>(record.archetypeNode)[record.row]
-                .settleStamp_ = 0;
             entities.setComponent(candidate.entity_, IRComponents::C_Settled{});
         }
         drainState.promotedThisRound_ += candidates.size();

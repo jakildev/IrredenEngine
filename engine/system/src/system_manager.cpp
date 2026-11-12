@@ -75,12 +75,13 @@ SystemId SystemManager::createSystemDynamic(
 ) {
     // A runtime-typed system cannot say which columns its body writes, so
     // every included component counts as written unless listed read-only.
-    Archetype staticWrites;
+    Archetype writes;
     for (ComponentId component : includeArchetype) {
         if (!readOnly.contains(component)) {
-            staticWrites.insert(component);
+            writes.insert(component);
         }
     }
+    const IREntity::StaticGuard writeGuard = detail::writeGuardOf(writes);
     m_systemNames.emplace_back(C_Name{std::move(name)});
     SystemId newSystemId = m_nextSystemId++;
 
@@ -115,51 +116,49 @@ SystemId SystemManager::createSystemDynamic(
     m_grainSize.emplace_back(kDefaultGrainSize);
     m_systemAccess.emplace_back();
     emplaceCadenceState(cadence, offset);
-    emplaceStaticPolicy(newSystemId, std::move(staticWrites), false);
+    emplaceStaticPolicy(newSystemId, writeGuard, false);
     return newSystemId;
 }
 
 // Static-resident matching policy and rounds -----------------------------
 
 void SystemManager::emplaceStaticPolicy(
-    SystemId system, Archetype staticWrites, bool gatesSettled
+    SystemId system, IREntity::StaticGuard writeGuard, bool gatesSettled
 ) {
-    m_staticWrites.emplace_back(std::move(staticWrites));
+    m_writeGuard.emplace_back(writeGuard);
     m_gatesSettled.emplace_back(gatesSettled ? 1 : 0);
-    m_policyExcludesStatic.emplace_back(0);
+    IR_ASSERT(
+        !detail::derivingWritesPoseInput(
+            m_ticks[system].declaredExcludeArchetype_,
+            writeGuard,
+            gatesSettled
+        ),
+        "System '{}' is a deriving system (it excludes C_Settled or carries GatesSettled) "
+        "and declares a write to a pose input (C_LocalTransform or C_Modifiers). A pose "
+        "writer never matches a static entity, so it could not derive the rows it claims. "
+        "Declare the input const.",
+        m_systemNames[system].name_
+    );
     C_SystemEvent<TICK> &tick = m_ticks[system];
-    m_policyExcludesStatic[system] = detail::applyStaticExclusion(
-                                         tick.archetype_,
-                                         tick.excludeArchetype_,
-                                         m_staticWrites[system],
-                                         gatesSettled,
-                                         m_systemNames[system].name_
-                                     )
-                                         ? 1
-                                         : 0;
+    tick.excludeArchetype_ =
+        detail::applyStaticExclusion(tick.declaredExcludeArchetype_, writeGuard, gatesSettled);
 }
 
-void SystemManager::refreshStaticPolicy(SystemId system) {
+void SystemManager::rebuildEffectiveExclude(SystemId system) {
     C_SystemEvent<TICK> &tick = m_ticks[system];
-    if (m_policyExcludesStatic[system] != 0) {
-        tick.excludeArchetype_.erase(IREntity::getComponentType<IRComponents::C_Static>());
-        m_policyExcludesStatic[system] = 0;
-    }
-    m_policyExcludesStatic[system] = detail::applyStaticExclusion(
-                                         tick.archetype_,
-                                         tick.excludeArchetype_,
-                                         m_staticWrites[system],
-                                         m_gatesSettled[system] != 0,
-                                         m_systemNames[system].name_
-                                     )
-                                         ? 1
-                                         : 0;
+    tick.excludeArchetype_ = detail::applyStaticExclusion(
+        tick.declaredExcludeArchetype_,
+        m_writeGuard[system],
+        m_gatesSettled[system] != 0
+    );
     abandonRound();
 }
 
 bool SystemManager::isDerivingSystem(SystemId system) const {
-    return system < m_ticks.size() &&
-           detail::isDeriving(m_ticks[system].excludeArchetype_, m_gatesSettled[system] != 0);
+    return system < m_ticks.size() && detail::isDeriving(
+                                          m_ticks[system].declaredExcludeArchetype_,
+                                          m_gatesSettled[system] != 0
+                                      );
 }
 
 void SystemManager::seedRoundCountersForTest(std::uint64_t value) {

@@ -108,7 +108,7 @@ class SystemManager {
         std::uint32_t cadence = 1,
         std::uint32_t offset = 0,
         SystemAccess accessDescriptor = {},
-        Archetype staticWrites = {}
+        IREntity::StaticGuard writeGuard = IREntity::StaticGuard::NONE
     ) {
         m_systemNames.emplace_back(C_Name{name});
         SystemId newSystemId = m_nextSystemId++;
@@ -125,7 +125,7 @@ class SystemManager {
         m_grainSize.emplace_back(grainSize > 0 ? grainSize : 1);
         m_systemAccess.emplace_back(accessDescriptor);
         emplaceCadenceState(cadence, offset);
-        emplaceStaticPolicy(newSystemId, std::move(staticWrites), accessDescriptor.gatesSettled_);
+        emplaceStaticPolicy(newSystemId, writeGuard, accessDescriptor.gatesSettled_);
         return newSystemId;
     }
 
@@ -197,14 +197,16 @@ class SystemManager {
 
     template <typename Tag> void addSystemTag(SystemId system) {
         m_ticks[system].archetype_.insert(IREntity::getComponentType<Tag>());
+        rebuildEffectiveExclude(system);
     }
 
-    /// Re-runs the static-resident matching policy: excluding `C_Settled`
-    /// turns a derived-pose writer into a deriving system, which then
-    /// matches settling rows and joins the round.
+    /// Adds to the system's declared exclusions and rebuilds the effective
+    /// filter from them. Excluding `C_Settled` turns a derived-pose writer
+    /// into a deriving system, which then matches settling rows and joins
+    /// the round; an exclusion the author declared is never dropped.
     template <typename Tag> void addSystemExcludeTag(SystemId system) {
-        m_ticks[system].excludeArchetype_.insert(IREntity::getComponentType<Tag>());
-        refreshStaticPolicy(system);
+        m_ticks[system].declaredExcludeArchetype_.insert(IREntity::getComponentType<Tag>());
+        rebuildEffectiveExclude(system);
     }
 
     /// Asserts on out-of-range SystemId (debug), same as `replaceSystemBody`
@@ -422,8 +424,13 @@ class SystemManager {
     bool isInPipeline(IRTime::Events event, SystemId system) const;
 
     /// Whether `system` is a deriving system for static residents: its
-    /// exclude archetype contains `C_Settled`, or it carries `GatesSettled`.
+    /// declared exclusions contain `C_Settled`, or it carries `GatesSettled`.
     bool isDerivingSystem(SystemId system) const;
+
+    /// What the author declared for `system`, without the policy's entry.
+    const Archetype &getDeclaredExcludeArchetype(SystemId system) const {
+        return m_ticks[system].declaredExcludeArchetype_;
+    }
 
     /// Round counters for static residents. A round is one completed
     /// dispatch of every deriving group of every registered pipeline, in
@@ -497,13 +504,11 @@ class SystemManager {
     std::vector<int> m_grainSize;
     std::vector<SystemAccess> m_systemAccess;
 
-    // Static-resident matching policy, parallel to m_ticks. m_staticWrites
-    // is the guarded write set the lane declared; m_policyExcludesStatic
-    // records that the policy, not the registration, put C_Static in the
-    // exclude archetype, so a re-run can take it back out.
-    std::vector<Archetype> m_staticWrites;
+    // Static-resident matching policy inputs, parallel to m_ticks and
+    // recorded once at creation: the highest guard over the lane's write
+    // set, and whether the system carries GatesSettled.
+    std::vector<IREntity::StaticGuard> m_writeGuard;
     std::vector<std::uint8_t> m_gatesSettled;
-    std::vector<std::uint8_t> m_policyExcludesStatic;
 
     // Round tracking. Main-thread state: written at pipeline start and once
     // per group after its dispatch has joined, never from a tick.
@@ -520,8 +525,10 @@ class SystemManager {
     std::size_t m_roundCursor{0};
     std::vector<SystemId> m_roundPending;
 
-    void emplaceStaticPolicy(SystemId system, Archetype staticWrites, bool gatesSettled);
-    void refreshStaticPolicy(SystemId system);
+    void emplaceStaticPolicy(SystemId system, IREntity::StaticGuard writeGuard, bool gatesSettled);
+    // Rebuilds excludeArchetype_ from the declared set and the recorded
+    // inputs; every mutation of a system's filters goes through it.
+    void rebuildEffectiveExclude(SystemId system);
     // A change to which systems a round covers abandons the open round.
     void abandonRound();
     void rebuildDerivingGroups();

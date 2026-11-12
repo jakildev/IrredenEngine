@@ -122,15 +122,109 @@ TEST_F(StaticEntityLayer, EntityNotesDrainInPushOrderAndOnlyOnce) {
     EXPECT_EQ(notes.size(), 2u);
 }
 
-TEST_F(StaticEntityLayer, RelationChangeHookFiresBeforeTheMoveWithTheChild) {
-    std::vector<EntityId> seen;
-    m_entityManager.registerRelationChangeHook([&seen](EntityId child) { seen.push_back(child); });
-    const EntityId parent = IREntity::createEntity();
-    const EntityId child = IREntity::createEntity();
-    IREntity::setParent(child, parent);
-    IREntity::setParent(child, parent);
-    m_entityManager.clearParent(child);
-    EXPECT_EQ(seen, (std::vector<EntityId>{child, child})) << "an unchanged parent fires nothing";
+TEST_F(StaticEntityLayer, AForeignMoveLogsTheEntityAndANamedOneDoesNot) {
+    std::vector<EntityId> log;
+    const EntityId entity = IREntity::createEntity(C_Static{}, C_Settled{});
+    IREntity::setComponent(entity, C_LayerOther{1});
+    m_entityManager.takeTrackedChanges(log);
+    EXPECT_EQ(log, (std::vector<EntityId>{entity}));
+
+    log.clear();
+    IREntity::setComponent(entity, C_Settled{});
+    IREntity::removeComponent<C_Settled>(entity);
+    IREntity::removeComponent<C_LayerOther>(entity);
+    m_entityManager.takeTrackedChanges(log);
+    EXPECT_TRUE(log.empty()) << "nothing was dropped by a move that did not name it";
+}
+
+TEST_F(StaticEntityLayer, AParentChangeDropsSettledDownTheTrackedSubtreeAndLogsIt) {
+    const EntityId root = IREntity::createEntity(C_Static{}, C_Settled{});
+    const EntityId other = IREntity::createEntity(C_Static{}, C_Settled{});
+    const EntityId child = IREntity::createEntity(C_Static{});
+    const EntityId grandchild = IREntity::createEntity(C_Static{});
+    const EntityId untracked = IREntity::createEntity(C_LayerOther{2});
+    const EntityId below = IREntity::createEntity(C_Static{});
+    IREntity::setParent(child, root);
+    IREntity::setParent(grandchild, child);
+    IREntity::setParent(untracked, child);
+    IREntity::setParent(below, untracked);
+    for (const EntityId entity : {child, grandchild, below}) {
+        IREntity::setComponent(entity, C_Settled{});
+    }
+    std::vector<EntityId> log;
+    m_entityManager.takeTrackedChanges(log);
+    log.clear();
+    const auto settled = [](EntityId entity) {
+        return IREntity::getComponentOptional<C_Settled>(entity).has_value();
+    };
+
+    IREntity::setParent(child, root);
+    m_entityManager.takeTrackedChanges(log);
+    EXPECT_TRUE(log.empty()) << "a call that leaves the link as it was does nothing";
+    EXPECT_TRUE(settled(child));
+
+    IREntity::setParent(child, other);
+    m_entityManager.takeTrackedChanges(log);
+    EXPECT_EQ(log, (std::vector<EntityId>{child, grandchild}));
+    EXPECT_FALSE(settled(child));
+    EXPECT_FALSE(settled(grandchild));
+    EXPECT_TRUE(settled(root));
+    EXPECT_TRUE(settled(other));
+    EXPECT_TRUE(settled(below)) << "the walk stops at a node that does not track its chain";
+    EXPECT_TRUE(IREntity::getComponentOptional<C_Static>(grandchild).has_value());
+
+    // Destroying a parent handles the children that still name it.
+    for (const EntityId entity : {child, grandchild}) {
+        IREntity::setComponent(entity, C_Settled{});
+    }
+    log.clear();
+    m_entityManager.destroyEntity(other);
+    m_entityManager.takeTrackedChanges(log);
+    EXPECT_EQ(log, (std::vector<EntityId>{child, grandchild}));
+    EXPECT_FALSE(settled(child));
+    EXPECT_FALSE(settled(grandchild));
+}
+
+TEST_F(StaticEntityLayer, ReparentingADynamicSubtreeTracksNothing) {
+    const EntityId first = IREntity::createEntity();
+    const EntityId second = IREntity::createEntity();
+    const EntityId top = IREntity::createEntity(C_LayerOther{0});
+    IREntity::setParent(top, first);
+    std::vector<EntityId> subtree;
+    for (int i = 0; i < 10000; ++i) {
+        subtree.push_back(IREntity::createEntity(C_LayerOther{i}));
+        IREntity::setParent(subtree.back(), top);
+    }
+    const IREntity::ArchetypeNode *nodeBefore =
+        m_entityManager.getRecord(subtree.front()).archetypeNode;
+    IREntity::setParent(top, second);
+    std::vector<EntityId> log;
+    m_entityManager.takeTrackedChanges(log);
+    EXPECT_TRUE(log.empty());
+    EXPECT_EQ(m_entityManager.getRecord(subtree.front()).archetypeNode, nodeBefore);
+    EXPECT_EQ(m_entityManager.getRecord(subtree.back()).archetypeNode, nodeBefore);
+}
+
+TEST_F(StaticEntityLayer, DestroyingATreeOrTheWorldTracksNoSurvivor) {
+    const EntityId root = IREntity::createEntity(C_Static{}, C_Settled{});
+    const EntityId child = IREntity::createEntity(C_Static{}, C_Settled{});
+    IREntity::setParent(child, root);
+    IREntity::setComponent(child, C_Settled{});
+    std::vector<EntityId> log;
+    m_entityManager.takeTrackedChanges(log);
+    log.clear();
+    m_entityManager.destroyTree(root);
+    m_entityManager.takeTrackedChanges(log);
+    EXPECT_TRUE(log.empty());
+
+    const EntityId secondRoot = IREntity::createEntity(C_Static{}, C_Settled{});
+    const EntityId secondChild = IREntity::createEntity(C_Static{});
+    IREntity::setParent(secondChild, secondRoot);
+    m_entityManager.takeTrackedChanges(log);
+    log.clear();
+    m_entityManager.destroyAllEntities();
+    m_entityManager.takeTrackedChanges(log);
+    EXPECT_TRUE(log.empty());
 }
 
 } // namespace

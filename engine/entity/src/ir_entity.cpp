@@ -64,6 +64,10 @@ bool isClearedByForeignMove(ComponentId component) {
     return getEntityManager().isClearedByForeignMove(component);
 }
 
+bool tracksParentChain(ComponentId component) {
+    return getEntityManager().tracksParentChain(component);
+}
+
 bool isChildOfRelation(RelationId relation) {
     return getEntityManager().isChildOfRelation(relation);
 }
