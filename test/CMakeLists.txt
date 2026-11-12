@@ -66,6 +66,7 @@ add_executable(IrredenEngineTest
   ecs/rotation_target_test.cpp
   ecs/sort_archetype_relational_test.cpp
   ecs/store_tie_signal_test.cpp
+  ecs/voxel_set_children_render_placement_test.cpp
   ecs/parallel_spawn_test.cpp
   ecs/skeleton_components_test.cpp
   ecs/skeleton_skinning_test.cpp

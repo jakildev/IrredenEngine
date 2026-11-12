@@ -1933,10 +1933,11 @@ void initSystems() {
     // multi-system parallel group: its inner parallelFor would be asked to
     // fan out from a worker thread, which
     // SystemManager::validateAllPipelineGroups rejects at boot. Per-system
-    // data-parallelism supersedes task-parallel co-execution. The three trailing systems are SERIAL
-    // and ordered as a producer→consumer chain: PERIODIC_IDLE_POSITION_OFFSET reads C_PeriodicIdle
-    // (after PERIODIC_IDLE), then PROPAGATE_TRANSFORM and UPDATE_VOXEL_SET_CHILDREN run in sequence
-    // on C_WorldTransform.
+    // data-parallelism supersedes task-parallel co-execution. The groups run in order as a
+    // producer→consumer chain: PERIODIC_IDLE_POSITION_OFFSET reads C_PeriodicIdle (after
+    // PERIODIC_IDLE), then PROPAGATE_TRANSFORM composes C_WorldTransform, which the fog reveal
+    // systems read. UPDATE_VOXEL_SET_CHILDREN copies that transform into the pool in RENDER, so
+    // it runs once per rendered frame however many fixed updates the frame ran.
     std::vector<std::vector<IRSystem::SystemId>> updateGroups = {
         {IRSystem::createSystem<IRSystem::PERIODIC_IDLE>()},
         {IRSystem::createSystem<IRSystem::MODIFIER_DECAY>()},
@@ -1947,7 +1948,6 @@ void initSystems() {
         updateGroups.push_back({id});
     }
     g_fogRevealEvalId = IRSystem::findSystem(IRSystem::FOG_REVEAL_EVAL);
-    updateGroups.push_back({IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()});
     IRSystem::registerPipelineGroups(IRTime::Events::UPDATE, updateGroups);
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
@@ -1965,6 +1965,8 @@ void initSystems() {
         renderPipeline.end(),
         {
             IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            // Once per rendered frame, ahead of every reader of pool positions.
+            IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
             IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
             IRSystem::createSystem<IRSystem::FOG_LOS_BUILD>(),
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),

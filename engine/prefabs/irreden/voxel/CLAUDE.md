@@ -71,12 +71,12 @@ out-of-range writes are errors. Use `sdf_fill.hpp` for in-place fills and
 
 ## Transform and revoxelization pipeline
 
-- `UPDATE_VOXEL_SET_CHILDREN` is translate-only: it copies the composed
-  `C_WorldTransform.translation_` into pool globals. Any transform writer,
-  modifier resolver, and `PROPAGATE_TRANSFORM` must run before it or visible
-  voxels lag one frame. Visible sets upload every frame; only the shared
-  shadow-feeder cull gate skips work. Its parallel workers write disjoint spans
-  and merge queued-position ranges in `endTick`.
+- `UPDATE_VOXEL_SET_CHILDREN` copies only the composed `C_WorldTransform.translation_` to pool globals,
+  after every transform writer, modifier resolver and `PROPAGATE_TRANSFORM`. It runs in UPDATE, or in
+  RENDER ahead of the first pool-position reader (once per rendered frame; the GRID rebuild and seed
+  systems ordered against it move too; `test/ecs/voxel_set_children_render_placement_test.cpp`).
+  Visible sets upload every tick; only the shared shadow-feeder cull gate skips work. Its parallel
+  workers write disjoint spans and merge queued-position ranges in `endTick`.
 - `REBUILD_GRID_VOXELS` runs after that baseline update for explicit GRID entities, inverse-
   mapping dest cells into source occupancy (forward scatter leaves holes); aliasing is first-wins.
   It emits every exposed dest cell; interior cells fill what remains. `allocatedVoxels_` (resident
@@ -102,7 +102,7 @@ out-of-range writes are errors. Use `sdf_fill.hpp` for in-place fills and
   cells change discontinuously at half-integer crossings. Do not add sticky
   cells or hysteresis, which cache last-frame state as a dirty flag.
 
-Any UPDATE system that writes `pool.getPositionGlobals()` must cull with
+Any system that writes `pool.getPositionGlobals()` must cull with
 `IRPrefab::SunShadow::shadowFeederCullViewport`, not the narrower render
 viewport. The shadow bake reads the widened area; using the render viewport
 freezes off-screen casters' pool positions and therefore their shadows.

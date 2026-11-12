@@ -460,7 +460,6 @@ void registerLuaBindings() {
             IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
         };
         updatePipeline.splice(updatePipeline.end(), IRPrefab::Fog::revealSystems());
-        updatePipeline.push_back(IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>());
         IRSystem::registerPipeline(IRTime::Events::UPDATE, updatePipeline);
         IRSystem::registerPipeline(
             IRTime::Events::INPUT,
@@ -472,6 +471,8 @@ void registerLuaBindings() {
             renderPipeline.end(),
             {
                 IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+                // Once per rendered frame, ahead of every reader of pool positions.
+                IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
                 IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
                 IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
                 IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
