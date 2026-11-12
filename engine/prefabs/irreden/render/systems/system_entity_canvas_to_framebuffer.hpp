@@ -578,7 +578,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         SystemId s = registerSystem<
             ENTITY_CANVAS_TO_FRAMEBUFFER,
             C_EntityCanvas,
-            C_WorldTransform,
+            const C_WorldTransform,
             AlsoWrites<C_HitBox2D>>("EntityCanvasToFramebuffer");
         IRRender::tagGpuStage(s, "entityCanvasToFb");
         getSystemParams<System<ENTITY_CANVAS_TO_FRAMEBUFFER>>(s)->gatherFilterDiagnostic_ =

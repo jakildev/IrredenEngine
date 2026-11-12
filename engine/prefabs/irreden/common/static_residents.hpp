@@ -147,6 +147,36 @@ inline IRComponents::C_StaticState &state() {
     return IREntity::singleton<IRComponents::C_StaticState>();
 }
 
+// A global modifier changed while settled entities exist: their resolved
+// fields keep the values from their last round, by contract. Logged once
+// per field in a build with logging, so the limit is visible where it bites.
+inline void warnGlobalChangeMissesSettled([[maybe_unused]] IRComponents::FieldBindingId field) {
+#ifndef IR_RELEASE
+    IREntity::EntityManager &entities = IREntity::getEntityManager();
+    const IREntity::ComponentId settledTag = settledTagOrNull();
+    if (settledTag == IREntity::kNullComponent ||
+        IREntity::queryArchetypeNodesSimple(IREntity::Archetype{settledTag}).empty()) {
+        return;
+    }
+    const IREntity::ComponentId stateType =
+        entities.findComponentType<IRComponents::C_StaticState>();
+    if (stateType == IREntity::kNullComponent ||
+        entities.getSingletonByComponentIdOrNull(stateType) == IREntity::kNullEntity) {
+        return;
+    }
+    std::vector<IRComponents::FieldBindingId> &warned = state().warnedGlobalFields_;
+    if (std::find(warned.begin(), warned.end(), field) != warned.end()) {
+        return;
+    }
+    warned.push_back(field);
+    IRE_LOG_WARN(
+        "A global modifier on field {} changed while settled static entities exist; it does "
+        "not reach them. Thaw an entity that needs it.",
+        field
+    );
+#endif
+}
+
 } // namespace detail
 
 /// True while the entity carries `C_Static`, settling or settled.

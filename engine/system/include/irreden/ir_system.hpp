@@ -272,7 +272,7 @@ template <typename T, typename... Cs> struct MakeMemberTickFn<T, TypeList<Cs...>
                     std::vector<EntityId> &ids,
                     std::vector<Cs> &...cols
                 ) { s.tick(a, ids, cols...); },
-                "registerSystem<N, ..., GatesSettled>: System<N> must declare "
+                "registerSystem<N, ...>: a GatesSettled or kWholeNodeTick System<N> must declare "
                 "tick(const Archetype&, std::vector<EntityId>&, std::vector<Cs>&...)."
             );
             return [p](const Archetype &a, std::vector<EntityId> &ids, std::vector<Cs> &...cols) {
@@ -359,6 +359,22 @@ template <typename T> constexpr int grainSizeOf() {
     }
 }
 
+// `static constexpr bool kWholeNodeTick = true` on a System<N> registers its
+// per-archetype `tick` even when it also declares a row-form overload for
+// its own use: the system decides something once per archetype node.
+template <typename T>
+concept HasWholeNodeTickMember = requires {
+    { T::kWholeNodeTick } -> std::convertible_to<bool>;
+};
+
+template <typename T> constexpr bool wholeNodeTickOf() {
+    if constexpr (HasWholeNodeTickMember<T>) {
+        return T::kWholeNodeTick;
+    } else {
+        return false;
+    }
+}
+
 // Detect `static constexpr std::uint32_t kCadence` / `kCadenceOffset`
 // members on a System<N> specialization, mirroring kConcurrency / kGrainSize.
 // Absent → cadence 1 (every tick) / offset 0, so every legacy spec is
@@ -437,9 +453,10 @@ registerSystem(std::string name, RelationParams<RelationComponents...> relationP
     auto instance = std::make_unique<SystemT>();
     SystemT *p = instance.get();
 
-    constexpr bool gatesSettled = (detail::IsGatesSettledTag<Components>::value || ...);
+    constexpr bool wholeNodeTick = detail::wholeNodeTickOf<SystemT>() ||
+                                   (detail::IsGatesSettledTag<Components>::value || ...);
     auto tickFn =
-        detail::MakeMemberTickFn<SystemT, IncludedList>::template build<gatesSettled>(p);
+        detail::MakeMemberTickFn<SystemT, IncludedList>::template build<wholeNodeTick>(p);
     auto beginFn = detail::makeMemberBeginTickFn<SystemT>(p);
     auto endFn = detail::makeMemberEndTickFn<SystemT>(p);
     auto relationFn = detail::makeMemberRelationTickFn<SystemT, RelationComponents...>(p);

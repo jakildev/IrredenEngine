@@ -48,6 +48,8 @@ struct C_StaticState {
     std::vector<IREntity::EntityId> notes_;
     std::vector<Candidate> candidates_;
     std::vector<IREntity::EntityId> refused_;
+    // Modifier field ids already warned about in `warnGlobalChangeMissesSettled`.
+    std::vector<std::uint16_t> warnedGlobalFields_;
 };
 
 } // namespace IRComponents

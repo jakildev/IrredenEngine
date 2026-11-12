@@ -127,7 +127,7 @@ template <> struct System<SYNC_VIEWPORT_SUBJECTS> {
             SYNC_VIEWPORT_SUBJECTS,
             IRComponents::C_ViewportSubject,
             IRComponents::C_VoxelSetNew,
-            IRComponents::C_WorldTransform>("SyncViewportSubjects");
+            const IRComponents::C_WorldTransform>("SyncViewportSubjects");
     }
 };
 

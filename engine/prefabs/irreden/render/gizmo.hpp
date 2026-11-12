@@ -26,6 +26,7 @@
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_modifiers.hpp>
+#include <irreden/common/static_residents.hpp>
 #include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
@@ -287,6 +288,8 @@ inline IREntity::EntityId createTranslateGizmo(IREntity::EntityId parent = IREnt
 inline IREntity::EntityId
 createTranslateGizmoForAnchor(IREntity::EntityId anchor, float viewClearance = 0.0f) {
     using namespace detail;
+    // A drag writes the anchor's own local transform.
+    IRPrefab::Static::thaw(anchor);
     spawnTranslateArrows(
         anchor,
         "GizmoAnchorTranslateShaft",
@@ -317,6 +320,7 @@ inline IREntity::EntityId createRotateGizmo(IREntity::EntityId parent = IREntity
 inline IREntity::EntityId
 createRotateGizmoForAnchor(IREntity::EntityId anchor, float viewClearance = 0.0f) {
     using namespace detail;
+    IRPrefab::Static::thaw(anchor);
     spawnRotateRings(anchor, "GizmoAnchorRotateRing", viewClearance);
     return anchor;
 }

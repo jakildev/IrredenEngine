@@ -158,7 +158,7 @@ template <> struct System<CANVAS_RESIDENCY> {
         return registerSystem<
             CANVAS_RESIDENCY,
             IRComponents::C_CanvasResidency,
-            IRComponents::C_WorldTransform,
+            const IRComponents::C_WorldTransform,
             IRComponents::C_RotationMode>("CanvasResidency");
     }
 };

@@ -21,6 +21,7 @@
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/common/static_residents.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/canvas_part.hpp>
 #include <irreden/render/canvas_pose.hpp>
@@ -159,6 +160,9 @@ setMode(IREntity::EntityId entity, IRComponents::RotationMode newMode, SetModeOp
     using IRComponents::C_LocalTransform;
     using IRComponents::C_RotationMode;
     using IRComponents::C_VoxelSetNew;
+
+    // A static resident is GRID only; changing the mode makes it dynamic.
+    IRPrefab::Static::thaw(entity);
 
     // Before any component pointer is taken: dropping the membership is a
     // structural change.
