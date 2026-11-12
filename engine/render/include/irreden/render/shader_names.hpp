@@ -74,6 +74,11 @@ const char *const kFileCompPerAxisCellCompact = "shaders/c_per_axis_cell_compact
 // lighting / resolve stages indirect-dispatch over only occupied cells. Split
 // out of the compaction kernel to keep that hot full-grid scan barrier-free.
 const char *const kFileCompPerAxisCellFinalize = "shaders/c_per_axis_cell_finalize.glsl";
+// Resets each per-axis store at the cells the previous rotating frame's
+// compaction listed (colour, distance, entity id and, on Metal, the distance's
+// image-atomic scratch). Metal mirror in metal/c_per_axis_cell_clear.metal
+// (registered in threadgroupSizeForFunctionName + functionUsesImageAtomicScratch).
+const char *const kFileCompPerAxisCellClear = "shaders/c_per_axis_cell_clear.glsl";
 
 const char *const kFileCompVoxelToTrixelStage1 = "shaders/c_voxel_to_trixel_stage_1.glsl";
 // The feeder-pass compile-time specialization (IR_FEEDER_PASS 1) is a second

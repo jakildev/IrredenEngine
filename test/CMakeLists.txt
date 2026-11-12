@@ -124,6 +124,7 @@ add_executable(IrredenEngineTest
   render/fog_seams_test.cpp
   render/fog_subject_adopt_test.cpp
   render/fog_surface_composition_test.cpp
+  render/occlusion_lag_source_test.cpp
   render/per_axis_canvas_lifecycle_test.cpp
   render/per_axis_canvas_size_test.cpp
   render/per_axis_cast_subcell_test.cpp

@@ -214,6 +214,7 @@ TEST_F(GpuComputeDispatchTest, DeviceUnbindClearsIndexedStorageBinding) {
 // bootstrapHeadlessRenderDevice() — device + command queue, no swapchain — then
 // drives the real ShaderProgram / Texture2D / dispatchCompute path.
 
+#include <irreden/ir_constants.hpp>
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/framebuffer.hpp>
 #include <irreden/render/ir_render_enums.hpp>
@@ -1138,6 +1139,116 @@ TEST_F(MetalGpuComputeDispatchTest, SecondDispatchSeesFirstDispatchDistanceWrite
     EXPECT_EQ(wrongReads, 0u) << wrongReads
                               << " texels read back neither their written linear index "
                                  "nor the clear sentinel.";
+}
+
+// c_per_axis_cell_clear resets a per-axis store at exactly the listed cells:
+// colour, entity id, the R32I distance texture AND its image-atomic scratch,
+// which the next frame's store taps atomic-min into. Unlisted cells keep their
+// seeded values, so a kernel that cleared too much fails as surely as one that
+// missed the scratch.
+TEST_F(MetalGpuComputeDispatchTest, PerAxisCellClearResetsListedCellsAndTheirScratch) {
+    using namespace IRRender;
+
+    constexpr std::int32_t kPerAxisEmpty = IRConstants::kPerAxisTrixelDistanceEmpty;
+    constexpr std::uint32_t kCompactedBinding = 25;
+    constexpr std::uint32_t kCellArgsBinding = 26;
+    constexpr std::size_t kVisibleCountWord = 8 + 3;
+
+    Texture2D colors{TextureKind::TEXTURE_2D, kTexDim, kTexDim, TextureFormat::RGBA8};
+    Texture2D distances{TextureKind::TEXTURE_2D, kTexDim, kTexDim, TextureFormat::R32I};
+    Texture2D entityIds{TextureKind::TEXTURE_2D, kTexDim, kTexDim, TextureFormat::RG32UI};
+
+    // Pair the scratch, seed every plane, and drain so the CPU scratch seed
+    // below is not overwritten by the queued clear mirror.
+    distances.bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
+    const std::int32_t seededDistance = 1234;
+    device_->clearTexImage(&distances, 0, &seededDistance);
+    const std::uint8_t seededColor[4] = {10, 20, 30, 40};
+    colors.clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, seededColor);
+    const std::uint32_t seededId[2] = {7u, 9u};
+    entityIds.clear(PixelDataFormat::RG_INTEGER, PixelDataType::UINT32, seededId);
+    device_->finish();
+    auto *scratch =
+        lookupImageAtomicScratchBuffer(static_cast<MTL::Texture *>(distances.getNativeTexture()));
+    ASSERT_NE(scratch, nullptr);
+    auto *scratchWords = static_cast<std::int32_t *>(scratch->contents());
+    for (int i = 0; i < kTexelCount; ++i) {
+        scratchWords[i] = i;
+    }
+
+    // Every third cell is listed — more than one 256-cell group, out of order.
+    std::vector<std::uint32_t> listed;
+    for (int i = kTexelCount - 1; i >= 0; i -= 3) {
+        listed.push_back(static_cast<std::uint32_t>(i));
+    }
+    std::vector<std::uint32_t> cellArgs(64, 0u);
+    cellArgs[kVisibleCountWord] = static_cast<std::uint32_t>(listed.size());
+    Buffer compacted{
+        listed.data(),
+        listed.size() * sizeof(std::uint32_t),
+        BUFFER_STORAGE_NONE,
+        BufferTarget::SHADER_STORAGE,
+        kCompactedBinding
+    };
+    Buffer args{
+        cellArgs.data(),
+        cellArgs.size() * sizeof(std::uint32_t),
+        BUFFER_STORAGE_NONE,
+        BufferTarget::SHADER_STORAGE,
+        kCellArgsBinding
+    };
+
+    const std::string clearPath =
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_per_axis_cell_clear.glsl";
+    ShaderProgram clearProgram{std::vector{ShaderStage{clearPath.c_str(), ShaderType::COMPUTE}}};
+    clearProgram.use();
+    colors.bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+    entityIds.bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
+    distances.bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
+    compacted.bindBase(BufferTarget::SHADER_STORAGE, kCompactedBinding);
+    args.bindBase(BufferTarget::SHADER_STORAGE, kCellArgsBinding);
+    device_->dispatchCompute(static_cast<int>((listed.size() + 255) / 256), 1, 1);
+
+    const std::vector<std::uint8_t> poison(kTexelCount * 8, 0xEE);
+    Buffer colorSnap{poison.data(), kTexelCount * 4, BUFFER_STORAGE_DYNAMIC};
+    Buffer distanceSnap{poison.data(), kTexelCount * 4, BUFFER_STORAGE_DYNAMIC};
+    Buffer idSnap{poison.data(), kTexelCount * 8, BUFFER_STORAGE_DYNAMIC};
+    snapshotClearTexture(colors, colorSnap, 4);
+    snapshotClearTexture(distances, distanceSnap, 4);
+    snapshotClearTexture(entityIds, idSnap, 8);
+    device_->finish();
+
+    std::vector<std::uint8_t> colorTexels(kTexelCount * 4);
+    std::vector<std::int32_t> distanceTexels(kTexelCount);
+    std::vector<std::uint32_t> idTexels(kTexelCount * 2);
+    colorSnap.getSubData(0, colorTexels.size(), colorTexels.data());
+    distanceSnap.getSubData(0, distanceTexels.size() * sizeof(std::int32_t), distanceTexels.data());
+    idSnap.getSubData(0, idTexels.size() * sizeof(std::uint32_t), idTexels.data());
+
+    std::vector<bool> isListed(kTexelCount, false);
+    for (const std::uint32_t cell : listed) {
+        isListed[cell] = true;
+    }
+    int wrong = 0;
+    for (int i = 0; i < kTexelCount; ++i) {
+        const bool reset = isListed[static_cast<std::size_t>(i)];
+        const std::uint8_t *rgba = &colorTexels[static_cast<std::size_t>(i) * 4];
+        const bool colorOk = reset
+                                 ? (rgba[0] | rgba[1] | rgba[2] | rgba[3]) == 0
+                                 : rgba[0] == 10 && rgba[1] == 20 && rgba[2] == 30 && rgba[3] == 40;
+        const std::uint32_t *id = &idTexels[static_cast<std::size_t>(i) * 2];
+        const bool idOk = reset ? id[0] == 0u && id[1] == 0u : id[0] == 7u && id[1] == 9u;
+        const bool distanceOk = distanceTexels[i] == (reset ? kPerAxisEmpty : seededDistance);
+        const bool scratchOk = scratchWords[i] == (reset ? kPerAxisEmpty : i);
+        if (!(colorOk && idOk && distanceOk && scratchOk)) {
+            if (++wrong <= 4) {
+                ADD_FAILURE() << "cell " << i << (reset ? " (listed)" : " (unlisted)")
+                              << ": colour " << colorOk << " id " << idOk << " distance "
+                              << distanceTexels[i] << " scratch " << scratchWords[i];
+            }
+        }
+    }
+    EXPECT_EQ(wrong, 0) << wrong << " / " << kTexelCount << " cells hold the wrong state.";
 }
 
 // RenderDevice::resolveImageAtomicScratch materializes the R32I

@@ -21,6 +21,7 @@
 #include <irreden/render/canvas_clear.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/canvas_coverage.hpp>
+#include <irreden/render/occlusion_lag_source.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
@@ -456,19 +457,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     Buffer *chunkOcclusionQueryBuf_ = nullptr;
     std::vector<ChunkOcclusionQuery> chunkOcclusionScratch_;
     int maxPoolChunks_ = 0;
-    // One-frame occlusion-cull disable on a discontinuous camera move. The
-    // chunk-occlusion pre-pass samples last frame's
-    // Hi-Z; on a camera cut/teleport/first frame that lag source belongs to a
-    // different view, so the projected chunk AABBs would test unrelated depths
-    // and could cull on-screen geometry. When this frame's camera iso jumps more
-    // than a fraction of the visible viewport, the cull is disabled for that one
-    // frame — always the safe direction (keeps every chunk). Resolved once per
-    // frame in beginTick; read by the per-canvas gate.
-    vec2 lastOcclusionCameraIso_ = vec2(0.0f);
-    bool hasLastOcclusionCameraIso_ = false;
-    int lastOcclusionDensity_ = 0;
-    vec2 lastOcclusionZoom_{0.0f};
-    bool occlusionLagSourceStale_ = false;
+    // One-frame occlusion-cull disable when last frame's Hi-Z chain is not
+    // this view's: a camera cut/teleport, a zoom, density or backing change,
+    // or no chain at all because the cull was off last frame. The projected
+    // chunk AABBs would otherwise test unrelated depths and could cull
+    // on-screen geometry; disabling keeps every chunk. Resolved once per frame
+    // in beginTick; read by the per-canvas gate.
+    IRPrefab::OcclusionCull::LagSource occlusionLagSource_{};
+    bool occlusionLagSourceStale_ = true;
     // Per-axis store list-walk split. While the main canvas's per-axis
     // trixel canvases are active (smooth camera Z-yaw), the compact pass splits
     // its visible-voxel list into three axis-keyed regions — each voxel landing
@@ -500,6 +496,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // dispatch dims from each axis's occupied count (kept off the compaction's
     // full-grid scan so that scan stays barrier-free).
     ShaderProgram *cellFinalizeProgram_ = nullptr;
+    // Resets the per-axis stores at the previous rotating frame's listed cells.
+    ShaderProgram *cellClearProgram_ = nullptr;
     static constexpr int kPerAxisCellCompactGroupSize = 16;
     FrameDataVoxelToCanvas frameData_{};
     // Resolved once per frame in beginTick; read by the per-entity tick.
@@ -1048,17 +1046,28 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         {
             GpuSubStageScope storeScope("voxelPerAxisStore");
             IR_PROFILE_SCOPE("vs1_pa_store");
+            const bool resetListedCells = axes.storeCellsListed_;
+            if (resetListedCells) {
+                resetListedStoreCells(axes);
+            }
             stage1Program_->use();
             for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
                 auto &tex = axes.axes_[axis];
-                Texture2D *colors = tex.colors_.second;
                 Texture2D *distances = tex.distances_.second;
-                Texture2D *entityIds = tex.entityIds_.second;
 
-                IRRender::device()->clearTexImage(distances, 0, &kDistanceClear);
-                colors->clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, &kColorClear[0]);
-                entityIds
-                    ->clear(PixelDataFormat::RG_INTEGER, PixelDataType::UINT32, &kEntityIdClear);
+                if (!resetListedCells) {
+                    IRRender::device()->clearTexImage(distances, 0, &kDistanceClear);
+                    tex.colors_.second->clear(
+                        PixelDataFormat::RGBA,
+                        PixelDataType::UNSIGNED_BYTE,
+                        &kColorClear[0]
+                    );
+                    tex.entityIds_.second->clear(
+                        PixelDataFormat::RG_INTEGER,
+                        PixelDataType::UINT32,
+                        &kEntityIdClear
+                    );
+                }
 
                 uploadAxisFrameData(axis, 0);
                 const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
@@ -1240,6 +1249,25 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
     }
 
+    // Write the empty state at every cell the previous rotating frame's
+    // compaction listed, on all three stores. Every store write since the last
+    // clear sits at a listed cell (compactPerAxisCells), so this equals a whole
+    // clear. Runs before this frame's compaction resets the list; borrows slots
+    // 25/26, which the store loop rebinds per axis.
+    void resetListedStoreCells(C_PerAxisTrixelCanvases &axes) {
+        cellClearProgram_->use();
+        IRPrefab::PerAxisCanvas::dispatchPerAxisCells(axes, [&](int axis) {
+            auto &tex = axes.axes_[axis];
+            tex.colors_.second->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+            tex.distances_.second->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
+            tex.entityIds_.second->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
+        });
+        // The store taps atomic-min into the reset distances: an image on GL,
+        // the scratch buffer on Metal.
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+    }
+
     // Per-axis empty-cell compaction. Scan each per-axis distance
     // canvas and append its occupied cells into the component-owned compacted-cell
     // region, filling the indirect args the framebuffer scatter DRAWS from AND the
@@ -1338,6 +1366,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // consumers rebind the cell buffers transiently themselves.
         compactedBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_CompactedVoxelIndices);
         indirectBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_IndirectDispatchParams);
+        axes.storeCellsListed_ = true;
     }
 
     // Chunk-occlusion HZB pre-pass. Runs after the frustum
@@ -2488,7 +2517,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // Resolve sun direction once per frame so the per-entity tick
         // reads the cached value instead of scanning C_LightSource
         // once per voxel-pool-canvas pair.
-        shadowFeederParams_ = IRPrefab::SunShadow::frameShadowFeederParams();
+        shadowFeederParams_ =
+            IRPrefab::SunShadow::voxelRasterFeederParams(voxelFaceBaker_ != nullptr);
         // Re-accumulated across this frame's canvases by the per-canvas tick.
         frameShadowFeederRingNonEmpty_ = false;
 
@@ -2546,32 +2576,26 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             }
         }
 
-        // Resolve the one-frame occlusion-cull disable. The chunk-occlusion
-        // pre-pass tests last frame's Hi-Z, so on a
-        // discontinuous camera move (cut / teleport / first frame) that lag
-        // source is from an unrelated view and the cull is disabled for one
-        // frame. The threshold is half the visible viewport's smaller iso extent
-        // — larger than any single-frame smooth pan but far below a cut. Disabling
-        // is always safe (keeps every chunk); a smooth pan's one-frame-lag pop is
-        // the accepted intentional drift, not a discontinuity. Skipped entirely
-        // when the cull is off so the default config adds nothing — the gate
-        // short-circuits on getVoxelOcclusionCullEnabled() before reading the
-        // staleness flag, and the first enabled frame is treated as a cut.
-        if (IRRender::getVoxelOcclusionCullEnabled()) {
-            const vec2 cameraIso = IRRender::getEffectiveCameraIso();
+        // Resolve the one-frame occlusion-cull disable. The cut threshold is
+        // half the visible viewport's smaller iso extent — larger than any
+        // single-frame smooth pan but far below a cut; a smooth pan's
+        // one-frame-lag pop is the accepted intentional drift, not a
+        // discontinuity. The view is read only with the cull on, so the default
+        // config adds nothing.
+        const bool occlusionCullEnabled = IRRender::getVoxelOcclusionCullEnabled();
+        IRPrefab::OcclusionCull::LagSourceView occlusionView{};
+        if (occlusionCullEnabled) {
             const IsoBounds2D occlusionViewport = IRRender::getCullViewport().isoViewport();
             const vec2 viewportExtent = occlusionViewport.max_ - occlusionViewport.min_;
-            const float cutThreshold = 0.5f * IRMath::min(viewportExtent.x, viewportExtent.y);
-            occlusionLagSourceStale_ =
-                mainBackingResized || !hasLastOcclusionCameraIso_ ||
-                lastOcclusionDensity_ != IRRender::getVoxelRenderEffectiveSubdivisions() ||
-                lastOcclusionZoom_ != IRRender::getCameraZoom() ||
-                IRMath::length(cameraIso - lastOcclusionCameraIso_) > cutThreshold;
-            lastOcclusionDensity_ = IRRender::getVoxelRenderEffectiveSubdivisions();
-            lastOcclusionZoom_ = IRRender::getCameraZoom();
-            lastOcclusionCameraIso_ = cameraIso;
-            hasLastOcclusionCameraIso_ = true;
+            occlusionView = {
+                .cameraIso_ = IRRender::getEffectiveCameraIso(),
+                .zoom_ = IRRender::getCameraZoom(),
+                .density_ = IRRender::getVoxelRenderEffectiveSubdivisions(),
+                .cutThreshold_ = 0.5f * IRMath::min(viewportExtent.x, viewportExtent.y),
+                .backingResized_ = mainBackingResized,
+            };
         }
+        occlusionLagSourceStale_ = occlusionLagSource_.advance(occlusionCullEnabled, occlusionView);
     }
 
     static SystemId create() {
@@ -2639,6 +2663,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::createNamedResource<ShaderProgram>(
             "PerAxisCellFinalizeProgram",
             std::vector{ShaderStage{IRRender::kFileCompPerAxisCellFinalize, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "PerAxisCellClearProgram",
+            std::vector{ShaderStage{IRRender::kFileCompPerAxisCellClear, ShaderType::COMPUTE}}
         );
         // overflow-entry canonical sort — dispatched after the mode-3
         // append so the overflow draw's entry order is a pure function of the
@@ -2879,6 +2907,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             IRRender::getNamedResource<ShaderProgram>("PerAxisCellCompactProgram");
         p->cellFinalizeProgram_ =
             IRRender::getNamedResource<ShaderProgram>("PerAxisCellFinalizeProgram");
+        p->cellClearProgram_ = IRRender::getNamedResource<ShaderProgram>("PerAxisCellClearProgram");
         p->stage1Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1");
         p->stage1FeederProgram_ =
             IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1Feeder");

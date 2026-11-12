@@ -15,6 +15,10 @@
 // Pipeline order: must run after every stage that writes trixelDistances
 // (VOXEL_TO_TRIXEL_STAGE_1, SHAPES_TO_TRIXEL) and after COMPUTE_VOXEL_AO, so the
 // distance texture is final — register it immediately after COMPUTE_VOXEL_AO.
+//
+// The voxel occlusion cull is the chain's only reader, so a frame with the cull
+// off builds nothing (IRPrefab::OcclusionCull::buildsDistanceHiZ); the cull
+// treats the frame after such a gap as stale.
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_profile.hpp>
@@ -23,6 +27,7 @@
 
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/occlusion_lag_source.hpp>
 
 #include <cstddef>
 
@@ -38,6 +43,8 @@ constexpr int kBuildDistanceHiZGroupSize = 16;
 
 template <> struct System<COMPUTE_DISTANCE_HIZ> {
     ShaderProgram *program_ = nullptr;
+    // Resolved in beginTick from the occlusion-cull flag.
+    bool build_ = false;
 
     void tick(
         const C_TriangleCanvasTextures &canvasTextures, const C_TrixelCanvasRenderBehavior &behavior
@@ -45,7 +52,7 @@ template <> struct System<COMPUTE_DISTANCE_HIZ> {
         // GUI canvases carry no world-space geometry and never feed the voxel
         // occlusion cull, so a Hi-Z over their distances is wasted work — skip
         // (mirrors COMPUTE_VOXEL_AO's guard). A 1x1 canvas yields no levels.
-        if (!behavior.useCameraPositionIso_)
+        if (!build_ || !behavior.useCameraPositionIso_)
             return;
         if (canvasTextures.hiZMips_.empty())
             return;
@@ -73,7 +80,11 @@ template <> struct System<COMPUTE_DISTANCE_HIZ> {
     }
 
     void beginTick() {
-        program_->use();
+        build_ =
+            IRPrefab::OcclusionCull::buildsDistanceHiZ(IRRender::getVoxelOcclusionCullEnabled());
+        if (build_) {
+            program_->use();
+        }
     }
 
     static SystemId create() {
