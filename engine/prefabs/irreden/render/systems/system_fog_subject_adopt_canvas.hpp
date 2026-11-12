@@ -62,7 +62,7 @@ template <> struct System<FOG_SUBJECT_ADOPT_CANVAS> {
         return registerSystem<
             FOG_SUBJECT_ADOPT_CANVAS,
             IRComponents::C_EntityCanvas,
-            IRComponents::C_WorldTransform,
+            const IRComponents::C_WorldTransform,
             Exclude<IRComponents::C_FogRevealed>,
             Exclude<IRComponents::C_FogField>,
             Exclude<IRComponents::C_FogExempt>>("FogSubjectAdoptCanvas");

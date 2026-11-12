@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_fog_reveal_settings.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/fog_of_war.hpp>
+#include <irreden/render/fog_settled_gate.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
@@ -31,7 +32,8 @@ namespace IRSystem {
 // before FOG_REVEAL_EVAL, after PROPAGATE_TRANSFORM. Inert while the active
 // canvas carries no fog component or no pool.
 template <> struct System<FOG_SUBJECT_ADOPT> {
-    static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
+    static constexpr int kGrainSize = kDefaultGrainSize;
+    IRPrefab::Fog::SettledGate gate_;
 
     struct PendingHide {
         IRComponents::C_VoxelSetNew *voxelSet_ = nullptr;
@@ -72,13 +74,16 @@ template <> struct System<FOG_SUBJECT_ADOPT> {
             }
         }
         settings_ = IREntity::singleton<IRComponents::C_FogRevealSettings>();
+        gate_.begin(activeCanvas_, activePool_, fog_, settings_);
 
         const std::vector<IREntity::ArchetypeNode *> nodes = IREntity::queryArchetypeNodesSimple(
             IREntity::getArchetype<IRComponents::C_WorldTransform, IRComponents::C_VoxelSetNew>(),
-            IREntity::getArchetype<
-                IRComponents::C_FogRevealed,
-                IRComponents::C_FogField,
-                IRComponents::C_FogExempt>()
+            gate_.queryExclude(
+                IREntity::getArchetype<
+                    IRComponents::C_FogRevealed,
+                    IRComponents::C_FogField,
+                    IRComponents::C_FogExempt>()
+            )
         );
         std::size_t population = 0;
         for (IREntity::ArchetypeNode *node : nodes) {
@@ -130,15 +135,25 @@ template <> struct System<FOG_SUBJECT_ADOPT> {
         });
     }
 
+    void tick(
+        const IREntity::Archetype &type,
+        std::vector<IREntity::EntityId> &entities,
+        std::vector<IRComponents::C_WorldTransform> &worldTransforms,
+        std::vector<IRComponents::C_VoxelSetNew> &voxelSets
+    ) {
+        gate_.walkNode(*this, kGrainSize, type, entities, worldTransforms, voxelSets);
+    }
+
     static SystemId create() {
         return registerSystem<
             FOG_SUBJECT_ADOPT,
-            IRComponents::C_WorldTransform,
+            const IRComponents::C_WorldTransform,
             IRComponents::C_VoxelSetNew,
             Exclude<IRComponents::C_FogRevealed>,
             Exclude<IRComponents::C_FogField>,
             Exclude<IRComponents::C_FogExempt>,
-            ParallelSafe>("FogSubjectAdopt");
+            GatesSettled,
+            MainThread>("FogSubjectAdopt");
     }
 };
 

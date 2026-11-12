@@ -190,7 +190,7 @@ template <> struct System<SPRITE_TO_SCREEN> {
         SystemId id = registerSystem<
             SPRITE_TO_SCREEN,
             IRComponents::C_Sprite,
-            IRComponents::C_WorldTransform>("SpritesToScreen");
+            const IRComponents::C_WorldTransform>("SpritesToScreen");
         auto *sys = getSystemParams<System<SPRITE_TO_SCREEN>>(id);
         sys->frameDataBuf_ =
             IRRender::getNamedResource<IRRender::Buffer>("SpritesToScreenFrameData");

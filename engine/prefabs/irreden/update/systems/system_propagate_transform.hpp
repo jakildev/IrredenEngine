@@ -55,6 +55,12 @@
 // pairs; stable scenes skip the partition pass entirely. The
 // per-tick parent-world resolve and the parallel composition itself
 // always run — that's the hot work.
+//
+// A deriving system for static residents (docs/design/static-residents.md):
+// it excludes C_Settled, both in its registration and in the candidate
+// query below, so a settled entity is composed once when it settles and not
+// again. A settled parent is outside the candidate set and is read like any
+// other non-candidate parent.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_job.hpp>
@@ -66,6 +72,7 @@
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/common/modifier_compose.hpp>
 #include <irreden/common/transform_modifier_fields.hpp>
+#include <irreden/system/components/component_static.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -129,7 +136,10 @@ template <> struct System<PROPAGATE_TRANSFORM> {
 
         const auto archetype = IREntity::
             getArchetype<IRComponents::C_LocalTransform, IRComponents::C_WorldTransform>();
-        auto nodes = IREntity::queryArchetypeNodesSimple(archetype);
+        auto nodes = IREntity::queryArchetypeNodesSimple(
+            archetype,
+            IREntity::getArchetype<IRComponents::C_Settled>()
+        );
 
         buildSignature(nodes, scratchSignature_);
         if (scratchSignature_ != cachedSignature_) {
@@ -186,7 +196,10 @@ template <> struct System<PROPAGATE_TRANSFORM> {
                         translationField,
                         scaleField,
                         resolvedFieldsComponentId,
-                        modifiersComponentId
+                        modifiersComponentId,
+                        IREntity::getComponentData<IRComponents::C_WorldTransform>(
+                            levelNodes[nodeIndex]
+                        )
                     );
                 }
             );
@@ -196,111 +209,13 @@ template <> struct System<PROPAGATE_TRANSFORM> {
     void tick(
         const IREntity::Archetype &,
         std::vector<IREntity::EntityId> &,
-        std::vector<IRComponents::C_LocalTransform> &,
+        const std::vector<IRComponents::C_LocalTransform> &,
         std::vector<IRComponents::C_WorldTransform> &
     ) {}
 
-    static SystemId create() {
-        return registerSystem<
-            PROPAGATE_TRANSFORM,
-            IRComponents::C_LocalTransform,
-            IRComponents::C_WorldTransform>("PropagateTransform");
-    }
-
-  private:
-    void buildSignature(
-        const std::vector<IREntity::ArchetypeNode *> &nodes, std::vector<CacheEntry> &out
-    ) const {
-        out.clear();
-        out.reserve(nodes.size());
-        for (auto *node : nodes) {
-            IREntity::NodeId parentNodeId = 0;
-            IREntity::EntityId parent = IREntity::getParentEntityFromArchetype(node->type_);
-            if (parent != IREntity::kNullEntity) {
-                auto parentRecord = IREntity::getEntityRecord(parent);
-                if (parentRecord.archetypeNode != nullptr) {
-                    parentNodeId = parentRecord.archetypeNode->id_;
-                }
-            }
-            out.push_back({node->id_, parentNodeId});
-        }
-        std::sort(out.begin(), out.end(), [](const CacheEntry &a, const CacheEntry &b) {
-            return a.nodeId < b.nodeId;
-        });
-    }
-
-    void rebuildLevels(const std::vector<IREntity::ArchetypeNode *> &nodes) {
-        candidateSet_.clear();
-        candidateSet_.reserve(nodes.size());
-        for (auto *node : nodes) {
-            candidateSet_.insert(node->id_);
-        }
-        nodeDepth_.clear();
-        nodeDepth_.reserve(nodes.size());
-
-        pending_.clear();
-        pending_.reserve(nodes.size());
-        pending_.insert(pending_.end(), nodes.begin(), nodes.end());
-
-        levels_.clear();
-
-        // Pass admits nodes whose parent is either outside the candidate
-        // set (root from our POV) or has had its depth FINALIZED by a
-        // strictly earlier pass. Critical: nodeDepth_ is updated only
-        // AFTER the pass completes, so two siblings whose parent
-        // dependency points within the current pass cannot accidentally
-        // co-admit at the same depth.
-        while (!pending_.empty()) {
-            std::vector<IREntity::ArchetypeNode *> levelNodes;
-            for (auto it = pending_.begin(); it != pending_.end();) {
-                auto *node = *it;
-                IREntity::EntityId parent = IREntity::getParentEntityFromArchetype(node->type_);
-                bool ready = false;
-                if (parent == IREntity::kNullEntity) {
-                    ready = true;
-                } else {
-                    auto parentRecord = IREntity::getEntityRecord(parent);
-                    if (parentRecord.archetypeNode == nullptr) {
-                        ready = true;
-                    } else {
-                        const auto parentNodeId = parentRecord.archetypeNode->id_;
-                        if (!candidateSet_.contains(parentNodeId) ||
-                            nodeDepth_.contains(parentNodeId)) {
-                            ready = true;
-                        }
-                    }
-                }
-                if (ready) {
-                    levelNodes.push_back(node);
-                    it = pending_.erase(it);
-                } else {
-                    ++it;
-                }
-            }
-            if (levelNodes.empty()) {
-                IR_ASSERT(
-                    false,
-                    "PROPAGATE_TRANSFORM: parent-chain cycle detected; admitting remaining "
-                    "{} archetype nodes in arbitrary order to avoid infinite loop",
-                    pending_.size()
-                );
-                levelNodes.insert(levelNodes.end(), pending_.begin(), pending_.end());
-                pending_.clear();
-            }
-            const int currentDepth = static_cast<int>(levels_.size());
-            for (auto *node : levelNodes) {
-                nodeDepth_.emplace(node->id_, currentDepth);
-            }
-            levels_.push_back(std::move(levelNodes));
-        }
-
-        parentWorlds_.assign(levels_.size(), {});
-        for (std::size_t d = 0; d < levels_.size(); ++d) {
-            parentWorlds_[d].reserve(levels_[d].size());
-        }
-    }
-
-    // Composes C_WorldTransform for rows [rowBegin, rowEnd) of node.
+    // Composes C_WorldTransform for rows [rowBegin, rowEnd) of node into
+    // `worlds`, indexed by row: the node's own column for the system, a
+    // scratch column for the static-resident audit, which compares the two.
     // The per-node column fetches and isRootArchetype check are cheap
     // relative to the row loop, so re-deriving them per chunk when a
     // large node is split costs nothing meaningful.
@@ -312,10 +227,10 @@ template <> struct System<PROPAGATE_TRANSFORM> {
         IRComponents::FieldBindingId translationField,
         IRComponents::FieldBindingId scaleField,
         IREntity::ComponentId resolvedFieldsComponentId,
-        IREntity::ComponentId modifiersComponentId
+        IREntity::ComponentId modifiersComponentId,
+        std::vector<IRComponents::C_WorldTransform> &worlds
     ) {
-        auto &locals = IREntity::getComponentData<IRComponents::C_LocalTransform>(node);
-        auto &worlds = IREntity::getComponentData<IRComponents::C_WorldTransform>(node);
+        const auto &locals = IREntity::getComponentData<IRComponents::C_LocalTransform>(node);
 
         // Resolved-field and modifier columns are both optional. Resolved
         // wins when the creation registered the resolver pipeline +
@@ -325,11 +240,11 @@ template <> struct System<PROPAGATE_TRANSFORM> {
         // without forcing every creation to wire the resolver pipeline.
         // Reading both columns once per node keeps the inner loop on the
         // batched cache-friendly path.
-        std::vector<IRComponents::C_ResolvedFields> *resolvedCol = nullptr;
+        const std::vector<IRComponents::C_ResolvedFields> *resolvedCol = nullptr;
         if (node->type_.contains(resolvedFieldsComponentId)) {
             resolvedCol = &IREntity::getComponentData<IRComponents::C_ResolvedFields>(node);
         }
-        std::vector<IRComponents::C_Modifiers> *modifiersCol = nullptr;
+        const std::vector<IRComponents::C_Modifiers> *modifiersCol = nullptr;
         if (resolvedCol == nullptr && node->type_.contains(modifiersComponentId)) {
             modifiersCol = &IREntity::getComponentData<IRComponents::C_Modifiers>(node);
         }
@@ -384,6 +299,118 @@ template <> struct System<PROPAGATE_TRANSFORM> {
             worlds[i] = IRComponents::C_WorldTransform{worldTranslation, worldRotation, worldScale};
         }
     }
+
+    static SystemId create() {
+        return registerSystem<
+            PROPAGATE_TRANSFORM,
+            const IRComponents::C_LocalTransform,
+            IRComponents::C_WorldTransform,
+            Exclude<IRComponents::C_Settled>>("PropagateTransform");
+    }
+
+  private:
+    /// Archetype node of a parent link's target, or null when the parent is
+    /// dead (`destroyEntity` never cascades, so its children survive and still
+    /// name it) or unplaced. Null means the child composes as a root; the
+    /// asserting `getEntityRecord` would fire on the first tick after the
+    /// destroy.
+    static const IREntity::ArchetypeNode *findLiveParentNode(IREntity::EntityId parent) {
+        if (parent == IREntity::kNullEntity) {
+            return nullptr;
+        }
+        const auto *record = IREntity::getEntityManager().findRecord(parent);
+        return record != nullptr ? record->archetypeNode : nullptr;
+    }
+
+    void buildSignature(
+        const std::vector<IREntity::ArchetypeNode *> &nodes, std::vector<CacheEntry> &out
+    ) const {
+        out.clear();
+        out.reserve(nodes.size());
+        for (auto *node : nodes) {
+            IREntity::NodeId parentNodeId = 0;
+            IREntity::EntityId parent = IREntity::getParentEntityFromArchetype(node->type_);
+            if (const auto *parentNode = findLiveParentNode(parent)) {
+                parentNodeId = parentNode->id_;
+            }
+            out.push_back({node->id_, parentNodeId});
+        }
+        std::sort(out.begin(), out.end(), [](const CacheEntry &a, const CacheEntry &b) {
+            return a.nodeId < b.nodeId;
+        });
+    }
+
+    void rebuildLevels(const std::vector<IREntity::ArchetypeNode *> &nodes) {
+        candidateSet_.clear();
+        candidateSet_.reserve(nodes.size());
+        for (auto *node : nodes) {
+            candidateSet_.insert(node->id_);
+        }
+        nodeDepth_.clear();
+        nodeDepth_.reserve(nodes.size());
+
+        pending_.clear();
+        pending_.reserve(nodes.size());
+        pending_.insert(pending_.end(), nodes.begin(), nodes.end());
+
+        levels_.clear();
+
+        // Pass admits nodes whose parent is either outside the candidate
+        // set (root from our POV) or has had its depth FINALIZED by a
+        // strictly earlier pass. Critical: nodeDepth_ is updated only
+        // AFTER the pass completes, so two siblings whose parent
+        // dependency points within the current pass cannot accidentally
+        // co-admit at the same depth.
+        while (!pending_.empty()) {
+            std::vector<IREntity::ArchetypeNode *> levelNodes;
+            for (auto it = pending_.begin(); it != pending_.end();) {
+                auto *node = *it;
+                IREntity::EntityId parent = IREntity::getParentEntityFromArchetype(node->type_);
+                bool ready = false;
+                if (parent == IREntity::kNullEntity) {
+                    ready = true;
+                } else {
+                    const auto *parentNode = findLiveParentNode(parent);
+                    if (parentNode == nullptr) {
+                        ready = true;
+                    } else {
+                        const auto parentNodeId = parentNode->id_;
+                        if (!candidateSet_.contains(parentNodeId) ||
+                            nodeDepth_.contains(parentNodeId)) {
+                            ready = true;
+                        }
+                    }
+                }
+                if (ready) {
+                    levelNodes.push_back(node);
+                    it = pending_.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+            if (levelNodes.empty()) {
+                IR_ASSERT(
+                    false,
+                    "PROPAGATE_TRANSFORM: parent-chain cycle detected; admitting remaining "
+                    "{} archetype nodes in arbitrary order to avoid infinite loop",
+                    pending_.size()
+                );
+                levelNodes.insert(levelNodes.end(), pending_.begin(), pending_.end());
+                pending_.clear();
+            }
+            const int currentDepth = static_cast<int>(levels_.size());
+            for (auto *node : levelNodes) {
+                nodeDepth_.emplace(node->id_, currentDepth);
+            }
+            levels_.push_back(std::move(levelNodes));
+        }
+
+        parentWorlds_.assign(levels_.size(), {});
+        for (std::size_t d = 0; d < levels_.size(); ++d) {
+            parentWorlds_[d].reserve(levels_[d].size());
+        }
+    }
+
 };
 
 } // namespace IRSystem

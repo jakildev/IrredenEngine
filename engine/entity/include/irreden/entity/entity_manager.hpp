@@ -59,6 +59,8 @@ struct WorkerStaging {
     // deepest first, so no plain mark of a member can kill a parent ahead of
     // its children.
     std::vector<EntityId> markedTreesForDeletion_;
+    // Opaque 8-byte notes for a main-thread consumer (`stageEntityNote`).
+    std::vector<EntityId> entityNotes_;
 };
 
 class EntityManager {
@@ -131,6 +133,12 @@ class EntityManager {
     // entities, so a restored gameplay id never carries flag bits.
     // Main-thread only (load is a frame-boundary op).
     void restoreEntitiesBatch(ArchetypeNode *node, std::span<const EntityId> entityIds);
+
+    /// Makes room in every column of `node` for `rows` rows. A caller about
+    /// to move a known population into the node in several steps calls it
+    /// once, so no step pays for regrowing the columns over the rows already
+    /// there. Main-thread-only; never shrinks.
+    void reserveRows(ArchetypeNode *node, int rows);
 
     // Read-only view of the singleton cache (ComponentId -> owning entity).
     // The snapshot walker excludes these entities from the ARCH chunk (they
@@ -263,6 +271,12 @@ class EntityManager {
         ComponentId componentId =
             registerComponentImpl(typeName, std::make_unique<IComponentDataImpl<Component>>());
         cacheComponentType(slot, componentId);
+        recordComponentTraits(
+            componentId,
+            kStaticGuard<std::remove_cv_t<Component>>,
+            kClearedByForeignMove<std::remove_cv_t<Component>>,
+            kTracksInputChanges<std::remove_cv_t<Component>>
+        );
         IRE_LOG_INFO(
             "Regestered component type={}, sizeof={} with id={}",
             typeName,
@@ -315,6 +329,38 @@ class EntityManager {
 
     bool hasComponent(EntityId entity, ComponentId componentType);
 
+    /// The guard `registerComponent<T>` recorded for `componentType` from
+    /// `kStaticGuard<T>`. `NONE` for a runtime-registered component and for
+    /// an id that names no component.
+    StaticGuard staticGuard(ComponentId componentType) const {
+        const auto it = m_staticGuards.find(componentType);
+        return it == m_staticGuards.end() ? StaticGuard::NONE : it->second;
+    }
+
+    /// Whether `componentType` was registered with `kClearedByForeignMove`.
+    bool isClearedByForeignMove(ComponentId componentType) const {
+        return std::find(
+                   m_foreignClearedComponents.begin(),
+                   m_foreignClearedComponents.end(),
+                   componentType
+               ) != m_foreignClearedComponents.end();
+    }
+
+    /// Whether `componentType` was registered with `kTracksInputChanges`.
+    bool tracksInputChanges(ComponentId componentType) const {
+        return std::find(
+                   m_parentChainComponents.begin(),
+                   m_parentChainComponents.end(),
+                   componentType
+               ) != m_parentChainComponents.end();
+    }
+
+    /// Moves the tracked-change log onto the end of `out`: the id of every
+    /// entity that lost a cleared-by-foreign-move component to a move that
+    /// did not name it, or was handled by the parent-chain rule, since the
+    /// last call. Main thread only; every archetype move runs there.
+    void takeTrackedChanges(std::vector<EntityId> &out);
+
     template <typename Component> ComponentId getComponentType() {
         const std::size_t slot = componentTypeSlot<std::remove_cv_t<Component>>();
         if (slot < m_componentTypeCache.size()) {
@@ -333,11 +379,25 @@ class EntityManager {
         return registered->second;
     }
 
+    /// `getComponentType` without the lazy registration: `kNullComponent`
+    /// when no code has registered `Component` yet.
+    template <typename Component> ComponentId findComponentType() const {
+        const std::size_t slot = componentTypeSlot<std::remove_cv_t<Component>>();
+        if (slot < m_componentTypeCache.size() && m_componentTypeCache[slot] != kNullComponent) {
+            return m_componentTypeCache[slot];
+        }
+        const auto registered = m_pureComponentTypes.find(typeid(Component).name());
+        return registered == m_pureComponentTypes.end() ? kNullComponent : registered->second;
+    }
+
     // Insert (or overwrite) a component on an entity. Does NOT require the
     // component to be default-constructible: the new-archetype path moves
     // the entity, then push_backs the caller's value directly into the
     // new column. Lets components like C_CanvasAOTexture `= delete` their
     // default ctor and force a size-bearing ctor at the call site.
+    // Overwriting a component on an entity whose node tracks input changes
+    // resettles it in this call, so the returned reference is into the
+    // column the entity sits in afterwards.
     template <typename Component>
     Component &setComponent(EntityId entity, const Component &component) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
@@ -348,10 +408,19 @@ class EntityManager {
             return insertNewComponent<Component>(record, component);
         }
 
+        // An overwrite moves nothing, so a node that tracks input changes
+        // applies the rule here: the entity, and for a pose component the
+        // subtree composed under it, is derived again. The handling can
+        // move the entity, so the column is resolved after it.
+        const EntityRecord *placed = &record;
+        if (record.archetypeNode->tracksInputChanges_) {
+            handleInputChange(entity, kStaticGuard<Component> != StaticGuard::NONE);
+            placed = &getRecord(entity);
+        }
         IComponentDataImpl<Component> *data = castComponentDataPointer<Component>(
-            record.archetypeNode->components_[componentType].get()
+            placed->archetypeNode->components_[componentType].get()
         );
-        Component &c = data->dataVector[record.row];
+        Component &c = data->dataVector[placed->row];
         c = component;
         return c;
     }
@@ -359,12 +428,7 @@ class EntityManager {
     template <typename Component>
     Component &insertNewComponent(EntityRecord &record, const Component &component) {
         ComponentId componentType = getComponentType<Component>();
-        ArchetypeNode *fromNode = record.archetypeNode;
-        Archetype type = fromNode->type_;
-        type.insert(componentType);
-        ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(type);
-
-        moveEntityByArchetype(record, fromNode->type_, fromNode, toNode);
+        ArchetypeNode *toNode = moveForAddedComponent(record, componentType);
 
         IComponentDataImpl<Component> *data =
             castComponentDataPointer<Component>(toNode->components_[componentType].get());
@@ -383,7 +447,7 @@ class EntityManager {
             componentType,
             toNode->entities_[record.row],
             record.row,
-            makeComponentStringInternal(type).c_str()
+            makeComponentStringInternal(toNode->type_).c_str()
         );
 
         return data->dataVector[record.row];
@@ -488,6 +552,18 @@ class EntityManager {
     void stageStructuralChange(std::function<void()> op) {
         m_workerStaging[workerSlotForCurrentThread()].structuralChanges_.push_back(std::move(op));
     }
+
+    /// Append one opaque 64-bit note to the calling thread's staging slot.
+    /// Main or worker thread; it looks nothing up. The manager never reads
+    /// a note: one consumer drains them all with `takeEntityNotes` and owns
+    /// their encoding.
+    void stageEntityNote(EntityId note) {
+        m_workerStaging[workerSlotForCurrentThread()].entityNotes_.push_back(note);
+    }
+
+    /// Moves every staged note onto the end of `out`, slots in worker-id
+    /// order and each slot in push order. Main thread only.
+    void takeEntityNotes(std::vector<EntityId> &out);
 
     void flushStructuralChanges();
 
@@ -613,6 +689,7 @@ class EntityManager {
     PreDestroyHookId registerPreDestroyHook(PreDestroyHook hook);
     void unregisterPreDestroyHook(PreDestroyHookId id);
 
+
     /// Singleton-component support. One entity per component type, cached
     /// by `ComponentId`. The cache is lazily validated: if the cached
     /// entity has been destroyed (e.g. by `destroyAllEntities`), the next
@@ -682,6 +759,10 @@ class EntityManager {
     // session, plenty for current workloads. If a long-running
     // session ever approaches the cap, switch to a tiered allocator.
     std::atomic<EntityId> m_nextEntityId{IR_RESERVED_ENTITIES};
+    std::unordered_map<ComponentId, StaticGuard> m_staticGuards;
+    std::vector<ComponentId> m_foreignClearedComponents;
+    std::vector<ComponentId> m_parentChainComponents;
+    std::vector<EntityId> m_trackedChanges;
     std::vector<PreDestroyHookEntry> m_preDestroyHooks;
     PreDestroyHookId m_nextPreDestroyHookId{1};
     bool m_preDestroyHookIterating{false};
@@ -703,6 +784,35 @@ class EntityManager {
     ComponentId registerComponentImpl(const std::string &typeName, smart_ComponentData impl);
     static std::size_t allocateComponentTypeSlot();
     void cacheComponentType(std::size_t slot, ComponentId componentType);
+    void recordComponentTraits(
+        ComponentId componentType, StaticGuard guard, bool foreignCleared, bool tracksInputChanges
+    );
+    // The parent-chain rule for one entity whose link changed or whose
+    // parent died: drops its cleared-by-foreign-move components, logs it,
+    // and descends into every child whose node tracks the parent chain.
+    /// `entity`'s inputs changed: drops its cleared components and logs it
+    /// when its node tracks input changes. `withDescendants` does the same
+    /// down the tracked subtree, for a change the descendants compose under.
+    void handleInputChange(EntityId entity, bool withDescendants = true);
+    void handleInputChangeOfChildren(EntityId parent);
+    // Removes from `type` every cleared-by-foreign-move component of
+    // `fromNode` other than `named`. True when it removed one.
+    bool eraseForeignCleared(
+        const ArchetypeNode *fromNode, ComponentId named, Archetype &type
+    ) const;
+    // Drops row `row` of each cleared-by-foreign-move column `fromNode` has
+    // and `toNode` lacks, other than `named`, whose row the caller removes,
+    // and logs `entity` in the tracked-change log.
+    void removeForeignClearedRows(
+        ArchetypeNode *fromNode,
+        const ArchetypeNode *toNode,
+        ComponentId named,
+        unsigned int row,
+        EntityId entity
+    );
+    // Moves the entity to the node that adds `componentType`, without
+    // filling the new column's row.
+    ArchetypeNode *moveForAddedComponent(EntityRecord &record, ComponentId componentType);
 
     template <typename Component> static std::size_t componentTypeSlot() {
         static const std::size_t slot = allocateComponentTypeSlot();

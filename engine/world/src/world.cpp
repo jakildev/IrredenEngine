@@ -11,6 +11,8 @@
 #include <irreden/profile/profile_report.hpp>
 #include <irreden/video/auto_screenshot.hpp>
 #include <irreden/input/components/component_entity_event_handlers.hpp>
+#include <irreden/common/static_audit.hpp>
+#include <irreden/common/static_residents.hpp>
 
 #include <irreden/world.hpp>
 #include <irreden/world/main_loop_frame.hpp>
@@ -441,6 +443,7 @@ void World::input() {
     m_audioManager.getAudioPlayback().tickPlayback();
 
     m_systemManager.executePipeline(IRTime::Events::INPUT);
+    IRPrefab::Static::drain();
 }
 
 void World::start() {
@@ -490,6 +493,8 @@ void World::update() {
     m_commandManager.executeDeviceMidiCCCommandsAll();
     m_commandManager.executeDeviceMidiNoteCommandsAll();
     m_systemManager.executePipeline(IRTime::Events::UPDATE);
+    IRPrefab::Static::drain();
+    IRPrefab::Static::audit();
     m_entityManager.destroyMarkedEntities();
     m_videoManager.notifyFixedUpdate();
     m_timeManager.endEvent<IRTime::UPDATE>();
@@ -503,6 +508,7 @@ void World::render() {
     m_inputManager.advanceInputState(IRTime::Events::RENDER);
     m_renderer.beginFrame();
     m_renderer.renderFrame();
+    IRPrefab::Static::drain();
     m_videoManager.render();
     m_renderer.presentFrame();
 
@@ -627,6 +633,31 @@ void World::buildAndWriteProfileReport() {
     report.witness_.maxOverflowDropped_ = witness.maxOverflowDropped_;
     report.witness_.overflowCap_ = witness.overflowCap_;
 
+    IRRender::renderRunWitness().closePoolFrame();
+    const IRPrefab::Static::Stats residents = IRPrefab::Static::stats();
+    report.staticResidents_.static_ = residents.static_;
+    report.staticResidents_.settling_ = residents.settling_;
+    report.staticResidents_.settled_ = residents.settled_;
+    report.staticResidents_.promoted_ = residents.counters_.promoted_;
+    report.staticResidents_.thawed_ = residents.counters_.thawed_;
+    report.staticResidents_.resettled_ = residents.counters_.resettled_;
+    report.staticResidents_.restarted_ = residents.counters_.restarted_;
+    report.staticResidents_.held_ = residents.counters_.held_;
+    report.staticResidents_.heldByGlobal_ = residents.counters_.heldByGlobal_;
+    report.staticResidents_.refused_ = residents.counters_.refused_;
+    report.staticResidents_.promotionMsMax_ = residents.counters_.promotionMsMax_;
+    report.staticResidents_.drainMsMax_ = residents.counters_.drainMsMax_;
+    report.staticResidents_.positionBytes_ = witness.positionBytes_;
+    report.staticResidents_.maxFramePositionBytes_ = witness.maxFramePositionBytes_;
+    report.staticResidents_.positionUploadFrames_ = witness.positionUploadFrames_;
+    report.staticResidents_.cullSlots_ = witness.cullSlots_;
+    report.staticResidents_.maxFrameCullSlots_ = witness.maxFrameCullSlots_;
+    report.staticResidents_.cullRebuildFrames_ = witness.cullRebuildFrames_;
+    report.staticResidents_.cullWholeCacheSlots_ = witness.cullWholeCacheSlots_;
+    report.staticResidents_.cullWholeCacheFrames_ = witness.cullWholeCacheFrames_;
+    report.staticResidents_.cullInvalidatedFrames_ = witness.cullInvalidatedFrames_;
+    report.staticResidents_.poolFrames_ = witness.poolFrames_;
+
     // Collect per-system timing, grouped by pipeline
     auto pipelineName = [](IRTime::Events e) -> const char * {
         switch (e) {
@@ -655,6 +686,7 @@ void World::buildAndWriteProfileReport() {
             entry.maxNs_ = acc.maxNs_;
             entry.callCount_ = acc.callCount_;
             entry.totalEntityCount_ = acc.totalEntityCount_;
+            entry.totalWalkedCount_ = acc.totalWalkedCount_;
             report.systemTimings_.push_back(std::move(entry));
         }
     }

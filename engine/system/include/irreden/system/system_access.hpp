@@ -37,6 +37,13 @@ struct MainThread {};
 /// a manager singleton through a documented thread-safe surface).
 struct ParallelSafe {};
 
+/// Marker: the system is a deriving system for static residents that keeps
+/// matching settled rows (`docs/design/static-residents.md`). It reads
+/// world-scoped inputs as well as the entity's own, so it is dispatched on
+/// every pass and its batch-form tick returns once per settled archetype
+/// node unless one of those inputs changed.
+struct GatesSettled {};
+
 /// Add component types to the inferred read set without listing them
 /// in the iterating archetype filter — used when a system reads a
 /// component on a *different* entity (looked up via a stored EntityId).
@@ -90,6 +97,7 @@ struct SystemAccess {
     bool spawns_{false};
     bool destroys_{false};
     bool mutatesArchetypeGraph_{false};
+    bool gatesSettled_{false};
 
     constexpr bool readsType(const void *key) const {
         for (std::size_t i = 0; i < readCount_; ++i) {
@@ -137,6 +145,9 @@ template <> struct IsMainThreadTag<MainThread> : std::true_type {};
 template <typename T> struct IsParallelSafeTag : std::false_type {};
 template <> struct IsParallelSafeTag<ParallelSafe> : std::true_type {};
 
+template <typename T> struct IsGatesSettledTag : std::false_type {};
+template <> struct IsGatesSettledTag<GatesSettled> : std::true_type {};
+
 template <typename T> struct IsAlsoReads : std::false_type {
     using Types = std::tuple<>;
 };
@@ -154,8 +165,8 @@ template <typename... Ts> struct IsAlsoWrites<AlsoWrites<Ts...>> : std::true_typ
 template <typename T>
 inline constexpr bool kIsTag =
     IsExclude<T>::value || IsSpawnsTag<T>::value || IsDestroysTag<T>::value ||
-    IsMainThreadTag<T>::value || IsParallelSafeTag<T>::value || IsAlsoReads<T>::value ||
-    IsAlsoWrites<T>::value;
+    IsMainThreadTag<T>::value || IsParallelSafeTag<T>::value || IsGatesSettledTag<T>::value ||
+    IsAlsoReads<T>::value || IsAlsoWrites<T>::value;
 
 // ----------------------------------------------------------------------
 // Access-set assembly
@@ -212,6 +223,8 @@ template <typename T> constexpr void applyComponent(SystemAccess &out) {
         out.mainThreadOnly_ = true;
     } else if constexpr (IsParallelSafeTag<T>::value) {
         out.parallelSafe_ = true;
+    } else if constexpr (IsGatesSettledTag<T>::value) {
+        out.gatesSettled_ = true;
     } else if constexpr (IsAlsoReads<T>::value) {
         applyExtraReads(out, static_cast<const typename IsAlsoReads<T>::Types *>(nullptr));
     } else if constexpr (IsAlsoWrites<T>::value) {

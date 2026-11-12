@@ -84,9 +84,12 @@ Caching last frame's inputs on the component (`lastFoo_`,
 `cachedTransform_`, `hasLastTransform_`) and early-returning when they match
 is the same anti-pattern under a different field name — it bloats the
 component and accumulates re-stamp sites. Per-frame work on a rendered
-entity is unconditional; the only honest skip is that the result is not
-observable this frame — gate on **visibility / cull**
-(`C_VoxelPool::isRangeVisible`), never on input-equality.
+entity is unconditional, with two honest skips. The result is not observable
+this frame: gate on **visibility / cull** (`C_VoxelPool::isRangeVisible`). Or
+the entity is a settled static resident: its owner declared its pose inputs
+fixed and the engine has derived from them, so deriving systems exclude it by
+archetype (`C_Settled`, `docs/design/static-residents.md`). Never skip on
+input-equality.
 
 ### Multi-field honest gates must stay consistent across failure paths
 
@@ -101,6 +104,13 @@ When a per-frame recompute is legitimately gated on a change signal, the
 trigger set covers **every** mutable input the recomputed function reads
 (positions, transform indices, active masks, …). Enumerate the read set,
 give each input a trigger, and test each trigger independently.
+
+A trigger is pushed by the mutator that changes the input: a queued index, or
+a monotonic revision that each consumer compares with the value it last saw
+and that nothing clears. For a world-scoped input with no mutator to push
+from (a settings singleton, the active canvas id), the gated system may hold
+its own copy and compare it once per dispatch. The copy lives on the system,
+is O(1) in size, and is never per entity or on a component.
 
 ## System-owned invariants: encapsulate, don't delegate to callers
 
@@ -123,7 +133,9 @@ Two routes, chosen by when the derived state changes:
    pipeline's schedule (`REBUILD_GRID_VOXELS` re-rasterizes a GRID-mode
    entity from its live `C_WorldTransform` while on-screen); no creation
    calls a resync, and the no-dirty-flags rule rules out a cached snapshot
-   deciding whether to skip.
+   deciding whether to skip. A settled static resident is outside that
+   schedule by archetype, not by a cached snapshot
+   (`docs/design/static-residents.md`).
 
 ## Allocations in hot tick paths
 

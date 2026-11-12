@@ -99,7 +99,7 @@ template <> struct System<PROPAGATE_CANVAS_ROTATION> {
     static SystemId create() {
         return registerSystem<
             PROPAGATE_CANVAS_ROTATION,
-            IRComponents::C_WorldTransform,
+            const IRComponents::C_WorldTransform,
             IRComponents::C_RotationMode,
             IRComponents::C_EntityCanvas>("PropagateCanvasRotation");
     }

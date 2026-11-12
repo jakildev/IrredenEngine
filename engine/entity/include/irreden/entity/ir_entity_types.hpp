@@ -38,6 +38,30 @@ constexpr NodeId kNullNode = 0;
 
 enum Relation { NONE, CHILD_OF, PARENT_TO, SIBLING_OF };
 
+/// How a component relates to a static resident (an entity carrying
+/// `C_Static`, `docs/design/static-residents.md`). `INPUT` components are
+/// the entity's pose inputs: a system or query that declares a write to one
+/// never matches a static archetype. `DERIVED` components are computed from
+/// them: only a deriving system may write one on a static entity.
+enum class StaticGuard : std::uint8_t { NONE, INPUT, DERIVED };
+
+/// A component states its guard by specializing this in its own header, so
+/// every translation unit that names the component sees the same value.
+template <typename Component> inline constexpr StaticGuard kStaticGuard = StaticGuard::NONE;
+
+/// True for a component that does not survive an archetype move it is not
+/// part of: attaching or detaching any other component, or changing the
+/// parent relation, drops it from the destination archetype.
+template <typename Component> inline constexpr bool kClearedByForeignMove = false;
+
+/// True for a component whose entity depends on its `CHILD_OF` chain not
+/// changing. When the parent link of such an entity changes, or its parent
+/// is destroyed, the entity layer drops the cleared-by-foreign-move
+/// components of the entity and of every descendant that carries a
+/// component with this trait, and records each id in the tracked-change log
+/// (`EntityManager::takeTrackedChanges`).
+template <typename Component> inline constexpr bool kTracksInputChanges = false;
+
 struct CreateEntityExtraParams {
     std::pair<Relation, EntityId> relation = {NONE, kNullEntity};
 };

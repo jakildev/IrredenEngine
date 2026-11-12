@@ -38,7 +38,20 @@ void tick(const Archetype &, std::vector<EntityId> &,   // whole archetype
 
 Use the component form by default, the id form only when the id is required,
 and the archetype form for genuine batch work. `const` component types declare
-reads to `SystemAccess`; mutable component types declare writes.
+reads to `SystemAccess`; mutable component types declare writes. A `const C`
+in the pack is matched and stored as `C`; only the tick sees the const.
+
+### Static residents: the matching policy
+
+[`docs/design/static-residents.md`](../../docs/design/static-residents.md) is the contract. Every lane (`createSystem`, `registerSystem`, `createSystemDynamic`, `executeQuery`, `executeQueryDynamic`) runs `detail::applyStaticExclusion` (`static_exclusion.hpp`) over its declared write set:
+
+- a write to a pose input (`kStaticGuard` `INPUT`) excludes `C_Static`;
+- a write to derived pose (`DERIVED`) does too, unless the system is a **deriving system**: it excludes `C_Settled` or carries `GatesSettled`. A deriving system that writes a pose input is a registration assert.
+- A runtime-typed system or query counts every included component as written, minus the `readOnly` archetype of `createSystemDynamic` / `executeQueryDynamic`.
+- A one-shot query is never deriving: it joins no round, so one that writes derived pose visits no static row even with `Exclude<C_Settled>`, and `GatesSettled` in its pack is a compile error. Thaw the entity first, or change its inputs through a mutator.
+
+So declare a pose component `const` when the tick only reads it. A `GatesSettled` system, or one with `static constexpr bool kWholeNodeTick`, registers its per-archetype `tick` even beside a row-form overload and decides once per node whether to walk a settled node.
+`roundsOpened()` / `roundsCompleted()` count complete dispatches of every deriving group in INPUT, UPDATE, RENDER order; any change to pipeline or exclude membership abandons the open round. A whole-node tick reports the rows it iterated with `reportRowsWalked`, the profile report's `Walked`.
 
 ### Begin, end, and relation ticks
 
@@ -183,5 +196,4 @@ event with no registered pipeline.
   rows. Use deferred mutations.
 - Every enum-named system needs a `SystemName` entry; missing entries usually
   surface as linker failures.
-- Relation callbacks run only when registration supplies `RelationParams`.
-- Pipeline registration replaces; use the append/insert APIs for composition.
+- Relation callbacks need `RelationParams`; pipeline registration replaces.

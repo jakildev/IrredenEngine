@@ -4,6 +4,7 @@
 
 #include "system_dsl.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <fstream>
 #include <set>
@@ -1827,9 +1828,14 @@ void emitSystem(
 
     std::ostringstream sig;
     sig << "inline IRSystem::SystemId createSystem_" << record.name_ << "() {\n";
+    const auto readOnly = [&record](const std::string &component) {
+        return std::find(record.reads_.begin(), record.reads_.end(), component) !=
+               record.reads_.end();
+    };
     sig << "    return IRSystem::createSystem<\n";
     for (size_t i = 0; i < record.components_.size(); ++i) {
-        sig << "        IRComponents::C_" << record.components_[i];
+        sig << "        " << (readOnly(record.components_[i]) ? "const " : "")
+            << "IRComponents::C_" << record.components_[i];
         const bool moreComponents = (i + 1 < record.components_.size());
         const bool hasExcludes = !record.excludes_.empty();
         if (moreComponents || hasExcludes) sig << ",";
@@ -1849,8 +1855,8 @@ void emitSystem(
     sig << "        [](";
     for (size_t i = 0; i < record.components_.size(); ++i) {
         if (i) sig << ",\n           ";
-        sig << "IRComponents::C_" << record.components_[i] << "& _ir_row_"
-            << record.components_[i];
+        sig << (readOnly(record.components_[i]) ? "const " : "") << "IRComponents::C_"
+            << record.components_[i] << "& _ir_row_" << record.components_[i];
     }
     sig << ") {\n";
     out += sig.str();

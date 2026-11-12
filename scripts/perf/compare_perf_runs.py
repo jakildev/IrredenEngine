@@ -48,9 +48,10 @@ CULL_TOTAL_RE = re.compile(r"^Total\s+([\d.]+)\s+(\d+)\s+(\d+)")
 # (and the "Ratio:" one) fall through it.
 CULL_FEEDER_RE = re.compile(r"^Feeder\s+([\d.]+)\s+(\d+)\s+(\d+)")
 CULL_RATIO_RE = re.compile(r"^Ratio:\s+([\d.]+)")
+# The trailing Walked column is absent from a report that predates it.
 SYSTEM_RE = re.compile(
     r"^(INPUT|UPDATE|RENDER)\s+(\S+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+"
-    r"([\d.]+)\s+(\d+)\s+(\d+)"
+    r"([\d.]+)\s+(\d+)\s+(\d+)(?:\s+(\d+))?\s*$"
 )
 GPU_SAMPLED_RE = re.compile(r"^(\S+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+(\d+)\s*$")
 # An exclusive+window stage row: exclusive avg/min/max/samples, window avg, and
@@ -91,6 +92,24 @@ WITNESS_PIVOT_RE = re.compile(r"^Camera pivot: explicit focus on (\d+) of (\d+) 
 WITNESS_OVERFLOW_RE = re.compile(
     r"^Per-axis overflow: maxEntries=(\d+) maxDropped=(\d+) cap=(\d+) samples=(\d+)$"
 )
+STATIC_POPULATION_RE = re.compile(r"^Population: static=(\d+) settling=(\d+) settled=(\d+)$")
+STATIC_TRANSITIONS_RE = re.compile(
+    r"^Transitions: promoted=(\d+) thawed=(\d+) resettled=(\d+) restarted=(\d+) held=(\d+) "
+    r"held_by_global=(\d+) refused=(\d+)$"
+)
+STATIC_COST_RE = re.compile(
+    r"^Transition cost: promotion_ms_max=([\d.]+) drain_ms_max=([\d.]+)$"
+)
+STATIC_POSITION_RE = re.compile(
+    r"^Position upload: bytes=(\d+) max_frame_bytes=(\d+) frames=(\d+) of (\d+)$"
+)
+STATIC_CULL_RE = re.compile(
+    r"^Cull bounds: slots_rebuilt=(\d+) max_frame_slots=(\d+) frames=(\d+) of (\d+)$"
+)
+STATIC_CULL_CAUSE_RE = re.compile(
+    r"^Cull bounds by cause: invalidated_slots=(\d+) invalidated_frames=(\d+) "
+    r"whole_cache_slots=(\d+) whole_cache_frames=(\d+)$"
+)
 
 
 @dataclass
@@ -112,7 +131,44 @@ class SystemTiming:
     min_ms: float
     max_ms: float
     calls: int
+    # Rows in the archetype nodes the system matched, summed over calls.
     entities: int
+    # Rows the system iterated, summed over calls; None for a report without the column.
+    walked: Optional[int] = None
+
+
+@dataclass
+class StaticResidents:
+    """The report's Static residents section; a field is None where its line is absent."""
+    static: Optional[int] = None
+    settling: Optional[int] = None
+    settled: Optional[int] = None
+    promoted: Optional[int] = None
+    thawed: Optional[int] = None
+    resettled: Optional[int] = None
+    restarted: Optional[int] = None
+    held: Optional[int] = None
+    held_by_global: Optional[int] = None
+    refused: Optional[int] = None
+    promotion_ms_max: Optional[float] = None
+    drain_ms_max: Optional[float] = None
+    # Bytes submitted to the voxel position buffer over the window, the largest
+    # single frame, and the frames that submitted any.
+    position_bytes: Optional[int] = None
+    position_max_frame_bytes: Optional[int] = None
+    position_upload_frames: Optional[int] = None
+    cull_slots: Optional[int] = None
+    cull_max_frame_slots: Optional[int] = None
+    cull_rebuild_frames: Optional[int] = None
+    # The same slots by cause: rebuilt because a position or alpha write
+    # invalidated their chunk, or by a whole-cache sweep (a cardinal camera
+    # change, a chunk-count change, the first build).
+    cull_invalidated_slots: Optional[int] = None
+    cull_invalidated_frames: Optional[int] = None
+    cull_whole_cache_slots: Optional[int] = None
+    cull_whole_cache_frames: Optional[int] = None
+    # Rendered frames the pool figures cover.
+    pool_frames: Optional[int] = None
 
 
 @dataclass
@@ -201,6 +257,7 @@ class CellReport:
     warmup_frames: int = 0
     recorded_frames: int = 0
     witness: RunWitness = field(default_factory=RunWitness)
+    static_residents: StaticResidents = field(default_factory=StaticResidents)
     # Every recorded frame in order, warm-up included.
     frame_times_ms: List[float] = field(default_factory=list)
     # Fixed updates run inside each of those frames; empty for a report without the series.
@@ -310,6 +367,9 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
         if s.startswith("--- Run witness"):
             section = "witness"
             continue
+        if s.startswith("--- Static residents"):
+            section = "static_residents"
+            continue
         if s.startswith("--- Frame times"):
             section = "frame_times"
             continue
@@ -334,7 +394,43 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
                     max_ms=float(m.group(6)),
                     calls=int(m.group(7)),
                     entities=int(m.group(8)),
+                    walked=int(m.group(9)) if m.group(9) is not None else None,
                 ))
+        elif section == "static_residents":
+            residents = report.static_residents
+            m = STATIC_POPULATION_RE.match(s)
+            if m:
+                residents.static, residents.settling, residents.settled = (
+                    int(m.group(1)), int(m.group(2)), int(m.group(3)))
+                continue
+            m = STATIC_TRANSITIONS_RE.match(s)
+            if m:
+                (residents.promoted, residents.thawed, residents.resettled,
+                 residents.restarted, residents.held, residents.held_by_global,
+                 residents.refused) = (int(m.group(i)) for i in range(1, 8))
+                continue
+            m = STATIC_COST_RE.match(s)
+            if m:
+                residents.promotion_ms_max = float(m.group(1))
+                residents.drain_ms_max = float(m.group(2))
+                continue
+            m = STATIC_POSITION_RE.match(s)
+            if m:
+                (residents.position_bytes, residents.position_max_frame_bytes,
+                 residents.position_upload_frames, residents.pool_frames) = (
+                    int(m.group(i)) for i in range(1, 5))
+                continue
+            m = STATIC_CULL_RE.match(s)
+            if m:
+                (residents.cull_slots, residents.cull_max_frame_slots,
+                 residents.cull_rebuild_frames, residents.pool_frames) = (
+                    int(m.group(i)) for i in range(1, 5))
+                continue
+            m = STATIC_CULL_CAUSE_RE.match(s)
+            if m:
+                (residents.cull_invalidated_slots, residents.cull_invalidated_frames,
+                 residents.cull_whole_cache_slots, residents.cull_whole_cache_frames) = (
+                    int(m.group(i)) for i in range(1, 5))
         elif section == "frame_split":
             if FRAME_SPLIT_GPU_UNAVAILABLE_RE.match(s):
                 report.frame_split.gpu_unavailable = True

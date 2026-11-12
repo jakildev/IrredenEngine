@@ -658,7 +658,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         SystemId systemId = registerSystem<
             SHAPES_TO_TRIXEL,
             C_ShapeDescriptor,
-            C_WorldTransform,
+            const C_WorldTransform,
             AlsoWrites<C_TriangleCanvasTextures>>("ShapesToTrixel");
         auto *p = getSystemParams<System<SHAPES_TO_TRIXEL>>(systemId);
         p->shapeDepthProgram_ =

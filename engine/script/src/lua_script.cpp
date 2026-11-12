@@ -1248,12 +1248,38 @@ void LuaScript::bindLuaDrivenSystems() {
             resolveComponentList(*components, "components", systemName, *this, em);
         std::vector<std::string> includeNames;
         includeNames.reserve(includeIds.size());
+        const auto entryName = [](const sol::object &entry) {
+            return entry.is<std::string>() ? entry.as<std::string>()
+                                           : entry.as<sol::table>().get<std::string>("typeName");
+        };
         for (auto &kv : *components) {
-            includeNames.push_back(
-                kv.second.is<std::string>()
-                    ? kv.second.as<std::string>()
-                    : kv.second.as<sol::table>().get<std::string>("typeName")
-            );
+            includeNames.push_back(entryName(kv.second));
+        }
+
+        // `reads` lists components the tick only reads. The body is opaque,
+        // so every other listed component counts as written; a system that
+        // lists a pose component outside `reads` does not match static
+        // entities. A `reads` component is matched and exposed like any
+        // other, with its column read-only.
+        IREntity::Archetype readOnlyArchetype;
+        sol::optional<sol::table> reads = args.get<sol::optional<sol::table>>("reads");
+        if (reads) {
+            const std::vector<IREntity::ComponentId> readIds =
+                resolveComponentList(*reads, "reads", systemName, *this, em);
+            std::size_t readIndex = 0;
+            for (auto &kv : *reads) {
+                const IREntity::ComponentId id = readIds[readIndex++];
+                readOnlyArchetype.insert(id);
+                if (std::find(includeIds.begin(), includeIds.end(), id) == includeIds.end()) {
+                    includeIds.push_back(id);
+                    includeNames.push_back(entryName(kv.second));
+                }
+            }
+        }
+        std::vector<bool> includeReadOnly;
+        includeReadOnly.reserve(includeIds.size());
+        for (IREntity::ComponentId id : includeIds) {
+            includeReadOnly.push_back(readOnlyArchetype.contains(id));
         }
 
         std::vector<IREntity::ComponentId> excludeIds;
@@ -1329,7 +1355,9 @@ void LuaScript::bindLuaDrivenSystems() {
         // userdata methods (sol2 method calls, not sol::function
         // invocations).
         auto body =
-            [this, tickRef, includeIds, includeNames, systemName](IREntity::ArchetypeNode *node) {
+            [this, tickRef, includeIds, includeNames, includeReadOnly, systemName](
+                IREntity::ArchetypeNode *node
+            ) {
                 sol::state_view lua{m_lua.lua_state()};
                 sol::table archView = lua.create_table();
                 archView["length"] = node->length_;
@@ -1343,7 +1371,8 @@ void LuaScript::bindLuaDrivenSystems() {
                     const IREntity::ComponentId cid = includeIds[i];
                     IREntity::IComponentData *impl = node->components_.at(cid).get();
                     if (auto *typed = dynamic_cast<IComponentDataLuaTyped *>(impl)) {
-                        archView[includeNames[i]] = LuaTypedColumnView{typed, node->length_};
+                        archView[includeNames[i]] =
+                            LuaTypedColumnView{typed, node->length_, includeReadOnly[i]};
                         continue;
                     }
                     const LuaCppColumnAccessor *accessor = cppColumnAccessor(cid);
@@ -1354,7 +1383,8 @@ void LuaScript::bindLuaDrivenSystems() {
                         systemName.c_str(),
                         cid
                     );
-                    archView[includeNames[i]] = LuaCppColumnView{impl, accessor, node->length_};
+                    archView[includeNames[i]] =
+                        LuaCppColumnView{impl, accessor, node->length_, includeReadOnly[i]};
                 }
 
                 sol::protected_function_result result = (*tickRef)(archView);
@@ -1369,7 +1399,8 @@ void LuaScript::bindLuaDrivenSystems() {
             std::move(includeArchetype),
             std::move(excludeArchetype),
             std::move(body),
-            concurrency
+            concurrency,
+            std::move(readOnlyArchetype)
         );
         m_luaSystemTicks.emplace(systemId, tickRef);
         return sol::make_object(m_lua, static_cast<lua_Integer>(systemId));

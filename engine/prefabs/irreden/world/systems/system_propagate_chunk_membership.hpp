@@ -125,7 +125,7 @@ template <> struct System<PROPAGATE_CHUNK_MEMBERSHIP> {
     static SystemId create() {
         return registerSystem<
             PROPAGATE_CHUNK_MEMBERSHIP,
-            IRComponents::C_WorldTransform,
+            const IRComponents::C_WorldTransform,
             IRComponents::C_ChunkMembership>("PropagateChunkMembership");
     }
 };

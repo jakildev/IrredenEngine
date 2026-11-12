@@ -80,6 +80,8 @@
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/common/static_notes.hpp>
+#include <irreden/system/components/component_static.hpp>
 #include <irreden/voxel/face_occupancy.hpp>
 #include <irreden/voxel/grid_rotation.hpp>
 
@@ -160,6 +162,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
     void beginTick() {
         lastCanvas_ = IREntity::kNullEntity;
         lastPool_ = nullptr;
+        staticTag_ = IREntity::getEntityManager().findComponentType<C_Static>();
 
         // Resolve the cull viewport once per frame, mirroring the chunk
         // visibility gate in system_voxel_to_trixel.hpp. This system runs
@@ -177,6 +180,31 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         }
     }
 
+    // A deriving system for static residents (docs/design/static-residents.md):
+    // it excludes C_Settled, so a settled entity is rasterized once, when it
+    // settles. The registered tick is whole-node so the dynamic / settling
+    // decision is one branch per archetype node.
+    static constexpr bool kWholeNodeTick = true;
+
+    // The node being walked holds settling rows: the cull gate does not
+    // apply, and a row this dispatch cannot rasterize is held.
+    bool settlingNode_ = false;
+    IREntity::ComponentId staticTag_ = IREntity::kNullComponent;
+
+    void tick(
+        const Archetype &type,
+        std::vector<IREntity::EntityId> &entities,
+        std::vector<C_VoxelSetNew> &voxelSets,
+        const std::vector<C_WorldTransform> &worldTransforms,
+        const std::vector<C_RotationMode> &rotationModes
+    ) {
+        settlingNode_ = staticTag_ != IREntity::kNullComponent && type.contains(staticTag_);
+        for (std::size_t i = 0; i < entities.size(); ++i) {
+            tick(voxelSets[i], worldTransforms[i], rotationModes[i]);
+        }
+        settlingNode_ = false;
+    }
+
     void tick(
         C_VoxelSetNew &voxelSet,
         const C_WorldTransform &worldTransform,
@@ -185,7 +213,18 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         if (rotationMode.mode_ != RotationMode::GRID) {
             return;
         }
-        if (!voxelSet.renders() || voxelSet.numVoxels_ <= 0) {
+        if (voxelSet.numVoxels_ <= 0) {
+            return;
+        }
+        if (!voxelSet.renders()) {
+            // A hidden, culled or ghost-held set is not rasterized. A set
+            // at identity that never rotated already holds its raster in
+            // the authored span. A settling set that is rotated, or still
+            // carries a rotated raster to restore, waits until it is shown.
+            if (settlingNode_ && (!IRPrefab::GridRotation::isIdentityTransform(worldTransform) ||
+                                  !voxelSet.rotationSourceVoxels_.empty())) {
+                IRPrefab::Static::noteHeld(voxelSet.ownerEntityId_);
+            }
             return;
         }
         notePeakCapacity(voxelSet.allocatedVoxels_);
@@ -204,7 +243,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         // none of this set's pool chunks are visible. A fail-closed set has
         // no live voxels to bound, so it bypasses the gate until a pose is
         // admitted again.
-        if (cullValid_ && voxelSet.unadmittedDestinationCells_ == 0 &&
+        if (!settlingNode_ && cullValid_ && voxelSet.unadmittedDestinationCells_ == 0 &&
             !pool.isRangeVisible(
                 voxelSet.voxelStartIdx_,
                 static_cast<std::size_t>(voxelSet.allocatedVoxels_),
@@ -232,6 +271,10 @@ template <> struct System<REBUILD_GRID_VOXELS> {
             forwardArm(voxelSet, worldTransform, pool);
         } else {
             inverseArm(voxelSet, worldTransform, pool);
+        }
+        // A fail-closed pose is retried every dispatch until it is admitted.
+        if (settlingNode_ && voxelSet.unadmittedDestinationCells_ != 0) {
+            IRPrefab::Static::noteHeld(voxelSet.ownerEntityId_);
         }
     }
 
@@ -688,9 +731,12 @@ template <> struct System<REBUILD_GRID_VOXELS> {
     }
 
     static SystemId create() {
-        return registerSystem<REBUILD_GRID_VOXELS, C_VoxelSetNew, C_WorldTransform, C_RotationMode>(
-            "RebuildGridVoxels"
-        );
+        return registerSystem<
+            REBUILD_GRID_VOXELS,
+            C_VoxelSetNew,
+            const C_WorldTransform,
+            const C_RotationMode,
+            Exclude<C_Settled>>("RebuildGridVoxels");
     }
 };
 
@@ -740,6 +786,22 @@ template <> struct System<REBUILD_GRID_VOXELS_IMPLICIT> {
         impl_.beginTick();
     }
 
+    static constexpr bool kWholeNodeTick = true;
+
+    void tick(
+        const Archetype &type,
+        std::vector<IREntity::EntityId> &entities,
+        std::vector<C_VoxelSetNew> &voxelSets,
+        const std::vector<C_WorldTransform> &worldTransforms
+    ) {
+        impl_.settlingNode_ =
+            impl_.staticTag_ != IREntity::kNullComponent && type.contains(impl_.staticTag_);
+        for (std::size_t i = 0; i < entities.size(); ++i) {
+            impl_.tick(voxelSets[i], worldTransforms[i], kImplicitGrid);
+        }
+        impl_.settlingNode_ = false;
+    }
+
     void tick(C_VoxelSetNew &voxelSet, const C_WorldTransform &worldTransform) {
         impl_.tick(voxelSet, worldTransform, kImplicitGrid);
     }
@@ -748,8 +810,8 @@ template <> struct System<REBUILD_GRID_VOXELS_IMPLICIT> {
         return registerSystem<
             REBUILD_GRID_VOXELS_IMPLICIT,
             C_VoxelSetNew,
-            C_WorldTransform,
-            Exclude<C_RotationMode>>("RebuildGridVoxelsImplicit");
+            const C_WorldTransform,
+            Exclude<C_RotationMode, C_Settled>>("RebuildGridVoxelsImplicit");
     }
 };
 } // namespace IRSystem

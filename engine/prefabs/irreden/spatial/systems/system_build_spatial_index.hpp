@@ -39,7 +39,7 @@ template <> struct System<BUILD_SPATIAL_INDEX> {
     static SystemId create() {
         return registerSystem<
             BUILD_SPATIAL_INDEX,
-            IRComponents::C_WorldTransform,
+            const IRComponents::C_WorldTransform,
             IRComponents::C_SpatialQueryable>("BuildSpatialIndex");
     }
 };

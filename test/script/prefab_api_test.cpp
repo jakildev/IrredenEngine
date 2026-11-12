@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <irreden/common/components/component_static_lua.hpp>
+
 #include <irreden/asset/rig_format.hpp>
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/common/components/component_auto_spin.hpp>
@@ -1069,6 +1071,23 @@ TEST_F(PrefabApi, SpawnsAutoSpinFromManifest) {
     const auto &spin = IREntity::getComponent<IRComponents::C_AutoSpin>(r.entity_);
     EXPECT_EQ(spin.axis_, vec3(0.0f, 1.0f, 0.0f));
     EXPECT_FLOAT_EQ(spin.radiansPerFrame_, 0.02f);
+}
+
+TEST_F(PrefabApi, SpawnsAStaticResidentFromManifest) {
+    IRScript::bindLuaType<IRComponents::C_Static>(m_lua);
+
+    PrefabFiles f = writeFixtureSet(
+        "components_static",
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { C_Static = {} },\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+    EXPECT_TRUE(IRPrefab::Static::isStatic(r.entity_));
+    EXPECT_FALSE(IRPrefab::Static::isSettled(r.entity_));
 }
 
 TEST_F(PrefabApi, AutoSpinManifestOmittedFieldsKeepDefaults) {

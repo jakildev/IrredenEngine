@@ -67,6 +67,7 @@ template <> struct System<FOG_LOS_BUILD> {
         fog.losPublishedObservers_ = fog.observers_;
         fog.losPublishedFieldMin_ = fieldMin;
         fog.losPublished_ = true;
+        ++fog.revision_;
         {
             IRRender::ScopedCpuPhaseTimer timer{phaseTiming.upload_};
             IR_PROFILE_BLOCK("FogLosBuild::Upload", IR_PROFILER_COLOR_RENDER);

@@ -13,6 +13,7 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/common/static_residents.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
@@ -859,6 +860,13 @@ inline void stepGhostLifecycle(
         revealed.ghostHeld_ = false;
         ghost.valid_ = false;
     }
+}
+
+/// Whether a held ghost pose is exactly the subject's own pose.
+inline bool samePose(
+    const IRComponents::C_WorldTransform &a, const IRComponents::C_WorldTransform &b
+) {
+    return a.translation_ == b.translation_ && a.rotation_ == b.rotation_ && a.scale_ == b.scale_;
 }
 
 /// The 8-bit carrier form of a BODY reveal factor: round half up of
@@ -1795,6 +1803,9 @@ inline bool setHiddenPolicy(IREntity::EntityId entity, IRComponents::FogHiddenPo
     if (!revealed.has_value()) {
         return false;
     }
+    // The subject's own fog inputs arm no gated pass; a static subject is
+    // evaluated again as a settling row.
+    IRPrefab::Static::resettle(entity);
     if (policy == IRComponents::FogHiddenPolicy::GHOST) {
         if (!IREntity::getComponentOptional<IRComponents::C_FogGhost>(entity).has_value()) {
             IREntity::setComponent(entity, IRComponents::C_FogGhost{});
@@ -1803,6 +1814,31 @@ inline bool setHiddenPolicy(IREntity::EntityId entity, IRComponents::FogHiddenPo
     }
     restoreHideRouteState(entity, **revealed);
     IREntity::removeComponent<IRComponents::C_FogGhost>(entity);
+    return true;
+}
+
+/// Force or release a subject's reveal verdict. Returns false when the entity
+/// is not a BODY subject. Assigning `C_FogRevealed::override_` directly on a
+/// settled static entity is only read by the next armed fog pass.
+inline bool setOverride(IREntity::EntityId entity, IRComponents::FogOverride override) {
+    auto revealed = IREntity::getComponentOptional<IRComponents::C_FogRevealed>(entity);
+    if (!revealed.has_value()) {
+        return false;
+    }
+    (*revealed)->override_ = override;
+    IRPrefab::Static::resettle(entity);
+    return true;
+}
+
+/// Set the vision channels a subject is revealed on. Returns false when the
+/// entity is not a BODY subject. The same raw-write caveat as `setOverride`.
+inline bool setChannels(IREntity::EntityId entity, std::uint32_t channels) {
+    auto revealed = IREntity::getComponentOptional<IRComponents::C_FogRevealed>(entity);
+    if (!revealed.has_value()) {
+        return false;
+    }
+    (*revealed)->channels_ = channels;
+    IRPrefab::Static::resettle(entity);
     return true;
 }
 
@@ -1820,6 +1856,8 @@ inline IRComponents::FogHiddenPolicy hiddenPolicy(IREntity::EntityId entity) {
 /// entity is a reclassification.
 inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectClass) {
     using IRComponents::C_FogExempt;
+    // Queued before the class change so every return path below is covered.
+    IRPrefab::Static::resettle(entity);
     using IRComponents::C_FogField;
     using IRComponents::C_FogGhost;
     using IRComponents::C_FogRevealed;

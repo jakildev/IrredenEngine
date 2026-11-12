@@ -12,6 +12,8 @@
 
 #include <irreden/ir_math.hpp>
 
+#include <irreden/entity/ir_entity_types.hpp>
+
 namespace IRComponents {
 
 struct C_WorldTransform {
@@ -28,5 +30,14 @@ struct C_WorldTransform {
 };
 
 } // namespace IRComponents
+
+namespace IREntity {
+
+// Derived pose of a static resident (docs/design/static-residents.md):
+// only a deriving system may declare a write to it on one.
+template <>
+inline constexpr StaticGuard kStaticGuard<IRComponents::C_WorldTransform> = StaticGuard::DERIVED;
+
+} // namespace IREntity
 
 #endif /* COMPONENT_WORLD_TRANSFORM_H */

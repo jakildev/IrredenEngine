@@ -19,7 +19,11 @@ struct SystemTimingEntry {
     uint64_t minNs_ = UINT64_MAX;
     uint64_t maxNs_ = 0;
     uint32_t callCount_ = 0;
+    /// Rows in the archetype nodes the system matched, summed over calls.
     uint64_t totalEntityCount_ = 0;
+    /// Rows the system iterated, summed over calls; differs from the matched
+    /// count only for a whole-node tick that reported it.
+    uint64_t totalWalkedCount_ = 0;
 };
 
 /// Per-GPU-stage timing entry. The top-level figures are exclusive time (the
@@ -94,6 +98,40 @@ struct RunWitnessSummary {
     uint32_t overflowCap_ = 0;
 };
 
+/// Static-resident witnesses (docs/design/static-residents.md): the live
+/// populations and the transition step's lifetime counters at report time,
+/// and the voxel-pool work of each rendered frame in the window.
+struct StaticResidentsSummary {
+    uint64_t static_ = 0;
+    uint64_t settling_ = 0;
+    uint64_t settled_ = 0;
+    uint64_t promoted_ = 0;
+    uint64_t thawed_ = 0;
+    uint64_t resettled_ = 0;
+    uint64_t restarted_ = 0;
+    uint64_t held_ = 0;
+    uint64_t heldByGlobal_ = 0;
+    uint64_t refused_ = 0;
+    double promotionMsMax_ = 0.0;
+    double drainMsMax_ = 0.0;
+    /// Bytes submitted to the voxel position buffer: run total, the largest
+    /// single frame, and the frames that submitted any.
+    uint64_t positionBytes_ = 0;
+    uint64_t maxFramePositionBytes_ = 0;
+    uint32_t positionUploadFrames_ = 0;
+    /// Cull-bound slots rebuilt, in the same three figures.
+    uint64_t cullSlots_ = 0;
+    uint64_t maxFrameCullSlots_ = 0;
+    uint32_t cullRebuildFrames_ = 0;
+    // Of `cullSlots_`, the slots a whole-cache sweep rebuilt and the frames
+    // that ran one; and the frames that rebuilt a slot a write invalidated.
+    uint64_t cullWholeCacheSlots_ = 0;
+    uint32_t cullWholeCacheFrames_ = 0;
+    uint32_t cullInvalidatedFrames_ = 0;
+    /// Rendered frames the pool figures cover.
+    uint32_t poolFrames_ = 0;
+};
+
 /// Leading share of the recorded frames the steady frame-time line excludes:
 /// pipeline compilation, first-use allocation and the fixed-step catch-up land
 /// there, and a tail percentile over them describes startup.
@@ -110,6 +148,7 @@ struct ProfileReport {
     /// Fixed updates run inside each recorded frame, parallel to frameTimesMs_.
     std::vector<uint32_t> frameUpdateTicks_;
     RunWitnessSummary witness_;
+    StaticResidentsSummary staticResidents_;
     uint32_t totalFrames_ = 0;
     uint32_t totalUpdateTicks_ = 0;
     uint32_t maxUpdateTicksPerFrame_ = 0;

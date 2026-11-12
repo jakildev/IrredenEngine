@@ -209,6 +209,11 @@ inline BufferUploadRange positionUploadRange(
 inline void submitPositionRanges(Buffer *buf, std::vector<BufferUploadRange> &ranges) {
     if (!ranges.empty()) {
         buf->subDataRanges(ranges);
+        std::uint64_t bytes = 0;
+        for (const BufferUploadRange &range : ranges) {
+            bytes += range.size_;
+        }
+        renderRunWitness().framePositionBytes_ += bytes;
     }
     ranges.clear();
 }
@@ -1551,6 +1556,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // moved to their own sub-rows).
         IR_PROFILE_SCOPE("voxelStage1");
         const int liveVoxelCount = voxelPool.getLiveVoxelCount();
+        // Folds the pool's cull-bound rebuilds into this frame's witness on
+        // every exit, so the slots this tick rebuilds count in its own frame.
+        struct CullRebuildWitness {
+            C_VoxelPool &pool_;
+            ~CullRebuildWitness() {
+                const C_VoxelPool::CullRebuildCounters rebuilt = pool_.consumeCullRebuildCounters();
+                renderRunWitness().frameCullSlots_ += rebuilt.cardinalSlots_ + rebuilt.worldSlots_;
+                renderRunWitness().frameCullWholeCacheSlots_ += rebuilt.wholeCacheSlots_;
+            }
+        } cullRebuildWitness{voxelPool};
 
         // Per-frame canvas clear runs unconditionally — every downstream
         // writer (shapes, stateless/GPU particles, text overlays, lighting)
@@ -2468,6 +2483,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
     void beginTick() {
         const bool mainBackingResized = IRPrefab::CanvasCoverage::syncMainBacking();
+        renderRunWitness().openPoolFrame();
         renderRunWitness().recordPose(
             IRPrefab::Camera::getYaw(),
             IRRender::getCameraZoom().x,

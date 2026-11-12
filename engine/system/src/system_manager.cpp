@@ -4,9 +4,43 @@
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/ir_job.hpp>
 
+#include <algorithm>
 #include <chrono>
 
 namespace IRSystem {
+
+namespace {
+// Rows a whole-node tick reported for the dispatch executing on this
+// thread. Null outside executeSystem.
+struct WalkReport {
+    std::uint64_t rows_ = 0;
+    bool reported_ = false;
+};
+thread_local WalkReport *t_walkReport = nullptr;
+
+// Installs a report for the dispatch running on this thread and restores the
+// outer one on every exit, a throwing tick included.
+struct WalkReportScope {
+    WalkReport report_;
+    WalkReport *const outer_ = t_walkReport;
+
+    WalkReportScope() {
+        t_walkReport = &report_;
+    }
+    ~WalkReportScope() {
+        t_walkReport = outer_;
+    }
+    WalkReportScope(const WalkReportScope &) = delete;
+    WalkReportScope &operator=(const WalkReportScope &) = delete;
+};
+} // namespace
+
+void SystemManager::reportRowsWalked(std::uint64_t rows) {
+    if (t_walkReport != nullptr) {
+        t_walkReport->rows_ += rows;
+        t_walkReport->reported_ = true;
+    }
+}
 
 SystemManager::SystemManager()
     : m_nextSystemId{0} {
@@ -52,8 +86,18 @@ SystemId SystemManager::createSystemDynamic(
     std::function<void(ArchetypeNode *)> body,
     Concurrency concurrency,
     std::uint32_t cadence,
-    std::uint32_t offset
+    std::uint32_t offset,
+    Archetype readOnly
 ) {
+    // A runtime-typed system cannot say which columns its body writes, so
+    // every included component counts as written unless listed read-only.
+    Archetype writes;
+    for (ComponentId component : includeArchetype) {
+        if (!readOnly.contains(component)) {
+            writes.insert(component);
+        }
+    }
+    const IREntity::StaticGuard writeGuard = detail::writeGuardOf(writes);
     m_systemNames.emplace_back(C_Name{std::move(name)});
     SystemId newSystemId = m_nextSystemId++;
 
@@ -88,7 +132,137 @@ SystemId SystemManager::createSystemDynamic(
     m_grainSize.emplace_back(kDefaultGrainSize);
     m_systemAccess.emplace_back();
     emplaceCadenceState(cadence, offset);
+    emplaceStaticPolicy(newSystemId, writeGuard, false);
     return newSystemId;
+}
+
+// Static-resident matching policy and rounds -----------------------------
+
+void SystemManager::emplaceStaticPolicy(
+    SystemId system, IREntity::StaticGuard writeGuard, bool gatesSettled
+) {
+    m_writeGuard.emplace_back(writeGuard);
+    m_gatesSettled.emplace_back(gatesSettled ? 1 : 0);
+    IR_ASSERT(
+        !detail::derivingWritesPoseInput(
+            m_ticks[system].declaredExcludeArchetype_,
+            writeGuard,
+            gatesSettled
+        ),
+        "System '{}' is a deriving system (it excludes C_Settled or carries GatesSettled) "
+        "and declares a write to a pose input (C_LocalTransform or C_Modifiers). A pose "
+        "writer never matches a static entity, so it could not derive the rows it claims. "
+        "Declare the input const.",
+        m_systemNames[system].name_
+    );
+    C_SystemEvent<TICK> &tick = m_ticks[system];
+    tick.excludeArchetype_ = detail::applyStaticExclusion(
+        tick.declaredExcludeArchetype_,
+        writeGuard,
+        detail::isDeriving(tick.declaredExcludeArchetype_, gatesSettled)
+    );
+}
+
+void SystemManager::rebuildEffectiveExclude(SystemId system) {
+    C_SystemEvent<TICK> &tick = m_ticks[system];
+    tick.excludeArchetype_ = detail::applyStaticExclusion(
+        tick.declaredExcludeArchetype_,
+        m_writeGuard[system],
+        detail::isDeriving(tick.declaredExcludeArchetype_, m_gatesSettled[system] != 0)
+    );
+    abandonRound();
+}
+
+bool SystemManager::isDerivingSystem(SystemId system) const {
+    return system < m_ticks.size() && detail::isDeriving(
+                                          m_ticks[system].declaredExcludeArchetype_,
+                                          m_gatesSettled[system] != 0
+                                      );
+}
+
+void SystemManager::seedRoundCountersForTest(std::uint64_t value) {
+    m_roundsOpened = value;
+    m_roundsCompleted = value;
+    abandonRound();
+}
+
+void SystemManager::abandonRound() {
+    m_roundOpen = false;
+    m_derivingGroupsStale = true;
+}
+
+void SystemManager::rebuildDerivingGroups() {
+    m_derivingGroups.clear();
+    for (IRTime::Events event : {IRTime::INPUT, IRTime::UPDATE, IRTime::RENDER}) {
+        const auto it = m_systemPipelineGroups.find(event);
+        if (it == m_systemPipelineGroups.end()) {
+            continue;
+        }
+        for (std::size_t groupIndex = 0; groupIndex < it->second.size(); ++groupIndex) {
+            DerivingGroup deriving{event, groupIndex, {}};
+            for (SystemId system : it->second[groupIndex]) {
+                if (isDerivingSystem(system)) {
+                    deriving.members_.push_back(system);
+                }
+            }
+            if (!deriving.members_.empty()) {
+                m_derivingGroups.push_back(std::move(deriving));
+            }
+        }
+    }
+    m_derivingGroupsStale = false;
+}
+
+void SystemManager::openRoundAtPipelineStart() {
+    IR_ASSERT_MAIN_THREAD();
+    if (m_roundOpen) {
+        return;
+    }
+    if (m_derivingGroupsStale) {
+        rebuildDerivingGroups();
+    }
+    ++m_roundsOpened;
+    m_roundOpen = true;
+    m_roundCursor = 0;
+    m_roundPending.clear();
+    if (!m_derivingGroups.empty()) {
+        m_roundPending = m_derivingGroups[0].members_;
+    }
+    closeRoundIfCursorPastEnd();
+}
+
+void SystemManager::closeRoundIfCursorPastEnd() {
+    if (m_roundCursor >= m_derivingGroups.size()) {
+        m_roundOpen = false;
+        m_roundsCompleted = m_roundsOpened;
+    }
+}
+
+void SystemManager::advanceRoundAfterGroup(
+    IRTime::Events event, std::size_t groupIndex, const SystemId *dispatched, std::size_t count
+) {
+    IR_ASSERT_MAIN_THREAD();
+    if (!m_roundOpen || m_roundCursor >= m_derivingGroups.size()) {
+        return;
+    }
+    const DerivingGroup &underCursor = m_derivingGroups[m_roundCursor];
+    if (underCursor.event_ != event || underCursor.groupIndex_ != groupIndex) {
+        return;
+    }
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto it = std::find(m_roundPending.begin(), m_roundPending.end(), dispatched[i]);
+        if (it != m_roundPending.end()) {
+            m_roundPending.erase(it);
+        }
+    }
+    if (!m_roundPending.empty()) {
+        return;
+    }
+    ++m_roundCursor;
+    if (m_roundCursor < m_derivingGroups.size()) {
+        m_roundPending = m_derivingGroups[m_roundCursor].members_;
+    }
+    closeRoundIfCursorPastEnd();
 }
 
 // Per-system update cadence -------------------------------------
@@ -260,6 +434,7 @@ void SystemManager::registerPipelineGroups(
 ) {
     m_systemPipelineGroups[event] = std::move(groups);
     m_flattenedPipelinesDirty = true;
+    abandonRound();
     // Seed each listed system's cadence phase from the current event
     // tick (+ its offset), so a mid-run re-registration measures elapsed
     // from here rather than from counter zero.
@@ -283,6 +458,7 @@ void SystemManager::appendToPipeline(IRTime::Events event, SystemId system) {
     );
     groups.push_back({system});
     m_flattenedPipelinesDirty = true;
+    abandonRound();
     stampCadenceJoin(event, system); // seed phase from the join tick.
 }
 
@@ -337,6 +513,7 @@ void SystemManager::insertSingletonGroupRelativeTo(
     const std::size_t pos = after ? anchorGroup + 1 : anchorGroup;
     groups.insert(groups.begin() + static_cast<std::ptrdiff_t>(pos), std::vector<SystemId>{system});
     m_flattenedPipelinesDirty = true;
+    abandonRound();
     stampCadenceJoin(event, system); // seed phase from the join tick.
 }
 
@@ -463,8 +640,10 @@ void SystemManager::executePipeline(IRTime::Events event) {
     // Bump this event's phase-tick counter once, so every cadence
     // gate in this pass compares against the same `now`.
     const std::uint64_t now = ++m_eventTickCounts[event];
+    openRoundAtPipelineStart();
     const auto &groups = it->second;
-    for (const auto &group : groups) {
+    for (std::size_t groupIndex = 0; groupIndex < groups.size(); ++groupIndex) {
+        const auto &group = groups[groupIndex];
         if (group.size() == 1) {
             // Observer bracket fires on the main thread around
             // each singleton system — the only group shape that
@@ -489,6 +668,7 @@ void SystemManager::executePipeline(IRTime::Events event) {
                 for (auto &entry : m_observers) {
                     entry.second->onAfterTick(id);
                 }
+                advanceRoundAfterGroup(event, groupIndex, &id, 1);
             }
         } else if (!group.empty()) {
             // Parallel group — fan out across the worker pool.
@@ -544,6 +724,7 @@ void SystemManager::executePipeline(IRTime::Events event) {
                         executeSystem(id);
                     }
                 }
+                advanceRoundAfterGroup(event, groupIndex, m_dueScratch.data(), m_dueScratch.size());
             }
         }
         IREntity::flushStructuralChanges();
@@ -566,6 +747,9 @@ void SystemManager::executeSystem(SystemId system) {
     if (m_timingEnabled) {
         t0 = Clock::now();
     }
+
+    const WalkReportScope walkScope;
+    const WalkReport &walkReport = walkScope.report_;
 
     m_beginTicks[system].functionBeginTick_();
     std::vector<ArchetypeNode *> nodes;
@@ -665,6 +849,9 @@ void SystemManager::executeSystem(SystemId system) {
             acc.maxNs_ = ns;
         acc.callCount_++;
         acc.totalEntityCount_ += entityCount;
+        const bool wholeNodeTick = !static_cast<bool>(tickEvent.prepareRangedTick_);
+        acc.totalWalkedCount_ +=
+            wholeNodeTick && walkReport.reported_ ? walkReport.rows_ : entityCount;
     }
 
     // Observer fires moved to executePipeline (singleton groups

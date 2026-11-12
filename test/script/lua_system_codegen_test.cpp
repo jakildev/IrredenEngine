@@ -200,6 +200,25 @@ TEST_F(LuaSystemCodegenTest, RegistryReturnsAllCodegenSystemIds) {
     EXPECT_NE(ids.CodegenForNumericBackEdge, ids.CodegenRenderGlue);
 }
 
+// ---- `reads` lowers to a const pack entry --------------------------------
+
+TEST_F(LuaSystemCodegenTest, ReadsComponentIsDeclaredConstAndStillRead) {
+    using IRComponents::C_CodegenSysPos;
+    using IRComponents::C_CodegenSysVel;
+
+    const auto e =
+        IREntity::createEntity(C_CodegenSysPos(1.0f, 2.0f), C_CodegenSysVel(10.0f, 20.0f));
+    const IRSystem::SystemId sys = IRScript::CodegenRegistry::createSystem_CodegenReadVel();
+    const IRSystem::SystemAccess &access = m_system_manager.getSystemAccess(sys);
+    EXPECT_TRUE(access.readsType<C_CodegenSysVel>());
+    EXPECT_FALSE(access.writesType<C_CodegenSysVel>());
+    EXPECT_TRUE(access.writesType<C_CodegenSysPos>());
+
+    m_system_manager.executeSystem(sys);
+    EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(e).x_, 11.0f);
+    EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysVel>(e).x_, 10.0f);
+}
+
 // ---- PARALLEL_FOR registers without FATAL and updates every row --------
 //
 TEST_F(LuaSystemCodegenTest, ParallelIncRegistersAndUpdatesEveryRow) {

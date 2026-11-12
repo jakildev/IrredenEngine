@@ -12,6 +12,7 @@
 #include <irreden/common/components/component_modifiers.hpp>
 
 #include <algorithm>
+#include <cstddef>
 
 namespace IRSystem {
 
@@ -19,6 +20,10 @@ template <> struct System<GLOBAL_MODIFIER_DECAY> {
     static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
 
     void tick(IRComponents::C_GlobalModifiers &g) {
+        // An expiry changes what the global modifiers compose to; a
+        // countdown alone does not.
+        const std::size_t before =
+            g.modifiers_.size() + g.modifiersVec3_.size() + g.modifiersQuat_.size();
         auto &v = g.modifiers_;
         auto newEnd = std::remove_if(
             v.begin(),
@@ -42,6 +47,9 @@ template <> struct System<GLOBAL_MODIFIER_DECAY> {
             IRComponents::detail::tickAndExpired<IRComponents::ModifierQuat>
         );
         vq.erase(newEndQ, vq.end());
+        if (g.modifiers_.size() + g.modifiersVec3_.size() + g.modifiersQuat_.size() != before) {
+            ++g.revision_;
+        }
     }
 
     static SystemId create() {

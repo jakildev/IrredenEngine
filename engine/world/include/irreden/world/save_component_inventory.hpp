@@ -41,6 +41,8 @@
 #include <irreden/common/components/component_size_int_2d.hpp>
 #include <irreden/common/components/component_size_int_3d.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
+#include <irreden/common/components/component_static_settings.hpp>
+#include <irreden/common/components/component_static_state.hpp>
 #include <irreden/common/components/component_stopwatch.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/common/components/component_timer.hpp>
@@ -136,6 +138,7 @@
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
 #include <irreden/spatial/components/component_spatial_index.hpp>
+#include <irreden/system/components/component_static.hpp>
 #include <irreden/system/components/component_system_event.hpp>
 #include <irreden/system/components/component_system_relation.hpp>
 #include <irreden/update/components/component_acceleration_3d.hpp>
@@ -278,6 +281,13 @@ IR_SAVE_OPT_OUT(IRComponents::C_IsNotPure)
 IR_SAVE_OPT_OUT(IRComponents::C_MarkedForDeletion)
 IR_SAVE_OPT_OUT(IRComponents::C_NoGlobalModifiers)
 IR_SAVE_OPT_OUT(IRComponents::C_GlobalModifiers)
+// Static residents (docs/design/static-residents.md). C_Settled records that
+// derived state is current, and a load restores CPU data only, so a static
+// entity loads settling and is promoted by the ordinary rule. The settings
+// and the transition step's state are the session's.
+IR_SAVE_OPT_OUT(IRComponents::C_Settled)
+IR_SAVE_OPT_OUT(IRComponents::C_StaticSettings)
+IR_SAVE_OPT_OUT(IRComponents::C_StaticState)
 IR_SAVE_OPT_OUT(IRComponents::C_LambdaModifiers)
 IR_SAVE_OPT_OUT(IRComponents::C_Modifiers)
 
@@ -510,6 +520,9 @@ IR_SAVE_OPT_IN(IRComponents::C_ControllableUnit, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Selected, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Persistent, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Locked, 1)
+// The owner's declaration only: the settle stamp is the session's round
+// number and is not written.
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_Static, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Name, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Example, 1)
 IR_SAVE_OPT_IN(IRComponents::C_HelpText, 1)
@@ -733,6 +746,10 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_Selected,
     IRComponents::C_Persistent,
     IRComponents::C_Locked,
+    IRComponents::C_Static,
+    IRComponents::C_Settled,
+    IRComponents::C_StaticSettings,
+    IRComponents::C_StaticState,
     IRComponents::C_Name,
     IRComponents::C_Example,
     IRComponents::C_HelpText,

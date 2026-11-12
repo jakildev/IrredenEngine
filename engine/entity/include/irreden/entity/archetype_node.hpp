@@ -28,6 +28,12 @@ class ArchetypeNode {
     std::unordered_map<ComponentId, smart_ComponentData> components_;
     std::unordered_map<ComponentId, ArchetypeNodeEdge> edges_;
     int length_;
+    // Whether `type_` holds a component whose `kClearedByForeignMove` trait
+    // is true; every move out of this node tests it.
+    bool hasForeignCleared_ = false;
+    // Whether `type_` holds a component whose `kTracksInputChanges` trait is
+    // true; a parent-link change tests it.
+    bool tracksInputChanges_ = false;
 
     ArchetypeNode(NodeId nodeId, const Archetype &archetype);
 

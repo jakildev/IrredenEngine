@@ -38,6 +38,8 @@
 #include <irreden/ir_entity.hpp>
 
 #include <irreden/render/systems/system_update_joint_matrices.hpp>
+#include <irreden/common/static_notes.hpp>
+#include <irreden/system/components/component_static.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
 #include <cstddef>
@@ -51,20 +53,29 @@ template <> struct System<SEED_STAGED_VOXELS> {
     // Entities whose set became pool-resident this tick. Cleared per tick;
     // capacity persists.
     std::vector<IREntity::EntityId> seeded_;
+    IREntity::ComponentId staticTag_ = IREntity::kNullComponent;
 
     void beginTick() {
         seeded_.clear();
+        staticTag_ = IREntity::getEntityManager().findComponentType<C_Static>();
     }
 
+    // A deriving system for static residents (docs/design/static-residents.md):
+    // it excludes C_Settled, and holds a settling entity whose set is still
+    // staged, so every set of a settled entity is resident in a pool.
     void tick(
-        const Archetype &,
+        const Archetype &type,
         std::vector<IREntity::EntityId> &entities,
         std::vector<C_VoxelSetNew> &voxelSets
     ) {
+        const bool settling = staticTag_ != IREntity::kNullComponent && type.contains(staticTag_);
         seeded_.reserve(seeded_.size() + entities.size());
         for (std::size_t i = 0; i < entities.size(); ++i) {
             if (voxelSets[i].attachToCanvas()) {
                 seeded_.push_back(entities[i]);
+            } else if (settling && voxelSets[i].numVoxels_ == 0 &&
+                       !voxelSets[i].pendingVoxels_.empty()) {
+                IRPrefab::Static::noteHeld(entities[i]);
             }
         }
     }
@@ -76,7 +87,9 @@ template <> struct System<SEED_STAGED_VOXELS> {
     }
 
     static SystemId create() {
-        return registerSystem<SEED_STAGED_VOXELS, C_VoxelSetNew>("SeedStagedVoxels");
+        return registerSystem<SEED_STAGED_VOXELS, C_VoxelSetNew, Exclude<C_Settled>>(
+            "SeedStagedVoxels"
+        );
     }
 };
 

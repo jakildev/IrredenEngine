@@ -596,9 +596,12 @@ struct C_VoxelPool {
         }
         m_chunkBounds.resize(static_cast<std::size_t>(chunkCount));
         if (fullRebuild) {
+            const std::size_t slotsBefore = m_cullRebuildCounters.cardinalSlots_;
             for (int c = 0; c < chunkCount; ++c) {
                 rebuildCardinalChunkBounds(c, cardinalIndex);
             }
+            m_cullRebuildCounters.wholeCacheSlots_ +=
+                m_cullRebuildCounters.cardinalSlots_ - slotsBefore;
             dropPendingChunks(m_pendingCardinalChunks, kCullPendingCardinal);
         } else {
             // Consume ONLY the cardinal bit: the world-AABB consumer runs on
@@ -663,6 +666,11 @@ struct C_VoxelPool {
         std::size_t cardinalSlots_ = 0;
         std::size_t worldChunks_ = 0;
         std::size_t worldSlots_ = 0;
+        // The part of both slot counts rebuilt by a whole-cache sweep: a
+        // cardinal change, a cardinal frame after a continuous-yaw one, a
+        // chunk-count change or the first build. The rest was rebuilt
+        // because a position or alpha write invalidated its chunk.
+        std::size_t wholeCacheSlots_ = 0;
     };
 
     [[nodiscard]] CullRebuildCounters consumeCullRebuildCounters() {
@@ -1136,9 +1144,12 @@ struct C_VoxelPool {
         }
         m_chunkWorldBounds.resize(static_cast<std::size_t>(chunkCount));
         if (fullRebuild) {
+            const std::size_t slotsBefore = m_cullRebuildCounters.worldSlots_;
             for (int c = 0; c < chunkCount; ++c) {
                 rebuildChunkWorldBounds(c);
             }
+            m_cullRebuildCounters.wholeCacheSlots_ +=
+                m_cullRebuildCounters.worldSlots_ - slotsBefore;
             dropPendingChunks(m_pendingWorldChunks, kCullPendingWorld);
         } else {
             // Consume ONLY the world bit — the cardinal consumer may not have

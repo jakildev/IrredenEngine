@@ -419,7 +419,7 @@ template <> struct System<DEBUG_CULLING_MINIMAP> {
 
     static SystemId create(const Params &initialParams) {
         SystemId systemId =
-            registerSystem<DEBUG_CULLING_MINIMAP, C_ShapeDescriptor, C_WorldTransform>(
+            registerSystem<DEBUG_CULLING_MINIMAP, C_ShapeDescriptor, const C_WorldTransform>(
                 "DebugCullingMinimap"
             );
         auto *p = getSystemParams<System<DEBUG_CULLING_MINIMAP>>(systemId);
