@@ -94,7 +94,7 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         functionName == "c_trixel_glitch_per_axis_writeback") {
         return MTL::Size(16, 16, 1);
     }
-    if (functionName == "c_build_distance_hiz") {
+    if (functionName == "c_build_distance_hiz" || functionName == "c_voxel_winner_count") {
         return MTL::Size(16, 16, 1);
     }
     if (functionName == "c_chunk_occlusion_cull") {

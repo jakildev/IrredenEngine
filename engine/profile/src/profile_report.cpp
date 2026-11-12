@@ -450,6 +450,23 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
         );
         const double avgFeeder = static_cast<double>(c.feederSum_) / samples;
         std::fprintf(f, "%-12s %14.1f %14u %10u\n", "Feeder", avgFeeder, c.maxFeeder_, c.sampleCount_);
+        if (c.winnerSampleCount_ > 0) {
+            std::fprintf(
+                f,
+                "%-12s %14.1f %14u %10u\n",
+                "Winners",
+                static_cast<double>(c.winnersSum_) / c.winnerSampleCount_,
+                c.maxWinners_,
+                c.winnerSampleCount_
+            );
+            std::fprintf(
+                f,
+                "Winner ratio: %.6f (distinct elected voxels / admitted visible candidates)\n",
+                c.winnerCandidatesSum_ > 0
+                    ? static_cast<double>(c.winnersSum_) / c.winnerCandidatesSum_
+                    : 0.0
+            );
+        }
         std::fprintf(
             f,
             "Ratio:       %14.4f (unique retained candidates / pool slots; includes separate "

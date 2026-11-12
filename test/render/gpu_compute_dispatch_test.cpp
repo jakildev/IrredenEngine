@@ -1141,6 +1141,53 @@ TEST_F(MetalGpuComputeDispatchTest, SecondDispatchSeesFirstDispatchDistanceWrite
                                  "nor the clear sentinel.";
 }
 
+TEST_F(MetalGpuComputeDispatchTest, VoxelWinnerCountDeduplicatesAcrossWorkgroupsAndMaskWords) {
+    using namespace IRRender;
+    constexpr int width = 35;
+    constexpr int height = 19;
+    Texture2D distances{TextureKind::TEXTURE_2D, width, height, TextureFormat::R32I};
+    std::vector<std::uint32_t> winners(width * height, 0xFFFFFFFFu);
+    for (std::size_t i = 0; i < winners.size(); i += 2) {
+        constexpr std::uint32_t ids[] = {0, 31, 32, 63, 95};
+        winners[i] = ids[i % 5];
+    }
+    Buffer winnerBuffer{
+        winners.data(),
+        winners.size() * sizeof(std::uint32_t),
+        BUFFER_STORAGE_DYNAMIC
+    };
+    std::uint32_t seen[3]{};
+    Buffer seenBuffer{seen, sizeof(seen), BUFFER_STORAGE_DYNAMIC};
+    VoxelIndirectDispatchParams params{};
+    params.visibleCount = 100;
+    Buffer counts{&params, sizeof(params), BUFFER_STORAGE_DYNAMIC};
+    const std::string path = std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_winner_count.glsl";
+    ShaderProgram program{std::vector{ShaderStage{path.c_str(), ShaderType::COMPUTE}}};
+    program.use();
+    distances.bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+    winnerBuffer.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisResolveScratch);
+    seenBuffer.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ChunkVisibility);
+    counts.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_IndirectDispatchParams);
+    device_->dispatchCompute(3, 2, 1);
+    device_->finish();
+    counts.getSubData(0, sizeof(params), &params);
+    EXPECT_EQ(params.winningVoxelCount, 5u);
+    EXPECT_EQ(params.visibleCount, 100u);
+    seenBuffer.getSubData(0, sizeof(seen), seen);
+    EXPECT_EQ(seen[0], 0x80000001u);
+    EXPECT_EQ(seen[1], 0x80000001u);
+    EXPECT_EQ(seen[2], 0x80000000u);
+
+    device_->fillBuffer(&seenBuffer, sizeof(seen), 0);
+    device_->fillBuffer(&winnerBuffer, winners.size() * sizeof(std::uint32_t), 0xFF);
+    params.winningVoxelCount = 0;
+    counts.subData(0, sizeof(params), &params);
+    device_->dispatchCompute(3, 2, 1);
+    device_->finish();
+    counts.getSubData(0, sizeof(params), &params);
+    EXPECT_EQ(params.winningVoxelCount, 0u);
+}
+
 // c_per_axis_cell_clear resets a per-axis store at exactly the listed cells:
 // colour, entity id, the R32I distance texture AND its image-atomic scratch,
 // which the next frame's store taps atomic-min into. Unlisted cells keep their

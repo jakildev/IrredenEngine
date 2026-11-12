@@ -147,6 +147,7 @@ const char *const kFileCompBuildDistanceHiZ = "shaders/c_build_distance_hiz.glsl
 // previous frame's Hi-Z and ANDs occluded chunks out of ChunkVisibility.
 // Metal mirror in metal/c_chunk_occlusion_cull.metal.
 const char *const kFileCompChunkOcclusionCull = "shaders/c_chunk_occlusion_cull.glsl";
+const char *const kFileCompVoxelWinnerCount = "shaders/c_voxel_winner_count.glsl";
 // The smooth camera Z-yaw per-axis sun-shadow resolve re-projects the three
 // face-local per-axis voxel canvases into a screen-space
 // front-most iso-depth scratch SSBO; the blit pass materializes that scratch

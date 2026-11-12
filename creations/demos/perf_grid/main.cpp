@@ -859,6 +859,10 @@ void registerCliArgs() {
     );
     args.flag("--legacy-depth-shadows", "Benchmark the legacy point-depth shadow caster");
     args.flag(
+        "--count-voxel-winners",
+        "Count distinct cardinal texel winners in the profile report"
+    );
+    args.flag(
         "--sun-bake-footprint-probe",
         "On capture frames, write the sun bake's per-workgroup texel footprint census to "
         "sun-footprint-<shot>.csv (stalls GPU)"
@@ -1840,6 +1844,12 @@ int main(int argc, char **argv) {
     initSystems();
     initCommands();
     initEntities();
+
+    if (IREngine::args().getFlag("--count-voxel-winners")) {
+        const auto raster = IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1);
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>>(raster)
+            ->countVoxelWinners_ = true;
+    }
 
     if (g_occlusionCull) {
         IRRender::setVoxelOcclusionCullEnabled(true);

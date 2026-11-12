@@ -601,6 +601,10 @@ void World::buildAndWriteProfileReport() {
     IRProfile::appendCpuScopePhases(report, IRProfile::cpuFrameHistogram());
 
     const auto &cull = IRRender::voxelCullAccumulator();
+    report.voxelCullStats_.winnersSum_ = cull.winnersSum_;
+    report.voxelCullStats_.winnerCandidatesSum_ = cull.winnerCandidatesSum_;
+    report.voxelCullStats_.maxWinners_ = cull.maxWinners_;
+    report.voxelCullStats_.winnerSampleCount_ = cull.winnerSampleCount_;
     report.voxelCullStats_.visibleSum_ = cull.visibleSum_;
     report.voxelCullStats_.totalSum_ = cull.totalSum_;
     report.voxelCullStats_.feederSum_ = cull.feederSum_;

@@ -445,9 +445,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     struct CullStatsProducer {
         bool perAxis_ = false;
         std::uint32_t poolSlots_ = 0;
+        bool winners_ = false;
     };
     IRRender::detail::GpuReadbackRing<CullStatsProducer, kMaxCullStatsSlots> cullStatsRing_{};
     std::vector<Buffer *> cullStatsBuffers_;
+    bool countVoxelWinners_ = false;
+    ShaderProgram *winnerCountProgram_ = nullptr;
+    Buffer *winnerSeenBuf_ = nullptr;
     // Chunk-occlusion HZB pre-pass, off by default. The query
     // buffer is bound transiently on kBufferIndex_CompactedVoxelIndices (25) for
     // the pre-pass and the compacted-index buffer restored afterward — the Metal
@@ -1546,6 +1550,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             VoxelIndirectDispatchParams visibleParams{};
             slotBuffer.getSubData(0, sizeof(VoxelIndirectDispatchParams), &visibleParams);
             visible = visibleParams.visibleCount;
+            if (producer.winners_) {
+                voxelCullAccumulator().recordWinners(visibleParams.winningVoxelCount, visible);
+            }
             VoxelIndirectDispatchParams feederParams{};
             slotBuffer.getSubData(
                 static_cast<std::ptrdiff_t>(kPerAxisSsboAlignBytes),
@@ -2223,11 +2230,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             );
         }
 
+        const bool countWinners = countVoxelWinners_ && gpuStageTiming().enabled_ && !rotating &&
+                                  !canvasLocalRotation.isDetached() && revoxBuffer == nullptr;
+        int cullStatsSlot = -1;
         if (gpuStageTiming().enabled_) {
             const int slot = cullStatsRing_.write(
                 IRRender::device()->submissionSerial(),
-                {perAxisSplit, static_cast<std::uint32_t>(effectiveVoxelCount)}
+                {perAxisSplit, static_cast<std::uint32_t>(effectiveVoxelCount), countWinners}
             );
+            cullStatsSlot = slot;
             if (slot == static_cast<int>(cullStatsBuffers_.size())) {
                 cullStatsBuffers_.push_back(
                     IRRender::createResource<Buffer>(
@@ -2346,7 +2357,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // depth keys. Elect one pool index before any non-atomic color write.
             const bool cardinalElection =
                 !sourceFaceDisplay &&
-                (voxelPool.storeTiesPossible_ ||
+                (countWinners || voxelPool.storeTiesPossible_ ||
                  (canvasLocalRotation.isDetached() && !canvasLocalRotation.reVoxelize_));
             if (cardinalElection) {
                 ensureCardinalWinnerCapacity(triangleCanvasTextures.size_);
@@ -2387,6 +2398,37 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     // The winner SSBO writes must land before stage 2's guard reads.
                     IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
                 }
+            }
+
+            if (countWinners && cullStatsSlot >= 0) {
+                const std::size_t seenBytes =
+                    static_cast<std::size_t>(IRMath::divCeil(effectiveVoxelCount, 32)) *
+                    sizeof(std::uint32_t);
+                IRRender::device()->fillBuffer(winnerSeenBuf_, seenBytes, 0);
+                winnerSeenBuf_->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_ChunkVisibility
+                );
+                winnerCountProgram_->use();
+                triangleCanvasTextures.getTextureDistances()
+                    ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+                constexpr int kWinnerCountGroupSize = 16;
+                IRRender::device()->dispatchCompute(
+                    IRMath::divCeil(triangleCanvasTextures.size_.x, kWinnerCountGroupSize),
+                    IRMath::divCeil(triangleCanvasTextures.size_.y, kWinnerCountGroupSize),
+                    1
+                );
+                IRRender::device()->memoryBarrier(BarrierType::BUFFER_UPDATE);
+                constexpr auto countOffset =
+                    offsetof(VoxelIndirectDispatchParams, winningVoxelCount);
+                IRRender::device()->copyBufferSubData(
+                    indirectBuf_,
+                    countOffset,
+                    cullStatsBuffers_[cullStatsSlot],
+                    countOffset,
+                    sizeof(std::uint32_t)
+                );
+                chunkVisBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ChunkVisibility);
             }
 
             // Stage 2 runs in the SAME per-canvas tick rather than as a separate
@@ -2653,6 +2695,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             "ChunkOcclusionProgram",
             std::vector{ShaderStage{IRRender::kFileCompChunkOcclusionCull, ShaderType::COMPUTE}}
         );
+        IRRender::createNamedResource<ShaderProgram>(
+            "VoxelWinnerCountProgram",
+            std::vector{ShaderStage{IRRender::kFileCompVoxelWinnerCount, ShaderType::COMPUTE}}
+        );
         // Per-axis empty-cell compaction pre-pass — run in this
         // system right after the per-axis stores, feeding the per-axis compute
         // stages + the framebuffer scatter (see compactPerAxisCells).
@@ -2762,6 +2808,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             kBufferIndex_VoxelEntityIds
         );
         const int maxVoxelPoolChunks = IRMath::divCeil(maxSingleVoxels, IRRender::kVoxelChunkSize);
+        IRRender::createNamedResource<Buffer>(
+            "VoxelWinnerSeen",
+            nullptr,
+            static_cast<std::size_t>(IRMath::divCeil(maxSingleVoxels, 32)) * sizeof(std::uint32_t),
+            BUFFER_STORAGE_DYNAMIC
+        );
         IRRender::createNamedResource<Buffer>(
             "ChunkVisibilityBuffer",
             nullptr,
@@ -2942,6 +2994,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             IRRender::getNamedResource<Buffer>("PerAxisIndirectDispatchParams");
         p->perAxisRegionStride_ = regionStride;
         p->occlusionProgram_ = IRRender::getNamedResource<ShaderProgram>("ChunkOcclusionProgram");
+        p->winnerCountProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("VoxelWinnerCountProgram");
+        p->winnerSeenBuf_ = IRRender::getNamedResource<Buffer>("VoxelWinnerSeen");
         p->chunkOcclusionQueryBuf_ =
             IRRender::getNamedResource<Buffer>("ChunkOcclusionQueryBuffer");
         p->maxPoolChunks_ = maxVoxelPoolChunks;

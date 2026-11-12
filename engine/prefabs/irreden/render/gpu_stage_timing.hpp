@@ -7,6 +7,7 @@
 #include <string_view>
 
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/render/render_device.hpp>
 
 namespace IRRender {
@@ -220,6 +221,10 @@ class ScopedCpuPhaseTimer {
 // between canvases within a frame. Visible and feeder are disjoint source
 // candidates; axis entries count repeated per-axis list work.
 struct VoxelCullAccumulator {
+    std::uint64_t winnersSum_ = 0;
+    std::uint64_t winnerCandidatesSum_ = 0;
+    std::uint32_t maxWinners_ = 0;
+    std::uint32_t winnerSampleCount_ = 0;
     std::uint64_t visibleSum_ = 0;
     std::uint64_t totalSum_ = 0;
     std::uint64_t feederSum_ = 0;
@@ -247,7 +252,19 @@ struct VoxelCullAccumulator {
         ++sampleCount_;
     }
 
+    void recordWinners(std::uint32_t winners, std::uint32_t candidates) {
+        IR_ASSERT(winners <= candidates, "Winners exceed admitted voxels");
+        winnersSum_ += winners;
+        winnerCandidatesSum_ += candidates;
+        maxWinners_ = IRMath::max(maxWinners_, winners);
+        ++winnerSampleCount_;
+    }
+
     void reset() {
+        winnersSum_ = 0;
+        winnerCandidatesSum_ = 0;
+        maxWinners_ = 0;
+        winnerSampleCount_ = 0;
         visibleSum_ = 0;
         totalSum_ = 0;
         feederSum_ = 0;

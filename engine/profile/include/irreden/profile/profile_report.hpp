@@ -60,6 +60,10 @@ struct CpuPhaseEntry {
 /// Per-compact-dispatch candidates and repeated axis work. Total counts pool
 /// slots, including inactive slots; visible plus feeder counts unique survivors.
 struct VoxelCullStatsSummary {
+    uint64_t winnersSum_ = 0;
+    uint64_t winnerCandidatesSum_ = 0;
+    uint32_t maxWinners_ = 0;
+    uint32_t winnerSampleCount_ = 0;
     uint64_t visibleSum_ = 0;
     uint64_t totalSum_ = 0;
     // Shadow-feeder (struct 1) survivors — the off-screen caster list the
