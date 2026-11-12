@@ -2,7 +2,6 @@
 
 #include <irreden/render/ir_render_enums.hpp>
 #include <irreden/render/metal/metal_types.hpp>
-#include <irreden/render/render_device.hpp>
 
 #include <array>
 #include <cstddef>
@@ -11,6 +10,7 @@
 namespace IRRender {
 
 class RenderDevice;
+struct BufferWriteStats;
 
 // Creates a windowless Metal device, initializes the runtime with a null layer,
 // wires IRRender::device(), and opens an initial command buffer — everything a

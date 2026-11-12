@@ -131,13 +131,13 @@ struct ProfileReport {
     uint64_t gpuFrameAttempted_ = 0;
     uint64_t gpuFrameInvalid_ = 0;
     uint64_t gpuFrameCommandBuffers_ = 0;
-    std::vector<CpuPhaseEntry> cpuPhases_;
-    VoxelCullStatsSummary voxelCullStats_;
     /// False when the backend counts nothing, so every counter row is unknown.
     bool deviceCountersSupported_ = false;
     std::vector<DeviceCounterEntry> deviceCounters_;
     /// Highest process GPU allocation sampled at a frame end; 0 when unavailable.
     uint64_t gpuProcessPeakBytes_ = 0;
+    std::vector<CpuPhaseEntry> cpuPhases_;
+    VoxelCullStatsSummary voxelCullStats_;
 };
 
 /// Appends one `cpuPhases_` row per `IR_PROFILE_SCOPE` name in the histogram's

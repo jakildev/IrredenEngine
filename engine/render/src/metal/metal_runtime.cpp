@@ -1,4 +1,5 @@
 #include <irreden/render/metal/metal_runtime.hpp>
+#include <irreden/render/render_device.hpp>
 #include <irreden/ir_profile.hpp>
 
 #include <bit>
