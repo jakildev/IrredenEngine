@@ -116,14 +116,16 @@ intentional duplicate costs one extra no-op guard invocation.
 
 Codex does not run Claude hooks. Its generated prefix policy refuses the
 guard classes that fixed argv prefixes can identify: protected-ref pushes
-from the assigned checkout, explicit non-GET `gh api -X/--method` forms,
-fixed merge commands, and an immediately positioned `--no-verify` or `-n` on
-`git commit` (or `--no-verify` on `git merge` or `git push`). Prefix rules
-cannot resolve the current branch for author commits, inspect GraphQL query
-text, follow an
-arbitrary `git -C` directory or remote, or find a flag or endpoint after
-arbitrary intervening arguments. Those shapes remain guarded in Claude and
-by repository branch protection, but are residual Codex-policy coverage.
+from the assigned checkout, fixed merge commands, and an immediately
+positioned `--no-verify` or `-n` on `git commit` (or `--no-verify` on `git
+merge` or `git push`). Prefix rules cannot distinguish a protected REST
+endpoint from unrelated writes when `gh api -X/--method` precedes the
+endpoint, inspect GraphQL query text, resolve the current branch for author
+commits, follow an arbitrary `git -C` directory or remote, or find a flag or
+endpoint after arbitrary intervening arguments. REST and GraphQL writes,
+branch-dependent author commits, and those reordered command shapes remain
+guarded in Claude and by repository branch protection, but are residual
+Codex-policy coverage.
 
 ## Host setup and rollout
 

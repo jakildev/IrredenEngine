@@ -230,12 +230,13 @@ root; the duplicate engine-root invocation is the smaller failure mode.
 
 The Codex policy is deliberately a conservative projection rather than a
 second shell parser. Prefix rules can refuse a fixed leading argv shape, so
-they cover explicit write methods before a REST endpoint and bypass flags in
-a fixed position. They cannot inspect a GraphQL document inside an argument,
-discover which branch a checkout currently names, or match a significant
-token after arbitrary options. The Bash guard remains the semantic policy;
-Codex pins the expressible prefixes and documents the residual instead of
-reimplementing command parsing in the policy generator.
+they cover bypass flags and protected-ref pushes in fixed positions. They
+cannot inspect a REST endpoint that follows a method flag without refusing
+unrelated API writes, inspect a GraphQL document inside an argument, discover
+which branch a checkout currently names, or match a significant token after
+arbitrary options. The Bash guard remains the semantic policy; Codex pins the
+expressible prefixes and documents the residual instead of reimplementing
+command parsing in the policy generator.
 
 ## Shared clones and the ff-only guard
 
