@@ -147,7 +147,7 @@ unset _fleet_claim_self
 # python3's ModuleNotFoundError propagating through a pipefail command substitution.
 # A missing module would otherwise fail OPEN in the --stackable-on guard below
 # (empty reason -> claim proceeds), so fail loud here instead.
-for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py fleet_model_field.py fleet_claim_liveness.py fleet_checks_red.py fleet_checks_aggregate.py fleet_github.py fleet-common.sh; do
+for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py fleet_model_field.py fleet_claim_liveness.py fleet_checks_red.py fleet_checks_aggregate.py fleet_public_text.py fleet_github.py fleet-common.sh; do
     if [[ ! -f "$FLEET_LIB_DIR/$_fleet_lib" ]]; then
         echo "fleet-claim: $_fleet_lib not found in FLEET_LIB_DIR=$FLEET_LIB_DIR" >&2
         echo "             Ensure fleet-claim's real script dir is scripts/fleet/ in the engine repo." >&2
@@ -3148,13 +3148,26 @@ cmd_decline() {
         echo "fleet-claim decline: --reason is required — the comment IS the record" >&2
         return 2
     fi
-    local repo host who
+    local repo host who comment public_text_error public_text_rc=0
     repo=$(repo_from_ns)
     host=$(derive_host)
     who="${FLEET_ROLE:-unknown}/${FLEET_ROLE_MODEL:-unknown}"
+    comment="declined: ${who} @${host}-${agent} ${reason}"
+    public_text_error=$(printf '%s\n' "$comment" | \
+        python3 "$FLEET_LIB_DIR/fleet_public_text.py" --target-repo "$repo" \
+            --text-file - --git-root "$FLEET_ENGINE_ROOT" 2>&1 | tr -d '\r') || public_text_rc=$?
+    if [[ $public_text_rc -ne 0 ]]; then
+        if [[ $public_text_rc -eq 1 ]]; then
+            echo "fleet-claim decline: refused public text: $public_text_error" >&2
+            echo "fleet-claim decline: restate the reason in engine terms and run decline again; the claim remains held" >&2
+        else
+            echo "fleet-claim decline: public-text check failed: $public_text_error" >&2
+        fi
+        return 1
+    fi
     if [[ -n "$repo" ]] && command -v gh >/dev/null 2>&1; then
         gh api "repos/${repo}/issues/${num}/comments" \
-            -f "body=declined: ${who} @${host}-${agent} ${reason}" >/dev/null 2>&1 \
+            -f "body=${comment}" >/dev/null 2>&1 \
             || echo "fleet-claim decline: WARN could not post the declined: comment on ${repo}#${num}" >&2
     fi
     # cmd_release reads only the number; the label arms take the agent too
@@ -5342,7 +5355,8 @@ reconcile_escalate_drift() {
     local persistent_count
     persistent_count=$(NOW="$now" THRESHOLD="$threshold" PERSIST="$persist_file" \
         BODY="$body_file" SOURCE_FAILURES="$source_failures" \
-        SCANNED_REPOS="$scanned_repos" python3 - "$findings" <<'PYEOF'
+        SCANNED_REPOS="$scanned_repos" PUBLIC_REPO="$FLEET_GITHUB_REPO" \
+        python3 - "$findings" <<'PYEOF'
 import sys, os, json
 try:
     import fcntl  # POSIX-only; absent on native-Windows python
@@ -5359,6 +5373,7 @@ persist_path = os.environ["PERSIST"]
 body_path = os.environ["BODY"]
 degraded = os.environ.get("SOURCE_FAILURES", "0") != "0"
 scanned = set(os.environ.get("SCANNED_REPOS", "").split())
+public_repo = os.environ["PUBLIC_REPO"]
 
 def load(p, default):
     try:
@@ -5445,10 +5460,14 @@ lines = [
     "| Rule | Repo | Target | Ticks | Detail |",
     "| --- | --- | --- | --- | --- |",
 ]
-for v in persistent:
+public_findings = [v for v in persistent if v["repo"].lower() == public_repo.lower()]
+for v in public_findings:
     lines.append("| %s | %s | %s #%s | %d | %s |" % (
         v["rule"], v["repo"], v["target_kind"], v["target"],
         v["count"], v["action"].replace("|", "\\|")))
+other_count = len(persistent) - len(public_findings)
+if other_count:
+    lines.extend(["", "Findings in other repositories: %d (details omitted)." % other_count])
 lines.append("")
 with open(body_path, "w") as fh:
     fh.write("\n".join(lines) + "\n")

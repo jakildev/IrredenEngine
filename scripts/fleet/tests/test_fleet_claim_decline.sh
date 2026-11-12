@@ -45,6 +45,10 @@ export FLEET_ORPHANS_DIR="$TMPROOT/orphans"
 mkdir -p "$FLEET_CLAIMS_DIR"
 export FLEET_TEST_HOST="mac"
 export FLEET_CLAIM_NO_SLEEP=1
+cat > "$TMPROOT/repos.json" <<'JSON'
+{"engine":"jakildev/IrredenEngine","other":"secret/FakeRepo"}
+JSON
+export FLEET_PUBLIC_TEXT_REPO_MAP="$TMPROOT/repos.json"
 GH_LOG="$TMPROOT/gh.log"
 REL_LOG="$TMPROOT/release.log"
 
@@ -107,6 +111,19 @@ assert_eq "$(decline feedback 7 pool-3 --reason "no")" "0" "game decline exits 0
 assert_contains "$(cat "$GH_LOG")" "api repos/jakildev/irreden/issues/7/comments -f body=declined: " \
     "comment posted on the game repo"
 assert_eq "$(cat "$REL_LOG")" "amending-release 7 pool-3" "feedback releases via amending-release under the agent"
+REPO_NS=""
+
+echo "T4b: public-target private text is refused before comment or release"
+reset_state
+assert_eq "$(decline task 42 pool-3 --reason "see secret/FakeRepo")" "1" \
+    "engine decline with a foreign slug is refused"
+assert_eq "$(cat "$GH_LOG" "$REL_LOG")" "" "refusal writes no comment and changes no claim"
+assert_contains "$(cat "$TMPROOT/out")" "foreign-repository line 1" \
+    "refusal names the class and line"
+REPO_NS=game
+assert_eq "$(decline task 42 pool-3 --reason "see secret/FakeRepo")" "0" \
+    "the same text is allowed on the non-public namespace"
+assert_contains "$(cat "$GH_LOG")" "secret/FakeRepo" "non-public comment posts"
 REPO_NS=""
 
 echo "T5: every kind releases through FLEET_TARGET_RELEASE"
