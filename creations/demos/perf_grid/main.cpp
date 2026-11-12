@@ -2433,9 +2433,10 @@ void watchStaticFixture() {
 void initEntities() {
     g_staticCells = g_waveFreeze && !g_noStatic && !g_fogGhostHeavy && !g_fogGhostHeavyHide;
     g_staticFixture = g_waveFreeze || g_recolorEveryUpdate;
-    if (g_staticCells && g_movingStride == 0 && !g_staticCycle) {
-        // The control promotes its whole population at once and accepts one
-        // long frame; the mostly-static fixture keeps the default cap.
+    if (g_staticCells && g_movingStride == 0) {
+        // The control and the capture fixture promote their whole population
+        // at once and accept one long frame; the mostly-static fixture keeps
+        // the default cap.
         IREntity::singleton<C_StaticSettings>().promotionsPerRound_ = 0;
         g_staticBudgetLifted = true;
     }
