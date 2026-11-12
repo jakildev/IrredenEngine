@@ -73,13 +73,12 @@ struct SettledGate {
         const std::uint64_t revision = fog != nullptr ? fog->revision_ : 0;
         const bool fogAttached = fog != nullptr;
         const WorldField *field = fog != nullptr ? fog->field_.get() : nullptr;
-        const bool changed =
-            !primed_ || revision != seenRevision_ || field != seenField_ ||
-            fogAttached != seenFogAttached_ ||
-            activeCanvas != seenCanvas_ || pool != seenPool_ ||
-            settings.showThreshold_ != seenSettings_.showThreshold_ ||
-            settings.hideThreshold_ != seenSettings_.hideThreshold_ ||
-            settings.staggerPeriod_ != seenSettings_.staggerPeriod_;
+        const bool changed = !primed_ || revision != seenRevision_ || field != seenField_ ||
+                             fogAttached != seenFogAttached_ || activeCanvas != seenCanvas_ ||
+                             pool != seenPool_ ||
+                             settings.showThreshold_ != seenSettings_.showThreshold_ ||
+                             settings.hideThreshold_ != seenSettings_.hideThreshold_ ||
+                             settings.staggerPeriod_ != seenSettings_.staggerPeriod_;
         if (changed) {
             primed_ = true;
             seenRevision_ = revision;

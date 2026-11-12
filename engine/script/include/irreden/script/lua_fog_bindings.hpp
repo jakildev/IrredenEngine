@@ -326,7 +326,8 @@ inline float requireFogUnitFloat(sol::object value, const char *function, std::s
 /// `IRFog.setVisionLineOfSight(slot, losEyeHeight[, losSoftness])`: validates
 /// in Lua what `C_CanvasFogOfWar::setVisionCircleLineOfSight` asserts, so an
 /// unregistered slot raises a named error instead of reaching the assert.
-inline void applyFogVisionLineOfSight(const sol::variadic_args &args, const FogVisionTarget &target) {
+inline void
+applyFogVisionLineOfSight(const sol::variadic_args &args, const FogVisionTarget &target) {
     IRComponents::FrameDataFogObservers *observers = target.observers_;
     constexpr const char *function = "setVisionLineOfSight";
     requireFogArity(function, args.size(), 2, 3);

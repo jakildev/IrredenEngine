@@ -977,9 +977,7 @@ TEST(StaticWorld, AQueryBetweenUpdatesNeitherDerivesNorDelaysASettlingEntity) {
                 IRSystem::executeQueryDynamic(
                     IREntity::getArchetype<C_WorldTransform>(),
                     IREntity::getArchetype<C_Settled>(),
-                    [&runtimeRows](IREntity::ArchetypeNode *node) {
-                        runtimeRows += node->length_;
-                    }
+                    [&runtimeRows](IREntity::ArchetypeNode *node) { runtimeRows += node->length_; }
                 );
                 int readRows = 0;
                 IRSystem::executeQuery<const C_LocalTransform, const C_VoxelSetNew>(

@@ -182,9 +182,7 @@ TEST_F(StaticPolicy, DynamicLaneTreatsEveryColumnAsWrittenUnlessReadOnly) {
 TEST_F(StaticPolicy, ATypedQueryIsNeverDeriving) {
     makePopulation();
     int inputWrites = 0;
-    IRSystem::executeQuery<C_LocalTransform>([&inputWrites](C_LocalTransform &) {
-        ++inputWrites;
-    });
+    IRSystem::executeQuery<C_LocalTransform>([&inputWrites](C_LocalTransform &) { ++inputWrites; });
     int reads = 0;
     IRSystem::executeQuery<const C_LocalTransform>([&reads](const C_LocalTransform &) {
         ++reads;
@@ -212,18 +210,17 @@ TEST_F(StaticPolicy, ATypedQueryIsNeverDeriving) {
 
 TEST_F(StaticPolicy, ARuntimeQueryCountsEveryColumnAsWrittenExceptReadOnly) {
     makePopulation();
-    const auto rowsOf = [](IREntity::Archetype include,
-                           IREntity::Archetype exclude,
-                           IREntity::Archetype readOnly) {
-        int rows = 0;
-        IRSystem::executeQueryDynamic(
-            include,
-            exclude,
-            [&rows](IREntity::ArchetypeNode *node) { rows += node->length_; },
-            readOnly
-        );
-        return rows;
-    };
+    const auto rowsOf =
+        [](IREntity::Archetype include, IREntity::Archetype exclude, IREntity::Archetype readOnly) {
+            int rows = 0;
+            IRSystem::executeQueryDynamic(
+                include,
+                exclude,
+                [&rows](IREntity::ArchetypeNode *node) { rows += node->length_; },
+                readOnly
+            );
+            return rows;
+        };
     const IREntity::Archetype local = IREntity::getArchetype<C_LocalTransform>();
     const IREntity::Archetype world = IREntity::getArchetype<C_WorldTransform>();
     const IREntity::Archetype settled = IREntity::getArchetype<C_Settled>();
