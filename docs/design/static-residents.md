@@ -268,9 +268,9 @@ Writing it again is the restart. It is written for these events:
 
 | Event | When the stamp is written |
 |---|---|
-| The entity enters the settling state: freeze, creation with `C_Static`, snapshot load, resettle, or `C_Settled` dropped by another archetype move | At the drain after the flush that moved it |
+| The entity enters the settling state: freeze, creation with `C_Static`, snapshot load, or `C_Settled` dropped by another archetype move | At the drain after the flush that moved it |
 | A parent change or a parent's destruction on a static entity or a static ancestor, settled or settling | At the drain after the call, from the tracked-change log |
-| A resettle-worthy mutation ([§ Engine mutators](#engine-mutators)) on an entity that is already settling | At the drain after the mutation |
+| A `resettle` or a resettle-worthy mutation ([§ Engine mutators](#engine-mutators)) on a static entity, settled or settling | At the first drain after the call, from its change note, whether or not the removal of `C_Settled` has flushed yet |
 | A deriving system holds the row (below) | At the drain after the dispatch that held it |
 
 So a settling entity mutated after `PROPAGATE_TRANSFORM` or
@@ -336,10 +336,11 @@ In order, it:
 
 1. Applies the staged change notes and holds, and takes the entity
    layer's tracked-change log. A note or entry whose entity is gone or not
-   static is dropped, and on a voxel-set note it clears `ownerStatic_`. A
-   note whose entity is settled queues the removal of `C_Settled`. Every
-   other note or entry stamps its entity, and a log entry also runs the
-   eligibility check, so an entity now under a dynamic parent is refused.
+   static is dropped, and on a voxel-set note it clears `ownerStatic_`.
+   Every other note or entry stamps its entity, settled or settling. A note
+   whose entity is still settled also queues the removal of `C_Settled`,
+   after the stamp is written. A log entry also runs the eligibility check,
+   so an entity now under a dynamic parent is refused.
 2. Compares the global-modifier revision and, on a new one, raises
    `globalFloor_`.
 3. Walks the settling archetype nodes (`C_Static` without `C_Settled`).
@@ -354,6 +355,25 @@ lands after `MODIFIER_RESOLVE_GLOBAL` has dispatched, or after the round has
 closed, is seen at step 2 of the next drain, before any row is collected.
 No system runs between steps 2 and 5, so no later push can land inside the
 drain.
+
+Stamping a settled note in step 1 is the cutover for a change that reaches a
+settled entity only as a note: a `C_VoxelSetNew` method, a fog setter, or a
+`resettle` whose removal has not flushed yet. Such a row is still in a
+settled node at step 3, so step 3 does not see it, and it enters settling
+only at the flush in step 5. Without the stamp it would carry the stamp of
+the round that promoted it, already satisfied, and the next INPUT or UPDATE
+drain could promote it before any deriving system had run over the change.
+With it, the row carries `roundsOpened_ + 1` from this drain. A settled row
+is never a candidate, so writing the stamp early changes nothing until the
+row is settling. The general rule is that no row enters the settling state
+carrying a stamp written before its last change. Each route in is covered:
+
+| Route into settling | What makes the stamp current |
+|---|---|
+| Freeze, creation with `C_Static`, snapshot load | The stamp is zero; step 3 stamps the row as new |
+| A note on a settled entity (component method, fog setter, `resettle`) | Step 1 stamps it, before the removal it queues |
+| A note on a settling entity | Step 1 stamps it |
+| `C_Settled` dropped by another archetype move, a parent change, a parent's destruction | The move logs the id; step 1 stamps it |
 
 Its cost is proportional to the settling population and the staged notes. At
 steady state that is zero rows. The walk reads the 8-byte stamp column, not
@@ -407,7 +427,10 @@ for the same reason thaw does.
 Thaw and resettle enumerate the static descendants through the `CHILD_OF`
 relation when they are called, and queue the removals for all of them in the
 same call. The whole subtree changes state at one flush, so no descendant is
-left settled for a pass under a parent that has started to move.
+left settled for a pass under a parent that has started to move. Resettle
+also records a change note for every descendant it reaches, so each one is
+restamped at the drain like the entity itself and none re-enters settling
+with the stamp of the round that promoted it.
 
 ### Any other archetype move: settled to settling
 
@@ -733,7 +756,7 @@ by one of three paths. None is silently lost.
 | Path | Example | Outcome |
 |---|---|---|
 | A registered system or a query, on any lane in [§ The matching policy](#the-matching-policy) | `VELOCITY_3D` over an entity with `C_Velocity3D` | **Impossible.** A system that declares a write to a pose input does not match static archetypes, so the row is never visited. The entity does not move, and nothing is written. |
-| An engine mutator | `IRPrefab::Modifier::push(entity, …)` | **Honoured.** The mutator thaws or resettles the entity as tabled above. A thaw, or a resettle through an `IRPrefab::` function, applies at the next flush like any structural change. A resettle from a component method (a `C_VoxelSetNew` mutator) applies at the drain that ends the pipeline. In both cases the entity is derived from the new inputs in the next round. |
+| An engine mutator | `IRPrefab::Modifier::push(entity, …)` | **Honoured.** The mutator thaws or resettles the entity as tabled above. A thaw, or a resettle through an `IRPrefab::` function, applies at the next flush like any structural change. A resettle from a component method (a `C_VoxelSetNew` mutator) applies at the drain that ends the pipeline, which stamps the entity before it queues the removal of `C_Settled`. In both cases the entity is derived from the new inputs in the next round that opens after the change. |
 | A raw reference | `IREntity::getComponent<C_LocalTransform>(entity).translation_ = p`, a Lua entity-handle field write, `forEachComponent` | **Retained, not derived.** The value is stored. Derived state does not change until the entity is next resettled or thawed, at which point it is derived from the then-current inputs. |
 
 For the raw path:
@@ -1211,10 +1234,22 @@ system at a time:
   run, which fails if any of them is stored narrower than 64 bits. The
   header `static_assert`s the field types.
 - **Mutation right after promotion.** A `resettle` in the first group after
-  the promoting drain leaves the entity settling from the next flush. A
+  the promoting drain leaves the entity settling from the next flush, and its
+  settled static child too; the drain then restamps both, and neither is
+  promoted before a round that opens after the call. A
   `C_VoxelSetNew` edit made at the same point leaves it settling from that
   pipeline's drain. In both cases the entity is promoted again after the next
-  complete round, equal to the twin.
+  complete round, equal to the twin. The voxel case is also run through
+  `runMainLoopFrame` with the cross-pipeline placement above, three UPDATE
+  ticks per frame, for an edit in each of INPUT, UPDATE and RENDER and one
+  made between frames, and again with `setLodBand` and a fog setter. At the
+  drain that applies the note, the entity's stamp equals
+  `roundsOpened_ + 1` before the flush that drops `C_Settled`. It is not
+  promoted at any later INPUT or UPDATE drain while `roundsCompleted_` is
+  below that stamp, and it is promoted first at a drain after a round that
+  opened after the edit has closed. The test fails if step 1 skips the stamp
+  for a settled note, because the old stamp would let the next drain
+  promote it.
 
 **Gate 5, forbidden writes.** Unit tests, any build type, one per path:
 a registered mover never visits a static entity and its `Walked` count
@@ -1232,7 +1267,8 @@ holds on every lane:
 - **Entity-aware voxel and LOD mutation.** Every `C_VoxelSetNew` mutator in
   the table is called on a settled entity, from C++ and from Lua, including
   the Lua `lodMin` / `lodMax` properties. Each resettles the entity by the
-  next drain, and after the next round its state equals the twin's. A C++
+  next drain, which writes a new stamp, and after the next round its state
+  equals the twin's. A C++
   assignment to `lodMin_` leaves `lodCulled_` unchanged, and in an assert
   build the audit fires within 256 updates.
 - **Owner adoption.** An entity created static with an empty set, and one
@@ -1390,8 +1426,8 @@ sibling epics' work.
    the system layer.
 3. Freeze, thaw and resettle are deferred to the next structural flush.
    Promotion needs a complete round that opened after the entity's inputs
-   last changed: the settle stamp, restarted by every change while settling,
-   and the global floor, restarted by every global-modifier change. A round
+   last changed: the settle stamp, restarted by every change to a static
+   entity, settled or settling, before it re-enters settling, and the global floor, restarted by every global-modifier change. A round
    spans INPUT, UPDATE and RENDER, and only the join of its last deriving
    group closes it. Promotion is capped per round (default 8,192). Any other archetype move returns a
    settled entity to settling.
