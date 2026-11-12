@@ -106,6 +106,27 @@ synchronously for shell and in-process edit tools. Codex CLI 0.156.1 accepted
 `timeoutSec=1500` but did not enforce either `timeoutSec` or `timeout_sec` in
 host probes; the quiet-window record's own maximum ends the park.
 
+## Command guards
+
+`fleet-up` installs the engine clone's absolute `fleet-guard-bash` path as a
+Claude `Bash` `PreToolUse` hook in every generated worktree settings file.
+That includes engine worktrees and worktrees rooted in the second repository;
+an engine-rooted session also sees the checked-in registration, and the
+intentional duplicate costs one extra no-op guard invocation.
+
+Codex does not run Claude hooks. Its generated prefix policy refuses the
+guard classes that fixed argv prefixes can identify: protected-ref pushes
+from the assigned checkout, fixed merge commands, and an immediately
+positioned `--no-verify` or `-n` on `git commit` (or `--no-verify` on `git
+merge` or `git push`). Prefix rules cannot distinguish a protected REST
+endpoint from unrelated writes when `gh api -X/--method` precedes the
+endpoint, inspect GraphQL query text, resolve the current branch for author
+commits, follow an arbitrary `git -C` directory or remote, or find a flag or
+endpoint after arbitrary intervening arguments. REST and GraphQL writes,
+branch-dependent author commits, and those reordered command shapes remain
+guarded in Claude and by repository branch protection, but are residual
+Codex-policy coverage.
+
 ## Host setup and rollout
 
 1. `scripts/fleet/install.sh`; `codex login` with ChatGPT; `codex login

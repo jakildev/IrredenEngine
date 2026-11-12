@@ -360,6 +360,55 @@ class Transport(unittest.TestCase):
                         check=True, capture_output=True, text=True, timeout=15)
                     self.assertEqual(json.loads(result.stdout).get("decision"), "allow")
 
+    def test_every_role_emits_expressible_bash_guard_rules(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            expected = (
+                ["git", "commit", "--no-verify"],
+                ["git", "commit", "-n"],
+                ["git", "-C", str(root), "push", "origin", "master"],
+            )
+            for role in codex.ROLES:
+                text = policy.rules(root, role)
+                for pattern in expected:
+                    with self.subTest(role=role, pattern=pattern):
+                        self.assertIn(
+                            f"pattern={json.dumps(pattern)}, decision=\"forbidden\"", text)
+                self.assertNotIn(
+                    'pattern=["git", "push", "-n"], decision="forbidden"', text)
+                self.assertNotIn(
+                    'pattern=["git", "merge", "-n"], decision="forbidden"', text)
+                self.assertNotIn(
+                    'pattern=["gh", "api", "-X"', text)
+                self.assertNotIn(
+                    'pattern=["gh", "api", "--method"', text)
+
+    @unittest.skipUnless(shutil.which("codex"), "codex CLI absent; text-level case above")
+    def test_execpolicy_classifies_expressible_bash_guard_commands(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            commands = (
+                ["git", "commit", "--no-verify", "-m", "x"],
+                ["git", "-C", str(root), "push", "origin", "master"],
+                ["gh", "api", "-X", "PUT", "repos/o/r/pulls/1/merge"],
+                ["gh", "api", "--method", "POST", "repos/o/r/merges"],
+                ["gh", "api", "-X", "PATCH", "repos/o/r/git/refs/heads/master"],
+                ["gh", "api", "--method=DELETE",
+                 "repos/o/r/branches/master/protection"],
+                ["gh", "api", "-X", "put", "repos/o/r/pulls/1/merge"],
+                ["gh", "api", "-X", "PATCH", "repos/o/r/issues/comments/1",
+                 "-F", "body=@f"],
+                ["gh", "api", "-X", "DELETE", "repos/o/r/issues/1/labels/x"],
+            )
+            path = policy.prepare(root, "worker")
+            for cmd in commands:
+                with self.subTest(cmd=cmd):
+                    result = subprocess.run(
+                        ["codex", "execpolicy", "check", "--rules", str(path), "--",
+                         *cmd], check=True, capture_output=True, text=True, timeout=15)
+                    expected = None if cmd[:2] == ["gh", "api"] else "forbidden"
+                    self.assertEqual(json.loads(result.stdout).get("decision"), expected)
+
     def test_display_validator_list_covers_every_fleet_run_driver(self):
         # A new driver that launches a demo through fleet-run times out on a
         # macOS Codex worker until it is named in DISPLAY_VALIDATORS.
