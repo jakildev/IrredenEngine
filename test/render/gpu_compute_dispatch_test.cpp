@@ -1913,7 +1913,7 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
              SortCase{0u, 0u, 0u},
              SortCase{1024u, 4u, 1024u},
              SortCase{4097u, 6u, 1366u},
-             SortCase{12291u, 16u, 4097u},
+             SortCase{12291u, 17u, 4097u},
              SortCase{1u, 1u, 1u},
              SortCase{0u, 1u, 1u},
              SortCase{262145u, 342u, 87382u},
@@ -1971,23 +1971,20 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
             ENG_API->glMemoryBarrier(GL_ALL_BARRIER_BITS);
 #endif
         };
-        const auto dispatchSpan = IRSystem::detail::overflowSortDispatchSpan(
-            IRSystem::detail::overflowSortEntryBound(
-                sortCase.admittedChunks,
-                sortCase.liveVoxels,
-                cap
-            ),
+        const auto entryBound = IRSystem::detail::overflowSortEntryBound(
+            sortCase.admittedChunks,
+            sortCase.liveVoxels,
             cap
         );
+        const auto dispatchSpan = IRSystem::detail::overflowSortDispatchSpan(entryBound, cap);
+        EXPECT_GE(entryBound, count);
         IRSystem::detail::forEachOverflowSortStep(
             dispatchSpan,
             [&](int mode,
                 std::uint32_t k,
                 std::uint32_t pLo,
                 std::uint32_t pHi,
-                std::uint32_t commandIndex) {
-                step(mode, k, pLo, pHi, commandIndex);
-            }
+                std::uint32_t commandIndex) { step(mode, k, pLo, pHi, commandIndex); }
         );
         EXPECT_GE(dispatchSpan, count);
 #if defined(IR_GRAPHICS_METAL)

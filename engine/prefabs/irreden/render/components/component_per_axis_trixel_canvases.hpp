@@ -343,7 +343,7 @@ struct PerAxisCanvasStore {
         kOverflowControlUints % kScratchAlignUints == 0, "overflow entries must be 256-byte aligned"
     );
     // Newest completed-frame count retained for diagnostics and run witnesses.
-    std::uint32_t laggedOverflowCount_ = 0;
+    std::uint32_t settledOverflowCount_ = 0;
 
     // Allocation state is the texture handles themselves — no separate bool to
     // drift out of sync (cf. the no-dirty-flags rule in .claude/rules/cpp-ecs.md).
@@ -618,7 +618,7 @@ struct PerAxisCanvasStore {
         ctrlBaseUints_ = 0;
         entriesBaseUints_ = 0;
         overflowCap_ = 0;
-        laggedOverflowCount_ = 0;
+        settledOverflowCount_ = 0;
         size_ = ivec2{0, 0};
         mainSize_ = ivec2{0, 0};
     }

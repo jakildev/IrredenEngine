@@ -129,11 +129,11 @@ inline void forEachOverflowSortStep(std::uint32_t dispatchSpan, Callback &&callb
 inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
     C_VoxelPool &pool,
     IsoBounds2D viewport,
-    CardinalIndex cardinalIndex = CardinalIndex::k0,
-    bool useContinuousYaw = false,
-    float visualYaw = 0.0f,
-    const IRMath::OrthographicViewBasis *spatialView = nullptr,
-    std::uint32_t *admittedChunkCount = nullptr
+    CardinalIndex cardinalIndex,
+    bool useContinuousYaw,
+    float visualYaw,
+    const IRMath::OrthographicViewBasis *spatialView,
+    std::uint32_t &admittedChunkCount
 ) {
     static thread_local std::vector<std::uint32_t> mask;
     pool.rebuildChunkBounds(cardinalIndex, useContinuousYaw, visualYaw, spatialView);
@@ -149,9 +149,28 @@ inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
             ++admitted;
         }
     }
-    if (admittedChunkCount != nullptr)
-        *admittedChunkCount = admitted;
+    admittedChunkCount = admitted;
     return mask;
+}
+
+inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
+    C_VoxelPool &pool,
+    IsoBounds2D viewport,
+    CardinalIndex cardinalIndex = CardinalIndex::k0,
+    bool useContinuousYaw = false,
+    float visualYaw = 0.0f,
+    const IRMath::OrthographicViewBasis *spatialView = nullptr
+) {
+    std::uint32_t ignoredAdmittedChunkCount = 0;
+    return buildChunkVisibilityMask(
+        pool,
+        viewport,
+        cardinalIndex,
+        useContinuousYaw,
+        visualYaw,
+        spatialView,
+        ignoredAdmittedChunkCount
+    );
 }
 
 // `buildVoxelFrameData` now lives in `<irreden/render/voxel_frame_data.hpp>`
@@ -787,7 +806,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         if (newestFrame == 0) {
             return;
         }
-        axes.laggedOverflowCount_ = ctrl[1];
+        axes.settledOverflowCount_ = ctrl[1];
         const std::uint32_t dropped = ctrl[5];
         if (dropped > 0 && dropped != lastOverflowDropWarned_) {
             IRE_LOG_WARN(
@@ -1111,7 +1130,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     sortOverflowEntries,
                     admittedChunkCount,
                     liveVoxelCount,
-                    axes.laggedOverflowCount_,
+                    axes.settledOverflowCount_,
                     dispatchSpan,
                     axes.overflowCap_
                 );
@@ -1784,7 +1803,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 rotating,
                 frameData_.visualYaw_,
                 spatial ? &view : nullptr,
-                &admittedChunkCount
+                admittedChunkCount
             );
             chunkVisBuf_->subData(0, uploadMask.size() * sizeof(std::uint32_t), uploadMask.data());
         }
