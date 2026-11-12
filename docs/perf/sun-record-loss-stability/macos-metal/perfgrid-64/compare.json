@@ -1,0 +1,170 @@
+{
+  "fixture": "perfgrid-64",
+  "host": "macos-metal",
+  "launches": {
+    "launch-00": {
+      "requested": 786432,
+      "capacity": 131072,
+      "in_run": {
+        "captures": 1,
+        "distinct_sets": 1,
+        "lost_min": 987,
+        "lost_max": 987,
+        "tiles_differing_any": 0,
+        "pairwise_max": 0,
+        "pairwise_min": 0
+      },
+      "floor_window_in_run": {
+        "captures": 1,
+        "distinct_sets": 1,
+        "lost_min": 244,
+        "lost_max": 244,
+        "tiles_differing_any": 0,
+        "pairwise_max": 0,
+        "pairwise_min": 0
+      }
+    },
+    "launch-01": {
+      "requested": 786432,
+      "capacity": 131072,
+      "in_run": {
+        "captures": 1,
+        "distinct_sets": 1,
+        "lost_min": 987,
+        "lost_max": 987,
+        "tiles_differing_any": 0,
+        "pairwise_max": 0,
+        "pairwise_min": 0
+      },
+      "floor_window_in_run": {
+        "captures": 1,
+        "distinct_sets": 1,
+        "lost_min": 244,
+        "lost_max": 244,
+        "tiles_differing_any": 0,
+        "pairwise_max": 0,
+        "pairwise_min": 0
+      }
+    },
+    "launch-02": {
+      "requested": 786432,
+      "capacity": 131072,
+      "in_run": {
+        "captures": 1,
+        "distinct_sets": 1,
+        "lost_min": 987,
+        "lost_max": 987,
+        "tiles_differing_any": 0,
+        "pairwise_max": 0,
+        "pairwise_min": 0
+      },
+      "floor_window_in_run": {
+        "captures": 1,
+        "distinct_sets": 1,
+        "lost_min": 244,
+        "lost_max": 244,
+        "tiles_differing_any": 0,
+        "pairwise_max": 0,
+        "pairwise_min": 0
+      }
+    },
+    "launch-03": {
+      "requested": 786432,
+      "capacity": 131072,
+      "in_run": {
+        "captures": 1,
+        "distinct_sets": 1,
+        "lost_min": 987,
+        "lost_max": 987,
+        "tiles_differing_any": 0,
+        "pairwise_max": 0,
+        "pairwise_min": 0
+      },
+      "floor_window_in_run": {
+        "captures": 1,
+        "distinct_sets": 1,
+        "lost_min": 244,
+        "lost_max": 244,
+        "tiles_differing_any": 0,
+        "pairwise_max": 0,
+        "pairwise_min": 0
+      }
+    },
+    "launch-04": {
+      "requested": 786432,
+      "capacity": 131072,
+      "in_run": {
+        "captures": 1,
+        "distinct_sets": 1,
+        "lost_min": 987,
+        "lost_max": 987,
+        "tiles_differing_any": 0,
+        "pairwise_max": 0,
+        "pairwise_min": 0
+      },
+      "floor_window_in_run": {
+        "captures": 1,
+        "distinct_sets": 1,
+        "lost_min": 244,
+        "lost_max": 244,
+        "tiles_differing_any": 0,
+        "pairwise_max": 0,
+        "pairwise_min": 0
+      }
+    }
+  },
+  "across_launches_first_shot": {
+    "captures": 5,
+    "distinct_sets": 1,
+    "lost_min": 987,
+    "lost_max": 987,
+    "tiles_differing_any": 0,
+    "pairwise_max": 0,
+    "pairwise_min": 0
+  },
+  "all_captures": {
+    "captures": 5,
+    "distinct_sets": 1,
+    "lost_min": 987,
+    "lost_max": 987,
+    "tiles_differing_any": 0,
+    "pairwise_max": 0,
+    "pairwise_min": 0
+  },
+  "all_captures_floor_window": {
+    "captures": 5,
+    "distinct_sets": 1,
+    "lost_min": 244,
+    "lost_max": 244,
+    "tiles_differing_any": 0,
+    "pairwise_max": 0,
+    "pairwise_min": 0
+  },
+  "manifest": {
+    "fixture": "perfgrid-64",
+    "host": "macos-metal",
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "head": "d5f23eb3f3270708de3d8978d289d6aa358ac3ff",
+    "dirty_engine": false,
+    "binary_sha256": "cbbf0f9f4255b6a402e488e5723ec5939b7184220f2ad8c477ed51545cd06462",
+    "command": [
+      "fleet-run",
+      "--timeout",
+      "900",
+      "--build-dir",
+      "build",
+      "IRPerfGrid",
+      "--config-preset",
+      "<launch>/config.lua",
+      "--mode",
+      "voxel_set",
+      "--grid-size",
+      "64",
+      "--wave-freeze",
+      "--auto-profile",
+      "300",
+      "--no-overlay",
+      "--sun-face-index-probe"
+    ]
+  }
+}

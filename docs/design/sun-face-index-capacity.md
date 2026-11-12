@@ -130,8 +130,16 @@ bit:
 
 Complete inline tiles keep their local list. Every tile is therefore either
 exact or answered by the sampled layers; incomplete storage is never certified
-complete. Within one frame, which records are lost still follows bake-dispatch
-order. Across frames the pool grows to the measured demand, so a scene whose
+complete. Within one frame, which records are lost follows the order in which
+threads reach the header word. That order follows bake-dispatch order only
+between dispatches, and inside a dispatch it is not stable.
+[Measured on Metal](../perf/sun-record-loss-stability/README.md): a frozen
+static CanvasStress scene had 100 distinct lost-tile sets in 100
+identical-camera captures. A receiver on the edge of the varying band switched
+between the exact and the sampled answer, and its shadow changed by up to 368
+pixels between frames of one run. A scene far past the ceiling (`IRPerfGrid`
+64³) loses records on every occupied tile but the same 20, so its lost set is
+stable. Across frames the pool grows to the measured demand, so a scene whose
 demand fits the ceiling loses records only on the frames before the growth
 lands.
 

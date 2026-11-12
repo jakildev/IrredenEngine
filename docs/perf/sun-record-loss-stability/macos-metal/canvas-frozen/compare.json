@@ -1,0 +1,547 @@
+{
+  "fixture": "canvas-frozen",
+  "host": "macos-metal",
+  "launches": {
+    "launch-00": {
+      "requested": 95164,
+      "capacity": 65536,
+      "in_run": {
+        "captures": 10,
+        "distinct_sets": 10,
+        "lost_min": 3999,
+        "lost_max": 4275,
+        "tiles_differing_any": 1071,
+        "pairwise_max": 486,
+        "pairwise_min": 188,
+        "crop_pixels_vs_first": [
+          0,
+          0,
+          148,
+          156,
+          156,
+          156,
+          0,
+          0,
+          0
+        ],
+        "frame_pixels_vs_first": [
+          0,
+          0,
+          148,
+          180,
+          180,
+          180,
+          0,
+          0,
+          0
+        ]
+      },
+      "floor_window_in_run": {
+        "captures": 10,
+        "distinct_sets": 7,
+        "lost_min": 60,
+        "lost_max": 99,
+        "tiles_differing_any": 39,
+        "pairwise_max": 39,
+        "pairwise_min": 0
+      }
+    },
+    "launch-01": {
+      "requested": 95164,
+      "capacity": 65536,
+      "in_run": {
+        "captures": 10,
+        "distinct_sets": 10,
+        "lost_min": 4053,
+        "lost_max": 4262,
+        "tiles_differing_any": 997,
+        "pairwise_max": 411,
+        "pairwise_min": 148,
+        "crop_pixels_vs_first": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          156,
+          0,
+          156,
+          0
+        ],
+        "frame_pixels_vs_first": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          180,
+          0,
+          180,
+          0
+        ]
+      },
+      "floor_window_in_run": {
+        "captures": 10,
+        "distinct_sets": 6,
+        "lost_min": 72,
+        "lost_max": 100,
+        "tiles_differing_any": 34,
+        "pairwise_max": 28,
+        "pairwise_min": 0
+      }
+    },
+    "launch-02": {
+      "requested": 95164,
+      "capacity": 65536,
+      "in_run": {
+        "captures": 10,
+        "distinct_sets": 10,
+        "lost_min": 4022,
+        "lost_max": 4265,
+        "tiles_differing_any": 891,
+        "pairwise_max": 523,
+        "pairwise_min": 113,
+        "crop_pixels_vs_first": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          156,
+          0,
+          0,
+          0
+        ],
+        "frame_pixels_vs_first": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          180,
+          0,
+          0,
+          0
+        ]
+      },
+      "floor_window_in_run": {
+        "captures": 10,
+        "distinct_sets": 7,
+        "lost_min": 68,
+        "lost_max": 100,
+        "tiles_differing_any": 37,
+        "pairwise_max": 34,
+        "pairwise_min": 0
+      }
+    },
+    "launch-03": {
+      "requested": 95164,
+      "capacity": 65536,
+      "in_run": {
+        "captures": 10,
+        "distinct_sets": 10,
+        "lost_min": 4054,
+        "lost_max": 4342,
+        "tiles_differing_any": 965,
+        "pairwise_max": 444,
+        "pairwise_min": 168,
+        "crop_pixels_vs_first": [
+          156,
+          156,
+          156,
+          0,
+          156,
+          0,
+          368,
+          0,
+          156
+        ],
+        "frame_pixels_vs_first": [
+          180,
+          180,
+          180,
+          0,
+          180,
+          0,
+          392,
+          0,
+          180
+        ]
+      },
+      "floor_window_in_run": {
+        "captures": 10,
+        "distinct_sets": 7,
+        "lost_min": 68,
+        "lost_max": 114,
+        "tiles_differing_any": 50,
+        "pairwise_max": 46,
+        "pairwise_min": 0
+      }
+    },
+    "launch-04": {
+      "requested": 95164,
+      "capacity": 65536,
+      "in_run": {
+        "captures": 10,
+        "distinct_sets": 10,
+        "lost_min": 4050,
+        "lost_max": 4348,
+        "tiles_differing_any": 826,
+        "pairwise_max": 515,
+        "pairwise_min": 154,
+        "crop_pixels_vs_first": [
+          156,
+          0,
+          368,
+          156,
+          156,
+          156,
+          156,
+          156,
+          0
+        ],
+        "frame_pixels_vs_first": [
+          180,
+          0,
+          392,
+          180,
+          180,
+          180,
+          180,
+          180,
+          0
+        ]
+      },
+      "floor_window_in_run": {
+        "captures": 10,
+        "distinct_sets": 7,
+        "lost_min": 72,
+        "lost_max": 119,
+        "tiles_differing_any": 71,
+        "pairwise_max": 47,
+        "pairwise_min": 0
+      }
+    },
+    "launch-05": {
+      "requested": 95164,
+      "capacity": 65536,
+      "in_run": {
+        "captures": 10,
+        "distinct_sets": 10,
+        "lost_min": 4086,
+        "lost_max": 4254,
+        "tiles_differing_any": 505,
+        "pairwise_max": 349,
+        "pairwise_min": 92,
+        "crop_pixels_vs_first": [
+          0,
+          156,
+          0,
+          156,
+          0,
+          0,
+          156,
+          156,
+          0
+        ],
+        "frame_pixels_vs_first": [
+          0,
+          180,
+          0,
+          180,
+          0,
+          0,
+          180,
+          180,
+          0
+        ]
+      },
+      "floor_window_in_run": {
+        "captures": 10,
+        "distinct_sets": 5,
+        "lost_min": 78,
+        "lost_max": 99,
+        "tiles_differing_any": 22,
+        "pairwise_max": 22,
+        "pairwise_min": 0
+      }
+    },
+    "launch-06": {
+      "requested": 95164,
+      "capacity": 65536,
+      "in_run": {
+        "captures": 10,
+        "distinct_sets": 10,
+        "lost_min": 4036,
+        "lost_max": 4312,
+        "tiles_differing_any": 592,
+        "pairwise_max": 402,
+        "pairwise_min": 94,
+        "crop_pixels_vs_first": [
+          0,
+          0,
+          156,
+          0,
+          0,
+          0,
+          0,
+          156,
+          156
+        ],
+        "frame_pixels_vs_first": [
+          0,
+          0,
+          180,
+          0,
+          0,
+          0,
+          0,
+          180,
+          180
+        ]
+      },
+      "floor_window_in_run": {
+        "captures": 10,
+        "distinct_sets": 6,
+        "lost_min": 68,
+        "lost_max": 100,
+        "tiles_differing_any": 33,
+        "pairwise_max": 32,
+        "pairwise_min": 0
+      }
+    },
+    "launch-07": {
+      "requested": 95164,
+      "capacity": 65536,
+      "in_run": {
+        "captures": 10,
+        "distinct_sets": 10,
+        "lost_min": 4059,
+        "lost_max": 4202,
+        "tiles_differing_any": 780,
+        "pairwise_max": 360,
+        "pairwise_min": 144,
+        "crop_pixels_vs_first": [
+          0,
+          156,
+          156,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "frame_pixels_vs_first": [
+          0,
+          180,
+          180,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "floor_window_in_run": {
+        "captures": 10,
+        "distinct_sets": 4,
+        "lost_min": 84,
+        "lost_max": 99,
+        "tiles_differing_any": 17,
+        "pairwise_max": 17,
+        "pairwise_min": 0
+      }
+    },
+    "launch-08": {
+      "requested": 95164,
+      "capacity": 65536,
+      "in_run": {
+        "captures": 10,
+        "distinct_sets": 10,
+        "lost_min": 3976,
+        "lost_max": 4198,
+        "tiles_differing_any": 1145,
+        "pairwise_max": 505,
+        "pairwise_min": 182,
+        "crop_pixels_vs_first": [
+          156,
+          0,
+          0,
+          0,
+          0,
+          156,
+          156,
+          156,
+          0
+        ],
+        "frame_pixels_vs_first": [
+          180,
+          0,
+          0,
+          0,
+          0,
+          180,
+          180,
+          180,
+          0
+        ]
+      },
+      "floor_window_in_run": {
+        "captures": 10,
+        "distinct_sets": 8,
+        "lost_min": 58,
+        "lost_max": 99,
+        "tiles_differing_any": 41,
+        "pairwise_max": 41,
+        "pairwise_min": 0
+      }
+    },
+    "launch-09": {
+      "requested": 95164,
+      "capacity": 65536,
+      "in_run": {
+        "captures": 10,
+        "distinct_sets": 10,
+        "lost_min": 4003,
+        "lost_max": 4243,
+        "tiles_differing_any": 901,
+        "pairwise_max": 483,
+        "pairwise_min": 117,
+        "crop_pixels_vs_first": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "frame_pixels_vs_first": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "floor_window_in_run": {
+        "captures": 10,
+        "distinct_sets": 6,
+        "lost_min": 95,
+        "lost_max": 100,
+        "tiles_differing_any": 8,
+        "pairwise_max": 6,
+        "pairwise_min": 0
+      }
+    }
+  },
+  "across_launches_first_shot": {
+    "captures": 10,
+    "distinct_sets": 10,
+    "lost_min": 4068,
+    "lost_max": 4262,
+    "tiles_differing_any": 852,
+    "pairwise_max": 433,
+    "pairwise_min": 73,
+    "crop_pixels_vs_launch_00": [
+      0,
+      0,
+      156,
+      156,
+      0,
+      0,
+      0,
+      156,
+      0
+    ]
+  },
+  "all_captures": {
+    "captures": 100,
+    "distinct_sets": 100,
+    "lost_min": 3976,
+    "lost_max": 4348,
+    "tiles_differing_any": 2403,
+    "pairwise_max": 565,
+    "pairwise_min": 66
+  },
+  "all_captures_floor_window": {
+    "captures": 100,
+    "distinct_sets": 28,
+    "lost_min": 58,
+    "lost_max": 119,
+    "tiles_differing_any": 82,
+    "pairwise_max": 61,
+    "pairwise_min": 0
+  },
+  "manifest": {
+    "fixture": "canvas-frozen",
+    "host": "macos-metal",
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "head": "d5f23eb3f3270708de3d8978d289d6aa358ac3ff",
+    "dirty_engine": false,
+    "binary_sha256": "711064fac69d6ab0374f03498f8e3a8a8eb28ef96260268cea103552df12c37b",
+    "command": [
+      "fleet-run",
+      "--timeout",
+      "900",
+      "--build-dir",
+      "build",
+      "IRCanvasStress",
+      "--config-preset",
+      "<launch>/config.lua",
+      "--only",
+      "shadowbox,floor",
+      "--probe-source-box",
+      "--probe-floor-mode",
+      "grid",
+      "--probe-floor-span",
+      "40",
+      "--no-spin",
+      "--no-auto-rotate",
+      "--pivot-origin",
+      "--yaw",
+      "0",
+      "--zoom",
+      "1",
+      "--no-ao",
+      "--subdivisions",
+      "1",
+      "--sun-direction",
+      "0",
+      "0",
+      "-1",
+      "--probe-overlapping-source",
+      "--probe-overlapping-source-count",
+      "128",
+      "--probe-overlapping-source-offset",
+      "0",
+      "0",
+      "-60",
+      "--probe-record-pool-filler",
+      "300",
+      "--probe-record-pool-filler-last",
+      "--probe-record-pool-filler-offset",
+      "0",
+      "62",
+      "30",
+      "--sun-record-capacity",
+      "65536",
+      "--sun-record-ceiling",
+      "65536",
+      "--sun-face-index-probe",
+      "--auto-screenshot",
+      "10",
+      "--sweep-frames",
+      "10",
+      "30"
+    ]
+  }
+}
