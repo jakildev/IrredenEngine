@@ -99,9 +99,10 @@ That ruled out three alternatives:
 
 A prose pointer with an explicit opt-out list is what agents
 already follow well. The cost is one extra file Read per agent
-invocation; the benefit is a single source of truth that creations
-in any layout (engine-bundled, separate gitignored repo) can point
-to with the same syntax.
+invocation, two for source or instruction work (see Discovery); the
+benefit is a single source of truth that creations in any layout
+(engine-bundled, separate gitignored repo) can point to with the same
+syntax.
 
 ---
 
@@ -170,15 +171,19 @@ without a reason should fail review.
 
 ## Discovery
 
-**By reference, not inline.** Agents read both files: their starting
-`CLAUDE.md` (which the harness auto-loads) and the baseline (which
-the inheritance block points them at). Inlining the baseline content
+**By reference, not inline.** Every agent reads at least two files:
+their starting `CLAUDE.md` (which the harness auto-loads) and the
+baseline (which the inheritance block points them at). An agent that
+edits source or instruction files also reads the matching on-demand
+file from item 4. Inlining the baseline content
 into every creation's `CLAUDE.md` would solve the discovery question
 but recreates the duplication problem this design exists to fix.
 
-The cost is one extra Read tool call per agent invocation. The
-benefit is that every baseline edit reaches every creation
-automatically.
+The cost is one extra Read tool call for a session that needs only the
+baseline, and one more (`CODE-CONVENTIONS.md` or
+`INSTRUCTION-AUTHORING.md`) for a session that edits source or
+instruction files. The benefit is that every baseline edit reaches
+every creation automatically.
 
 The on-demand files are found two ways: the baseline stub under each
 moved heading names its trigger, and the nested `CLAUDE.md` files
@@ -190,10 +195,11 @@ the baseline.
 
 The project-root `CLAUDE.md` follows the same pattern: a top-of-file
 pointer at the baseline, then the engine-fleet-specific sections
-inline. An engine agent reads one extra file relative to the
-pre-design status quo; a creation agent reads the same number of
-files (their own `CLAUDE.md` plus engine baseline) but gets a sharper
-contract.
+inline. Relative to the pre-design status quo, a baseline-only engine
+agent reads one extra file and a baseline-only creation agent reads the
+same number (their own `CLAUDE.md` plus engine baseline) under a
+sharper contract. A session that edits source or instruction files
+reads the matching on-demand file on top of that.
 
 ---
 
