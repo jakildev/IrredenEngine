@@ -337,6 +337,12 @@ enum SystemName {
     TEST_REGISTER_SYSTEM_A,
     TEST_REGISTER_SYSTEM_B,
 
+    // Reserved for tests of the static-resident matching policy on the
+    // registerSystem<> lane. Do not use from a creation or prefab system.
+    TEST_STATIC_POSE_WRITER,
+    TEST_STATIC_POSE_READER,
+    TEST_STATIC_DERIVING,
+
     // Reserved for tests of the kCadence / kCadenceOffset
     // spec-member detection path. Do not use from a creation or prefab
     // system.

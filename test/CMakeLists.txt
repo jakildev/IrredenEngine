@@ -65,7 +65,9 @@ add_executable(IrredenEngineTest
   ecs/rotation_mode_set_test.cpp
   ecs/rotation_target_test.cpp
   ecs/sort_archetype_relational_test.cpp
+  ecs/static_entity_layer_test.cpp
   ecs/static_resident_test.cpp
+  ecs/static_resident_world_test.cpp
   ecs/store_tie_signal_test.cpp
   ecs/voxel_set_children_render_placement_test.cpp
   ecs/parallel_spawn_test.cpp
@@ -271,6 +273,7 @@ add_executable(IrredenEngineTest
   script/modifier_lua_test.cpp
   system/pipeline_groups_test.cpp
   system/register_system_test.cpp
+  system/static_policy_test.cpp
   system/system_access_test.cpp
   system/system_cadence_test.cpp
   system/system_concurrency_test.cpp
