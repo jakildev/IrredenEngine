@@ -119,8 +119,8 @@ guard classes that fixed argv prefixes can identify: protected-ref pushes
 from the assigned checkout, explicit non-GET `gh api -X/--method` forms,
 fixed merge commands, and an immediately positioned `--no-verify` or `-n` on
 `git commit` (or `--no-verify` on `git merge` or `git push`). Prefix rules
-cannot resolve the
-current branch for author commits, inspect GraphQL query text, follow an
+cannot resolve the current branch for author commits, inspect GraphQL query
+text, follow an
 arbitrary `git -C` directory or remote, or find a flag or endpoint after
 arbitrary intervening arguments. Those shapes remain guarded in Claude and
 by repository branch protection, but are residual Codex-policy coverage.
