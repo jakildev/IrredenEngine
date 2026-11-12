@@ -453,7 +453,7 @@ struct C_VoxelSetNew {
             pool.clearActiveMaskRange(newStart, count);
         }
         pool.queuePositionRange(newStart, count);
-        pool.markRecordsChanged();
+        pool.markRecordsChanged(newStart, count);
 
         pool.deallocateVoxels(oldStart, oldCount);
 
@@ -501,10 +501,11 @@ struct C_VoxelSetNew {
     }
 
     // Every record mutator notifies, including hidden sets: visibility gates
-    // active-mask writes, but bounds derive from authored alpha, and a cached
-    // copy of the records (a re-voxelize seed) keys on the pool's content
-    // generation. A skipped notification can leave a shown set rejected by
-    // stale off-screen bounds, or a hosted part drawing its old voxels.
+    // active-mask writes, but bounds derive from authored alpha, the GPU
+    // record buffer receives only notified ranges, and a cached copy of the
+    // records (a re-voxelize seed) keys on the pool's content generation. A
+    // skipped notification can leave a shown set rejected by stale off-screen
+    // bounds, drawing its old records, or a hosted part drawing its old voxels.
     void markPoolRecordsChanged() {
         markPoolRecordsChanged(0, numVoxels_);
     }
@@ -514,11 +515,9 @@ struct C_VoxelSetNew {
             return;
         }
         IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [&](C_VoxelPool &pool) {
-            pool.markCullBoundsDirty(
-                voxelStartIdx_ + static_cast<std::size_t>(first),
-                static_cast<std::size_t>(count)
-            );
-            pool.markRecordsChanged();
+            const std::size_t start = voxelStartIdx_ + static_cast<std::size_t>(first);
+            pool.markCullBoundsDirty(start, static_cast<std::size_t>(count));
+            pool.markRecordsChanged(start, static_cast<std::size_t>(count));
         });
     }
 
@@ -564,7 +563,7 @@ struct C_VoxelSetNew {
 
     // Per-trixel render priority. Sets the low 2 bits of the voxel's
     // `reserved_` carrier — 0 = default world tier, higher = renders in front of
-    // lower tiers regardless of depth. Rides the per-frame Voxel-record (binding 6)
+    // lower tiers regardless of depth. Rides the queued Voxel-record (binding 6)
     // upload, so no active-mask change is needed; the stage-2 raster packs it into
     // the entity-id carrier and f_trixel_to_framebuffer resolves
     // tier = max(perEntityTier, perTrixelTier). Default 0 ⇒ byte-identical.
@@ -580,9 +579,9 @@ struct C_VoxelSetNew {
             IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount(delta, canvasEntity_);
         }
         mirrorToRotationSource(idx);
-        // Priority is not a cull-bounds input; only the content generation moves.
-        IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [](C_VoxelPool &pool) {
-            pool.markRecordsChanged();
+        // Priority is not a cull-bounds input; only the record range is notified.
+        IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [&](C_VoxelPool &pool) {
+            pool.markRecordsChanged(voxelStartIdx_ + static_cast<std::size_t>(idx), 1);
         });
     }
 
@@ -599,8 +598,11 @@ struct C_VoxelSetNew {
             static_cast<int>(newCount) - static_cast<int>(perTrixelPriorityVoxelCount_);
         IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount(delta, canvasEntity_);
         perTrixelPriorityVoxelCount_ = newCount;
-        IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [](C_VoxelPool &pool) {
-            pool.markRecordsChanged();
+        if (numVoxels_ <= 0) {
+            return;
+        }
+        IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [&](C_VoxelPool &pool) {
+            pool.markRecordsChanged(voxelStartIdx_, static_cast<std::size_t>(numVoxels_));
         });
     }
 
@@ -814,8 +816,8 @@ struct C_VoxelSetNew {
     // Target canvas resolves in priority order: explicit @p canvas > the set's
     // saved `canvasEntity_` (an id-stable C_Persistent canvas survives
     // `resetGameplay`) > the active canvas. Queues the seeded range for GPU
-    // position upload; colors + active-mask ride the unconditional per-frame
-    // `subData`, and lighting/AO/shadow/fog textures re-derive from the
+    // position upload; the seed queues records + active-mask itself, and
+    // lighting/AO/shadow/fog textures re-derive from the
     // re-seeded pool on the next render tick. Stays staged (returns false
     // without seeding) if no live pool can be resolved; true means the set is
     // now pool-resident, which is the driver's cue for the per-entity

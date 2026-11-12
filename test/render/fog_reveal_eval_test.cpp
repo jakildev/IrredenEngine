@@ -342,6 +342,7 @@ TEST(FogRevealEvalTest, SourcesOccludeIndependently) {
     C_VoxelPool pool{IRMath::ivec3(1)};
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
     system.pending_.reset(4);
+    system.stamped_.reset(4);
     system.fogAttached_ = true;
     system.activeCanvas_ = IREntity::kNullEntity;
     system.activePool_ = &pool;
@@ -467,6 +468,7 @@ TEST(FogRevealEvalTest, BodyVerdictBehindARidgeFromAGatedSourceIsZero) {
     C_VoxelPool pool{IRMath::ivec3(1)};
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
     system.pending_.reset(4);
+    system.stamped_.reset(4);
     system.fogAttached_ = true;
     system.fog_ = &fog;
     system.activeCanvas_ = IREntity::kNullEntity;
@@ -490,6 +492,7 @@ TEST(FogRevealEvalTest, HysteresisAndStaggerControlEntityVerdict) {
     C_VoxelPool pool{IRMath::ivec3(1)};
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
     system.pending_.reset(4);
+    system.stamped_.reset(4);
     system.fogAttached_ = true;
     system.activeCanvas_ = IREntity::kNullEntity;
     system.activePool_ = &pool;
@@ -526,6 +529,7 @@ TEST(FogRevealEvalTest, HysteresisAndStaggerControlEntityVerdict) {
 TEST(FogRevealEvalTest, MissingPoolDoesNotLatchAnUnappliedTransition) {
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
     system.pending_.reset(4);
+    system.stamped_.reset(4);
     system.fogAttached_ = false;
     system.activeCanvas_ = IREntity::kNullEntity;
 
@@ -1379,6 +1383,7 @@ TEST(FogRevealEvalTest, ActiveMaskHideAndRestoreAreAlphaPreserving) {
     voxelSet.allocatedVoxels_ = 4;
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
     system.pending_.reset(4);
+    system.stamped_.reset(4);
     allocation.voxels_[0].color_.alpha_ = 255;
     allocation.voxels_[1].color_.alpha_ = 0;
     allocation.voxels_[2].color_.alpha_ = 255;
@@ -1394,6 +1399,8 @@ TEST(FogRevealEvalTest, ActiveMaskHideAndRestoreAreAlphaPreserving) {
     EXPECT_EQ(allocation.voxels_[1].color_.alpha_, 0);
 
     system.pending_.reset(1);
+
+    system.stamped_.reset(1);
     system.pending_.push({&voxelSet, &pool, true});
     system.endTick();
     EXPECT_TRUE(voxelSet.visible_);
@@ -1418,6 +1425,7 @@ TEST(FogRevealEvalTest, ShownBodyRestampsItsCarrierOnlyWhenTheFactorMoves) {
 
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
     system.pending_.reset(4);
+    system.stamped_.reset(4);
     system.restampedByWorker_.assign(1, 0u);
     system.fogAttached_ = true;
     system.activePool_ = &pool;

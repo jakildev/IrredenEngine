@@ -918,18 +918,49 @@ stampBodyCarrierRecords(std::span<IRComponents::C_Voxel> records, bool body, std
     }
 }
 
+/// Pool record slots a carrier stamp rewrote, for a `PARALLEL_FOR` caller to
+/// stage per worker and queue on the main thread with `queueStamped`.
+struct StampedRecords {
+    IRComponents::C_VoxelPool *pool_ = nullptr;
+    std::size_t start_ = 0;
+    std::size_t count_ = 0;
+};
+
+inline void queueStamped(const StampedRecords &stamped) {
+    if (stamped.pool_ != nullptr) {
+        stamped.pool_->queueRecordRange(stamped.start_, stamped.count_);
+    }
+}
+
 /// Write the BODY class bit and the quantized factor into every record of
 /// @p voxelSet in @p pool and into the rotation-source mirror, so a rotated
 /// re-voxelization carries the same verdict. `body == false` clears both
-/// fields (the FIELD form).
+/// fields (the FIELD form). Worker-thread safe for disjoint sets: the pool's
+/// upload queue is not touched, so the caller owes `queueStamped` on the
+/// returned range from the main thread.
+[[nodiscard]] inline StampedRecords stampBodyCarrierStaged(
+    IRComponents::C_VoxelPool &pool,
+    IRComponents::C_VoxelSetNew &voxelSet,
+    bool body,
+    std::uint8_t factor = 0
+) {
+    const std::span<IRComponents::C_Voxel> records = poolRecords(pool, voxelSet);
+    stampBodyCarrierRecords(records, body, factor);
+    stampBodyCarrierRecords(voxelSet.rotationSourceVoxels_, body, factor);
+    if (records.empty()) {
+        return {};
+    }
+    return {&pool, voxelSet.voxelStartIdx_, records.size()};
+}
+
+/// Main-thread form of `stampBodyCarrierStaged`: stamps and queues the range.
 inline void stampBodyCarrier(
     IRComponents::C_VoxelPool &pool,
     IRComponents::C_VoxelSetNew &voxelSet,
     bool body,
     std::uint8_t factor = 0
 ) {
-    stampBodyCarrierRecords(poolRecords(pool, voxelSet), body, factor);
-    stampBodyCarrierRecords(voxelSet.rotationSourceVoxels_, body, factor);
+    queueStamped(stampBodyCarrierStaged(pool, voxelSet, body, factor));
 }
 
 inline void stampCanvasBodyCarrier(

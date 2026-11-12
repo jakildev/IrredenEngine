@@ -186,6 +186,7 @@ add_executable(IrredenEngineTest
   render/voxel_editor_recipe_reapply_test.cpp
   render/voxel_pool_config_test.cpp
   render/voxel_pool_capacity_test.cpp
+  render/voxel_record_upload_test.cpp
   render/voxel_font_test.cpp
   render/voxel_text_test.cpp
   render/sprite_animation_test.cpp

@@ -176,6 +176,7 @@ struct C_VoxelPool {
                 std::span<C_Voxel>{m_voxelColors.data() + startIndex, size}
             };
             applyFogCarrierPolicy(allocation.voxels_);
+            queueAllocatedSpanUpload(startIndex, size);
             return allocation;
         }
 
@@ -198,6 +199,7 @@ struct C_VoxelPool {
                 std::span<C_Voxel>{m_voxelColors.data() + startIndex, size}
             };
             applyFogCarrierPolicy(allocation.voxels_);
+            queueAllocatedSpanUpload(startIndex, size);
             return allocation;
         }
 
@@ -230,6 +232,7 @@ struct C_VoxelPool {
         for (size_t i = 0; i < size; i++) {
             m_voxelColors[startIndex + i].color_ = Color{0, 0, 0, 0};
         }
+        queueRecordRange(startIndex, size);
         clearActiveMaskRange(startIndex, size);
 
         std::fill(
@@ -374,10 +377,20 @@ struct C_VoxelPool {
         return m_contentGeneration;
     }
     // Notify an in-place rewrite of resident voxel records (color, alpha,
-    // material, flags, bone, layer, reserved). `C_VoxelSetNew`'s mutators call
-    // it; a raw writer to getColors() owns the call.
-    void markRecordsChanged() {
+    // material, flags, bone, layer, reserved) in slots [start, start + count):
+    // queues the range for the GPU record upload and advances the content
+    // generation. `C_VoxelSetNew`'s mutators call it; a raw writer to
+    // getColors() owns the call — VOXEL_TO_TRIXEL_STAGE_1 uploads only queued
+    // ranges, and its assert-build audit fails on an unqueued write.
+    // Main thread only; a worker-thread writer stages its range and queues it
+    // from the system's endTick.
+    void markRecordsChanged(std::size_t start, std::size_t count) {
+        queueRecordRange(start, count);
         ++m_contentGeneration;
+    }
+    // Rangeless form: queues the whole live prefix.
+    void markRecordsChanged() {
+        markRecordsChanged(0, static_cast<std::size_t>(m_voxelPoolIndex));
     }
 
     void setFogCarrierPolicy(FogCarrierPolicy policy, std::uint8_t bodyFactor = 0) {
@@ -755,27 +768,15 @@ struct C_VoxelPool {
     }
 
     void setActiveBit(std::size_t idx) {
-        IR_ASSERT(
-            idx < static_cast<std::size_t>(m_voxelPoolSize),
-            "setActiveBit out of bounds: idx={}, poolSize={}",
-            idx,
-            m_voxelPoolSize
-        );
-        m_activeMask[idx / kVoxelActiveMaskBits] |=
-            (std::uint32_t{1} << (idx % kVoxelActiveMaskBits));
+        writeActiveBit(idx, true);
+        queueMaskSlots(idx, 1);
         m_activeMaskChangedThisFrame = true;
         markCullBoundsDirty(idx, 1); // Alpha is a bounds input.
     }
 
     void clearActiveBit(std::size_t idx) {
-        IR_ASSERT(
-            idx < static_cast<std::size_t>(m_voxelPoolSize),
-            "clearActiveBit out of bounds: idx={}, poolSize={}",
-            idx,
-            m_voxelPoolSize
-        );
-        m_activeMask[idx / kVoxelActiveMaskBits] &=
-            ~(std::uint32_t{1} << (idx % kVoxelActiveMaskBits));
+        writeActiveBit(idx, false);
+        queueMaskSlots(idx, 1);
         m_activeMaskChangedThisFrame = true;
         markCullBoundsDirty(idx, 1); // Alpha is a bounds input.
     }
@@ -804,17 +805,56 @@ struct C_VoxelPool {
             count,
             m_voxelPoolSize
         );
-        // Notify once for the span so per-bit setters hit the already-pending
-        // early return without repeating chunk invalidation work.
+        if (count == 0) {
+            return;
+        }
         markCullBoundsDirty(start, count);
+        queueMaskSlots(start, count);
+        m_activeMaskChangedThisFrame = true;
         for (std::size_t i = 0; i < count; ++i) {
             const std::size_t idx = start + i;
-            if (m_voxelColors[idx].color_.alpha_ != 0) {
-                setActiveBit(idx);
-            } else {
-                clearActiveBit(idx);
-            }
+            writeActiveBit(idx, m_voxelColors[idx].color_.alpha_ != 0);
         }
+    }
+
+    // Pending upload ranges for the record and active-mask GPU buffers, drained
+    // by VOXEL_TO_TRIXEL_STAGE_1 (`flushPendingRecordUploads`). Records are
+    // queued in slots, the mask in 32-bit words. Shaped like the position
+    // queue: main-thread only, coalesced at flush, and a queue that reaches
+    // `kMaxPendingUploadRanges` stops recording because the flusher uploads the
+    // whole live prefix instead. An append that touches the previous entry
+    // extends it, so a per-slot writer walking a span costs one entry. The cap
+    // is above the position queue's: per-set fog restamps of single-voxel
+    // sets queue tens of thousands of scattered slots in one frame.
+    static constexpr std::size_t kMaxPendingUploadRanges = std::size_t{1} << 16;
+
+    void queueRecordRange(std::size_t start, std::size_t count) {
+        IR_ASSERT(
+            start <= static_cast<std::size_t>(m_voxelPoolSize) &&
+                count <= static_cast<std::size_t>(m_voxelPoolSize) - start,
+            "queueRecordRange out of bounds: start={}, count={}, poolSize={}",
+            start,
+            count,
+            m_voxelPoolSize
+        );
+        appendPendingRange(m_pendingRecordRanges, start, count);
+    }
+
+    const std::vector<std::pair<size_t, size_t>> &getPendingRecordRanges() const {
+        return m_pendingRecordRanges;
+    }
+    std::vector<std::pair<size_t, size_t>> &getPendingRecordRanges() {
+        return m_pendingRecordRanges;
+    }
+    const std::vector<std::pair<size_t, size_t>> &getPendingMaskWordRanges() const {
+        return m_pendingMaskWordRanges;
+    }
+    std::vector<std::pair<size_t, size_t>> &getPendingMaskWordRanges() {
+        return m_pendingMaskWordRanges;
+    }
+    void clearPendingRecordUploads() {
+        m_pendingRecordRanges.clear();
+        m_pendingMaskWordRanges.clear();
     }
 
     // Catch-up updates can enqueue the same spans repeatedly. At saturation,
@@ -966,8 +1006,8 @@ struct C_VoxelPool {
     // Set by any active-mask mutation (setActiveBit / clearActiveBit /
     // setActiveMaskRange / clearActiveMaskRange, hence resyncActiveMaskFromColors),
     // consumed+cleared once per frame by VOXEL_TO_TRIXEL_STAGE_1 via
-    // consumeActiveMaskChanged(). This is NOT a GPU-sync dirty flag (the active
-    // mask uploads unconditionally every frame regardless): it gates only the
+    // consumeActiveMaskChanged(). This is NOT a GPU-sync dirty flag (the mask
+    // upload is driven by `m_pendingMaskWordRanges`): it gates only the
     // CPU-side tie-possibility recompute — the "did an activation change" analog
     // of `positionsChanged = !m_pendingPositionRanges.empty()`, which likewise
     // re-triggers the scan without owning any GPU upload. Push-at-mutation,
@@ -1007,6 +1047,10 @@ struct C_VoxelPool {
     // VOXEL_TO_TRIXEL_STAGE_1; capacity is preserved across frames so
     // a steady-state moving scene avoids per-frame allocation.
     std::vector<std::pair<size_t, size_t>> m_pendingPositionRanges;
+    // Record slots and active-mask words rewritten since the last GPU flush;
+    // see `queueRecordRange`. Capacity is preserved across frames.
+    std::vector<std::pair<size_t, size_t>> m_pendingRecordRanges;
+    std::vector<std::pair<size_t, size_t>> m_pendingMaskWordRanges;
     // Per-voxel GPU transform-slot index (see `setTransformIndexForRange`).
     std::vector<std::uint32_t> m_voxelTransformIndices;
     // Per-frame queue of transform-index slices that pack transform-slot indices
@@ -1158,12 +1202,6 @@ struct C_VoxelPool {
         if (count == 0) {
             return;
         }
-        // The whole-word middle path writes `m_activeMask` directly, bypassing
-        // the per-bit setters that flag the change and notify bounds; flag and
-        // notify once for the whole range here (which also coalesces the
-        // prefix/suffix invalidation).
-        m_activeMaskChangedThisFrame = true;
-        markCullBoundsDirty(start, count);
         IR_ASSERT(
             start + count <= static_cast<std::size_t>(m_voxelPoolSize),
             "setMaskRange out of bounds: start={}, count={}, poolSize={}",
@@ -1171,15 +1209,14 @@ struct C_VoxelPool {
             count,
             m_voxelPoolSize
         );
+        m_activeMaskChangedThisFrame = true;
+        markCullBoundsDirty(start, count);
+        queueMaskSlots(start, count);
         const std::size_t end = start + count;
         std::size_t idx = start;
         // Partial-word prefix and a possible all-in-one-word path.
         while (idx < end && (idx % kVoxelActiveMaskBits) != 0) {
-            if (value) {
-                setActiveBit(idx);
-            } else {
-                clearActiveBit(idx);
-            }
+            writeActiveBit(idx, value);
             ++idx;
         }
         // Whole-word middle.
@@ -1190,13 +1227,57 @@ struct C_VoxelPool {
         }
         // Partial-word suffix.
         while (idx < end) {
-            if (value) {
-                setActiveBit(idx);
-            } else {
-                clearActiveBit(idx);
-            }
+            writeActiveBit(idx, value);
             ++idx;
         }
+    }
+
+    // The single mask-word store every mask mutator ends in; callers queue the
+    // word and notify bounds.
+    void writeActiveBit(std::size_t idx, bool value) {
+        IR_ASSERT(
+            idx < static_cast<std::size_t>(m_voxelPoolSize),
+            "active-mask write out of bounds: idx={}, poolSize={}",
+            idx,
+            m_voxelPoolSize
+        );
+        const std::uint32_t bit = std::uint32_t{1} << (idx % kVoxelActiveMaskBits);
+        std::uint32_t &word = m_activeMask[idx / kVoxelActiveMaskBits];
+        word = value ? (word | bit) : (word & ~bit);
+    }
+
+    void queueMaskSlots(std::size_t start, std::size_t count) {
+        if (count == 0) {
+            return;
+        }
+        const std::size_t firstWord = start / kVoxelActiveMaskBits;
+        const std::size_t endWord =
+            (start + count + kVoxelActiveMaskBits - 1) / kVoxelActiveMaskBits;
+        appendPendingRange(m_pendingMaskWordRanges, firstWord, endWord - firstWord);
+    }
+
+    // A fresh or recycled span: its records and mask words reach the GPU even
+    // when no writer touches them, since the shared buffers may hold another
+    // pool's data past this pool's previous live prefix.
+    void queueAllocatedSpanUpload(std::size_t start, std::size_t count) {
+        queueRecordRange(start, count);
+        queueMaskSlots(start, count);
+    }
+
+    static void appendPendingRange(
+        std::vector<std::pair<size_t, size_t>> &ranges, std::size_t start, std::size_t count
+    ) {
+        if (count == 0 || ranges.size() >= kMaxPendingUploadRanges) {
+            return;
+        }
+        if (!ranges.empty()) {
+            auto &[lastStart, lastCount] = ranges.back();
+            if (start >= lastStart && start <= lastStart + lastCount) {
+                lastCount = IRMath::max(lastCount, start + count - lastStart);
+                return;
+            }
+        }
+        ranges.emplace_back(start, count);
     }
 
     std::optional<std::pair<size_t, size_t>> findFreeSpan(size_t requestedSize) const {

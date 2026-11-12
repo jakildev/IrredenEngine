@@ -45,6 +45,7 @@ template <> struct System<FOG_SUBJECT_ADOPT> {
     IRComponents::C_VoxelPool *activePool_ = nullptr;
     IRComponents::C_FogRevealSettings settings_{};
     IRJob::WorkerBlockQueue<PendingHide> pending_;
+    IRJob::WorkerBlockQueue<IRPrefab::Fog::StampedRecords> stamped_;
 
     void beginTick() {
         activeCanvas_ = IRRender::getActiveCanvasEntityOrNull();
@@ -85,6 +86,7 @@ template <> struct System<FOG_SUBJECT_ADOPT> {
             population += static_cast<std::size_t>(node->length_);
         }
         pending_.reset(population);
+        stamped_.reset(population);
         // The tick reads no grid cell without a pool, so nothing is touched.
         if (fog != nullptr && activePool_ != nullptr) {
             IRPrefab::Fog::touchAnchorRegions(*fog, activeCanvas_, nodes);
@@ -107,11 +109,13 @@ template <> struct System<FOG_SUBJECT_ADOPT> {
         revealed.revealFactor_ =
             IRPrefab::Fog::evalReveal(*fog_, observers_, los_, worldTransform.translation_);
         revealed.shown_ = revealed.revealFactor_ >= settings_.showThreshold_;
-        IRPrefab::Fog::stampBodyCarrier(
-            *activePool_,
-            voxelSet,
-            true,
-            IRPrefab::Fog::quantizeRevealFactor(revealed.revealFactor_)
+        stamped_.push(
+            IRPrefab::Fog::stampBodyCarrierStaged(
+                *activePool_,
+                voxelSet,
+                true,
+                IRPrefab::Fog::quantizeRevealFactor(revealed.revealFactor_)
+            )
         );
         if (!revealed.shown_) {
             pending_.push(PendingHide{&voxelSet, activePool_});
@@ -120,6 +124,7 @@ template <> struct System<FOG_SUBJECT_ADOPT> {
     }
 
     void endTick() {
+        stamped_.forEach(IRPrefab::Fog::queueStamped);
         pending_.forEach([](const PendingHide &hide) {
             IRComponents::C_VoxelSetNew &voxelSet = *hide.voxelSet_;
             voxelSet.visible_ = false;

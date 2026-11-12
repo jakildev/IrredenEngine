@@ -66,6 +66,7 @@ inline void recomputeSourceFaceOccupancy(
         count,
         occupancy
     );
+    pool.queueRecordRange(0, static_cast<std::size_t>(count));
 }
 
 // Seed one cell group from the pool span [start, start + count): scan its

@@ -85,6 +85,10 @@ WITNESS_PIVOT_RE = re.compile(r"^Camera pivot: explicit focus on (\d+) of (\d+) 
 WITNESS_OVERFLOW_RE = re.compile(
     r"^Per-axis overflow: maxEntries=(\d+) maxDropped=(\d+) cap=(\d+) samples=(\d+)$"
 )
+WITNESS_UPLOAD_RE = re.compile(
+    r"^Voxel (record|mask) upload bytes: first=(\d+) laterMean=([\d.]+) laterMax=(\d+) "
+    r"frames=(\d+)$"
+)
 
 
 @dataclass
@@ -171,6 +175,17 @@ class RunWitness:
     overflow_max_dropped: Optional[int] = None
     overflow_cap: Optional[int] = None
     overflow_samples: Optional[int] = None
+    # Per-frame bytes uploaded to the voxel record / active-mask buffers, keyed
+    # "record" and "mask"; a stream is absent where its line is.
+    voxel_uploads: dict[str, "VoxelUploads"] = field(default_factory=dict)
+
+
+@dataclass
+class VoxelUploads:
+    first_frame_bytes: int
+    later_mean_bytes: float
+    later_max_bytes: int
+    frames: int
 
 
 @dataclass
@@ -428,6 +443,12 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
                 (witness.overflow_max_entries, witness.overflow_max_dropped,
                  witness.overflow_cap, witness.overflow_samples) = (
                     int(m.group(i)) for i in range(1, 5)
+                )
+                continue
+            m = WITNESS_UPLOAD_RE.match(s)
+            if m:
+                witness.voxel_uploads[m.group(1)] = VoxelUploads(
+                    int(m.group(2)), float(m.group(3)), int(m.group(4)), int(m.group(5))
                 )
         elif section == "frame_times":
             report.frame_times_ms.extend(float(value) for value in s.split())

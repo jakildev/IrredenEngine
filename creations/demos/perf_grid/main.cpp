@@ -1487,6 +1487,7 @@ void createGridEntities() {
                         auto cellSet = IREntity::getComponentOptional<C_VoxelSetNew>(cellEntity);
                         if (cellSet.has_value()) {
                             cellSet.value()->voxels_[0].flags_ |= occluded;
+                            cellSet.value()->markPoolRecordsChanged(0, 1);
                         }
                     }
                     if (g_fogReveal) {

@@ -142,6 +142,8 @@ WITNESSED_REPORT = (
     "Camera zoom range: min=4.000 max=4.000\n"
     "Camera pivot: explicit focus on 8 of 8 frames\n"
     "Per-axis overflow: maxEntries=630842 maxDropped=7 cap=1048576 samples=8\n"
+    "Voxel record upload bytes: first=12000000 laterMean=0.0 laterMax=0 frames=8\n"
+    "Voxel mask upload bytes: first=125000 laterMean=4.5 laterMax=36 frames=8\n"
     "\n"
     "--- Frame times (ms, in order) ---\n"
     "102.000 32.000 21.000 20.000 19.000\n"
@@ -180,6 +182,14 @@ class RunWitnessParserTest(unittest.TestCase):
         )
         self.assertEqual((report.frame.p99, report.steady_frame.p99), (102.0, 21.0))
         self.assertEqual(witness.explicit_pivot_samples, 8)
+        record, mask = witness.voxel_uploads["record"], witness.voxel_uploads["mask"]
+        self.assertEqual(
+            (record.first_frame_bytes, record.later_mean_bytes, record.later_max_bytes,
+             record.frames),
+            (12000000, 0.0, 0, 8),
+        )
+        self.assertEqual((mask.first_frame_bytes, mask.later_mean_bytes, mask.later_max_bytes),
+                         (125000, 4.5, 36))
         self.assertEqual(report.warmup_frames, 2)
         self.assertEqual(len(report.frame_times_ms), 8)
         self.assertEqual(report.frame_update_ticks, [8, 8, 2, 1, 1, 1, 1, 0])
@@ -252,6 +262,7 @@ class RunWitnessParserTest(unittest.TestCase):
             '"Camera zoom range: min=%.3f max=%.3f\\n"',
             '"Camera pivot: explicit focus on %u of %u frames\\n"',
             '"Per-axis overflow: maxEntries=%u maxDropped=%u cap=%u samples=%u\\n"',
+            '"Voxel %s upload bytes: first=%llu laterMean=%.1f laterMax=%llu frames=%u\\n"',
             '"Steady frame time (first %zu of %zu frames excluded):   avg=%.2fms   p50=%.2fms   "',
             '"--- Frame times (ms, in order) ---\\n"',
             '"--- Update ticks (per frame, in order) ---\\n"',

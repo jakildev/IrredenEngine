@@ -51,6 +51,15 @@ struct CpuPhaseEntry {
     uint32_t sampleCount_ = 0;
 };
 
+/// Bytes one voxel upload stream sent per frame: the first frame, then the
+/// mean and maximum of every later frame.
+struct VoxelUploadSummary {
+    uint64_t firstFrameBytes_ = 0;
+    double laterMeanBytes_ = 0.0;
+    uint64_t laterMaxBytes_ = 0;
+    uint32_t frames_ = 0;
+};
+
 /// Per-compact-dispatch candidates and repeated axis work. Total counts pool
 /// slots, including inactive slots; visible plus feeder counts unique survivors.
 struct VoxelCullStatsSummary {
@@ -86,6 +95,10 @@ struct RunWitnessSummary {
     uint32_t maxOverflowEntries_ = 0;
     uint32_t maxOverflowDropped_ = 0;
     uint32_t overflowCap_ = 0;
+    /// Bytes uploaded per frame to the voxel record and active-mask buffers:
+    /// the first frame, then the mean and maximum of every later frame.
+    VoxelUploadSummary recordUploads_;
+    VoxelUploadSummary maskUploads_;
 };
 
 /// Leading share of the recorded frames the steady frame-time line excludes:
