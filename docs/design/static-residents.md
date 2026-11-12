@@ -28,7 +28,9 @@ system and reader may assume about it.
   ordinary systems last wrote.
 - Every engine mutator that can change a static entity's inputs reaches the
   entity and thaws or resettles it, including the `C_VoxelSetNew` methods,
-  which find it through the owner id the set already stores.
+  which find it through the owner id the set already stores, and the
+  entity-layer parent-link calls, which resettle the static subtree
+  themselves.
 - Becoming dynamic again removes both tags. Each transition is one
   archetype move, measured at 0.20 to 0.28 µs per entity.
 - Two families read world-scoped inputs as well as the entity's own: the
@@ -151,6 +153,9 @@ All transitions are structural changes and all are deferred: they take
 effect at the next structural flush, which the scheduler runs at every
 pipeline group boundary
 (`.claude/rules/cpp-ecs.md` § "Deferred entity operations during tick").
+The one exception is the resettle a parent change causes, which rides the
+eager, main-thread relation move or destruction that causes it
+([§ A parent change](#a-parent-change-settled-or-settling-to-settling)).
 They may be requested from the main thread or from a worker tick, from C++
 or Lua, from a system, a command or init code.
 
@@ -264,6 +269,7 @@ Writing it again is the restart. It is written for these events:
 | Event | When the stamp is written |
 |---|---|
 | The entity enters the settling state: freeze, creation with `C_Static`, snapshot load, resettle, or `C_Settled` dropped by another archetype move | At the drain after the flush that moved it |
+| A parent change or a parent's destruction on a static entity or a static ancestor, settled or settling | At the drain after the call, from the tracked-change log |
 | A resettle-worthy mutation ([§ Engine mutators](#engine-mutators)) on an entity that is already settling | At the drain after the mutation |
 | A deriving system holds the row (below) | At the drain after the dispatch that held it |
 
@@ -328,10 +334,12 @@ promptly. Whether a row can be promoted depends on `roundsCompleted_`, which
 the drain reads and never writes ([Rounds span pipelines](#settle-settling-to-settled)).
 In order, it:
 
-1. Applies the staged change notes and holds. A note whose entity is gone
-   or not static is dropped, and on a voxel-set note it clears
-   `ownerStatic_`. A note whose entity is settled queues the removal of
-   `C_Settled`. Every other note stamps its entity.
+1. Applies the staged change notes and holds, and takes the entity
+   layer's tracked-change log. A note or entry whose entity is gone or not
+   static is dropped, and on a voxel-set note it clears `ownerStatic_`. A
+   note whose entity is settled queues the removal of `C_Settled`. Every
+   other note or entry stamps its entity, and a log entry also runs the
+   eligibility check, so an entity now under a dynamic parent is refused.
 2. Compares the global-modifier revision and, on a new one, raises
    `globalFloor_`.
 3. Walks the settling archetype nodes (`C_Static` without `C_Settled`).
@@ -413,11 +421,90 @@ destination type of any move that does not name it. `C_Settled` is the only
 such component. Each archetype node caches whether its type contains one,
 so the cost on any other move is one boolean test.
 
+The entity layer cannot write the settle stamp, and the stamp the entity
+carries is from an earlier round, so dropping the tag alone would let the
+next drain promote the row again at once. So every move that drops a
+cleared component also appends the entity's id to the entity layer's
+*tracked-change log*, `EntityManager::takeTrackedChanges(out)`. That is a
+main-thread vector: every archetype move runs on the main thread, eagerly or
+at a flush. Step 1 of the drain takes the log and stamps each entry that is
+still static, exactly as it applies a change note. The log names no
+feature: it records ids, and the prefab layer reads it by calling down.
+
 The rule covers every attach and detach, by C++ or Lua, bundle or
 `setComponent`, without a mutator having to remember it. If the new
 component makes the entity ineligible (a skeleton, a GPU transform slot),
 the drain's eligibility check then removes `C_Static`, and the entity
 becomes dynamic.
+
+### A parent change: settled or settling to settling
+
+The `CHILD_OF` link is a pose input, and the public paths that change it are
+eager entity-layer operations: `IREntity::setParent` and
+`EntityManager::setRelation`, `clearParent` and `detachChildren`, their Lua
+bindings (`lua_hierarchy_bindings.hpp`), and the destruction of a parent,
+whose children survive and still name it (`engine/entity/CLAUDE.md`
+§ "Parent/child hierarchy"). `IRPrefab::Static` cannot be called from that
+layer. The entity layer applies the transition itself, through a second
+generic trait, `IREntity::kTracksParentChain<T>`, true only for `C_Static`.
+Each archetype node caches whether its type contains such a component, as
+for the first trait.
+
+The rule has two triggers, and both are inside the entity layer, so no
+caller can skip them:
+
+- **A link change.** Every path above funnels into
+  `EntityManager::setChildOfRelation`. When the link actually changes and
+  the source node carries the bit, the entity is handled as below. A call
+  that leaves the link as it was moves nothing and does nothing.
+- **A parent's destruction.** `EntityManager::destroyEntity`, after the
+  pre-destroy hooks have run and before teardown, looks up the dying
+  entity's parent relation (one hash probe, the lookup `getChildren` makes
+  first) and handles each child that still names it and whose node carries
+  the bit. A child a hook re-parented has already gone through the first
+  trigger. `destroyTree` destroys children first, so it finds none.
+  `destroyAllEntities` skips the rule, as it skips the hooks, because its
+  peers die in index order.
+
+Handling an entity drops `C_Settled` if present, in the same archetype move
+as the link change when there is one, and appends the id to the
+tracked-change log. Then the entity layer walks the entity's descendants
+through `getChildren`, which is the enumeration thaw and resettle use, and
+handles every one whose node carries the bit. A descendant's world
+transform depends on the changed link, so it is re-derived too. The walk
+stops at a node without the bit: a stamped static entity always has a
+static parent (`freeze` refuses otherwise, and thaw and refusal cascade), so
+nothing static that has been stamped lies below a dynamic one, and an
+unstamped row is judged at its first drain anyway. A link change on a
+dynamic entity tests one bit and walks nothing.
+
+The effect is a resettle of the entity and its static subtree, applied at
+once rather than at the next flush. These calls are already eager and
+main-thread only, and the structural move happens inside them, so the tag
+change happens there too. From that point the subtree is settling. The
+deriving systems match it and compose it under the new chain in the next
+round, and it is never excluded from `PROPAGATE_TRANSFORM` under a parent it
+no longer has. At the drain, step 1 stamps each logged entry, which restarts
+a row that was already settling, and runs the eligibility check, including
+the static-parent condition, on every logged entry, not only on new rows.
+An entity now under a dynamic parent is refused and becomes dynamic, with
+its static descendants. One with no parent, or whose parent was destroyed,
+is a root and stays static.
+
+A reparent is a resettle, not a thaw, because it changes the inputs once and
+does not start motion. It also has no exemptions:
+
+- An entity created with `C_Static` and a parent, whether through
+  `CreateEntityExtraParams::relation` or a later `setParent` in the same
+  setup (`prefab_api.cpp` parts and shape children), is handled by the rule
+  as a settling row with a zero stamp. The drain stamps it as new, so it
+  stays static.
+- A snapshot load replays `CHILD_OF` through `setParent`
+  (`world_snapshot_relations.cpp`). The loaded entities are settling with a
+  zero stamp (see [World snapshots](#world-snapshots)), so the replay only
+  adds log entries for rows the drain would stamp anyway.
+
+A creation that wants the entity to move with a new parent thaws it.
 
 ### Engine mutators
 
@@ -437,8 +524,8 @@ entity's set pays one boolean test per mutation and no note.
 | `IRPrefab::Modifier::push`, `pushFrameLocal`, `pushOneFrame`, `pushLambda`, `upsertBySource`, `upsertBySourceInPlace` | Thaw. A modifier needs resolving and decaying every update. | Its `EntityId` argument |
 | `IRPrefab::Modifier::removeBySource`, including the pre-destroy sweep | Resettle each static entity whose vectors it shortened | It walks nodes through `IREntity::queryArchetypeNodesSimple` instead of `forEachComponent`, so it has `node->entities_`. Only nodes whose type contains `C_Static` compare vector lengths. |
 | `IRPrefab::Modifier::pushGlobal`, `upsertBySourceGlobal`, the global half of `removeBySource`, an expiry in `GLOBAL_MODIFIER_DECAY` | Advance `globalModifierRevision_` | World-scoped. `GLOBAL_MODIFIER_DECAY` advances the revision only when its `erase` removed an entry. The decrement of `ticksRemaining_` changes no composed value. |
-| `IREntity::setParent`, `clearParent` | Thaw | Its argument |
-| Destroying a static entity's parent | Thaw the children | A pre-destroy hook, given the id |
+| `IREntity::setParent`, `EntityManager::setRelation`, `clearParent`, `detachChildren`, and their Lua bindings | Resettle the entity and its static descendants, at once; under a dynamic parent the drain then refuses it | Inside the entity layer, through `kTracksParentChain` and the tracked-change log. [§ A parent change](#a-parent-change-settled-or-settling-to-settling) |
+| Destroying a static entity's parent | Resettle each static child and its static descendants, at once | `destroyEntity`, after the pre-destroy hooks. Same section |
 | `IRPrefab::RotationMode::setMode` | Thaw | Its argument |
 | Attaching a gizmo to the entity as its drag anchor | Thaw | Its argument |
 | Allocating a GPU transform slot, attaching a skeleton, or any other component attach or detach | Settled to settling, then eligibility | [§ Any other archetype move](#any-other-archetype-move-settled-to-settling) |
@@ -633,7 +720,10 @@ chunk as it does for any other component write.
   `C_WorldTransform`, which is current.
 - A static child of a dynamic parent: not representable. `freeze` refuses
   the child. Thawing a parent thaws its static descendants.
-- Reparenting a static entity thaws it.
+- Reparenting, unparenting or destroying the parent of a static entity
+  resettles it and its static descendants at once. Under a dynamic parent
+  the drain then makes it dynamic
+  ([§ A parent change](#a-parent-change-settled-or-settling-to-settling)).
 
 ## Forbidden writes
 
@@ -699,8 +789,8 @@ startup.
 | Piece | Layer and file | Why there |
 |---|---|---|
 | The guard of each component: `IREntity::kStaticGuard<T>`, an enum `NONE` / `INPUT` / `DERIVED`, primary template `NONE` | Entity, `engine/entity/include/irreden/entity/ir_entity_types.hpp`. The four pose components specialize it in their own headers under `engine/prefabs/irreden/common/components/`. | The prefab module states a fact about its own types and depends downward to state it. Every translation unit that names a pose component includes its header and sees the specialization, so the value cannot differ between units. |
-| The guard per `ComponentId` | Entity. `EntityManager::registerComponent<T>` copies `kStaticGuard<T>` into a table indexed by `ComponentId`, beside the existing type cache. | `registerComponent<T>` is the only place that holds both `T` and the id. A `ComponentId` cannot exist without its guard. |
-| `IREntity::kClearedByForeignMove<T>` | Entity, same header | The archetype-move rule above is a move-time rule |
+| The guard per `ComponentId` | Entity. `EntityManager::registerComponent<T>` copies `kStaticGuard<T>`, and the two move traits below, into a table indexed by `ComponentId`, beside the existing type cache. A node built from ids computes its cached bits from that table. | `registerComponent<T>` is the only place that holds both `T` and the id. A `ComponentId` cannot exist without its guard. |
+| `IREntity::kClearedByForeignMove<T>`, `IREntity::kTracksParentChain<T>`, the tracked-change log | Entity, same header; the log on `EntityManager`. `component_static.hpp` specializes both traits, depending downward. | The archetype-move and parent-change rules run inside entity-layer moves, link changes and destruction. The prefab layer reads the log by calling down, so the entity layer never names `IRPrefab::Static`. |
 | `C_Static`, `C_Settled` | System, `engine/system/include/irreden/system/components/component_static.hpp` | The exclusion adds `C_Static`'s id to exclude archetypes and the round tracker reads `C_Settled` in them. The system layer resolves both with `IREntity::getComponentType<…>()`. |
 | The exclusion: one function, `IRSystem::detail::applyStaticExclusion(include, exclude, writes)` | System | Every lane below calls it. It is the only implementation. |
 | Rounds | System, on `SystemManager` | Membership, the pending sets and the one cursor over the deriving groups of all three pipelines come from pipeline registration, and the cursor moves at each group's join inside `executePipeline` |
@@ -911,7 +1001,8 @@ attaches no `C_Static` sees no change in behaviour.
 | Change | Kind |
 |---|---|
 | `C_Static`, `C_Settled` in `engine/system/include/irreden/system/components/`; `C_StaticSettings` in `engine/prefabs/irreden/common/components/` | New components. `C_Static` is saved with no fields (the stamp is not saved); the other two are not saved. |
-| `IREntity::kStaticGuard<T>` and `kClearedByForeignMove<T>` traits; the per-`ComponentId` guard table | New entity-layer surface. The four pose components specialize the guard. |
+| `IREntity::kStaticGuard<T>`, `kClearedByForeignMove<T>` and `kTracksParentChain<T>` traits; the per-`ComponentId` guard table; `EntityManager::takeTrackedChanges` | New entity-layer surface. The four pose components specialize the guard. |
+| `setParent`, `setRelation`, `clearParent`, `detachChildren`, and destroying a parent, on a static entity or one with static descendants | New behaviour for static entities only: the subtree resettles in the same call. |
 | `IRPrefab::Static::freeze`, `thaw`, `resettle`, `noteChanged`, `drain`, `isStatic`, `isSettled`, `stats` | New prefab namespace. `drain` is called by the World. |
 | `IRStatic` Lua table with `freeze`, `thaw`, `resettle`, `isStatic`, `isSettled`, `stats`; `reads = { … }` on Lua `registerSystem` | New Lua surface. |
 | `IRSystem::GatesSettled` access tag; `IRSystem::reportRowsWalked`; `IRSystem::roundsOpened`, `roundsCompleted`; a `readOnly` archetype parameter on `createSystemDynamic` | New scheduler surface. |
@@ -1112,7 +1203,39 @@ holds on every lane:
   dispatches, still ends equal to the twin's.
 - **Archetype moves.** Attaching and then detaching `C_LodTierOverride` on
   a settled entity leaves it settling each time, and `lodCulled_` then
-  equals the twin's. Attaching a skeleton makes it dynamic (`refused`).
+  equals the twin's. Attaching a skeleton makes it dynamic (`refused`). An
+  attach on a settled entity whose stamp is long satisfied is not promoted at
+  the next drain, only after a round that opens after the attach.
+- **Parent changes.** Fixture: a static root with a static child, which has
+  a static grandchild, all settled, plus a dynamic twin of the same tree.
+  Each case is run on the settled tree and again on a settling tree after
+  `PROPAGATE_TRANSFORM` has dispatched in the open round.
+  - `IREntity::setParent(child, otherStaticRoot)`, `EntityManager::setRelation`,
+    and the Lua `IREntity.setParent` under `deferredCall`. Once the call
+    has run, `isSettled` is false for the child and the grandchild and unchanged for
+    the old root. Neither is promoted at the drain that follows, and after
+    the next round their `C_WorldTransform` and pool positions equal the
+    twin's under the new parent. Both are still static.
+  - `clearParent(child)` and `detachChildren(root)`, from C++ and Lua: the
+    same, with the child as a root.
+  - `setParent(child, dynamicEntity)`: the drain refuses the child and the
+    grandchild (`refused`), and both then follow the dynamic parent as the
+    twin does.
+  - Destroying the static root, by the eager `destroyEntity` and by
+    `IREntity::destroyEntity` drained at a flush: the child and grandchild
+    resettle, are re-derived as roots, equal the twin's, and stay static. A
+    pre-destroy hook that re-parents the child to another static root
+    leaves it equal to the twin re-parented the same way.
+  - `destroyTree(root)` and `destroyAllEntities` destroy the tree without
+    moving a survivor.
+  - A dynamic entity with a dynamic subtree of 10,000 is re-parented: the
+    tracked-change log stays empty and no descendant changes archetype.
+  - `setParent(child, sameParent)` moves nothing and leaves the child
+    settled.
+  - An entity created with `C_Static` and `CreateEntityExtraParams::relation`,
+    a Lua prefab part with `C_Static` that `prefab_api.cpp` parents after
+    creation, and a static child loaded from a snapshot all settle and stay
+    static.
 - **Every lane.** For each lane in [§ The matching policy](#the-matching-policy),
   that is `IRSystem::createSystem`, `registerSystem<N>`, a CODEGEN fixture system,
   a Lua EVAL system with and without `reads`, a direct `createSystemDynamic`,
@@ -1225,7 +1348,9 @@ sibling epics' work.
    group closes it. Promotion is capped per round (default 8,192). Any other archetype move returns a
    settled entity to settling.
 4. A static entity needs a static parent; thaw and resettle cascade
-   downward.
+   downward. A parent change or a parent's destruction resettles the static
+   subtree inside the entity-layer call, through two entity-layer traits and
+   a tracked-change log that the drain reads.
 5. The first implementation is limited to GRID, CPU-direct, non-skeletal
    entities.
 6. System writes to pose inputs are impossible; mutator writes thaw or
