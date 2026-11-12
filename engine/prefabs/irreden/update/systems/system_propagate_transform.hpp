@@ -208,6 +208,19 @@ template <> struct System<PROPAGATE_TRANSFORM> {
     }
 
   private:
+    /// Archetype node of a parent link's target, or null when the parent is
+    /// dead (`destroyEntity` never cascades, so its children survive and still
+    /// name it) or unplaced. Null means the child composes as a root; the
+    /// asserting `getEntityRecord` would fire on the first tick after the
+    /// destroy.
+    static const IREntity::ArchetypeNode *findLiveParentNode(IREntity::EntityId parent) {
+        if (parent == IREntity::kNullEntity) {
+            return nullptr;
+        }
+        const auto *record = IREntity::getEntityManager().findRecord(parent);
+        return record != nullptr ? record->archetypeNode : nullptr;
+    }
+
     void buildSignature(
         const std::vector<IREntity::ArchetypeNode *> &nodes, std::vector<CacheEntry> &out
     ) const {
@@ -216,11 +229,8 @@ template <> struct System<PROPAGATE_TRANSFORM> {
         for (auto *node : nodes) {
             IREntity::NodeId parentNodeId = 0;
             IREntity::EntityId parent = IREntity::getParentEntityFromArchetype(node->type_);
-            if (parent != IREntity::kNullEntity) {
-                auto parentRecord = IREntity::getEntityRecord(parent);
-                if (parentRecord.archetypeNode != nullptr) {
-                    parentNodeId = parentRecord.archetypeNode->id_;
-                }
+            if (const auto *parentNode = findLiveParentNode(parent)) {
+                parentNodeId = parentNode->id_;
             }
             out.push_back({node->id_, parentNodeId});
         }
@@ -259,11 +269,11 @@ template <> struct System<PROPAGATE_TRANSFORM> {
                 if (parent == IREntity::kNullEntity) {
                     ready = true;
                 } else {
-                    auto parentRecord = IREntity::getEntityRecord(parent);
-                    if (parentRecord.archetypeNode == nullptr) {
+                    const auto *parentNode = findLiveParentNode(parent);
+                    if (parentNode == nullptr) {
                         ready = true;
                     } else {
-                        const auto parentNodeId = parentRecord.archetypeNode->id_;
+                        const auto parentNodeId = parentNode->id_;
                         if (!candidateSet_.contains(parentNodeId) ||
                             nodeDepth_.contains(parentNodeId)) {
                             ready = true;
