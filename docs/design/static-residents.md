@@ -49,7 +49,12 @@ register `UPDATE_VOXEL_SET_CHILDREN` in RENDER). #5007 is open as PR #5055
 and has not landed; its batch-form `MODIFIER_DECAY` is compatible with this
 design and is not assumed. #5006 and #5010 have not landed. The design does
 not use the update-side cull gate (`C_VoxelPool::isRangeVisible`) at all for
-static entities.
+static entities. The design assumes one defect fix that is not on master:
+#5080, under which `PROPAGATE_TRANSFORM` composes a child whose parent was
+destroyed as a root. On `369cb6b06` that child's next tick fails the
+`getRecord` assert (see
+[§ A parent change](#a-parent-change-settled-or-settling-to-settling)).
+#5009 lands after #5080 or carries its fix.
 
 Out of scope: voxel record and active-mask uploads, the light occlusion
 grid, GPU-side work, and any reduction in the bytes a resident occupies
@@ -131,7 +136,10 @@ them.
 these hold:
 
 - It is a root, or its parent is static. A static entity's world transform
-  cannot change, so every ancestor must be static too.
+  cannot change, so every ancestor must be static too. A *root* is an
+  entity with no `CHILD_OF` link, or an *orphan*: one whose link names a
+  destroyed parent (`findRecord(getParent(e))` is null). The check is that
+  probe, never `getRecord`, which asserts on a dead id.
 - Its rotation mode is GRID, explicit or implicit. It owns no entity canvas
   and is not a canvas part.
 - Its voxel sets are CPU-direct
@@ -495,9 +503,9 @@ tracked-change log. Then the entity layer walks the entity's descendants
 through `getChildren`, which is the enumeration thaw and resettle use, and
 handles every one whose node carries the bit. A descendant's world
 transform depends on the changed link, so it is re-derived too. The walk
-stops at a node without the bit: a stamped static entity always has a
-static parent (`freeze` refuses otherwise, and thaw and refusal cascade), so
-nothing static that has been stamped lies below a dynamic one, and an
+stops at a node without the bit: a stamped static entity is a root or has
+a static parent (`freeze` refuses a live dynamic parent, and thaw and
+refusal cascade), so nothing static that has been stamped lies below a dynamic one, and an
 unstamped row is judged at its first drain anyway. A link change on a
 dynamic entity tests one bit and walks nothing.
 
@@ -511,8 +519,51 @@ no longer has. At the drain, step 1 stamps each logged entry, which restarts
 a row that was already settling, and runs the eligibility check, including
 the static-parent condition, on every logged entry, not only on new rows.
 An entity now under a dynamic parent is refused and becomes dynamic, with
-its static descendants. One with no parent, or whose parent was destroyed,
-is a root and stays static.
+its static descendants. A root, including an orphan, passes the check and
+stays static.
+
+What a destroyed parent's surviving child becomes is unchanged:
+`destroyEntity` never cascades, and its children survive and still name
+it. The rule does not remove the child's link. Handling it is a tag move
+only (`C_Settled` dropped, the `CHILD_OF` relation kept), so after the call:
+
+- `getParent(child)` still returns the destroyed id;
+- `getChildren` of that id still lists the child;
+- `findRecord` of that id is null, because teardown follows the rule in the
+  same call and ids are never reused (`returnEntityToPool`).
+
+The order inside `destroyEntity` is: the pre-destroy hooks, then the rule,
+then teardown. The rule runs while the dying parent's record and its
+relation entity are still live. For each surviving static child it makes
+the tag move, appends the id to the tracked-change log, and walks that
+child's static descendants through `getChildren`, which handles each the
+same way. Teardown then removes only the parent's own record. Nothing
+later depends on that record: the drain judges the logged rows through
+`findRecord`, which reads the dead parent as absent.
+
+The child is an orphan, which is the root case in
+[§ What makes an entity static](#what-makes-an-entity-static).
+`PROPAGATE_TRANSFORM` composes it with the identity parent transform, as it
+already does for a parent without `C_WorldTransform` (the system's header
+comment). Its
+static descendants compose under it as before. A static child and its
+dynamic twin therefore have the same link and the same world transform.
+That equality is what the gates compare.
+
+On `369cb6b06` that derivation fails for every child, static or not:
+`buildSignature` and the level pass read the parent through
+`getEntityRecord`, which asserts on the dead id. The first tick after the
+destruction throws in Debug. In Release the assert compiles out and
+`getRecord` dereferences a null record. #5080
+replaces both reads with the `findRecord` probe. This design depends on that
+fix and adds nothing to it.
+
+Clearing the link (`setChildOfRelation(child, kNullRelation)` inside the
+rule) is rejected. Done only for static children, it would make `getParent`
+depend on `C_Static`, and a static child would stop matching its twin. Done
+for every child, it changes `destroyEntity` semantics engine-wide, which is
+outside this design. A creation that wants survivors detached calls
+`detachChildren` before the destroy; that call is the link-change trigger.
 
 A reparent is a resettle, not a thaw, because it changes the inputs once and
 does not start motion. It also has no exemptions:
@@ -744,8 +795,10 @@ chunk as it does for any other component write.
 - A static child of a dynamic parent: not representable. `freeze` refuses
   the child. Thawing a parent thaws its static descendants.
 - Reparenting, unparenting or destroying the parent of a static entity
-  resettles it and its static descendants at once. Under a dynamic parent
-  the drain then makes it dynamic
+  resettles it and its static descendants at once. A destroyed parent's
+  child keeps its link to the dead id and derives as a root (an orphan),
+  exactly as a dynamic child does. Under a dynamic parent the drain makes
+  the entity dynamic
   ([§ A parent change](#a-parent-change-settled-or-settling-to-settling)).
 
 ## Forbidden writes
@@ -1296,10 +1349,24 @@ holds on every lane:
     grandchild (`refused`), and both then follow the dynamic parent as the
     twin does.
   - Destroying the static root, by the eager `destroyEntity` and by
-    `IREntity::destroyEntity` drained at a flush: the child and grandchild
-    resettle, are re-derived as roots, equal the twin's, and stay static. A
-    pre-destroy hook that re-parents the child to another static root
-    leaves it equal to the twin re-parented the same way.
+    `IREntity::destroyEntity` drained at a flush (needs #5080). Once the
+    destroy has run, `isSettled` is false for the child and the grandchild.
+    For both the static tree and the twin:
+    - `getParent(child)` still returns the destroyed root's id, and
+      `findRecord` of that id is null;
+    - `getChildren` of that id still lists the child;
+    - `getParent(grandchild)` is still the child.
+
+    Neither is promoted at the drain that follows. After the next round:
+    - the child's `C_WorldTransform` equals its root composition (its
+      local transform with its modifiers, under the identity parent);
+    - the grandchild's composes under the child;
+    - both, and their pool positions, equal the twin's;
+    - both are still static.
+
+    A pre-destroy hook that re-parents the child to another static root
+    leaves it equal to the twin re-parented the same way, with
+    `getParent` naming the new root.
   - `destroyTree(root)` and `destroyAllEntities` destroy the tree without
     moving a survivor.
   - A dynamic entity with a dynamic subtree of 10,000 is re-parented: the
@@ -1431,10 +1498,12 @@ sibling epics' work.
    spans INPUT, UPDATE and RENDER, and only the join of its last deriving
    group closes it. Promotion is capped per round (default 8,192). Any other archetype move returns a
    settled entity to settling.
-4. A static entity needs a static parent; thaw and resettle cascade
-   downward. A parent change or a parent's destruction resettles the static
-   subtree inside the entity-layer call, through two entity-layer traits and
-   a tracked-change log that the drain reads.
+4. A static entity is a root or has a static parent; thaw and resettle
+   cascade downward. A parent change or a parent's destruction resettles the
+   static subtree inside the entity-layer call, through two entity-layer
+   traits and a tracked-change log that the drain reads. A destroyed
+   parent's survivors keep their link and derive as roots (orphans), as
+   dynamic children do. This depends on #5080.
 5. The first implementation is limited to GRID, CPU-direct, non-skeletal
    entities.
 6. System writes to pose inputs are impossible; mutator writes thaw or
