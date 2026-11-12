@@ -15,7 +15,7 @@
   [`.fleet/status/render-api-relocations.md`](../../.fleet/status/render-api-relocations.md);
   feature PRs do not edit that register.
 
-Commands and validators: [validation index](../../docs/agents/VALIDATION.md).
+Commands and validators: [render validators](../../docs/agents/VALIDATION-RENDER.md); per-feature ones in [VALIDATION-RENDER-FEATURES.md](../../docs/agents/VALIDATION-RENDER-FEATURES.md).
 Image evidence: [`CODEX.md` § Rendering conversations](../../docs/agents/CODEX.md#rendering-conversations).
 Changes without a visual effect need no captures.
 
