@@ -1,0 +1,78 @@
+name: All Checks
+
+# One commit status, `all-checks`, on every pull request head: `failure` when
+# any other check on the head failed, `pending` while one is still running or
+# an always-run workflow has not reported, `success` otherwise. The verdict
+# rule and the always-run derivation live in scripts/fleet/fleet_checks_aggregate.py
+# and are tested by scripts/fleet/tests/test_fleet_checks_aggregate.py.
+#
+# A path-filtered workflow that never started on a head is not counted, so the
+# status always reports and can be a required context without the deadlock a
+# required path-filtered check has.
+#
+# Triggered by the completion of every other workflow, listed by `name:`. The
+# suite derives the names from the workflow files and fails when this list
+# misses one or names one that does not exist. `workflow_run` is used because
+# GitHub does not start workflows from check events its own Actions token
+# created; a `workflow_run` workflow runs the default branch's copy of this file.
+#
+# SECURITY: this job holds a status-write token even for a pull request from a
+# fork. It checks out the default branch only and never fetches, checks out or
+# runs pull request code; the head commit is an API argument, nothing more.
+#
+# A missed trigger is repaired by a manual dispatch with the head commit.
+
+on:
+  workflow_run:
+    workflows:
+      - Auto re-review on push to approved PR
+      - Comment Refs
+      - Engine Tests
+      - Fleet Tests
+      - Format Check
+      - Header Checks
+      - Instruction Size
+      - No Plan Files
+      - Perf Gate
+      - PR Closes Lint
+      - Python Lint
+      - Render Harness Tests
+      - Shader Parity
+      - Whitespace
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Head commit (40 hex digits) to compute the all-checks status for
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  statuses: write
+
+concurrency:
+  group: all-checks-${{ github.event.workflow_run.head_sha || inputs.sha }}
+  cancel-in-progress: true
+
+jobs:
+  aggregate:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Compute and post the all-checks status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha || inputs.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          python3 scripts/fleet/fleet_checks_aggregate.py
+          --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --root . --target-url "$RUN_URL"
