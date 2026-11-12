@@ -92,7 +92,8 @@ cached candidate first; go live only on a miss.
    ```
    Upstream missing or closed unmerged → surface once, no verdict:
    ```
-   gh pr comment <N> --body "Stack issue: upstream PR for base \`<baseRefName>\` was not found or was closed without merging. Surfacing to the human — this PR likely needs to be re-targeted or closed."
+   # Write the message to a scratch file with the Write tool, then:
+   gh pr comment <N> --body-file <scratch-file>
    ```
 
 `fleet-pr diff <N>` is the child's own diff; never re-review the parent.
@@ -230,12 +231,11 @@ tracked independently (one-line nits stay inline; anything that must land
 before merge is `fleet:needs-fix`):
 
 ```bash
+# Write the issue body to a scratch file with the Write tool, then:
 gh issue create --repo jakildev/IrredenEngine \
   --label "fleet:nit-of-pr" \
   --title "<nit title>" \
-  --body "**Nit of PR:** #<N>
-
-<Description, file:line references, suggested fix.>"
+  --body-file <scratch-file>
 ```
 
 The label and the exactly-one `**Nit of PR:** #<N>` line are both

@@ -279,8 +279,8 @@ re-probes. Each boot logs its resolved caps and models on a `config:` line
 beside `started`; `fleet-dispatcher --print-config` prints the same line
 from disk.
 
-To check what a daemon is actually running, compare its revision against
-the on-disk source:
+From the operator's shell, check what a daemon is actually running by
+comparing its revision against the on-disk source:
 
 ```bash
 fleet-dispatcher --print-surface     # per-file + aggregate hash, on-disk truth

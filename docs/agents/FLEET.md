@@ -219,9 +219,7 @@ macOS has none. `perf:improved` speaks for the CI runner class only.
 
 ### Verifying render changes
 
-A PR touching `engine/render/src/shaders/`, `engine/prefabs/irreden/render/systems/`,
-or pipeline ordering runs `render-debug-loop` and attaches a before/after
-screenshot pair (exceptions: `engine/render/CLAUDE.md` "Verifying render changes").
+Follow [`AUTHOR-PIPELINE.md` § "Verify visual output"](AUTHOR-PIPELINE.md#verify-visual-output-when-it-changed), the one home for the trigger paths, required skills, and no-visual-effect skip.
 
 ### Clean-exit policy
 
@@ -288,11 +286,12 @@ checkouts go inside its tree or under a path the task's close-out removes (`flee
 
 ### Editing `.claude/` paths in headless mode (`fleet-edit`)
 
-The auto-mode classifier blocks `Edit`/`Write` under `.claude/` in headless
-sessions regardless of permission entries. Use `fleet-edit <file>
-<old-text-file> <new-text-file>` — exact-string replacement; write the two
-text files with the Write tool (only the `.claude/` target is gated);
-`--replace-all` for non-unique text; needs `Bash(fleet-edit:*)` in `.claude/settings.json`.
+Gated self-config is exactly what `_is_gated_self_config` in
+`scripts/fleet/fleet-state-scout` returns; no dispatched role may edit a path
+in that set. Comment the exact change and park it for a human. For other
+`.claude/` paths in a human-cued session, use `fleet-edit <file> <old-text-file>
+<new-text-file>` with Write-tool scratch files; use
+`--replace-all` for non-unique text (requires `Bash(fleet-edit:*)`).
 
 ---
 
@@ -352,13 +351,14 @@ ignored by `molecule resume` / `show` / `list` / `advance` and
 For the first `(pending)` row in `fleet-claim stack-pr-state <worktree>`
 (`commit-and-push`'s stack-aware mode drives this):
 
-1. `base=$(fleet-claim stack-base <worktree> <issue>)` — `master` for the
-   first issue, else the previous issue's branch.
-2. `git fetch origin "$base"`; `git checkout -b claude/<issue>-<topic> "origin/$base"`.
+1. `fleet-claim stack-base <worktree> <issue>` prints `<base>` — `master`
+   for the first issue, else the previous issue's branch.
+2. `git fetch origin <base>`, then `git checkout -b claude/<issue>-<topic> origin/<base>`.
 3. Work and commit as normal — one issue per branch, no subject prefix.
-4. `gh pr create --base "$base" --title "<title> (#<N>)" --body "…" --label "fleet:wip"`;
-   `fleet-claim stack-set-pr <worktree> <issue> "$(git branch --show-current)" "<pr-url>"`;
-   then the native-link step (skipped when `$base` is `master`).
+4. Write the PR body to a scratch file with the Write tool; run `gh pr create
+   --base <base> --title "<title> (#<N>)" --body-file <scratch-file> --label
+   "fleet:wip"`, then `fleet-claim stack-set-pr <worktree> <issue> <branch> <pr-url>`
+   and the native-link step (skipped when `<base>` is `master`).
 
 PR body: `## Summary`, `## Test plan`, `Closes #<N>`; no stack markers.
 After an upstream merge, `gh stack sync` before continuing local work
@@ -375,7 +375,7 @@ parent = the blocker PR). With no live claim it prints `master` and warns
 --is-ancestor origin/<blocker-branch> HEAD`) or use `claim-base <N>
 --strict` to fail closed. Every PR body carries `Closes #<N>`:
 
-`gh pr create --title "<issue title> (#<N>)" --body "Claiming issue. Work in progress.\n\nCloses #<N>" --label "fleet:wip"`
+Write the body to a scratch file with the Write tool, then run `gh pr create --title "<issue title> (#<N>)" --body-file <scratch-file> --label "fleet:wip"`.
 
 `commit-and-push` resolves the base via `claim-base` and runs the link itself
 ([`stackable-on.md`](../../.claude/skills/commit-and-push/procedures/stackable-on.md)).

@@ -129,7 +129,8 @@ closed or a `fleet:` / `human:` label landed in between, and logs the stamp. A r
 which re-arms the guard for a re-triage. A graduated stamp shows once in
 `fleet-decisions` § "Agent-approved since last digest".
 
-Invocation (cue "triage sweep", or a cron one-shot on the designated host):
+From the operator's shell, invoke it with the cue "triage sweep" or as a
+cron one-shot on the designated host:
 
 ```
 cd ~/src/IrredenEngine/.claude/worktrees/pool-0 && \

@@ -200,7 +200,7 @@ Ephemeral logs and scratch notes are exempt.
 
 ## Bash tool rules
 
-The allowlist matches a command's first token and Claude Code adds hardcoded
+The allowlist matches a command prefix and Claude Code adds hardcoded
 gates; each form below prompts or misbehaves under unattended operation.
 
 - **One simple command per Bash call.** No `&&`, `||`, `;`, or `|`: run
@@ -211,10 +211,11 @@ gates; each form below prompts or misbehaves under unattended operation.
   only calls that certainly exit 0; issue probes (`which`, `ls`/`cat` on a
   maybe-absent path, a `gh` lookup that may 404, a build) one per turn.
 - **No `cd <path> && git …`** — use `git -C <path> …`; the compound form
-  trips an unsuppressable bare-repository gate.
-- **No `cmd > file`** on any host — the `>` operator itself is blocked. Read
-  stdout from the tool result (large outputs persist to a side file you can
-  Read); write files with the **Write** tool.
+  may need an approval an unattended pane cannot give; whether it does
+  differs by host and permission mode.
+- **No `cmd > file`** — the redirect may need an approval an unattended pane
+  cannot give; whether it does differs by host and permission mode. Read stdout
+  from the tool result; write files with the **Write** tool.
 - **No `sed -n 'N,Mp' file`** — Read with `offset` / `limit`.
 - **No `git show ref:file | sed/head/tail`** — run `git show ref:file` alone.
 - **No `cat file || echo fallback`** — Read the file.
@@ -359,8 +360,9 @@ restrictions.
   and the tier-0 `fleet-automerge` script, run only by the dispatcher under
   the human-owned enablement, merges the classes FLEET.md §"Who merges"
   names. Its read-only partition, `fleet-merge-preview`, is allowed.
-- **Never run `cmake --preset`** — only `cmake --build` (via `fleet-build`)
-  against the configured tree.
+- **Never configure or reconfigure a worktree's `build/` by hand** —
+  `fleet-build` configures it on first use. The one manual configure a fleet
+  role runs is the dedicated downstream build directory in `BUILD.md`.
 - **Never touch the `.claude/worktrees/` layout.**
 - **Never `sudo`, `brew install/upgrade/uninstall`, `apt`, or
   `xcode-select`.**
@@ -391,7 +393,6 @@ restrictions.
   worktree also works. Reference pattern:
   [`.claude/skills/attach-screenshots/SKILL.md`](../../.claude/skills/attach-screenshots/SKILL.md).
 - **Single-command Bash only** — [`## Bash tool rules`](#bash-tool-rules).
-- **Edit/Write blocked for `.claude/commands/` files?** The harness gate
-  blocks these paths even with `Edit(*)` / `Write(*)` allowlisted; use
-  python3 (sanctioned via `Bash(python3:*)`):
-  `python3 -c "f=open(path).read(); assert old in f, 'string not found'; open(path, 'w').write(f.replace(old, new, 1))"`
+- **Gated self-config is not editable by dispatched roles.** The definition
+  and handling live in [`FLEET.md` § "Editing `.claude/` paths in headless
+  mode"](FLEET.md#editing-claude-paths-in-headless-mode-fleet-edit).
