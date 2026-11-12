@@ -2,7 +2,7 @@
 
 Bash + Python tooling for the autonomous fleet (scout, dispatcher, claim,
 install, per-tool wrappers) and its tests under `tests/`. Style and comments:
-[`CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md) §Style,
+[`CODE-CONVENTIONS.md`](../../docs/agents/CODE-CONVENTIONS.md) §Style,
 [`.claude/rules/comments.md`](../../.claude/rules/comments.md). Rationale the code cannot
 show: [`docs/design/fleet-tooling-contracts.md`](../../docs/design/fleet-tooling-contracts.md).
 
@@ -71,7 +71,7 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
   `tests/test_positive_control.sh` and `tests/test_suite_tally_forms.sh`.
   Report coverage beside any before/after drift count. Prove an exclusion
   assertion by mutation instead: delete the exclusion and watch it go red
-  ([`CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md) §"Encode contracts in code, not in comments").
+  ([`CODE-CONVENTIONS.md`](../../docs/agents/CODE-CONVENTIONS.md) §"Encode contracts in code, not in comments").
 - **Hand-run controls source `tests/lib_preflight.sh`** on the line after
   `SCRIPT_DIR`, above the first path built to a `fleet-*` wrapper;
   `test_positive_control.sh`'s adoption ratchet checks the placement.

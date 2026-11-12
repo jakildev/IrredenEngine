@@ -1,6 +1,7 @@
 # engine/
 
 Core engine static libraries. Everything here is shared by every creation.
+Before editing code here, read [`docs/agents/CODE-CONVENTIONS.md`](../docs/agents/CODE-CONVENTIONS.md).
 
 ## Module include discipline
 
