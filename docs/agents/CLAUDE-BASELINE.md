@@ -228,6 +228,8 @@ gates; each form below prompts or misbehaves under unattended operation.
   ~2 of 273 files. Root at the repo top or a child (`creations/demos`), or
   use `fleet-rules-sweep` (resolves files via `git ls-files`, exits 2 when a
   scope covers nothing) — [`.claude/rules/README.md`](../../.claude/rules/README.md).
+- **`fleet-scratch dir|rm|reap`**, not `rm -rf` / `kill`, for the pane's scratch dir,
+  deleting its own scratch, build or ignored files, and stopping its own orphan pid.
 - **`--repo owner/name`** on any `gh` call against a repo other than cwd's.
 - **`--body-file` (never inline `--body "…"`) for any PR/issue text with
   backticks or `$`** — the shell executes the backticks. Write the body to a

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# fleet-scratch — a fleet pane's scratch directory, bounded deletes, and
+# reaping the pane's own orphan processes. The tool is fleet_scratch.py beside
+# this file; run `fleet-scratch --help` for its verbs, roots and exit codes.
+set -euo pipefail
+self="${BASH_SOURCE[0]}"
+while [[ -L "$self" ]]; do
+    dir="$(cd "$(dirname "$self")" && pwd)"
+    self="$(readlink "$self")"
+    [[ "$self" = /* ]] || self="$dir/$self"
+done
+exec python3 -I "$(dirname "$self")/fleet_scratch.py" "$@"

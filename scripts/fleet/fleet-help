@@ -191,6 +191,11 @@ Engine build / run (everyday dev)
       Pane-scoped durable jobs for work longer than the tool window; wait
       streams the log and exits with the child's code. Fixed profiles only.
 
+  fleet-scratch dir [<name>] | rm <path>... | reap <pid>
+      The pane's own scratch dir (/tmp/fleet-<pane>), deletes bounded to it,
+      the pane worktrees' build*/ and git-ignored or __pycache__ paths, and
+      reaping an orphan the pane owns (cwd in those roots; not via fleet-jobs).
+
   fleet-debug [--batch] <target-or-exe> [-- program-args...]
       Builds with fleet-build, cd's beside data/shaders/scripts, then starts
       lldb/gdb. Use --batch to run once and print all thread backtraces.
