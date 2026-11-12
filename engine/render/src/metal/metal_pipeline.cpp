@@ -34,9 +34,18 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
     if (functionName == "c_peraxis_hover_resolve") {
         return MTL::Size(1, 1, 1);
     }
+    // One thread per overflow record, on the overflow relight's 64-wide grid.
+    if (functionName == "c_per_axis_overflow_census") {
+        return MTL::Size(64, 1, 1);
+    }
+    // One thread per 32-pixel block of the occluder prepass.
+    if (functionName == "c_per_axis_occluder_reduce") {
+        return MTL::Size(1, 1, 1);
+    }
     if (functionName == "c_voxel_to_trixel_stage_1" ||
         functionName == "c_voxel_to_trixel_stage_1_feeder" ||
         functionName == "c_voxel_to_trixel_stage_1_winner_resolve" ||
+        functionName == "c_voxel_to_trixel_stage_1_overflow_append" ||
         functionName == "c_voxel_to_trixel_stage_2" ||
         functionName == "c_voxel_to_trixel_stage_2_winner") {
         // Must match Metal's kStageMicroSlicesPerGroup;
@@ -173,6 +182,7 @@ bool functionUsesImageAtomicScratch(const std::string &functionName) {
            functionName == "c_voxel_to_trixel_stage_1" ||
            functionName == "c_voxel_to_trixel_stage_1_feeder" ||
            functionName == "c_voxel_to_trixel_stage_1_winner_resolve" ||
+           functionName == "c_voxel_to_trixel_stage_1_overflow_append" ||
            functionName == "c_voxel_to_trixel_stage_2" ||
            functionName == "c_voxel_to_trixel_stage_2_winner" ||
            functionName == "c_shapes_to_trixel_depth" ||

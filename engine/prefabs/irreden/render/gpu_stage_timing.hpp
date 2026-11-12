@@ -303,6 +303,23 @@ struct RenderRunWitness {
     std::uint32_t maxOverflowEntries_ = 0;
     std::uint32_t maxOverflowDropped_ = 0;
     std::uint32_t overflowCap_ = 0;
+    // Overflow-lane rejection, from the sampled frame with the most
+    // candidates. A candidate is an exposed face that lost its cardinal store
+    // cell; it is rejected (no framebuffer sample in its footprint, or hidden
+    // behind the occluder prepass), kept as a lane entry, or dropped at the
+    // cap. Read one frame late, like the lane's entry and drop counts.
+    std::uint32_t rejectionCandidates_ = 0;
+    std::uint32_t rejectionUnsampled_ = 0;
+    std::uint32_t rejectionHidden_ = 0;
+    std::uint32_t rejectionSurviving_ = 0;
+    // Overflow-lane owner census: the frame with the most records owning a
+    // framebuffer pixel. Sampled only while the census diagnostic is enabled,
+    // so the sample count is 0 in an ordinary run.
+    std::uint32_t censusSamples_ = 0;
+    std::uint32_t censusRecords_ = 0;
+    std::uint32_t censusOwners_ = 0;
+    std::uint32_t censusInterior_ = 0;
+    std::uint32_t censusUnsampled_ = 0;
     // CPU time inside the per-axis set's lifecycle calls, recorded on each
     // transition and not every frame; a GPU driver may defer part of an
     // allocation's cost to first use. Park and unpark are pointer swaps, so
@@ -334,6 +351,34 @@ struct RenderRunWitness {
         maxOverflowDropped_ = IRMath::max(maxOverflowDropped_, dropped);
         overflowCap_ = cap;
         ++overflowSamples_;
+    }
+
+    void recordOverflowRejection(
+        std::uint32_t entries, std::uint32_t dropped, std::uint32_t unsampled, std::uint32_t hidden
+    ) {
+        const std::uint32_t candidates = entries + dropped + unsampled + hidden;
+        if (candidates >= rejectionCandidates_) {
+            rejectionCandidates_ = candidates;
+            rejectionUnsampled_ = unsampled;
+            rejectionHidden_ = hidden;
+            rejectionSurviving_ = entries;
+        }
+    }
+
+    // @p owners is an upper bound (it admits a sample in the slack just
+    // outside a record's quad); @p interior counts the owners with an owned
+    // sample inside the quad proper; @p unsampled counts records whose
+    // footprint holds no sample of the raster target.
+    void recordOverflowCensus(
+        std::uint32_t records, std::uint32_t owners, std::uint32_t interior, std::uint32_t unsampled
+    ) {
+        if (censusSamples_ == 0 || owners > censusOwners_) {
+            censusRecords_ = records;
+            censusOwners_ = owners;
+            censusInterior_ = interior;
+            censusUnsampled_ = unsampled;
+        }
+        ++censusSamples_;
     }
 
     void reset() {
@@ -460,10 +505,11 @@ inline void commitGpuStageSample(
 // their own rows (phases per docs/design/per-axis-trixel-canvas-rotation.md
 // §"The overflow lane"):
 //   `voxelPerAxisStore`     ← per-axis clears + cardinal stores ×3
-//   `voxelPerAxisOverflow`  ← overflow append ×3
 //   `voxelPerAxisFinalize`  ← winner election + stage-2 ×3
 //   `perAxisCellCompact`    ← the occupied-cell compaction + finalize
 //                             dispatches feeding every per-axis consumer
+//   `voxelPerAxisOverflow`  ← occluder prepass + pyramid, overflow append ×3,
+//                             canonical sort
 // Cardinal frames produce no per-axis samples. Live fields retain earlier
 // resolved values; compare sampled counts and scopes before attributing a yaw delta.
 //

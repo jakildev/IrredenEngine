@@ -21,6 +21,38 @@ using namespace IRRender;
 
 namespace IRComponents {
 
+// Where the per-axis scatter places a recovered face in the framebuffer: every
+// field of FrameDataTrixelToFramebuffer its vertex stage reads to project one.
+// VOXEL_TO_TRIXEL_STAGE_1 derives it ahead of the composite, and on a frame
+// whose append rejected overflow faces at it TRIXEL_TO_FRAMEBUFFER draws with
+// that same value, so a face is tested and drawn at one position.
+struct PerAxisScatterPlacement {
+    mat4 mpMatrix_{1.0f};
+    vec4 cameraViewRotation_{0.0f};
+    ivec4 visibleFaceIds_{0, 0, 0, 0};
+    ivec4 perAxisStoreFrame_{0, 0, 0, 0};
+    ivec2 perAxisBase_{0, 0};
+    // Extent of the framebuffer the placement projects into, in pixels.
+    vec2 framebufferResolution_{0.0f};
+    float visualYaw_ = 0.0f;
+    float effectiveSubdivisions_ = 1.0f;
+
+    bool operator==(const PerAxisScatterPlacement &) const = default;
+
+    void applyTo(FrameDataTrixelToFramebuffer &frame) const {
+        frame.mpMatrix_ = mpMatrix_;
+        frame.cameraViewRotation_ = cameraViewRotation_;
+        frame.visibleFaceIds_ = visibleFaceIds_;
+        frame.perAxisStoreFrame_ = perAxisStoreFrame_;
+        frame.perAxisBase_ = perAxisBase_;
+        frame.visualYaw_ = visualYaw_;
+        frame.distanceOffset_ = 0;
+        // .y stays 0: the gather that follows the scatter clamps its depth
+        // rescale to 1.
+        frame.effectiveSubdivisionsForHover_ = vec2(effectiveSubdivisions_, 0.0f);
+    }
+};
+
 // The GPU resource set behind the smooth camera Z-yaw path: three per-axis
 // trixel canvases (one per face axis: X / Y / Z), the screen-space resolve
 // texture and the compaction and overflow scratch
@@ -300,9 +332,12 @@ struct PerAxisCanvasStore {
     //     fillBuffer(bytes = texels*4) reset covers exactly this region.
     // [ctrlBaseUints_, entriesBaseUints_) — ctrl block: indirect
     //     draw args {indexCount, instanceCount, firstIndex, baseVertex,
-    //     baseInstance} + droppedCount.
-    //     instanceCount/droppedCount are GPU atomics (resolveMode 3). The
-    //     overflow indirect draw sources its args at ctrlBaseUints_*4 directly.
+    //     baseInstance}, then droppedCount (word 5), the faces the append
+    //     rejected with no framebuffer sample in their footprint (word 6) and
+    //     the faces it rejected behind the occluder prepass (word 7).
+    //     instanceCount and the three counters are GPU atomics (the overflow
+    //     append). The overflow indirect draw sources its args from a copy of
+    //     this block.
     // [entriesBaseUints_, +overflowCap_*4) — overflow entries, 4 uints
     //     each: {iso cell x|y (16+15) with cut flag in bit 31, colorPacked,
     //     encoded distance, voxel pool index}. Height is below 32768; the
@@ -348,8 +383,64 @@ struct PerAxisCanvasStore {
     static_assert(
         kOverflowControlUints % kScratchAlignUints == 0, "overflow entries must be 256-byte aligned"
     );
+    static constexpr std::size_t kOverflowCtrlDroppedWord = 5;
+    static constexpr std::size_t kOverflowCtrlUnsampledWord = 6;
+    static constexpr std::size_t kOverflowCtrlHiddenWord = 7;
     // Newest completed-frame count retained for diagnostics and run witnesses.
     std::uint32_t settledOverflowCount_ = 0;
+
+    // Block-maximum depth pyramid of the scatter occluder prepass, as an
+    // R32I atlas: level L (1..kOccluderLevels) holds the farthest depth code
+    // over each 2^L-pixel block of the framebuffer, level 1 at the origin and
+    // the rest stacked beside it. occluderLevelSize and occluderLevelOrigin
+    // mirror ir_per_axis_occluder_layout.glsl, which the builder and the
+    // reader share. Built every rotating frame, so it carries nothing across frames;
+    // sized in VOXEL_TO_TRIXEL_STAGE_1::beginTick for the framebuffer the
+    // frame rejects against.
+    std::pair<ResourceId, Texture2D *> occluderPyramid_{0, nullptr};
+    ivec2 occluderTargetSize_{0, 0};
+    static constexpr int kOccluderLevels = 5;
+
+    static constexpr ivec2 occluderLevelSize(int level, ivec2 targetSize) {
+        const int round = (1 << level) - 1;
+        return ivec2((targetSize.x + round) >> level, (targetSize.y + round) >> level);
+    }
+
+    static constexpr ivec2 occluderLevelOrigin(int level, ivec2 targetSize) {
+        if (level == 1) {
+            return ivec2(0, 0);
+        }
+        int y = 0;
+        for (int above = 2; above < level; ++above) {
+            y += occluderLevelSize(above, targetSize).y;
+        }
+        return ivec2(occluderLevelSize(1, targetSize).x, y);
+    }
+
+    static constexpr ivec2 occluderAtlasSize(ivec2 targetSize) {
+        int stacked = 0;
+        for (int level = 2; level <= kOccluderLevels; ++level) {
+            stacked += occluderLevelSize(level, targetSize).y;
+        }
+        const ivec2 level1 = occluderLevelSize(1, targetSize);
+        return ivec2(
+            level1.x + occluderLevelSize(2, targetSize).x,
+            level1.y > stacked ? level1.y : stacked
+        );
+    }
+
+    // Size the pyramid for a framebuffer of @p targetSize pixels. Only between
+    // frames' uses: the caller rebuilds the pyramid before reading it.
+    void ensureOccluderPyramid(ivec2 targetSize) {
+        if (occluderPyramid_.second != nullptr && occluderTargetSize_ == targetSize) {
+            return;
+        }
+        if (occluderPyramid_.second != nullptr) {
+            IRRender::destroyResource<Texture2D>(occluderPyramid_.first);
+        }
+        occluderPyramid_ = detail::makeCanvasDistanceTexture(occluderAtlasSize(targetSize));
+        occluderTargetSize_ = targetSize;
+    }
 
     // Allocation state is the texture handles themselves — no separate bool to
     // drift out of sync (cf. the no-dirty-flags rule in .claude/rules/cpp-ecs.md).
@@ -615,6 +706,11 @@ struct PerAxisCanvasStore {
         overflowCtrlSeed_ = {0, nullptr};
         IRRender::destroyResource<Buffer>(overflowDrawArgs_.first);
         overflowDrawArgs_ = {0, nullptr};
+        if (occluderPyramid_.second != nullptr) {
+            IRRender::destroyResource<Texture2D>(occluderPyramid_.first);
+        }
+        occluderPyramid_ = {0, nullptr};
+        occluderTargetSize_ = ivec2{0, 0};
         for (auto &slotBuffer : overflowCtrlBuffers_) {
             IRRender::destroyResource<Buffer>(slotBuffer.first);
         }
@@ -656,6 +752,19 @@ struct C_PerAxisTrixelCanvases : PerAxisCanvasStore {
     PerAxisCanvasStore parked_;
     // Consecutive cardinal frames the parked set has waited.
     int parkedFrames_ = 0;
+    // The scatter placement VOXEL_TO_TRIXEL_STAGE_1 derived this frame, when
+    // `scatterPlacementDerived_` says it derived one. `scatterPlacementTested_`
+    // says the append rejected overflow faces at it, and TRIXEL_TO_FRAMEBUFFER
+    // then draws the scatter with it. Both flags are reset every frame.
+    PerAxisScatterPlacement scatterPlacement_{};
+    bool scatterPlacementDerived_ = false;
+    bool scatterPlacementTested_ = false;
+    // Rotating frames the append still keeps every candidate for. The
+    // composite refills it whenever it derives a placement stage 1 did not:
+    // the camera was written between the two systems, so a face tested at
+    // stage 1's placement would be drawn at another.
+    int rejectionStandDownFrames_ = 0;
+    static constexpr int kRejectionStandDownFrames = 8;
 
     bool hasParked() const {
         return parked_.isAllocated();

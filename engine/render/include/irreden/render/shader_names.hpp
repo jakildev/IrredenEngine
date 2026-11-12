@@ -95,6 +95,18 @@ const char *const kFileCompVoxelToTrixelStage1Feeder =
 // threadgroupSizeForFunctionName + functionUsesImageAtomicScratch).
 const char *const kFileCompVoxelToTrixelStage1WinnerResolve =
     "shaders/c_voxel_to_trixel_stage_1_winner_resolve.glsl";
+// The per-axis overflow-append specialization (IR_OVERFLOW_APPEND 1): the
+// per-axis route appends each cardinal-store loser unless the occluder pyramid
+// proves its footprint hidden. Metal mirror in
+// metal/c_voxel_to_trixel_stage_1_overflow_append.metal (registered in
+// threadgroupSizeForFunctionName + functionUsesImageAtomicScratch).
+const char *const kFileCompVoxelToTrixelStage1OverflowAppend =
+    "shaders/c_voxel_to_trixel_stage_1_overflow_append.glsl";
+// Reduces the scatter occluder prepass's depth to the block-maximum pyramid
+// the overflow append tests footprints against. Metal mirror in
+// metal/c_per_axis_occluder_reduce.metal (registered in
+// threadgroupSizeForFunctionName; NOT an image-atomic scratch consumer).
+const char *const kFileCompPerAxisOccluderReduce = "shaders/c_per_axis_occluder_reduce.glsl";
 // Canonical-order the overflow entry list between the
 // mode-3 append and the overflow indirect draw, so equal-key entries resolve
 // their depth contest by record value instead of run-variant append order.
@@ -156,6 +168,10 @@ const char *const kFileCompChunkOcclusionCull = "shaders/c_chunk_occlusion_cull.
 const char *const kFileCompResolvePerAxisScreenDepth =
     "shaders/c_resolve_per_axis_screen_depth.glsl";
 const char *const kFileCompPerAxisHoverResolve = "shaders/c_peraxis_hover_resolve.glsl";
+// Diagnostic count of overflow-lane records that own a framebuffer pixel, run
+// against the finished scatter composite. Metal mirror in
+// metal/c_per_axis_overflow_census.metal.
+const char *const kFileCompPerAxisOverflowCensus = "shaders/c_per_axis_overflow_census.glsl";
 const char *const kFileCompResolvePerAxisBlit = "shaders/c_resolve_per_axis_blit.glsl";
 // The world-placed detached re-voxelize sun-shadow cast is a scatter pass that
 // re-projects an opt-in detached canvas's model-frame distances into

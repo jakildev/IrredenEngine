@@ -27,6 +27,7 @@
 #include <irreden/render/components/component_camera_zoom_frame_state.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 
+#include <optional>
 #include <utility>
 
 namespace IRPrefab::Camera {
@@ -305,6 +306,27 @@ inline void zoomOut() {
         zoom->zoomOut();
 }
 
+namespace detail {
+
+/// The sample that follows @p state for the camera at (@p effectiveCameraIso,
+/// @p zoom). Advancing an already-advanced state with the same arguments
+/// returns it unchanged.
+inline IRMath::CameraRasterPhase nextZoomFrame(
+    const IRComponents::C_CameraZoomFrameState &state,
+    IRMath::vec2 effectiveCameraIso,
+    IRMath::vec2 zoom
+) {
+    return state.published_
+               ? IRMath::advanceCameraRasterPhase(state.sample_, effectiveCameraIso, zoom)
+               : IRMath::CameraRasterPhase{
+                     IRMath::dvec2(effectiveCameraIso),
+                     IRMath::cameraZoomPitch(zoom),
+                     IRMath::dvec2(0.0)
+                 };
+}
+
+} // namespace detail
+
 /// Publish this frame's continuous-zoom placement sample for the camera at
 /// (@p effectiveCameraIso, @p zoom), advancing the carried phase from the
 /// previous frame's sample. Under the snapped policy it clears the state
@@ -327,16 +349,23 @@ inline void prepareZoomFrame(IRMath::vec2 effectiveCameraIso, IRMath::vec2 zoom)
         *state = IRComponents::C_CameraZoomFrameState{};
         return;
     }
-    state->sample_ =
-        state->published_
-            ? IRMath::advanceCameraRasterPhase(state->sample_, effectiveCameraIso, zoom)
-            : IRMath::CameraRasterPhase{
-                  IRMath::dvec2(effectiveCameraIso),
-                  IRMath::cameraZoomPitch(zoom),
-                  IRMath::dvec2(0.0)
-              };
+    state->sample_ = detail::nextZoomFrame(*state, effectiveCameraIso, zoom);
     state->published_ = true;
     state->publishedRenderTick_ = IRSystem::getEventTickCount(IRTime::Events::RENDER);
+}
+
+/// The sample @ref prepareZoomFrame will publish for the camera at
+/// (@p effectiveCameraIso, @p zoom), without publishing it; nullopt under the
+/// snapped policy. For a RENDER stage ahead of `TRIXEL_TO_FRAMEBUFFER` that
+/// must place content exactly where that system's composite will: it holds
+/// while the camera is not written between the two, which is the frame's
+/// standing contract (the per-axis store frame depends on it as well).
+inline std::optional<IRMath::CameraRasterPhase>
+upcomingZoomFrame(IRMath::vec2 effectiveCameraIso, IRMath::vec2 zoom) {
+    const auto *state = detail::cameraComponent<IRComponents::C_CameraZoomFrameState>();
+    if (state == nullptr || !isZoomContinuous())
+        return std::nullopt;
+    return detail::nextZoomFrame(*state, effectiveCameraIso, zoom);
 }
 
 /// The placement sample published for the frame being drawn, or nullptr when
