@@ -845,10 +845,14 @@ every registration and query lane reaches the same answer.
 - it declares a write to derived pose (`C_WorldTransform`,
   `C_ResolvedFields`) and is not a deriving system.
 
-A **deriving system** is one whose declared exclude archetype contains
-`C_Settled`, or that carries the access tag `IRSystem::GatesSettled`. Both are explicit
-in the registration, so membership is declared, not inferred from what the
-system writes. A creation's own system that adds `Exclude<C_Settled>`
+A **deriving system** is a registered system whose declared exclude
+archetype contains `C_Settled`, or that carries the access tag
+`IRSystem::GatesSettled`. Both are explicit in the registration, so
+membership is declared, not inferred from what the system writes. Only a
+system that sits in a pipeline can be one: rounds, pending sets and the
+cursor are built from pipeline registration
+([§ Settle](#settle-settling-to-settled)). A one-shot query is never a
+deriving system (below, *One-shot queries*). A creation's own system that adds `Exclude<C_Settled>`
 (migration step 3) becomes a deriving system. It joins the round, so an
 entity cannot be promoted before that system has run over it. A deriving
 system that declares a write to a pose input is a registration error: an
@@ -868,7 +872,7 @@ startup.
 | The guard per `ComponentId` | Entity. `EntityManager::registerComponent<T>` copies `kStaticGuard<T>`, and the two move traits below, into a table indexed by `ComponentId`, beside the existing type cache. A node built from ids computes its cached bits from that table. | `registerComponent<T>` is the only place that holds both `T` and the id. A `ComponentId` cannot exist without its guard. |
 | `IREntity::kClearedByForeignMove<T>`, `IREntity::kTracksParentChain<T>`, the tracked-change log | Entity, same header; the log on `EntityManager`. `component_static.hpp` specializes both traits, depending downward. | The archetype-move and parent-change rules run inside entity-layer moves, link changes and destruction. The prefab layer reads the log by calling down, so the entity layer never names `IRPrefab::Static`. |
 | `C_Static`, `C_Settled` | System, `engine/system/include/irreden/system/components/component_static.hpp` | The exclusion adds `C_Static`'s id to effective exclude archetypes and the round tracker reads `C_Settled` in declared ones. The system layer resolves both with `IREntity::getComponentType<…>()`. |
-| The exclusion: one function, `IRSystem::detail::applyStaticExclusion(declaredExclude, writeGuard, gatesSettled)`, which returns the effective exclude archetype. `writeGuard` is the highest `kStaticGuard` over the lane's write set (`INPUT` above `DERIVED` above `NONE`). | System | Every lane below calls it. It is the only implementation. It is a pure function of its arguments, so it can be re-run at any time. |
+| The exclusion: one function, `IRSystem::detail::applyStaticExclusion(declaredExclude, writeGuard, deriving)`, which returns the effective exclude archetype. `writeGuard` is the highest `kStaticGuard` over the lane's write set (`INPUT` above `DERIVED` above `NONE`). `deriving` is computed by the caller: a system lane passes "declared set contains `C_Settled`, or `GatesSettled`"; a query lane passes `false`. | System | Every lane below calls it. It is the only implementation. It is a pure function of its arguments, so it can be re-run at any time. |
 | Declared and effective exclusions: `C_SystemEvent<TICK>::declaredExcludeArchetype_` beside the existing `excludeArchetype_`; per system, the `writeGuard` and the `GatesSettled` bit, recorded once at creation | System, `component_system_event.hpp` and `SystemManager` | The policy needs to know which exclusions the author declared. One stored filter cannot tell it (the paragraph after the lanes table). |
 | Rounds | System, on `SystemManager` | Membership, the pending sets and the one cursor over the deriving groups of all three pipelines come from pipeline registration, and the cursor moves at each group's join inside `executePipeline` |
 | Freeze, thaw, resettle, notes, drain, eligibility, `C_StaticSettings` | Prefab, `IRPrefab::Static` in `engine/prefabs/irreden/common/` | Eligibility reads rotation mode, GPU slots and skeletons, all of which are prefab knowledge |
@@ -884,7 +888,42 @@ writes:
 | EVAL Lua system | `IRSystem.registerSystem{ … }` in `engine/script/src/lua_script.cpp` → `SystemManager::createSystemDynamic` | Every listed component except those under the new `reads = { … }` key. `createSystemDynamic` gains a `readOnly` archetype parameter, and `setAt` on a read-only column raises. |
 | Runtime C++ system | `IRSystem::createSystemDynamic` called directly | Every included component, minus `readOnly` |
 | C++ query | `IRSystem::executeQuery<Cs...>` | The same compile-time derivation over its pack. It dispatches through an internal node walk, not through the public `executeQueryDynamic`, so the dynamic lane's conservative rule is not applied on top. |
-| Runtime query | `IRSystem::executeQueryDynamic` | Every included component |
+| Runtime query | `IRSystem::executeQueryDynamic` | Every included component, minus `readOnly`. It gains a `readOnly` archetype parameter after the body, defaulting to empty, so an existing call keeps counting every included component as written. |
+
+**One-shot queries.** `executeQuery<Cs...>` and `executeQueryDynamic`
+register nothing: no `SystemId`, no pipeline slot, no state between calls
+(`ir_system.hpp`; `engine/system/CLAUDE.md` § "Runtime-typed systems and
+one-shot queries"). A query cannot join a deriving group, enter a pending
+set, or move the round cursor, so the policy treats every query as
+non-deriving:
+
+- A query that writes a pose input visits no static row, the same as a
+  system.
+- A query that writes derived pose visits no static row either, settling or
+  settled. An `Exclude<C_Settled>` in its pack, or `C_Settled` in its
+  exclude list, does not make it deriving. It stays in the declared set, so
+  the filter is the declared set plus `C_Static`. The write is not
+  rejected: a command may still write `C_WorldTransform` on dynamic rows,
+  as today. A command that has to change a static entity's derived pose
+  thaws it first, or changes its inputs through a mutator and leaves the
+  derivation to the deriving systems. `resettle` alone does not help: a
+  query does not visit settling rows either.
+- A reader (a `const` type in `executeQuery`'s pack, a `readOnly` component
+  of `executeQueryDynamic`) visits settling and settled rows.
+- `GatesSettled` in `executeQuery`'s pack is a compile error: a
+  `static_assert` in `executeQuery`, because `FilterTags_t` would otherwise
+  drop the tag without effect. `executeQueryDynamic` has no tag parameter.
+- Running a query never changes `roundsOpened()`, `roundsCompleted()`, a
+  pending set, or any entity's settle stamp. Its writes to a settling
+  entity go through the same paths as any other write: a mutator restarts
+  the stamp, a raw write is the raw path in
+  [§ Forbidden writes](#forbidden-writes).
+
+`executeQueryDynamic`'s body receives the node, so `readOnly` is a
+declaration it cannot enforce, the same as a direct `createSystemDynamic`.
+A body that writes a `readOnly` pose column on a settled row is a raw
+write: retained, audited and applied by `resettle`. Only the Lua EVAL
+lane's `setAt` enforces `reads`.
 
 **Declared and effective exclusions.** Today a system has one exclude
 filter, `C_SystemEvent<TICK>::excludeArchetype_`. `SystemManager::addSystemExcludeTag` inserts into it in place
@@ -918,7 +957,7 @@ through one path. No API removes an exclusion today. One added later must
 remove the tag from the declared set and rebuild the same way. Deriving
 membership is read from the declared set, so the round tracker never sees the
 policy's entry. The query lanes keep no state: each call passes its pack's
-exclusions as the declared set.
+exclusions as the declared set and `deriving = false`.
 
 So `addSystemExcludeTag<C_Settled>` after creation turns a derived-pose
 writer into a deriving system, and it starts visiting settling rows. The
@@ -1118,7 +1157,8 @@ attaches no `C_Static` sees no change in behaviour.
 | `setParent`, `setRelation`, `clearParent`, `detachChildren`, and destroying a parent, on a static entity or one with static descendants | New behaviour for static entities only: the subtree resettles in the same call. |
 | `IRPrefab::Static::freeze`, `thaw`, `resettle`, `noteChanged`, `drain`, `isStatic`, `isSettled`, `stats` | New prefab namespace. `drain` is called by the World. |
 | `IRStatic` Lua table with `freeze`, `thaw`, `resettle`, `isStatic`, `isSettled`, `stats`; `reads = { … }` on Lua `registerSystem` | New Lua surface. |
-| `IRSystem::GatesSettled` access tag; `IRSystem::reportRowsWalked`; `IRSystem::roundsOpened`, `roundsCompleted`; a `readOnly` archetype parameter on `createSystemDynamic` | New scheduler surface. |
+| `IRSystem::GatesSettled` access tag; `IRSystem::reportRowsWalked`; `IRSystem::roundsOpened`, `roundsCompleted`; a `readOnly` archetype parameter on `createSystemDynamic` and on `executeQueryDynamic` (defaulting to empty) | New scheduler surface. |
+| One-shot queries exclude `C_Static` when they write pose inputs or derived pose; `GatesSettled` in an `executeQuery` pack is a compile error | New matching rule. A query is never a deriving system. It affects only entities that carry `C_Static`. |
 | `C_SystemEvent<TICK>::declaredExcludeArchetype_`; `addSystemExcludeTag` and `addSystemTag` rebuild `excludeArchetype_` from the declared set | Internal scheduler state. `excludeArchetype_` becomes policy-owned. A system with no pose write sees the same filter as today. |
 | `C_VoxelSetNew::setLodBand`, `C_VoxelSetNew::ownerStatic_`; `IRPrefab::Voxel::adoptOwner` | New method, field and helper. The `lodMin_` / `lodMax_` fields stay public. |
 | `IRPrefab::Fog::setOverride`, `setChannels` | New setters. The fields stay public. |
@@ -1139,7 +1179,12 @@ Nothing is deprecated or removed.
    scenery altogether. Until it does, those systems keep visiting static
    entities, which is correct and costs what it costs today.
 4. Declares read-only pose parameters `const` (C++) or under `reads` (Lua)
-   in systems that must still see static entities.
+   in systems that must still see static entities, and passes them as
+   `readOnly` to `createSystemDynamic` and `executeQueryDynamic`.
+5. Thaws a static entity before a command's one-shot query writes its
+   derived pose, or changes the entity's inputs through a mutator instead.
+   A query cannot derive settling rows, so it visits neither settling nor
+   settled ones.
 
 ## Fixtures and gates
 
@@ -1377,19 +1422,33 @@ holds on every lane:
     a Lua prefab part with `C_Static` that `prefab_api.cpp` parents after
     creation, and a static child loaded from a snapshot all settle and stay
     static.
-- **Every lane.** For each lane in [§ The matching policy](#the-matching-policy),
-  that is `IRSystem::createSystem`, `registerSystem<N>`, a CODEGEN fixture system,
-  a Lua EVAL system with and without `reads`, a direct `createSystemDynamic`,
-  `executeQuery<Cs...>` with a const and a non-const pack, and
-  `executeQueryDynamic`:
+- **Every system lane.** For each registered lane in
+  [§ The matching policy](#the-matching-policy), that is
+  `IRSystem::createSystem`, `registerSystem<N>`, a CODEGEN fixture system, a
+  Lua EVAL system with and without `reads`, and a direct
+  `createSystemDynamic` with and without `readOnly`, each appended to a
+  pipeline:
   - a writer of `C_LocalTransform` never visits a settling or settled
     entity;
-  - a const or `reads` reader visits both, and `setAt` on a `reads` column
-    raises;
+  - a const, `reads` or `readOnly` reader visits both, and `setAt` on a
+    `reads` column raises;
   - a writer of `C_WorldTransform` that is not a deriving system visits
     neither;
   - one with `Exclude<C_Settled>` visits settling rows but not settled ones,
-    and counts in the round.
+    and counts in the round: with it appended, a settling entity is not
+    promoted until a round in which it has run.
+- **Every query lane.** `executeQuery<Cs...>` with a const and a non-const
+  pack, and `executeQueryDynamic` with and without `readOnly`, each called
+  from a command body between fixed updates:
+  - a writer of `C_LocalTransform` never visits a settling or settled
+    entity;
+  - a const or `readOnly` reader visits both;
+  - a writer of `C_WorldTransform` visits neither, with and without
+    `Exclude<C_Settled>` in its pack (`C_Settled` in the exclude list for
+    `executeQueryDynamic`), and still visits dynamic rows;
+  - `roundsOpened()`, `roundsCompleted()` and the settle stamps of the
+    settling rows are unchanged by the call, and a settling entity is
+    promoted at the same drain as in a run without the call.
 - **Registration errors and order.** Registering a deriving system that
   writes `C_LocalTransform` asserts. A system created before any entity
   exists and an identical Lua EVAL system created after static entities
@@ -1512,8 +1571,9 @@ sibling epics' work.
    `ownerEntityId_`, with no signature change.
 7. The matching policy: a guard trait on each component, recorded per
    `ComponentId` by the entity layer, and one exclusion function on every
-   registration and query lane. A deriving system is one that excludes
-   `C_Settled` or carries `GatesSettled`. A system's declared exclusions are
+   registration and query lane. A deriving system is a registered pipeline
+   system that excludes `C_Settled` or carries `GatesSettled`; a one-shot
+   query is never one. A system's declared exclusions are
    kept apart from the effective filter, which is always rebuilt from them.
 8. Fog and LOD stay correct through gated passes with the trigger tables
    above; fog cost is unchanged while the fog changes every update.
