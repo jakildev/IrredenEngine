@@ -23,7 +23,9 @@ argument is checked before any is deleted: one refusal deletes nothing.
 
 `reap` signals a pid only when the caller's user owns it, its working directory
 resolves inside a pane root, and it is not pid 1, the caller, or an ancestor of
-the caller. It sends SIGTERM, waits up to 10 s, re-checks, then sends SIGKILL.
+the caller. It sends SIGTERM, waits up to 10 s, re-checks, then sends SIGKILL
+only when the pid still names the process it first checked (same start time);
+a pid recycled to another process is never signalled again.
 A process started through fleet-jobs is stopped with `fleet-jobs kill`. On a
 native-Windows host `reap` refuses: its two process tables number pids
 independently.
@@ -315,6 +317,7 @@ class ProcessFacts:
     ppid: int
     zombie: bool
     cwd: str | None
+    started: str | None
 
 
 def _read_process_linux(pid):
@@ -328,20 +331,29 @@ def _read_process_linux(pid):
         cwd = os.readlink(f"/proc/{pid}/cwd")
     except OSError:
         cwd = None
+    try:
+        with open(f"/proc/{pid}/stat", encoding="utf-8") as fh:
+            stat = fh.read()
+        # The comm field may hold spaces and ')'; fields after the last ')' start at
+        # field 3 (state), so starttime (field 22) is index 19.
+        started = stat[stat.rindex(")") + 2:].split()[19]
+    except (OSError, ValueError, IndexError):
+        started = None
     return ProcessFacts(pid=pid, uid=int(uids[1]), ruid=int(uids[0]),
                         ppid=int(fields["PPid"]), zombie=fields["State"].strip().startswith("Z"),
-                        cwd=cwd)
+                        cwd=cwd, started=started)
 
 
 def _read_process_ps(pid):
     try:
-        ps = subprocess.run(["/bin/ps", "-o", "uid=,ruid=,ppid=,stat=", "-p", str(pid)],
+        ps = subprocess.run(["/bin/ps", "-o", "uid=,ruid=,ppid=,stat=,lstart=", "-p", str(pid)],
                             capture_output=True, text=True, timeout=PROBE_TIMEOUT_S)
     except (OSError, subprocess.SubprocessError):
         return None
     fields = ps.stdout.split()
     if ps.returncode != 0 or len(fields) < 4:
         return None
+    started = " ".join(fields[4:]) or None
     cwd = None
     try:
         lsof = subprocess.run(["/usr/sbin/lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn"],
@@ -352,7 +364,7 @@ def _read_process_ps(pid):
     except (OSError, subprocess.SubprocessError):
         pass
     return ProcessFacts(pid=pid, uid=int(fields[0]), ruid=int(fields[1]), ppid=int(fields[2]),
-                        zombie=fields[3].startswith("Z"), cwd=cwd)
+                        zombie=fields[3].startswith("Z"), cwd=cwd, started=started)
 
 
 def read_process(pid):
@@ -389,6 +401,8 @@ def check_reap_target(pane, pid, reader=read_process, my_pid=None, my_uid=None):
         raise Refusal(f"owned by uid {facts.uid}, not the caller's uid {my_uid}")
     if pid in _ancestors(my_pid, reader):
         raise Refusal("that is an ancestor of this process")
+    if not facts.started:
+        raise Refusal("its start time could not be read, so a recycled pid could not be told apart")
     if not facts.cwd:
         raise Refusal("its working directory could not be read")
     cwd = os.path.realpath(facts.cwd)
@@ -398,11 +412,12 @@ def check_reap_target(pane, pid, reader=read_process, my_pid=None, my_uid=None):
     return facts
 
 
-def _wait_gone(pid, reader, deadline_s, sleep, clock):
+def _wait_gone(target, reader, deadline_s, sleep, clock):
+    """True once `target` has exited; a pid now naming a newer process counts as exited."""
     end = clock() + deadline_s
     while True:
-        facts = reader(pid)
-        if facts is None or facts.zombie:
+        facts = reader(target.pid)
+        if facts is None or facts.zombie or facts.started != target.started:
             return True
         if clock() >= end:
             return False
@@ -420,13 +435,15 @@ def cmd_reap(pane, pid_arg, reader=read_process, kill=os.kill, sleep=time.sleep,
     pid = int(pid_arg)
     checks = {"reader": reader, "my_pid": my_pid, "my_uid": my_uid}
     try:
-        check_reap_target(pane, pid, **checks)
+        target = check_reap_target(pane, pid, **checks)
         kill(pid, signal.SIGTERM)
-        if _wait_gone(pid, reader, TERM_WAIT_S, sleep, clock):
+        if _wait_gone(target, reader, TERM_WAIT_S, sleep, clock):
             print(f"reaped {pid} (SIGTERM)")
             return EXIT_OK
-        # Re-checked so a pid recycled during the wait is not killed.
-        check_reap_target(pane, pid, **checks)
+        # Re-checked so a pid recycled during the wait is not killed, even by a
+        # replacement that passes every ownership and cwd check.
+        if check_reap_target(pane, pid, **checks).started != target.started:
+            raise Refusal("the pid now names a different process; it was not signalled again")
         kill(pid, signal.SIGKILL)
     except ProcessLookupError:
         print(f"reaped {pid}")
@@ -434,7 +451,7 @@ def cmd_reap(pane, pid_arg, reader=read_process, kill=os.kill, sleep=time.sleep,
     except Refusal as exc:
         print(f"{PROG}: refused '{pid_arg}': {exc}", file=sys.stderr)
         return EXIT_REFUSED
-    if _wait_gone(pid, reader, KILL_WAIT_S, sleep, clock):
+    if _wait_gone(target, reader, KILL_WAIT_S, sleep, clock):
         print(f"reaped {pid} (SIGKILL)")
         return EXIT_OK
     print(f"{PROG}: pid {pid} survived SIGKILL", file=sys.stderr)

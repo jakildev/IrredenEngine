@@ -351,10 +351,11 @@ class ReapUnit(unittest.TestCase):
         cwd = target.pop("cwd", str(S["scratch"]))
         home = str(S["tmp"])
         facts = {
-            self.ME: fs.ProcessFacts(self.ME, self.UID, self.UID, self.PARENT, False, home),
-            self.PARENT: fs.ProcessFacts(self.PARENT, self.UID, self.UID, 1, False, home),
+            self.ME: fs.ProcessFacts(self.ME, self.UID, self.UID, self.PARENT, False, home, "t-me"),
+            self.PARENT: fs.ProcessFacts(self.PARENT, self.UID, self.UID, 1, False, home, "t-pa"),
             self.TARGET: fs.ProcessFacts(**{"pid": self.TARGET, "uid": self.UID, "ruid": self.UID,
-                                            "ppid": 1, "zombie": False, "cwd": cwd, **target}),
+                                            "ppid": 1, "zombie": False, "cwd": cwd,
+                                            "started": "t-original", **target}),
         }
         return facts.get
 
@@ -373,6 +374,7 @@ class ReapUnit(unittest.TestCase):
             "foreign ruid": (self.TARGET, self.table(ruid=0)),
             "cwd outside": (self.TARGET, self.table(cwd=str(S["outside"]))),
             "cwd unreadable": (self.TARGET, self.table(cwd=None)),
+            "start time unreadable": (self.TARGET, self.table(started=None)),
             "prefix sibling cwd": (self.TARGET, self.table(cwd=str(S["sibling"]))),
             "zombie": (self.TARGET, self.table(zombie=True)),
             "missing": (9999, self.table()),
@@ -393,6 +395,35 @@ class ReapUnit(unittest.TestCase):
         status, sent = self.reap(self.TARGET, lambda pid: next(reads)(pid))
         self.assertEqual(status, fs.EXIT_REFUSED)
         self.assertEqual(sent, [(self.TARGET, signal.SIGTERM)])
+
+    @unittest.skipIf(NATIVE_WINDOWS, "reap refuses on a native-Windows host")
+    def test_recycled_pid_passing_every_other_check_is_not_killed(self):
+        # The replacement keeps the caller's uid and a scratch-root cwd; only its
+        # start time differs. The injected clock advances one unit per call, so the
+        # TERM wait reads the original exactly TERM_WAIT_S times after the three
+        # reads of the first check, and the replacement first appears at the
+        # re-check before SIGKILL.
+        recycled = self.table(started="t-replacement")
+        first_seen = 3 + int(fs.TERM_WAIT_S)
+        reads = iter([self.table()] * first_seen + [recycled] * 1000)
+        status, sent = self.reap(self.TARGET, lambda pid: next(reads)(pid))
+        self.assertEqual(status, fs.EXIT_REFUSED)
+        self.assertEqual(sent, [(self.TARGET, signal.SIGTERM)])
+
+    @unittest.skipIf(NATIVE_WINDOWS, "reap refuses on a native-Windows host")
+    def test_pid_recycled_during_the_wait_counts_as_exited(self):
+        recycled = self.table(started="t-replacement")
+        reads = iter([self.table()] * 3 + [recycled] * 1000)
+        status, sent = self.reap(self.TARGET, lambda pid: next(reads)(pid))
+        self.assertEqual(status, fs.EXIT_OK)
+        self.assertEqual(sent, [(self.TARGET, signal.SIGTERM)])
+
+    @unittest.skipIf(NATIVE_WINDOWS, "reap refuses on a native-Windows host")
+    def test_real_process_has_a_start_time(self):
+        facts = fs.read_process(os.getpid())
+        self.assertIsNotNone(facts)
+        self.assertTrue(facts.started)
+        self.assertEqual(fs.read_process(os.getpid()).started, facts.started)
 
     def test_native_windows_refuses(self):
         original = fs._native_windows
