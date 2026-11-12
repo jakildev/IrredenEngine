@@ -1284,8 +1284,10 @@ the full rotation, which is the part #1396 did not do).
   and the 128³ light volume are sampled by world-pos reconstructed per-axis
   (`perAxisCellToWorld3D`, the exact `faceOriginFromInPlane` inverse), never from
   a resolved framebuffer (which would hit the singular screen→world iso-yawed
-  inverse). AO is same-axis ⇒ runs correctly on each axis canvas's in-plane
-  lattice. 3× AO + 3× sun-shadow textures live on `C_PerAxisTrixelCanvases`
+  inverse). AO runs independently on each axis canvas's in-plane lattice, but
+  that is only sufficient for same-axis occluders; perpendicular contact faces
+  are absent from the active distance texture. 3× AO + 3× sun-shadow textures
+  live on `C_PerAxisTrixelCanvases`
   (rotation-only lifecycle); the world volume + sun map are NOT per-axis.
   **Per-axis voxels do NOT cast into the shared sun map while rotating (#1370,
   option C — revises the original "+ all three per-axis voxel canvases" bake.)**
@@ -1312,6 +1314,21 @@ the full rotation, which is the part #1396 did not do).
     geometry/depth/scatter (P1 stage-1 `R⁻¹·(1,1,1)` depth + P3b forward-scatter)
     — built clean and hardware-verified on macOS/Metal — and handed the detached
     lighting integration to #1375/#1376 rather than duplicating it here.
+
+  - **Cross-axis AO correction (#4966, 2026-11-11).** The earlier
+    "AO is same-axis" claim confused storage locality with the geometric AO
+    neighbourhood. The contact fixture has a positive cardinal control
+    (`occluded_px = 4096`) but the rotating path records zero occluded pixels
+    at yaw 15°, 30°, 45°, 60°, and 75°. Source tracing confirms that each
+    per-axis dispatch binds only its own distance texture; perpendicular faces
+    cannot enter the kernel's neighbour loop, while same-axis candidates have
+    zero facing for the concave contact. A local Metal probe that also sampled
+    the two existing perpendicular distance textures restored nonzero yaw-45
+    AO, proving the missing information is already resident, but a 5×5 search
+    cost 50 extra reads per cell and a 9×9 search cost 162 while still reaching
+    only `occluded_px = 956`. That brute-force search was rejected. #5015
+    tracks a bounded direct-projection design, backend parity, overflow-lane
+    treatment, and performance validation.
 - **Memory / allocation policy.** Three worst-case textures during rotation;
   gate allocation on `residualYaw != 0` so static scenes pay nothing. Define
   the allocate/free churn behavior at rotation start/stop.
