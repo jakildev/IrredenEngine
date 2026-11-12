@@ -170,11 +170,10 @@ any cleared handle that shares the anchor, at the frame's sizing scale. The
 handle is then nearer than every point of the sphere, on the pixels it covers
 with a value of 0.
 
-- The direction is the one the yawed iso projection is constant in, at the
-  camera's continuous yaw (`IRMath::isoPixelToPos3DYawed`). A cardinal or a
-  fixed `(1,1,1)` direction would walk the handle off its pixels as the camera
-  turns. Camera pitch is outside the contract
-  ([`iso-depth-axis-invariant.md`](iso-depth-axis-invariant.md)).
+- The displacement follows the current view's depth axis: continuous yaw
+  in compatibility mode, or the full spatial basis for elevation and roll.
+  A fixed `(1,1,1)` direction would walk the handle off its pixels as the
+  camera turns. See the [projection contract](iso-depth-axis-invariant.md).
 - The displacement is a `TRANSFORM_TRANSLATION` modifier on the handle, which
   `PROPAGATE_TRANSFORM` adds in world space after the parent chain. A local
   translation would turn with a rotated anchor and stretch with a scaled one.

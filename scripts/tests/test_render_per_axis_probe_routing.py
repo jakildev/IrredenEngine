@@ -169,7 +169,7 @@ class PerAxisProbeRoutingTest(unittest.TestCase):
         condition = match[1]
         preamble = r"""
 #include <initializer_list>
-enum class DebugOverlayMode {NONE=0,NORMALS=8};
+enum class DebugOverlayMode {NONE=0,UNLIT=7,NORMALS=8};
 constexpr int FOG_TO_TRIXEL=1,kNullSystemId=-1;
 bool fog=false,depth=false;
 DebugOverlayMode overlay=DebugOverlayMode::NONE;
@@ -177,6 +177,7 @@ int findSystem(int){return fog?1:kNullSystemId;}
 namespace IRRender {
 DebugOverlayMode getDebugOverlay(){return overlay;}
 bool getDepthColorDebugMode(){return depth;}
+bool isSpatialViewEnabled(){return false;}
 }
 bool gate(bool shapeReceiverAvailable,int lightingId){return CONDITION;}
 int main(){

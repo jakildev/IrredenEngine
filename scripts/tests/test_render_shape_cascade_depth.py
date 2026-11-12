@@ -20,10 +20,14 @@ using std::cos; using std::sin; using std::round; using std::max;
 struct vec2 {float x,y; vec2(float a,float b):x(a),y(b){}};
 struct ivec2 {int x,y;};
 struct vec3 {float x,y,z; vec3(float a,float b,float c):x(a),y(b),z(c){}};
+struct vec4 {float x=0,y=0,z=0,w=0;};
 struct ShapeProjectionData {
  ivec2 voxelRenderOptions; int smoothYawEnabled=0,latticeShapes=0;
  float visualYaw=0,rasterYaw=0;
+ vec4 cameraViewRotation;
 };
+bool spatialViewEnabled(vec4){return false;}
+float spatialViewDepth(vec3 p,vec4){return p.x+p.y+p.z;}
 """
 
 # Canvas cell receivers recover their position from (iso pixel, rawDepth) and
@@ -80,7 +84,7 @@ class ShapeCascadeDepthTest(unittest.TestCase):
                 "world_frame_depth": helpers.replace(
                     "yawedIsoDistance(position, yaw)", "yawedIsoDistance(position, 0.0)"),
                 "world_units_depth": helpers.replace(
-                    "yaw) * float(scale)", "yaw)"),
+                    ") * float(scale);", ");"),
             }
             for name, functions in variants.items():
                 with (self.subTest(backend=suffix, variant=name),

@@ -536,7 +536,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         const float visualYaw = IRPrefab::Camera::getYaw();
         const auto cardinalIndex =
             IRMath::rasterYawCardinalIndex(IRPrefab::Camera::computeYawSplit(visualYaw).first);
-        const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
+        const auto visibleFaces =
+            IRRender::isSpatialViewEnabled()
+                ? IRMath::visibleTriplet(IRMath::quatInverse(IRRender::getViewRotation()))
+                : IRMath::visibleFaceTripletCardinal(cardinalIndex);
+        frameData.frameData_.cameraViewRotation_ =
+            IRRender::isSpatialViewEnabled() ? IRRender::getViewRotation() : vec4(0.0f);
         // Whole-iso screen anchor of the recovered faces. The per-axis canvases
         // are base-resolution, so it is the whole-iso camera offset
         // `floor(cameraIso)` — exactly the cardinal path's anchor — NOT scaled by
@@ -939,7 +944,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // has no fog-composing twin.
         if (shapeReceiverAvailable &&
             (IRRender::getDebugOverlay() == DebugOverlayMode::NONE ||
-             IRRender::getDebugOverlay() == DebugOverlayMode::NORMALS) &&
+             IRRender::getDebugOverlay() == DebugOverlayMode::NORMALS ||
+             (IRRender::isSpatialViewEnabled() &&
+              IRRender::getDebugOverlay() == DebugOverlayMode::UNLIT)) &&
             findSystem(FOG_TO_TRIXEL) == kNullSystemId && lightingId != kNullSystemId &&
             !IRRender::getDepthColorDebugMode()) {
             auto ao = IREntity::getComponentOptional<C_CanvasAOTexture>(perAxisCanvasEntity_);

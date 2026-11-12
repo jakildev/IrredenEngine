@@ -138,14 +138,13 @@ removed.
 
 ## Relationship to the iso-depth-axis invariant
 
-This model does **not** relax the iso-depth-axis invariant
-([`iso-depth-axis-invariant.md`](iso-depth-axis-invariant.md)). The GRID
-camera is still Z-yaw + cardinal + (PR #1265) pitch-for-detached only; iso
-depth is still `x + y + z` in the cardinal-rotated frame. What this model
-fixes is the rasterizer's face selection within that invariant — emitting the
-faces the camera actually sees at the current cardinal, rather than a
-hardcoded set. The depth math is unchanged; only the emitted-face set and the
-exposed-face gating are new.
+Cardinal storage keeps `x + y + z` depth in its storage frame. The default
+camera displays that storage through its yaw path. Spatial view projects
+finite world faces through the full camera quaternion and compares their
+continuous view depth, including the positive-Z faces seen from below.
+Visible-face selection and exposed-face gating remain separate from this
+storage-to-display conversion; see the
+[projection contract](iso-depth-axis-invariant.md).
 
 ## Smooth camera yaw (between cardinals)
 

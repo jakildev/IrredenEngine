@@ -22,10 +22,8 @@ inline bool shapeAnalyticShadowReceiver(ShapeDescriptor shape, constant ShapePro
         if (!sdfRaySphere(origin, direction, radius, -bound, bound, entry)) return false;
         viewOffset = origin + direction * entry;
     } else {
-        float3 worldOrigin = float3(yaw.x * origin.x - yaw.y * origin.y,
-                                  yaw.y * origin.x + yaw.x * origin.y, origin.z);
-        float3 worldDirection = float3(yaw.x * direction.x - yaw.y * direction.y,
-                                     yaw.y * direction.x + yaw.x * direction.y, direction.z);
+        float3 worldOrigin = viewToWorldVector(origin, projection.cameraViewRotation, yaw.x, yaw.y);
+        float3 worldDirection = viewToWorldVector(direction, projection.cameraViewRotation, yaw.x, yaw.y);
         float3 localOrigin = worldOrigin;
         float3 localDirection = worldDirection;
         if (shapeHasEntityRotation(shape.rotation)) {
@@ -45,8 +43,7 @@ inline bool shapeAnalyticShadowReceiver(ShapeDescriptor shape, constant ShapePro
                        threshold, nearDepth, farDepth, entry)) return false;
         viewOffset = origin + direction * entry;
     }
-    float3 worldOffset = float3(yaw.x * viewOffset.x - yaw.y * viewOffset.y,
-                            yaw.y * viewOffset.x + yaw.x * viewOffset.y, viewOffset.z);
+    float3 worldOffset = viewToWorldVector(viewOffset, projection.cameraViewRotation, yaw.x, yaw.y);
     position = center + worldOffset;
     return true;
 }

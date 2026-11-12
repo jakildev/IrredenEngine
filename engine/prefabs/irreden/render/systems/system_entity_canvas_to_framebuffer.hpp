@@ -80,7 +80,9 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     vec2 effectiveCameraIso_{};
     vec2 cameraZoom_{};
     float visualYaw_ = 0.0f;
+    bool spatialView_ = false;
     vec4 viewToWorld_{};
+    IRMath::OrthographicViewBasis spatialViewBasis_{};
     vec2 cameraFramebufferOffset_{};
     // Global voxel subdivision factor the SHARED framebuffer depth buffer runs
     // at this frame (the main world canvas + SDF floor encode depth as
@@ -171,7 +173,9 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         effectiveCameraIso_ = IRRender::getEffectiveCameraIso();
         cameraZoom_ = IRRender::getCameraZoom();
         visualYaw_ = IRPrefab::Camera::getYaw();
+        spatialView_ = IRRender::isSpatialViewEnabled();
         viewToWorld_ = IRPrefab::Camera::getRotationQuat();
+        spatialViewBasis_ = IRMath::orthographicViewBasis(viewToWorld_);
 
         // Private canvas transforms use Y-up coordinates on both backends.
         // Consume whole framebuffer pixels; the final upscale owns the residual.
@@ -275,8 +279,11 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // offset). The two coincide at yaw == 0, so cardinal frames stay
         // byte-identical.
         vec2 entityIso = pos3DtoPos2DIso(pose->translation_);
-        vec2 entityIsoPlacement = pos3DtoPos2DIsoYawed(pose->translation_, visualYaw_) +
-                                  pos3DtoPos2DIso(canvasTextures->renderedCellOffset_);
+        vec2 entityIsoPlacement =
+            (spatialView_ && !entityCanvas.screenLocked_
+                 ? IRMath::projectOrthographic(pose->translation_, spatialViewBasis_)
+                 : pos3DtoPos2DIsoYawed(pose->translation_, visualYaw_)) +
+            pos3DtoPos2DIso(canvasTextures->renderedCellOffset_);
 
         ivec2 mainCanvasSizeI = ivec2(mainCanvasSize_);
         vec2 canvasOriginZ1 = vec2(trixelOriginOffsetZ1(mainCanvasSizeI));
@@ -342,12 +349,17 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 entityFbCenter,
                 framebufferExtent,
                 foregroundPriority ? 1 : 0,
-                IRRender::pickIsoDepthForWorldPosition(
-                    pose->translation_,
-                    visualYaw_,
-                    effectiveSub_,
-                    canvasTextures->renderedSampleLayout_
-                )
+                spatialView_ && !entityCanvas.screenLocked_
+                    ? static_cast<int>(IRMath::floor(
+                          IRMath::orthographicDepth(pose->translation_, spatialViewBasis_) *
+                          effectiveSub_
+                      ))
+                    : IRRender::pickIsoDepthForWorldPosition(
+                          pose->translation_,
+                          visualYaw_,
+                          effectiveSub_,
+                          canvasTextures->renderedSampleLayout_
+                      )
             );
         }
 
@@ -408,12 +420,18 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
             } else {
                 // Without a raster density, source geometry still retains its origin;
                 // its depth quantization is one world iso unit.
-                compositeDistanceOffset = IRRender::canvasWorldDepthOffset(
-                    pose->translation_,
-                    visualYaw_,
-                    cubeSub >= 1 ? effectiveSub_ * kDepthEncodeShift : 1,
-                    canvasTextures->renderedSampleLayout_
-                );
+                compositeDistanceOffset =
+                    spatialView_
+                        ? static_cast<int>(IRMath::roundHalfUp(
+                              IRMath::orthographicDepth(pose->translation_, spatialViewBasis_) *
+                              (cubeSub >= 1 ? effectiveSub_ * kDepthEncodeShift : 1)
+                          ))
+                        : IRRender::canvasWorldDepthOffset(
+                              pose->translation_,
+                              visualYaw_,
+                              cubeSub >= 1 ? effectiveSub_ * kDepthEncodeShift : 1,
+                              canvasTextures->renderedSampleLayout_
+                          );
                 if (cubeSub >= 1) {
                     const vec3 phase = canvasTextures->renderedCellOffset_;
                     compositeDistanceOffset += IRMath::pos3DtoDistanceYawed(

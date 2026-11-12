@@ -200,3 +200,35 @@ TEST(ShapeTileBounds, ReachableRectMatchesTheShaderGuardWithOnePixelSlack) {
     EXPECT_EQ(reachable.min_, kept.min_ - ivec2(1));
     EXPECT_EQ(reachable.max_, kept.max_ + ivec2(1));
 }
+
+TEST(ShapeTileBounds, SpatialViewContainsEveryRotatedCornerAboveAndBelowThePlane) {
+    using namespace IRMath;
+    auto shape = floorBox();
+    shape.rotation = quatAxisAngle(normalize(vec3(1, 2, 3)), 0.37f);
+    const vec3 halfExtent = SDF::boundingHalf(SDF::ShapeType::BOX, shape.params);
+    for (float azimuth : {0.0f, 0.37f, 0.79f, 1.17f, 2.61f}) {
+        for (float elevation : {-1.1f, -0.37f, 0.0f, 0.23f, 0.79f, 1.3f}) {
+            for (int density : {1, 3, 8, 16}) {
+                ShapeTileYaw view;
+                view.cameraViewRotation_ = uprightOrbitRotation(azimuth, elevation, 0.21f);
+                const auto bounds = shapeTileIsoBounds(shape, density, view, false);
+                const auto inverse = quatInverse(view.cameraViewRotation_);
+                for (int corner = 0; corner < 8; ++corner) {
+                    const vec3 sign(
+                        (corner & 1) ? 1 : -1,
+                        (corner & 2) ? 1 : -1,
+                        (corner & 4) ? 1 : -1
+                    );
+                    const vec3 world = vec3(shape.worldPosition) +
+                                       rotateVectorByQuat(halfExtent * sign, shape.rotation);
+                    const vec2 projected =
+                        pos3DtoPos2DIso(rotateVectorByQuat(world * float(density), inverse));
+                    EXPECT_LE(bounds.min_.x, projected.x);
+                    EXPECT_LE(bounds.min_.y, projected.y);
+                    EXPECT_GE(bounds.max_.x, projected.x);
+                    EXPECT_GE(bounds.max_.y, projected.y);
+                }
+            }
+        }
+    }
+}

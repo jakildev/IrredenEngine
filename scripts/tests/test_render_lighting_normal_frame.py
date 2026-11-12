@@ -19,6 +19,10 @@ struct vec3 {
     vec3(float a,float b,float c):x(a),y(b),z(c){}
     vec3 operator-() const {return {-x,-y,-z};}
 };
+struct vec4 {float x=0,y=0,z=0,w=0;};
+vec4 cameraViewRotation{};
+bool spatialViewEnabled(vec4){return false;}
+vec3 rotateByQuat(vec3 p,vec4){return p;}
 constexpr int kXFace=0,kYFace=1;
 int decodeFlipRoute(int flip,int) {return flip;}
 struct Options {int x;};
@@ -65,7 +69,8 @@ class LightingNormalFrameTest(unittest.TestCase):
             source = (root / f"c_lighting_to_trixel_body.{suffix}").read_text()
             source = source.replace("frameData.", "").replace("voxelFrameData.", "")
             begin = source.index("if (normalOptions.x")
-            end = source.index("\n    }", begin) + len("\n    }")
+            fallback = source.index("} else if", begin)
+            end = source.index("\n    }", fallback) + len("\n    }")
             block = source[begin:end]
             common = (root / f"ir_iso_common.{suffix}").read_text()
             helpers = "\n".join(

@@ -972,6 +972,31 @@ inline float3 rotateByInverseQuat(float3 v, float4 q) {
     return rotateByQuat(v, float4(-q.xyz, q.w));
 }
 
+// Zero is the opt-out sentinel; unit quaternions map view vectors to world vectors.
+inline bool spatialViewEnabled(float4 viewRotation) {
+    return dot(viewRotation, viewRotation) > 0.5;
+}
+inline float2 spatialViewIso(float3 worldPosition, float4 viewRotation) {
+    float3 view = rotateByInverseQuat(worldPosition, viewRotation);
+    return float2(-view.x + view.y, -view.x - view.y + 2.0 * view.z);
+}
+inline float spatialViewDepth(float3 worldPosition, float4 viewRotation) {
+    return dot(rotateByInverseQuat(worldPosition, viewRotation), float3(1.0));
+}
+
+inline float3 viewToWorldVector(float3 position, float4 viewRotation, float yawC, float yawS) {
+    return spatialViewEnabled(viewRotation) ? rotateByQuat(position, viewRotation)
+        : float3(yawC * position.x - yawS * position.y,
+               yawS * position.x + yawC * position.y, position.z);
+}
+
+inline float3 trixelCanvasPixelToWorld3DSpatial(int2 pixel, int rawDepth, int2 canvasOrigin,
+                                    float2 cameraOffset, int2 renderOptions, float4 viewRotation) {
+    int2 iso = trixelCanvasPixelToIsoRel(pixel, canvasOrigin, cameraOffset, renderOptions);
+    float3 position = isoPixelToPos3D(iso.x, iso.y, float(rawDepth));
+    return rotateByQuat(position / float(effectiveTrixelSubdivisionScale(renderOptions)), viewRotation);
+}
+
 // The two in-plane unit model axes (e_u, e_v) a face's scatter quad spans, by
 // axis = faceId >> 1 (0=X spans y,z; 1=Y spans x,z; 2=Z spans x,y) — matching
 // faceSpanCorner's cornerSel.x -> e_u, cornerSel.y -> e_v ordering. Mirror of
@@ -1149,6 +1174,7 @@ struct FrameDataVoxelToTrixel {
     // live; face selection's one-uniform ceiling gate. Mirrors
     // FrameDataVoxelToCanvas::fogCeilingEnabled_ (offset 272).
     int4 fogCeilingEnabled;
+    float4 cameraViewRotation;
 };
 
 // Smooth analytic vision-circle reveal for one fog disc at `worldXY`.

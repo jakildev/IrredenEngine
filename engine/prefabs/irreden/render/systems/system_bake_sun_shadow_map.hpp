@@ -294,6 +294,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         analyticCasterFrame_.trixelCanvasOffsetZ1_ = shapeFrame.trixelCanvasOffsetZ1;
         analyticCasterFrame_.canvasSizePixels_ = shapeFrame.canvasSize;
         analyticCasterFrame_.voxelRenderOptions_ = shapeFrame.voxelRenderOptions;
+        analyticCasterFrame_.cameraViewRotation_ = shapeFrame.cameraViewRotation;
         analyticCasterFrame_.visualYaw_ = shapeFrame.visualYaw;
         analyticCasterFrame_.rasterYaw_ = shapeFrame.rasterYaw;
         analyticCasterFrame_.residualYaw_ =
@@ -320,7 +321,11 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         canvasEntityIds->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
         patchFogCasterPrecut(1);
         const FogCasterPrecutRestoreGuard fogPrecutGuard{*this};
-        const bool cardinalFrame = analyticCasterFrame_.residualYaw_ == 0.0f;
+        const bool cardinalFrame = analyticCasterFrame_.residualYaw_ == 0.0f &&
+                                   IRMath::dot(
+                                       analyticCasterFrame_.cameraViewRotation_,
+                                       analyticCasterFrame_.cameraViewRotation_
+                                   ) < 0.5f;
         if (cardinalFrame) {
             patchSunSplatRadius(0.0f);
         }
@@ -494,7 +499,12 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     // recovery onto the smooth-yaw inverse meant for the SDF store.
     // subData orphans the UBO on Metal, so re-bind after patching (the
     // in-file convention).
-    void patchFrameYawSplit(float visualYaw, float residualYaw) {
+    void patchFrameYawSplit(float visualYaw, float residualYaw, vec4 viewRotation = vec4(0.0f)) {
+        voxelFrameDataBuf_->subData(
+            offsetof(FrameDataVoxelToCanvas, cameraViewRotation_),
+            sizeof(vec4),
+            &viewRotation
+        );
         voxelFrameDataBuf_
             ->subData(offsetof(FrameDataVoxelToCanvas, visualYaw_), sizeof(float), &visualYaw);
         voxelFrameDataBuf_
@@ -510,7 +520,11 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         System<BAKE_SUN_SHADOW_MAP> &sys_;
         float visualYaw_, residualYaw_;
         ~FrameYawRestoreGuard() {
-            sys_.patchFrameYawSplit(visualYaw_, residualYaw_);
+            sys_.patchFrameYawSplit(
+                visualYaw_,
+                residualYaw_,
+                IRRender::isSpatialViewEnabled() ? IRRender::getViewRotation() : vec4(0.0f)
+            );
         }
     };
 
@@ -544,7 +558,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         // Bake: each pixel projects into both cascades in one pass. The kernel
         // engages the splat on a cardinal resident frame, the same split the
         // frame upload took from the camera.
-        const bool cardinalResidentFrame = IRPrefab::Camera::getYawSplit().second == 0.0f;
+        const bool cardinalResidentFrame =
+            !IRRender::isSpatialViewEnabled() && IRPrefab::Camera::getYawSplit().second == 0.0f;
         const RasterBakeDispatch mainBake =
             rasterBakeDispatch(cardinalResidentFrame && frameData_.sunSplatMaxTexels_ > 0.0f);
         const RasterBakeDispatch perPixelBake = rasterBakeDispatch(false);
@@ -597,7 +612,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             // frame's residual for this dispatch so the bake shader keeps the
             // cardinal recovery, then restore the camera split for
             // downstream consumers (COMPUTE_SUN_SHADOW's smooth receive).
-            const float cameraVisualYaw = IRPrefab::Camera::getYaw();
+            const float cameraVisualYaw =
+                IRRender::isSpatialViewEnabled() ? 0.0f : IRPrefab::Camera::getYaw();
             const auto [cameraRasterYaw, cameraResidualYaw] =
                 IRPrefab::Camera::computeYawSplit(cameraVisualYaw);
             patchFrameYawSplit(cameraRasterYaw, 0.0f);
@@ -655,7 +671,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             // (the scatter reads rasterYaw only; pass 3's bake recovery must
             // not take the smooth-yaw branch) — zero the resident residual for
             // the block and restore the camera split at the end.
-            const float cameraVisualYaw = IRPrefab::Camera::getYaw();
+            const float cameraVisualYaw =
+                IRRender::isSpatialViewEnabled() ? 0.0f : IRPrefab::Camera::getYaw();
             const auto [cameraRasterYaw, cameraResidualYaw] =
                 IRPrefab::Camera::computeYawSplit(cameraVisualYaw);
             patchFrameYawSplit(cameraRasterYaw, 0.0f);
@@ -1044,6 +1061,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         // share the same coordinate frame. No-op at rasterYaw == 0.
         const auto cardinalIndex = IRMath::rasterYawCardinalIndex(IRPrefab::Camera::getRasterYaw());
 
+        const vec4 cameraViewRotation = IRRender::getViewRotation();
         for (int ci = 0; ci < kSunShadowCascadeCount; ++ci) {
             const IsoBounds2D sunUV = IRPrefab::SunShadow::sunBakeFrustumUVBounds(
                 isoBounds,
@@ -1053,7 +1071,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 vHat,
                 sunDir,
                 cardinalIndex,
-                sweep
+                sweep,
+                IRRender::isSpatialViewEnabled() ? &cameraViewRotation : nullptr
             );
             vec2 sunUVMin = sunUV.min_;
             vec2 sunUVMax = sunUV.max_;

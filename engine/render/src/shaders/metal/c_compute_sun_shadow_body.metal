@@ -101,7 +101,10 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
 
     float3 pos3D;
     float3 normal;
-    if (frameData.residualYaw != 0.0) {
+    if (spatialViewEnabled(frameData.cameraViewRotation)) {
+        pos3D = trixelCanvasPixelToWorld3DSpatial(pixel, rawDepth, frameData.trixelCanvasOffsetZ1, frameData.frameCanvasOffset, frameData.voxelRenderOptions, frameData.cameraViewRotation);
+        normal = rotateByQuat(faceOutwardNormal(face), frameData.cameraViewRotation);
+    } else if (frameData.residualYaw != 0.0) {
         // Smooth-yaw receive. While rotating, voxels leave the single canvas
         // (per-axis scatter) and its remaining SDF/text content is stored at the
         // FULL visualYaw with view-frame depth — recover with the matching smooth

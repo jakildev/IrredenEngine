@@ -1,7 +1,6 @@
 # engine/prefabs/irreden/render/ — canvases, framebuffers, cameras, text
 
-The ECS surface the trixel pipeline reads and writes. Engine-side state and
-device drivers: [`engine/render/CLAUDE.md`](../../../render/CLAUDE.md) (§"The pipeline, one frame" is the diagram).
+Engine-side state and device drivers: [`engine/render/CLAUDE.md`](../../../render/CLAUDE.md#the-pipeline-one-frame).
 Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/prefab-render-surface.md).
 
 ## Validators
@@ -64,10 +63,11 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 
 ## Component contracts
 
-- Camera rotation is `C_LocalTransform.rotation_` = `qZ(yaw) × qX(pitch)`
-  (`camera.hpp`), pitch clamped to ±(π/2 − ε); GRID reads only the Z-yaw
-  (`engine/render/CLAUDE.md` §"Iso-depth-axis invariant"), DETACHED canvases
-  the full quaternion via `PROPAGATE_CANVAS_ROTATION`.
+- Camera rotation lives in `C_LocalTransform.rotation_`. The compatibility
+  path uses ZX yaw/pitch and projects GRID with yaw only. Spatial view uses
+  the full quaternion for every world producer; upright orbit angles are
+  azimuth/elevation plus explicit roll, with elevation clamped below the poles.
+  See the [projection contract](../../../../docs/design/iso-depth-axis-invariant.md).
 - Hitbox / hover systems cache the camera at `beginTick` (a mid-frame move
   shows next frame). Per-canvas behaviour (zoom tracking, hover, subdivisions)
   is a `C_TrixelCanvasRenderBehavior` flag, never a branch.
@@ -143,11 +143,8 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 - Escape opens the menu, so an adopting demo drops `IRCommand::CLOSE_WINDOW` via
   `registerStandardKeyboardCommands({.omit_ = {...}})` and gets a QUIT button. Register settings
   (`IRPrefab::Settings::register{Bool,Enum,Float}`) during init; the menu snapshots them at open.
-- Headless readers: `HelpOverlay::` / `PerfHud::` `builtText()` / `lastGlyphCommandCount()` / `panelRect()`, and
-  `SettingsMenu::liveRowCount()` / `*Rect()` / `enumRowsStacked()` / `*ScreenPx(...)`; a QUIT assertion
-  evaluates when the close is observed, not on the capture frame. `systemOrNull()` reports absent as
-  `IRSystem::kNullSystemId`, never `kNullEntity` (`engine/system/CLAUDE.md` §"Hot reload and lookup";
-  `test/render/prefab_system_probe_test.cpp`).
+- A QUIT assertion evaluates when close is observed, not on the capture frame.
+  System lookup sentinels follow [`engine/system/CLAUDE.md`](../../../system/CLAUDE.md#hot-reload-and-lookup).
 
 ## Widget framework
 
@@ -165,22 +162,14 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 - Radio exclusion (`makeRadio(..., groupId, value)`) runs in `WIDGET_APPLY_RADIO::endTick`; text and number fields edit only while focused (a click, hotkey, or `focus(id)` at the next `WIDGET_INPUT::beginTick`); Enter or a click off widgets commits a number and drops focus, while Escape cancels a number edit;
   focus-visible Tab traversal yields to a command on that press; per-kind keys are slider arrows/Home/End/Delete/Backspace, Space for toggles/dropdowns, and Enter for presses/dropdown selection. Widget hotkeys can focus every kind, and held Alt shows their badges plus the focused widget's ring; `bindAction` makes a control an action's (keyless hotkey, badge = resolved chord, `WIDGET_SYNC_ACTION_HINTS`) and `actions_window.hpp` is the searchable Actions window over free GUI space;
   `C_WidgetScroll` is track + thumb only — the owner positions content from `scrollPos_`.
-- `IRPrefab::GuiTest::` (`gui_test_assertions.hpp`): `hovers` / `clickFires` /
-  `sliderValue` / `checkbox` / `picksVoxel` / `picksIsoColumn` / `hoveredEntityId` /
-  `predicate`, one `GUI-ASSERT …` line each plus one `GUI-ASSERT-COVERAGE …` per
-  shot. `hoveredEntityId(expected, label, frames)` requires the GPU `HoveredEntityIdBuffer`
-  (`IRRender::getEntityIdAtMouseTrixel()`) to name `expected` on each of the
-  last `frames` live frames ([why](../../../../docs/design/trixel-parity-shift-442-investigation.md)).
-  `TRIXEL_TO_FRAMEBUFFER::beginTick` resets that buffer, so splice the
-  GUI-test cycler ahead of the composite, as `shape_debug` does. `picksVoxel`
-  is the CPU ray cast and cannot see that buffer. Reference wiring:
-  `creations/editors/voxel_editor/main.cpp`; Lua handlers (`system_widget_lua_dispatch.hpp`
-  fires them in `endTick`): `engine/script/CLAUDE.md` §"Engine service bindings".
+- [GUI assertions](gui_test_assertions.hpp) distinguish GPU owner-buffer hover from CPU voxel picks.
+  Splice the GUI-test cycler before `TRIXEL_TO_FRAMEBUFFER`, whose `beginTick` resets that buffer.
+  Lua handlers fire in `WIDGET_LUA_DISPATCH::endTick`:
+  [`engine/script/CLAUDE.md`](../../../script/CLAUDE.md#engine-service-bindings).
 
 ## Rotation modes
 
 - Rotating hover uses a scatter-only owner attachment, four-word overflow records, and a 32-byte hover record; preserve the [depth-texel resolve contract](../../../../docs/design/per-axis-trixel-canvas-rotation.md#picking-follows-the-depth-tested-owner).
-
 - `GRID` for world-integrated rotation with exact cell aliasing or shadows from
   thin detail; `DETACHED_REVOXELIZE` for cheap smooth SO(3) that still sorts,
   casts and receives; any `DETACHED` mode with `screenLocked_ = true` for a HUD

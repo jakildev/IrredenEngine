@@ -46,7 +46,10 @@ bool selectedShapeBoxReceiver(ivec2 owner,int width,vec2 query,bool recover,
  p={query.x,query.y,1};n={0,0,-1};return hit;
 }
 float pos3DtoDistance(vec3 p){return p.x+p.y+p.z;}
-struct Frame {} receiverFrame;
+struct Frame {vec4 cameraViewRotation{};} receiverFrame;
+bool spatialViewEnabled(vec4){return false;}
+bool spatialShapeDepthValid=false;
+float spatialShapeDepth=0;
 float shapeCanvasIsoDepth(vec3 p,Frame){return 4*(p.x-p.y+p.z);}
 float worldShapeSurfaceSunShadowFactor(vec3 p,vec3 n,float depth,vec4 rotation){
  if(rotation.x!=.1f||rotation.y!=.2f||rotation.z!=.3f||rotation.w!=.9f)std::exit(12);

@@ -30,20 +30,7 @@ inline IRMath::vec2 primitiveCameraRasterCorrection(
     IRMath::ivec2 outputScale,
     const IRMath::CameraRasterPhase *frame
 ) {
-    const IRMath::vec2 pitch(IRMath::cameraZoomPitch(zoom));
-    const IRMath::vec2 detached = frame != nullptr
-                                      ? IRMath::vec2(IRMath::cameraRasterDetachedOffset(*frame))
-                                      : IRMath::cameraSnappedDetachedOffset(cameraIso, pitch);
-    const IRMath::vec2 residual =
-        frame != nullptr
-            ? IRMath::vec2(IRMath::cameraRasterScreenResidual(*frame, outputScale))
-            : IRMath::vec2(
-                  IRMath::cameraSubPixelOffsets(cameraIso, zoom, outputScale).screenPxResidual_
-              );
-    const IRMath::vec2 rasterCamera =
-        IRMath::floor(cameraIso) * pitch + detached * IRMath::vec2(1, -1);
-    return (rasterCamera - cameraIso * pitch) * IRMath::vec2(outputScale) +
-           residual * IRPlatform::kIsoToScreenSign;
+    return Camera::rasterCorrectionFramebufferPx(cameraIso, zoom, outputScale, frame);
 }
 
 } // namespace detail
@@ -60,12 +47,11 @@ inline void appendVisibleBox(
     IRMath::vec3 halfExtents,
     IRMath::vec4 fillColor,
     IRMath::vec4 edgeColor,
-    float visualYaw,
+    IRMath::vec4 viewRotation,
     std::vector<WorldPrimitiveVertex> &triangles,
     std::vector<WorldPrimitiveVertex> &lines
 ) {
-    const auto faces =
-        IRMath::visibleTriplet(IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), -visualYaw));
+    const auto faces = IRMath::visibleTriplet(IRMath::quatInverse(viewRotation));
     std::array<bool, 64> emittedEdges{};
     const auto corner = [&](int bits) {
         IRMath::vec3 point = center;
@@ -92,6 +78,26 @@ inline void appendVisibleBox(
             lines.push_back({corner(b), edgeColor});
         }
     }
+}
+
+inline void appendVisibleBox(
+    IRMath::vec3 center,
+    IRMath::vec3 halfExtents,
+    IRMath::vec4 fillColor,
+    IRMath::vec4 edgeColor,
+    float visualYaw,
+    std::vector<WorldPrimitiveVertex> &triangles,
+    std::vector<WorldPrimitiveVertex> &lines
+) {
+    appendVisibleBox(
+        center,
+        halfExtents,
+        fillColor,
+        edgeColor,
+        IRMath::quatAxisAngle(IRMath::vec3(0, 0, 1), visualYaw),
+        triangles,
+        lines
+    );
 }
 
 // Same world depth band and yaw metric as the voxel framebuffer composite.
@@ -197,26 +203,53 @@ class DepthTestedPrimitives {
         );
         const float yaw = Camera::getYaw();
         const int subdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
-        const bool cardinalVoxelRaster = Camera::getYawSplit().second == 0.0f;
+        const bool spatial = IRRender::isSpatialViewEnabled();
+        const auto view = IRMath::orthographicViewBasis(Camera::getViewRotation());
+        const auto screenOrigin = IRRender::windowPointsToFramebufferPx(
+            IRRender::worldPos3DToWindowPointsExact(IRMath::vec3(0))
+        );
+        const auto screenStep = IRRender::getTriangleStepSizeScreen();
+        const bool cardinalVoxelRaster = !spatial && Camera::getYawSplit().second == 0.0f;
         m_vertices.clear();
         m_vertices.reserve(triangles.size() + lines.size());
         const auto append = [&](std::span<const WorldPrimitiveVertex> source) {
             for (const auto &vertex : source) {
-                auto screen = IRRender::windowPointsToFramebufferPx(
-                    IRRender::worldPos3DToWindowPointsExact(vertex.position_)
-                );
+                auto screen =
+                    spatial ? screenOrigin +
+                                  IRMath::projectOrthographic(vertex.position_, view) * screenStep
+                            : IRRender::windowPointsToFramebufferPx(
+                                  IRRender::worldPos3DToWindowPointsExact(vertex.position_)
+                              );
                 screen += cameraCorrection;
                 screen.y = static_cast<float>(IRRender::getViewport().y) - screen.y;
                 const auto clip = (screen - center) * 2.0f / extent;
                 m_vertices.push_back(
                     {IRMath::vec3(
                          clip,
-                         worldPrimitiveDepth(
-                             vertex.position_,
-                             yaw,
-                             subdivisions,
-                             cardinalVoxelRaster
-                         )
+                         spatial ? IRMath::clamp(
+                                       (IRMath::orthographicDepth(vertex.position_, view) *
+                                            subdivisions * IRRender::kDepthEncodeShift -
+                                        IRConstants::kTrixelDistanceMinDistance) /
+                                           static_cast<float>(
+                                               IRConstants::kTrixelDistanceMaxDistance -
+                                               IRConstants::kTrixelDistanceMinDistance
+                                           ),
+                                       static_cast<float>(
+                                           IRRender::kDepthForegroundCeil + 1 -
+                                           IRConstants::kTrixelDistanceMinDistance
+                                       ) /
+                                           static_cast<float>(
+                                               IRConstants::kTrixelDistanceMaxDistance -
+                                               IRConstants::kTrixelDistanceMinDistance
+                                           ),
+                                       1.0f
+                                   )
+                                 : worldPrimitiveDepth(
+                                       vertex.position_,
+                                       yaw,
+                                       subdivisions,
+                                       cardinalVoxelRaster
+                                   )
                      ),
                      vertex.color_}
                 );

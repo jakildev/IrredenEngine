@@ -208,7 +208,10 @@ kernel void IR_LIGHTING_KERNEL_NAME(
     const int faceId =
         sourceMode ? int(sourceFaces.faces[sourceIndex].centerAndFace.w) : voxelFrameData.visibleFaceIds[slot] ^ decodeFlipRoute(encoded, voxelFrameData.perAxisRoute);
     float3 worldNormal = faceOutwardNormal6(faceId);
-    if (frameData.normalOptions.x != 0 && !detachedCanvas && voxelFrameData.perAxisRoute == 0 && voxelFrameData.residualYaw != 0.0f) {
+    if (frameData.normalOptions.x != 0 && !detachedCanvas && voxelFrameData.perAxisRoute == 0 && spatialViewEnabled(voxelFrameData.cameraViewRotation)) {
+        worldNormal = rotateByQuat(faceOutwardNormal(slot), voxelFrameData.cameraViewRotation);
+        if (decodeFlipRoute(encoded, voxelFrameData.perAxisRoute) != 0) worldNormal = -worldNormal;
+    } else if (frameData.normalOptions.x != 0 && !detachedCanvas && voxelFrameData.perAxisRoute == 0 && voxelFrameData.residualYaw != 0.0f) {
         worldNormal = rotateYawZInv(faceOutwardNormal(slot), voxelFrameData.visualYaw);
         if (decodeFlipRoute(encoded, voxelFrameData.perAxisRoute) != 0) worldNormal = -worldNormal;
     }
@@ -386,7 +389,9 @@ kernel void IR_LIGHTING_KERNEL_NAME(
                 ? perAxisCellToWorld3DSubCell(
                     pixel, encoded, faceId, voxelFrameData.perAxisStoreFrame
                 )
-                : (voxelFrameData.residualYaw != 0.0
+                : (spatialViewEnabled(voxelFrameData.cameraViewRotation)
+                    ? trixelCanvasPixelToWorld3DSpatial(pixel, rawDepth, voxelFrameData.trixelCanvasOffsetZ1, voxelFrameData.frameCanvasOffset, voxelFrameData.voxelRenderOptions, voxelFrameData.cameraViewRotation)
+                    : voxelFrameData.residualYaw != 0.0
                     ? trixelCanvasPixelToWorld3DSmoothYaw(
                           pixel,
                           rawDepth,

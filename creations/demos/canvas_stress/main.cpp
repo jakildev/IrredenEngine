@@ -142,6 +142,9 @@ struct CanvasStressSettings {
     // to reproduce the gap class on the orbit-ring re-voxelize shapes.
     int subdivisions_ = 0;
     float cameraYaw_ = 0.0f;
+    bool spatialView_ = false;
+    float cameraElevation_ = IRMath::OrbitAngles{}.elevation_;
+    float cameraRoll_ = 0.0f;
     bool autoRotate_ = true;
     bool hoverCanarySession_ = false;
     bool fullRotate_ = false;
@@ -402,8 +405,9 @@ constexpr Color kCompareColors[3]{
 };
 constexpr const char *kCompareLabels[3]{"GRID spin", "world Z-yaw", "detached SO(3)"};
 // World position of comparison cell `i` (0..2), centered row at iso.y = -2D.
-inline vec3 compareCellWorld(int index) {
-    return kCompareCenterWorld + static_cast<float>(index - 1) * kCompareRowStep;
+inline vec3 compareCellWorld(int index, bool spatialView) {
+    return kCompareCenterWorld + static_cast<float>(index - 1) * kCompareRowStep +
+           (spatialView ? vec3(0, 0, -6) : vec3(0));
 }
 
 // Sun / lighting tuned for the canvas_stress layout — flat ground plane
@@ -2201,6 +2205,9 @@ void registerArgs() {
         "Fix camera rotation pivot at the world origin; interactive orbit switches to camera center"
     );
     args.number("--yaw", "Initial camera yaw, radians", g_settings.cameraYaw_);
+    args.flag("--spatial-view", "Use full orthographic engine view rotation");
+    args.number("--elevation", "Spatial view elevation in radians", g_settings.cameraElevation_);
+    args.number("--roll", "Spatial view roll in radians", 0.0f);
     args.integer(
         "--subdivisions",
         "Force base voxel-render subdivision factor (#2043 repro; needs > 1)",
@@ -2529,6 +2536,9 @@ void applyArgs() {
     IRArgs::Parser &args = IREngine::args();
     g_settings.hoverCanarySession_ = args.getEnum("--gui-session") == "hover_canary";
     g_settings.cameraYaw_ = args.getFloat("--yaw");
+    g_settings.spatialView_ = args.getFlag("--spatial-view");
+    g_settings.cameraElevation_ = args.getFloat("--elevation");
+    g_settings.cameraRoll_ = args.getFloat("--roll");
     // Force base subdivisions when requested. 0 leaves the engine
     // default (1) untouched, so a flagless run stays byte-identical.
     g_settings.subdivisions_ = args.getInt("--subdivisions");
@@ -2759,8 +2769,19 @@ int main(int argc, char **argv) {
     }
 
     IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
+    if (g_settings.spatialView_) {
+        IRPrefab::Camera::setZoomContinuous(true);
+    }
     IRRender::setCameraZoom(g_settings.initialZoom_);
     IRPrefab::Camera::setYaw(g_settings.cameraYaw_);
+    if (g_settings.spatialView_) {
+        IRPrefab::Camera::setSpatialViewEnabled(true);
+        IRPrefab::Camera::setOrbitAngles(
+            g_settings.cameraYaw_,
+            g_settings.cameraElevation_,
+            g_settings.cameraRoll_
+        );
+    }
     if (IREngine::args().getFlag("--pivot-origin")) {
         IRRender::setRotationPivotMode(IRRender::RotationPivotMode::ORIGIN);
     }
@@ -2968,7 +2989,6 @@ void initSystems() {
                         IREntity::getComponent<C_TriangleCanvasTextures>(
                             IRRender::getActiveCanvasEntity()
                         );
-                    const float yaw = IRPrefab::Camera::getYaw();
                     const int sub =
                         IRRender::getSubdivisionMode() != IRRender::SubdivisionMode::NONE
                             ? IRMath::max(IRRender::getVoxelRenderEffectiveSubdivisions(), 1)
@@ -2978,7 +2998,9 @@ void initSystems() {
                     const ivec2 cameraTerm =
                         ivec2(IRMath::floor(IRRender::getEffectiveCameraIso() * subF));
                     for (int i = 0; i < 3; ++i) {
-                        const vec2 iso = IRMath::pos3DtoPos2DIsoYawed(compareCellWorld(i), yaw);
+                        const vec2 iso = IRRender::projectWorldToView(
+                            compareCellWorld(i, g_settings.spatialView_)
+                        );
                         const ivec2 cellTrixel =
                             originOffset + cameraTerm + IRMath::roundVec(iso * subF);
                         const ivec2 labelSize = IRRender::measureText(kCompareLabels[i]);
@@ -3224,6 +3246,20 @@ void initSystems() {
         // (engine/video/CLAUDE.md "Auto-screenshot helper"). numShots_ is
         // already derived from the vector's own size, so there is no
         // shots_/numShots_ pairing seam here to close.
+        if (g_settings.spatialView_) {
+            for (auto &shot : g_allShots) {
+                shot.hasViewRotation_ = true;
+                shot.viewRotation_ = IRMath::uprightOrbitRotation(
+                    shot.yawRadians_,
+                    IRMath::clamp(
+                        g_settings.cameraElevation_,
+                        -IRMath::kHalfPi + .01f,
+                        IRMath::kHalfPi - .01f
+                    ),
+                    g_settings.cameraRoll_
+                );
+            }
+        }
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         // Base suite: 60 settle frames between shots — entities advance ~24° at
@@ -4437,7 +4473,7 @@ void initEntities() {
         // Cell 0 — GRID-attached spin: self-spins about Z; REBUILD_GRID_VOXELS
         // re-rasterizes its rotated cells into the shared world pool each frame.
         IREntity::createEntity(
-            C_LocalTransform{compareCellWorld(0)},
+            C_LocalTransform{compareCellWorld(0, g_settings.spatialView_)},
             C_RotationMode{RotationMode::GRID},
             C_AutoSpin{vec3(0.0f, 0.0f, 1.0f), g_settings.noSpin_ ? 0.0f : kGridSpinRadPerFrame},
             C_VoxelSetNew{kCompareCubeSize, kCompareColors[0], true}
@@ -4445,19 +4481,22 @@ void initEntities() {
         // Cell 1 — world-Z-yaw GRID: static voxels (no C_AutoSpin); its only
         // motion is the camera Z-yaw via the main canvas per-axis world deform.
         IREntity::createEntity(
-            C_LocalTransform{compareCellWorld(1)},
+            C_LocalTransform{compareCellWorld(1, g_settings.spatialView_)},
             C_RotationMode{RotationMode::GRID},
             C_VoxelSetNew{kCompareCubeSize, kCompareColors[1], true}
         );
         // Cell 2 — DETACHED SO(3): private-canvas re-voxelize bake, self-spinning
         // about an off-cardinal axis (the sole shipped detached SO(3) renderer).
-        spawnDetachedVoxelObject(
+        const EntityId comparisonCanvas = spawnDetachedVoxelObject(
             100,
-            compareCellWorld(2),
+            compareCellWorld(2, g_settings.spatialView_),
             IRMath::normalize(vec3(1.0f, 0.6f, 0.4f)),
             g_settings.noSpin_ ? 0.0f : kReVoxSpinPerFrame,
             kCompareColors[2]
         );
+        if (g_settings.spatialView_) {
+            IREntity::getComponent<C_EntityCanvas>(comparisonCanvas).depthPriority_ = 0;
+        }
     }
 
     IR_LOG_INFO(

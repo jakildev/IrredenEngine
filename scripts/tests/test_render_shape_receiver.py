@@ -37,8 +37,11 @@ template<class T> struct V3 {
  V3 operator/(T b)const{return {x/b,y/b,z/b};}
  V3 operator/(V3 b)const{return {x/b.x,y/b.y,z/b.z};}
  V3 operator-()const{return {-x,-y,-z};}
+ T& operator[](int i){return i==0?x:i==1?y:z;}
+ T operator[](int i)const{return i==0?x:i==1?y:z;}
 };
 using vec2=V2<float>; using ivec2=V2<int>; using vec3=V3<float>; using ivec3=V3<int>;
+template<class T> V3<T> operator*(T a,V3<T> b){return b*a;}
 vec3 abs(vec3 v){return {abs(v.x),abs(v.y),abs(v.z)};}
 float dot(vec3 a,vec3 b){return a.x*b.x+a.y*b.y+a.z*b.z;}
 vec3 clamp(vec3 v,vec3 lo,vec3 hi){return {
@@ -48,7 +51,16 @@ struct ShapeDescriptor {vec4 worldPosition,params,rotation; uint shapeType=0,fla
 struct ShapeProjectionData {
  ivec2 voxelRenderOptions,trixelCanvasOffsetZ1; vec2 frameCanvasOffset;
  int smoothYawEnabled=0,latticeShapes=0; float visualYaw=0,rasterYaw=0,residualYaw=0;
+ vec4 cameraViewRotation{vec3(0),0};
 };
+bool spatialViewEnabled(vec4 q){return dot(q.xyz,q.xyz)+q.w*q.w>.5f;}
+vec3 rotateByQuat(vec3 p,vec4){return p;}
+vec3 rotateByInverseQuat(vec3 p,vec4){return p;}
+vec2 spatialViewIso(vec3 p,vec4){return {-p.x+p.y,-p.x-p.y+2*p.z};}
+float spatialViewDepth(vec3 p,vec4){return p.x+p.y+p.z;}
+vec3 viewToWorldVector(vec3 p,vec4,float c,float s){
+ return {c*p.x-s*p.y,s*p.x+c*p.y,p.z};
+}
 const uint SHAPE_BOX=0;
 ivec3 roundHalfUp(vec3 v){return {int(floor(v.x+.5f)),int(floor(v.y+.5f)),int(floor(v.z+.5f))};}
 ivec2 roundHalfUp(vec2 v){return {int(floor(v.x+.5f)),int(floor(v.y+.5f))};}
@@ -515,9 +527,11 @@ struct vec2 {float x,y; vec2(float a,float b):x(a),y(b){}
  template<class T> vec2(T v):x(v.x),y(v.y){} };
 struct vec3 {int value=0;};
 struct vec4 {float w;vec4(float,float,float,float d):w(d){}};
+vec4 cameraViewRotation{0,0,0,0};
+bool spatialViewEnabled(vec4){return false;}
 struct Tile {int shapeIndex;};
 struct Frame {int shapeCount;struct {int x=1,y=1;} voxelRenderOptions;
- int smoothYawEnabled=0,latticeShapes=0;};
+ int smoothYawEnabled=0,latticeShapes=0;vec4 cameraViewRotation{0,0,0,0};};
 const uint SHAPE_BOX=0;
 struct ShapeDescriptor {int value;uint shapeType=1,flags=0;
  vec4 rotation{0,0,0,1};operator int()const{return value;}};
@@ -619,6 +633,8 @@ int main(){
             outer = re.search(r"if \((smoothYaw && !latticeWalk)\)", producer).group(1)
             inner = re.search(r"if \(([^\n]+)\) \{\s*boxFaceSlot = shapeBoxFaceSlot",
                               producer).group(1)
+            inner = inner.replace("frameData.cameraViewRotation",
+                                  "receiverFrame.cameraViewRotation")
             harness += extract_function(data, "shapeHasEntityRotation").replace("float4", "vec4")
             harness += (
                 "\nbool emitterUsesWorldFaceSlot(ShapeDescriptor shape,Frame receiverFrame){\n"

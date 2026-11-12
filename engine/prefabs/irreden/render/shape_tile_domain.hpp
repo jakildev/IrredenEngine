@@ -29,6 +29,7 @@ struct ShapeTileYaw {
     float visualYaw_ = 0.0f;
     float yawCosVisual_ = 1.0f;
     float yawSinVisual_ = 0.0f;
+    IRMath::vec4 cameraViewRotation_ = IRMath::vec4(0.0f);
 };
 
 // A shape's dispatch tiles: tile (tx, ty) covers the iso pixels
@@ -64,6 +65,16 @@ inline ShapeIsoRect shapeTileIsoBounds(
         const vec3 ay = IRMath::abs(rotateVectorByQuat(vec3(0, boundingHalf.y, 0), desc.rotation));
         const vec3 az = IRMath::abs(rotateVectorByQuat(vec3(0, 0, boundingHalf.z), desc.rotation));
         boundingHalf = ax + ay + az;
+    }
+    if (dot(yaw.cameraViewRotation_, yaw.cameraViewRotation_) > 0.5f) {
+        const auto inverse = quatInverse(yaw.cameraViewRotation_);
+        boundingHalf = abs(rotateVectorByQuat(vec3(boundingHalf.x, 0, 0), inverse)) +
+                       abs(rotateVectorByQuat(vec3(0, boundingHalf.y, 0), inverse)) +
+                       abs(rotateVectorByQuat(vec3(0, 0, boundingHalf.z), inverse));
+        const vec2 projected = pos3DtoPos2DIso(rotateVectorByQuat(worldPos * float(sub), inverse));
+        const ivec2 origin(roundHalfUp(projected.x), roundHalfUp(projected.y));
+        const ivec2 extent = ivec2(ceil(shapeIsoHalfExtent(boundingHalf * 2.0f))) * sub;
+        return {origin - extent - ivec2(2), origin + extent + ivec2(2)};
     }
     if (yaw.smoothYaw_) {
         boundingHalf = yawGrownIsoHalfExtent(boundingHalf, yaw.yawCosVisual_, yaw.yawSinVisual_);

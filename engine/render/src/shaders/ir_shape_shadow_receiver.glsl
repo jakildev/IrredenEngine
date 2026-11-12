@@ -22,10 +22,8 @@ bool shapeAnalyticShadowReceiver(ShapeDescriptor shape, ShapeProjectionData proj
         if (!sdfRaySphere(origin, direction, radius, -bound, bound, entry)) return false;
         viewOffset = origin + direction * entry;
     } else {
-        vec3 worldOrigin = vec3(yaw.x * origin.x - yaw.y * origin.y,
-                                  yaw.y * origin.x + yaw.x * origin.y, origin.z);
-        vec3 worldDirection = vec3(yaw.x * direction.x - yaw.y * direction.y,
-                                     yaw.y * direction.x + yaw.x * direction.y, direction.z);
+        vec3 worldOrigin = viewToWorldVector(origin, projection.cameraViewRotation, yaw.x, yaw.y);
+        vec3 worldDirection = viewToWorldVector(direction, projection.cameraViewRotation, yaw.x, yaw.y);
         vec3 localOrigin = worldOrigin;
         vec3 localDirection = worldDirection;
         if (shapeHasEntityRotation(shape.rotation)) {
@@ -45,8 +43,7 @@ bool shapeAnalyticShadowReceiver(ShapeDescriptor shape, ShapeProjectionData proj
                        threshold, nearDepth, farDepth, entry)) return false;
         viewOffset = origin + direction * entry;
     }
-    vec3 worldOffset = vec3(yaw.x * viewOffset.x - yaw.y * viewOffset.y,
-                            yaw.y * viewOffset.x + yaw.x * viewOffset.y, viewOffset.z);
+    vec3 worldOffset = viewToWorldVector(viewOffset, projection.cameraViewRotation, yaw.x, yaw.y);
     position = center + worldOffset;
     return true;
 }

@@ -52,6 +52,12 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // stage 1.
     uniform int feederSubCap;           // offset 200
     uniform int feederPassTailBase;     // offset 204
+    ivec4 overflowScratchLayout;
+    ivec4 overflowSortStep;
+    vec4 detachedViewToWorld;
+    ivec4 perAxisStoreFrame;
+    ivec4 fogCeilingEnabled;
+    vec4 cameraViewRotation;
 };
 
 // Finest Hi-Z downsampled level (conceptual mip 1) over last frame's canvas distances, R32I.
@@ -387,7 +393,10 @@ void main() {
                 // the deformed-face sqrt2 footprint (~2 iso px) so a voxel whose
                 // center is just off-screen but whose face reaches on-screen
                 // still rasterizes.
-                if (residualYaw != 0.0) {
+                if (spatialViewEnabled(cameraViewRotation)) {
+                    isoPos = roundHalfUp(spatialViewIso(vec3(voxelPosRaw) - kVoxelRasterCellAnchor, cameraViewRotation));
+                    cullMargin = 3;
+                } else if (residualYaw != 0.0) {
                     // Cell-anchor projection so the cull tests the
                     // same screen position the scatter renders at.
                     isoPos = roundHalfUp(

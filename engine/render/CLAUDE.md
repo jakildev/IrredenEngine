@@ -1,7 +1,5 @@
 # engine/render/ — trixel render pipeline
 
-## Working agreements
-
 ### What belongs in engine/render/ vs engine/prefabs/irreden/render/
 
 - `engine/render/` owns device and pipeline primitives every creation needs.
@@ -17,15 +15,9 @@
   [`.fleet/status/render-api-relocations.md`](../../.fleet/status/render-api-relocations.md);
   feature PRs do not edit that register.
 
-## Commands and validators
-
-### Verifying render changes
-
 Commands and validators: [validation index](../../docs/agents/VALIDATION.md).
 Image evidence: [`CODEX.md` § Rendering conversations](../../docs/agents/CODEX.md#rendering-conversations).
 Changes without a visual effect need no captures.
-
-## Pipeline contracts
 
 ### The pipeline, one frame
 
@@ -134,12 +126,14 @@ Changes without a visual effect need no captures.
 
 ## Camera and raster contracts
 
-### Iso-depth-axis invariant (world-camera Z-yaw-only for GRID)
+### Iso-depth-axis invariant
 
-- GRID rendering assumes world `(1,1,1)` is the iso-depth axis and supports
-  camera Z-yaw only. Pitch and roll invalidate integer raster, picking,
-  hitbox, drag, and SDF-cull shortcuts; DETACHED rendering is axis-agnostic.
-  See the [consumer map](../../docs/design/iso-depth-axis-invariant.md).
+- The default camera path retains cardinal storage plus continuous yaw.
+  Spatial view is opt-in on the camera: GRID stores world faces in a cardinal
+  frame and projects finite faces through the full view quaternion; SDFs and
+  world reconstruction use the same continuous view basis. Storage depth and
+  displayed view depth are distinct. See the
+  [projection contract](../../docs/design/iso-depth-axis-invariant.md).
 - World-content placement, world-anchored sprites and debug overlays read
   `getEffectiveCameraIso()`; lighting-grid anchoring deliberately uses the raw
   camera offset. The default pivot depth latches once in `beginFrame`; its
@@ -170,8 +164,6 @@ Changes without a visual effect need no captures.
   geometry expectations and profiling workloads:
   [voxel and SDF rendering](../../docs/design/voxel-and-sdf-rendering.md).
 
-## Lighting contracts
-
 ### Lighting culling invariants
 
 - Light-occlusion-grid construction iterates the full voxel pool and never
@@ -189,8 +181,6 @@ Changes without a visual effect need no captures.
   the [coverage design](../../docs/design/sun-shadow-bake-coverage.md) before
   changing the bake kernel or splat controls.
 - Cardinal voxel provenance, reconstruction and cascade units: [surface-sampling contract](../../docs/design/surface-shadow-sampling.md#settled-cardinal-voxel-receivers); the presentation receiver's coplanar-neighbour edge rule: [§](../../docs/design/surface-shadow-sampling.md#cardinal-presentation-receivers).
-
-## Performance and lifecycle pitfalls
 
 ### Gotchas
 

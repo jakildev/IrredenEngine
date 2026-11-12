@@ -65,6 +65,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // origin, .z = cardinal index of the view the key positions are rotated
     // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
     uniform ivec4 perAxisStoreFrame;
+    ivec4 _fogCeilingPadding;
+    vec4 cameraViewRotation;
 };
 
 // Sun lighting state. Only `aoEnabled` is read by this shader; the block
@@ -149,6 +151,8 @@ vec3 singleCanvasPixelToWorld3D(ivec2 pixel, int rawDepth, int cardinalIndex) {
         finiteCoverage
     );
 #endif
+    if (spatialViewEnabled(cameraViewRotation))
+        return trixelCanvasPixelToWorld3DSpatial(pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cameraViewRotation);
 #if IR_AO_SMOOTH_YAW
     return trixelCanvasPixelToWorld3DSmoothYaw(
         pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, visualYaw
@@ -205,6 +209,8 @@ void main() {
     // and POS of each axis).
     int flip = decodeFlipRoute(encoded, perAxisRoute);
     int faceId = visibleFaceIds[slot] ^ flip;
+    const bool spatialSingle = perAxisRoute == 0 && spatialViewEnabled(cameraViewRotation);
+    if (spatialSingle) faceId = (slot * 2) ^ flip;
     // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
     // (per-axis / single-canvas, and the flip carrier).
     int rawDepth = decodeDepthRoute(encoded, perAxisRoute);
@@ -223,6 +229,7 @@ void main() {
     // direction lands on the canvas pixel that actually holds the
     // +tangent neighbour at this cardinal.
     vec3 worldOutward = vec3(faceOutwardNormal6I(faceId));
+    if (spatialSingle) worldOutward = rotateByQuat(worldOutward, cameraViewRotation);
     ivec3 t1, t2;
     // The tangent sign doesn't matter (AO samples ±t1, ±t2), so both
     // polarities of a face axis share one pair.
@@ -269,6 +276,7 @@ void main() {
 
         int neighbourFaceId = visibleFaceIds[decodeSlot(neighbourEncoded)] ^
             decodeFlipRoute(neighbourEncoded, perAxisRoute);
+        if (spatialSingle) neighbourFaceId = (decodeSlot(neighbourEncoded) * 2) ^ decodeFlipSingle(neighbourEncoded);
         if (neighbourFaceId == faceId) continue;
 
         int neighbourRawDepth = decodeDepthRoute(neighbourEncoded, perAxisRoute);
@@ -287,7 +295,7 @@ void main() {
         // top meeting its own riser) has one facing term <= 0 and drops out.
         float receiverFacing = max(dot(separation, worldOutward), 0.0);
         float occluderFacing = max(
-            dot(-separation, vec3(faceOutwardNormal6I(neighbourFaceId))), 0.0
+            dot(-separation, spatialSingle ? rotateByQuat(vec3(faceOutwardNormal6I(neighbourFaceId)), cameraViewRotation) : vec3(faceOutwardNormal6I(neighbourFaceId))), 0.0
         );
         float facing = receiverFacing * occluderFacing;
         if (facing <= 0.0) continue;
