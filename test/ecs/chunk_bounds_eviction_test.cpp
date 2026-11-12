@@ -655,6 +655,68 @@ TEST_F(ChunkBoundsEvictionTest, PendingInvalidationAdmitsUpdateWork) {
         << "once rebuilt the query is the ordinary overlap answer again";
 }
 
+// The yaw branch rebuilds every chunk's bounds from current world bounds, so
+// it owns the cardinal pending state just as the full cardinal rebuild does:
+// after it, the gate is the overlap answer against the yawed bounds.
+constexpr float kGateYaw = 0.6f;
+
+IsoBounds2D yawedViewportAround(vec3 worldPos, float yaw, float halfExtent = 4.0f) {
+    // The yaw branch projects a chunk's world AABB shifted half a cell.
+    const vec2 iso = IRMath::pos3DtoPos2DIsoYawed(worldPos - vec3(0.5f), yaw);
+    return IsoBounds2D{iso - vec2(halfExtent), iso + vec2(halfExtent)};
+}
+
+TEST_F(ChunkBoundsEvictionTest, YawRebuildAnswersTheGateFromItsBounds) {
+    const vec3 nearPose(2, 2, 2);
+    C_VoxelPool pool = makeTwoChunkPool(nearPose); // allocation arms every chunk
+    pool.rebuildChunkBounds(CardinalIndex::k0, true, kGateYaw);
+
+    const IsoBounds2D atNear = yawedViewportAround(nearPose, kGateYaw);
+    EXPECT_FALSE(pool.isRangeVisible(kChunk, kChunk, atNear))
+        << "a chunk the yaw rebuild placed outside the viewport must be rejected";
+    EXPECT_TRUE(pool.isRangeVisible(0, kChunk, atNear));
+}
+
+TEST_F(ChunkBoundsEvictionTest, YawWriteAdmitsUntilTheNextYawRebuild) {
+    const vec3 nearPose(2, 2, 2);
+    C_VoxelPool pool = makeTwoChunkPool(nearPose);
+    pool.rebuildChunkBounds(CardinalIndex::k0, true, kGateYaw);
+    (void)pool.consumeCullRebuildCounters();
+    const IsoBounds2D atNear = yawedViewportAround(nearPose, kGateYaw);
+    ASSERT_FALSE(pool.isRangeVisible(kChunk, kChunk, atNear));
+
+    notifyPositionsRewritten(pool, static_cast<std::size_t>(kChunk), 1);
+    EXPECT_TRUE(pool.isRangeVisible(kChunk, kChunk, atNear))
+        << "a write after the rebuild is admitted until bounds catch up";
+
+    pool.rebuildChunkBounds(CardinalIndex::k0, true, kGateYaw + 0.1f);
+    EXPECT_EQ(pool.consumeCullRebuildCounters().worldChunks_, 1u);
+    EXPECT_FALSE(
+        pool.isRangeVisible(kChunk, kChunk, yawedViewportAround(nearPose, kGateYaw + 0.1f))
+    ) << "the next yaw rebuild returns the range to the overlap answer";
+}
+
+TEST_F(ChunkBoundsEvictionTest, CardinalRebuildAfterYawWritesRederivesEveryChunk) {
+    const vec3 nearPose(2, 2, 2);
+    const vec3 movedPose(-60, 90, 3);
+    C_VoxelPool pool = makeTwoChunkPool(nearPose);
+    pool.rebuildChunkBounds(CardinalIndex::k90, false, 0.0f);
+    pool.rebuildChunkBounds(CardinalIndex::k90, true, kGateYaw);
+
+    for (int i = 0; i < kChunk; ++i) {
+        pool.getPositionGlobals()[static_cast<std::size_t>(kChunk + i)].pos_ = movedPose;
+    }
+    notifyPositionsRewritten(pool, static_cast<std::size_t>(kChunk), kChunk);
+    pool.rebuildChunkBounds(CardinalIndex::k90, true, kGateYaw);
+    (void)pool.consumeCullRebuildCounters();
+
+    pool.rebuildChunkBounds(CardinalIndex::k90, false, 0.0f);
+    EXPECT_EQ(pool.consumeCullRebuildCounters().cardinalChunks_, 2u)
+        << "a write the yaw branch consumed must still reach the cardinal cache";
+    expectBoundsMatchOracle(pool, 0, CardinalIndex::k90);
+    expectBoundsMatchOracle(pool, 1, CardinalIndex::k90);
+}
+
 // A static re-voxelize bound owns every chunk's rotation-independent cardinal
 // answer. Its early-return rebuild must consume the cardinal pending bits;
 // otherwise conservative admission makes every detached range remain visible.
