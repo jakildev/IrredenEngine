@@ -504,6 +504,25 @@ Two operational notes this change surfaced, both worth carrying forward:
 
 ---
 
+## Winning-voxel census
+
+`IRPerfGrid --count-voxel-winners --auto-profile 60` adds a timing-free
+`Winners` row and `Winner ratio` to the profile report. On cardinal world
+canvases it elects the smallest pool index at each settled depth texel, then
+`c_voxel_winner_count` counts the distinct elected indices with an atomic
+bitset. Repeated texels, faces and workgroups contribute only once per voxel.
+The GLSL and Metal kernels write indirect parameter word 6; a completed
+submission's cull-statistics readback pairs that count with the same
+dispatch's admitted visible candidates. Unmeasured dispatches do not enter
+the ratio's denominator.
+
+This census excludes shadow feeders, detached canvases, re-voxelized canvases
+and the rotating path. The million control's finite-face shadow path has no
+feeders, so its visible candidates are the entire admitted set. The counter
+does not enable occlusion culling or change its default. Its extra election
+and count pass are diagnostic work: do not use an instrumented run as a
+performance baseline.
+
 ## See also
 
 - [`voxel-face-rasterization.md`](voxel-face-rasterization.md) — the
