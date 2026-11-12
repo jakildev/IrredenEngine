@@ -11,6 +11,10 @@
 # so no stub outlives a killed suite. Elapsed time never picks a
 # schedule or turns a slow claimant into a result; the guard
 # (CLAIM_RACE_GUARD_SECS, default 60) only breaks a deadlock and reports it.
+# Each claimant runs in its own process group, so cleanup signals every
+# descendant rather than only the launching subshell; a group that outlives
+# its claimant, or the guard, gets SIGTERM and then SIGKILL, each followed by
+# a bounded drain (CLAIM_RACE_GRACE_SECS, default 10).
 #
 # Test seams, honoured by race_stage inside the stub (space-separated lists):
 #   CLAIM_RACE_DELAY="<claimant>:<stage>:<secs>"   sleep before the first <stage>
@@ -106,18 +110,23 @@ race_reset() {
 # race_launch <name> <command>...
 #   Run <command> in the background with CLAIMANT=<name>. Its combined output
 #   lands in $CLAIM_RUN/<name>.out; its exit code lands in <name>.rc last and
-#   atomically, so an existing .rc means the claimant has exited.
+#   atomically, so an existing .rc means the claimant has exited. Job control
+#   is on only for the launch, making the subshell a process-group leader
+#   whose pid is the group id; stdin is /dev/null, as without job control.
 race_launch() {
-    local name="$1"
+    local name="$1" monitor=0
     shift
+    [[ $- == *m* ]] && monitor=1
+    set -m
     (
         rc=0
         CLAIMANT="$name" "$@" >"$CLAIM_RUN/$name.out" 2>&1 || rc=$?
         printf '%s\n' "$rc" > "$CLAIM_RUN/$name.rc.tmp"
         mv "$CLAIM_RUN/$name.rc.tmp" "$CLAIM_RUN/$name.rc"
-    ) &
-    RACE_NAMES="$RACE_NAMES $name"
+    ) </dev/null &
     RACE_PIDS="$RACE_PIDS $!"
+    (( monitor )) || set +m
+    RACE_NAMES="$RACE_NAMES $name"
 }
 
 race_rc() {
@@ -158,40 +167,61 @@ race_all_exited() {
 
 # race_finish
 #   Wait for every claimant to exit. On guard expiry, abort the barriers and
-#   give the claimants a grace period to unwind before killing them.
+#   give the claimants a grace period to unwind. Then reap every claimant's
+#   process group: a group still live after its claimant exited is reported
+#   in RACE_BROKEN, and no member survives the call unless it survives
+#   SIGKILL, which is reported too.
 race_finish() {
-    local deadline=$((SECONDS + ${CLAIM_RACE_GUARD_SECS:-60})) pid grace=0
+    local deadline=$((SECONDS + ${CLAIM_RACE_GUARD_SECS:-60})) grace=0 reaped=1 pid name
     until race_all_exited; do
         if (( SECONDS >= deadline )); then
-            if (( grace )); then
-                race_kill_survivors
-                break
-            fi
+            (( grace )) && break
             RACE_BROKEN="${RACE_BROKEN:+$RACE_BROKEN; }deadlock guard expired before every claimant exited"
             race_abort
             grace=1
-            deadline=$((SECONDS + 10))
+            deadline=$((SECONDS + ${CLAIM_RACE_GRACE_SECS:-10}))
         fi
         sleep 0.01
     done
+    if race_all_exited; then
+        for pid in $RACE_PIDS; do wait "$pid" 2>/dev/null || true; done
+        if (( $(race_live_count) > 0 )); then
+            RACE_BROKEN="${RACE_BROKEN:+$RACE_BROKEN; }claimant processes outlived their claimant"
+        fi
+    fi
+    race_kill_survivors || reaped=0
+    for name in $RACE_NAMES; do
+        [[ -e "$CLAIM_RUN/$name.rc" ]] || printf '143\n' > "$CLAIM_RUN/$name.rc"
+    done
+    (( reaped )) || return 0
     for pid in $RACE_PIDS; do wait "$pid" 2>/dev/null || true; done
 }
 
 # race_kill_survivors
-#   SIGTERM every launched subshell and record rc 143 for each claimant that
-#   never wrote its own, so callers always read a numeric .rc.
+#   SIGTERM every live claimant process group, then SIGKILL whatever is left,
+#   each followed by a bounded drain. Fail, recording it in RACE_BROKEN, if a
+#   member survives SIGKILL; the caller must not then wait on its subshell.
 race_kill_survivors() {
-    local pid name
-    for pid in $RACE_PIDS; do kill "$pid" 2>/dev/null || true; done
-    for name in $RACE_NAMES; do
-        [[ -e "$CLAIM_RUN/$name.rc" ]] || printf '143\n' > "$CLAIM_RUN/$name.rc"
+    local sig pid deadline
+    for sig in TERM KILL; do
+        (( $(race_live_count) > 0 )) || return 0
+        for pid in $RACE_PIDS; do kill -"$sig" -- "-$pid" 2>/dev/null || true; done
+        deadline=$((SECONDS + ${CLAIM_RACE_GRACE_SECS:-10}))
+        while (( $(race_live_count) > 0 && SECONDS < deadline )); do sleep 0.05; done
     done
+    (( $(race_live_count) > 0 )) || return 0
+    RACE_BROKEN="${RACE_BROKEN:+$RACE_BROKEN; }$(race_live_count) claimant process group(s) survived SIGKILL"
+    return 1
 }
 
+# race_live_count
+#   Claimant process groups with a live member. Bash reaps each exited
+#   subshell itself, so a dead claimant's group drops out once its
+#   descendants are gone.
 race_live_count() {
     local pid count=0
     for pid in $RACE_PIDS; do
-        kill -0 "$pid" 2>/dev/null && count=$((count + 1))
+        kill -0 -- "-$pid" 2>/dev/null && count=$((count + 1))
     done
     printf '%s\n' "$count"
 }

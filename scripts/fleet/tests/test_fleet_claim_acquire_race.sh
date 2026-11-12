@@ -273,6 +273,56 @@ assert_eq "$(race_rc alpha)" 1 "the waiting claimant exits once the schedule is 
 assert_eq "$(race_rc beta)" 1 "the held claimant exits once the schedule is abandoned"
 assert_eq "$(race_live_count)" 0 "no claimant outlives the abandoned schedule"
 
+# stubborn_claimant: waits on a descendant that ignores SIGTERM and never
+# polls the abort marker, so only the guard's escalation can end it.
+stubborn_claimant() {
+    bash -c 'trap "" TERM; while :; do sleep 0.1; done' &
+    printf '%s\n' "$!" > "$CLAIM_RUN/$CLAIMANT.child"
+    wait
+}
+
+echo "the deadlock guard reaps a claimant's signal-ignoring descendant"
+reset_fixture
+export CLAIM_RACE_GUARD_SECS=1 CLAIM_RACE_GRACE_SECS=1
+race_launch alpha stubborn_claimant
+race_wait_for alpha test -s "$CLAIM_RUN/alpha.child" || true
+race_finish
+unset CLAIM_RACE_GUARD_SECS CLAIM_RACE_GRACE_SECS
+stubborn_child=$(cat "$CLAIM_RUN/alpha.child")
+assert_contains "$RACE_BROKEN" "deadlock guard expired before every claimant exited" "the wedged claimant trips the guard"
+assert_absent "$RACE_BROKEN" "survived SIGKILL" "SIGKILL ends the signal-ignoring descendant"
+assert_eq "$(race_rc alpha)" 143 "the killed claimant reads a numeric rc"
+assert_eq "$(race_live_count)" 0 "no member of the claimant's process group outlives the guard"
+if ! kill -0 "$stubborn_child" 2>/dev/null; then
+    ok "the signal-ignoring descendant is gone once the guard returns"
+else
+    bad "descendant $stubborn_child outlived the deadlock guard"
+    kill -KILL "$stubborn_child" 2>/dev/null || true
+fi
+
+# leaky_claimant: exits cleanly but leaves a background child running.
+leaky_claimant() {
+    sleep 30 &
+    printf '%s\n' "$!" > "$CLAIM_RUN/$CLAIMANT.child"
+}
+
+echo "a descendant that outlives its exited claimant is reported and reaped"
+reset_fixture
+export CLAIM_RACE_GRACE_SECS=1
+race_launch alpha leaky_claimant
+race_finish
+unset CLAIM_RACE_GRACE_SECS
+leaked_child=$(cat "$CLAIM_RUN/alpha.child")
+assert_eq "$(race_rc alpha)" 0 "the leaky claimant itself exits cleanly"
+assert_contains "$RACE_BROKEN" "claimant processes outlived their claimant" "the leaked descendant is reported"
+assert_eq "$(race_live_count)" 0 "the leaked descendant's process group is reaped"
+if ! kill -0 "$leaked_child" 2>/dev/null; then
+    ok "the leaked descendant is gone once race_finish returns"
+else
+    bad "descendant $leaked_child outlived race_finish"
+    kill -KILL "$leaked_child" 2>/dev/null || true
+fi
+
 run_single() {
     local mode="$1" expected="$2" message="$3"
     reset_fixture
