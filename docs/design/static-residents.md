@@ -26,8 +26,9 @@ system and reader may assume about it.
   the global modifiers, while it is settling restarts the wait. No second
   code path computes derived state: a settled entity holds exactly what the
   ordinary systems last wrote. Only the engine can add
-  `C_Settled`: the one call that attaches it re-checks the rule, and every
-  public C++, Lua and snapshot lane refuses the tag.
+  `C_Settled`: the one call that attaches it re-checks the rule, every
+  public C++, Lua and snapshot lane refuses the tag, and the private
+  archetype-move primitives below those lanes assert it.
 - Every engine mutator that can change a static entity's inputs reaches the
   entity and thaws or resettles it, including the `C_VoxelSetNew` methods,
   which find it through the owner id the set already stores, and the
@@ -164,6 +165,34 @@ restricted component.
 | By id: `addComponentDynamic` (Lua `components` tables and every name-resolved attach) and `getOrCreateSingletonByComponentId` | The call reads the table bit. On a restricted id it changes nothing and logs an error. The test is an ordinary branch, so a release build refuses too; an `IR_ASSERT` beside it fails in an assert build. |
 | Snapshot load: `findCreateArchetypeNode`, then `restoreEntitiesBatch` | `C_Settled` is `IR_SAVE_OPT_OUT`, so no save names it. The loader removes any restricted id from a resolved type before it builds the node, so a hand-edited file loads the entity settling (or dynamic, if it lacks `C_Static`). `restoreEntitiesBatch` refuses a node whose cached bit is set, the same way as the by-id lanes. |
 | Lua | `C_Settled` has no binding in the component pack, so `C_Settled = {}` in a `components` table is an unknown component. A name that resolves anyway reaches `addComponentDynamic` and is refused there. |
+
+The table is the whole public attach surface of `EntityManager` and its
+`IREntity::` wrappers once one member below it is closed:
+
+- **`insertNewComponent<T>(EntityRecord &, const T &)`** is public today
+  and moves the entity into the destination archetype itself; its only
+  caller is `setComponent`. It becomes `private`, so no caller outside the
+  class reaches that move without passing `setComponent`'s constraint, and
+  it takes the same `requires IREntity::GenericAttachable<T>` constraint, so
+  a later in-class caller is refused the same way.
+- **The other public members that move an entity** add no component id to
+  its type: the relation calls (`setRelation`, `setParent`, `clearParent`,
+  `detachChildren`) add a relation, and the removals drop ids.
+  `stageStructuralChange` runs a closure, which reaches an archetype only
+  through the lanes in the table. `findCreateArchetypeNode` builds a node
+  with no rows, and `getComponentData<T>(node)` returns an existing column
+  of a node, so neither puts a component on an entity.
+
+The invariant also holds below the lanes. The private primitives every
+attach reaches, `moveEntityByArchetype`, `insertEntityToNode` and
+`inserComponentsBatch`, check the destination node's cached restricted bit.
+When it is set and the source node's is not (a creation has no source), the
+move must come from the apply step of `attachEngineComponentDeferred`,
+which passes the primitive a private flag; any other caller fails an
+`IR_ASSERT`. Moves within settled archetypes, where both bits are set, pass.
+No public call reaches that assert, which is the property. It is there so a
+lane added later without the constraint fails at its first use in any test
+or demo instead of opening silently.
 
 Naming `C_Settled` in a filter or a read stays legal on every lane:
 `Exclude<C_Settled>`, an exclude list, `getArchetype`, `hasComponent`,
@@ -968,7 +997,7 @@ startup.
 | `C_Static`, `C_Settled` | System, `engine/system/include/irreden/system/components/component_static.hpp` | The exclusion adds `C_Static`'s id to effective exclude archetypes and the round tracker reads `C_Settled` in declared ones. The system layer resolves both with `IREntity::getComponentType<…>()`. |
 | The exclusion: one function, `IRSystem::detail::applyStaticExclusion(declaredExclude, writeGuard, deriving)`, which returns the effective exclude archetype. `writeGuard` is the highest `kStaticGuard` over the lane's write set (`INPUT` above `DERIVED` above `NONE`). `deriving` is computed by the caller: a system lane passes "declared set contains `C_Settled`, or `GatesSettled`"; a query lane passes `false`. | System | Every lane below calls it. It is the only implementation. It is a pure function of its arguments, so it can be re-run at any time. |
 | Declared and effective exclusions: `C_SystemEvent<TICK>::declaredExcludeArchetype_` beside the existing `excludeArchetype_`; per system, the `writeGuard` and the `GatesSettled` bit, recorded once at creation | System, `component_system_event.hpp` and `SystemManager` | The policy needs to know which exclusions the author declared. One stored filter cannot tell it (the paragraph after the lanes table). |
-| `IREntity::EngineAttach<T>`, `EngineAttachKey<T>`, the `GenericAttachable` concept, `EntityManager::attachEngineComponentDeferred<T>`, the restricted bit per `ComponentId` | Entity, `ir_entity_types.hpp` and `EntityManager`. `component_static.hpp` specializes the trait for `C_Settled`. | Every attach lane is an entity-layer call, so the refusal sits where the lanes are; the key owner and the companion are named by the specialization, which depends downward ([§ The engine-owned boundary](#the-engine-owned-boundary)). |
+| `IREntity::EngineAttach<T>`, `EngineAttachKey<T>`, the `GenericAttachable` concept, `EntityManager::attachEngineComponentDeferred<T>`, the restricted bit per `ComponentId`, the restricted-bit assert in the archetype-move primitives | Entity, `ir_entity_types.hpp` and `EntityManager`. `component_static.hpp` specializes the trait for `C_Settled`. | Every attach lane is an entity-layer call, so the refusal sits where the lanes are; the key owner and the companion are named by the specialization, which depends downward ([§ The engine-owned boundary](#the-engine-owned-boundary)). |
 | `promoteSettled`, `restampSettling`, `raiseSettleFloor`, `globalFloor_` | System, `IRSystem::detail::SettlePromoter` on `SystemManager` | The promotion check reads the round counters, the floor and the stamp, all system-layer state, so the one call that attaches `C_Settled` can verify the transition rule without trusting its caller |
 | Rounds | System, on `SystemManager` | Membership, the pending sets and the one cursor over the deriving groups of all three pipelines come from pipeline registration, and the cursor moves at each group's join inside `executePipeline` |
 | Freeze, thaw, resettle, notes, drain, eligibility, `C_StaticSettings` | Prefab, `IRPrefab::Static` in `engine/prefabs/irreden/common/` | Eligibility reads rotation mode, GPU slots and skeletons, all of which are prefab knowledge |
@@ -1253,7 +1282,7 @@ attaches no `C_Static` sees no change in behaviour.
 | `IREntity::kStaticGuard<T>`, `kClearedByForeignMove<T>` and `kTracksParentChain<T>` traits; the per-`ComponentId` guard table; `EntityManager::takeTrackedChanges` | New entity-layer surface. The four pose components specialize the guard. |
 | `setParent`, `setRelation`, `clearParent`, `detachChildren`, and destroying a parent, on a static entity or one with static descendants | New behaviour for static entities only: the subtree resettles in the same call. |
 | `IRPrefab::Static::freeze`, `thaw`, `resettle`, `noteChanged`, `drain`, `isStatic`, `isSettled`, `stats` | New prefab namespace. `drain` is called by the World. |
-| `IREntity::EngineAttach<T>`, `EngineAttachKey<T>`, `GenericAttachable`; `EntityManager::attachEngineComponentDeferred<T>`; a `GenericAttachable` constraint on every typed attach lane, and a refusal of restricted ids on `addComponentDynamic`, `getOrCreateSingletonByComponentId` and `restoreEntitiesBatch` | New entity-layer surface. Only `C_Settled` is restricted, so no call that compiles today changes. |
+| `IREntity::EngineAttach<T>`, `EngineAttachKey<T>`, `GenericAttachable`; `EntityManager::attachEngineComponentDeferred<T>`; a `GenericAttachable` constraint on every typed attach lane; `EntityManager::insertNewComponent<T>` moved to `private` (its only caller is `setComponent`); a restricted-bit assert in the private archetype-move primitives; and a refusal of restricted ids on `addComponentDynamic`, `getOrCreateSingletonByComponentId` and `restoreEntitiesBatch` | New entity-layer surface. Only `C_Settled` is restricted, so no call that compiles today changes, except a call to `insertNewComponent` from outside `EntityManager`; the engine and its creations have none. |
 | `IRSystem::promoteSettled`, `restampSettling`, `raiseSettleFloor`; `C_Static::settleStamp()` with a private stamp, zeroed by copy, kept by the `noexcept` move constructor and the private move assignment | New scheduler surface. `C_Static{}` in a bundle and `C_Static = {}` in Lua work as before. |
 | `IRStatic` Lua table with `freeze`, `thaw`, `resettle`, `isStatic`, `isSettled`, `stats`; `reads = { … }` on Lua `registerSystem` | New Lua surface. |
 | `IRSystem::GatesSettled` access tag; `IRSystem::reportRowsWalked`; `IRSystem::roundsOpened`, `roundsCompleted`; a `readOnly` archetype parameter on `createSystemDynamic` and on `executeQueryDynamic` (defaulting to empty) | New scheduler surface. |
@@ -1571,6 +1600,10 @@ holds on every lane:
     `setComponentDeferred`, `insertReservedEntity`, `createEntitiesBatch`,
     `createEntityBatch`, `singleton<C_Settled>`). The same expressions with
     `C_Static` hold, as the positive control.
+  - `static_assert(!requires { em.insertNewComponent<C>(record, value); })`
+    for both `C_Settled` and `C_Static`: the helper is private, so it is
+    not accessible with any component. `setComponent<C_Static>` on the same
+    record holds, as the positive control for the path the helper serves.
   - `addComponentDynamic` with `C_Settled`'s id, a Lua `components` table
     naming `C_Settled`, and `getOrCreateSingletonByComponentId`, on the
     dynamic and the settling entity. The archetype is unchanged,
@@ -1684,9 +1717,12 @@ sibling epics' work.
 2. Three states by two tags; `C_Settled` is engine-owned by construction.
    Only `IRSystem::promoteSettled`, which re-checks the transition rule,
    can attach it, through an entity-layer key. Every typed lane refuses it
-   at compile time, and every by-id, Lua and snapshot lane refuses it at
-   run time. The settle stamp is private, and a copied `C_Static` arrives
-   with a zero stamp. Both tags live in the system layer.
+   at compile time (the `insertNewComponent` helper below `setComponent`
+   becomes private), every by-id, Lua and snapshot lane refuses it at run
+   time, and the private archetype-move primitives assert that no other
+   caller moves an entity into a restricted archetype. The settle stamp is
+   private, and a copied `C_Static` arrives with a zero stamp. Both tags
+   live in the system layer.
 3. Freeze, thaw and resettle are deferred to the next structural flush.
    Promotion needs a complete round that opened after the entity's inputs
    last changed: the settle stamp, restarted by every change to a static
