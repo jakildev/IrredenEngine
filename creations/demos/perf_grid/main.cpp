@@ -1926,13 +1926,14 @@ int main(int argc, char **argv) {
 }
 
 void initSystems() {
-    // Every UPDATE system runs in its own singleton group. PERIODIC_IDLE and
-    // MODIFIER_DECAY each carry Concurrency::PARALLEL_FOR, so each drives an
-    // inner IRJob::parallelFor that fans its per-entity work across the whole
-    // worker pool. A PARALLEL_FOR system therefore cannot share a
+    // Every UPDATE system runs in its own singleton group. PERIODIC_IDLE
+    // carries Concurrency::PARALLEL_FOR and MODIFIER_DECAY fans out inside its
+    // whole-node tick, so each drives an inner IRJob::parallelFor that spreads
+    // its per-entity work across the whole worker pool. Neither can share a
     // multi-system parallel group: its inner parallelFor would be asked to
     // fan out from a worker thread, which
-    // SystemManager::validateAllPipelineGroups rejects at boot. Per-system
+    // SystemManager::validateAllPipelineGroups rejects at boot (PARALLEL_FOR,
+    // or the MainThread tag MODIFIER_DECAY carries). Per-system
     // data-parallelism supersedes task-parallel co-execution. The groups run in order as a
     // producer→consumer chain: PERIODIC_IDLE_POSITION_OFFSET reads C_PeriodicIdle (after
     // PERIODIC_IDLE), then PROPAGATE_TRANSFORM composes C_WorldTransform, which the fog reveal

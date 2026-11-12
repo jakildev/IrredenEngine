@@ -6,7 +6,54 @@
 // behavior API ships separately. See docs/design/modifiers.md.
 
 #include <irreden/common/components/component_modifiers.hpp>
+#include <irreden/common/modifier_field_registry.hpp>
 #include <irreden/script/lua_script.hpp>
+
+#include <cstdint>
+#include <utility>
+#include <vector>
+
+namespace sol {
+
+// Every Lua write into a `Modifier` vector arms MODIFIER_DECAY. A script can
+// hold the live `C_Modifiers.modifiers` userdata across decay passes, so
+// fetching the vector proves nothing about when an entry is added. Removals
+// need no arm. `C_GlobalModifiers` shares the type; an arm from it costs one
+// scan.
+template <>
+struct usertype_container<std::vector<IRComponents::Modifier>>
+    : container_detail::usertype_container_default<std::vector<IRComponents::Modifier>> {
+  private:
+    using Default =
+        container_detail::usertype_container_default<std::vector<IRComponents::Modifier>>;
+
+    static void arm() {
+        IRPrefab::Modifier::detail::globalFieldRegistry().armDecay();
+    }
+
+  public:
+    static int set(lua_State *L) {
+        arm();
+        return Default::set(L);
+    }
+
+    static int index_set(lua_State *L) {
+        arm();
+        return Default::set(L);
+    }
+
+    static int add(lua_State *L) {
+        arm();
+        return Default::add(L);
+    }
+
+    static int insert(lua_State *L) {
+        arm();
+        return Default::insert(L);
+    }
+};
+
+} // namespace sol
 
 namespace IRScript {
 
@@ -39,13 +86,24 @@ template <> inline void bindLuaType<IRComponents::Modifier>(LuaScript &luaScript
         }
     );
 
-    luaScript.registerType<Modifier, Modifier()>(
+    sol::usertype<Modifier> type = luaScript.registerType<Modifier, Modifier()>(
         "Modifier",
-        "field",          &Modifier::field_,
-        "kind",            &Modifier::kind_,
-        "param",           &Modifier::param_,
-        "source",          &Modifier::source_,
-        "ticksRemaining",  &Modifier::ticksRemaining_
+        "field",
+        &Modifier::field_,
+        "kind",
+        &Modifier::kind_,
+        "param",
+        &Modifier::param_,
+        "source",
+        &Modifier::source_
+    );
+    // A finite lifetime written here must arm MODIFIER_DECAY like a push.
+    type["ticksRemaining"] = sol::property(
+        [](const Modifier &mod) { return mod.ticksRemaining_; },
+        [](Modifier &mod, std::int32_t ticksRemaining) {
+            mod.ticksRemaining_ = ticksRemaining;
+            IRPrefab::Modifier::detail::armDecayFor(ticksRemaining);
+        }
     );
 }
 
@@ -73,9 +131,17 @@ template <> inline void bindLuaType<IRComponents::ResolvedField>(LuaScript &luaS
 
 template <> inline void bindLuaType<IRComponents::C_Modifiers>(LuaScript &luaScript) {
     using IRComponents::C_Modifiers;
-    luaScript.registerType<C_Modifiers, C_Modifiers()>(
-        "C_Modifiers",
-        "modifiers", &C_Modifiers::modifiers_
+    using IRComponents::Modifier;
+    sol::usertype<C_Modifiers> type =
+        luaScript.registerType<C_Modifiers, C_Modifiers()>("C_Modifiers");
+    // The getter hands out the live vector; its writes arm MODIFIER_DECAY
+    // through `sol::usertype_container<std::vector<Modifier>>`.
+    type["modifiers"] = sol::property(
+        [](C_Modifiers &c) -> std::vector<Modifier> & { return c.modifiers_; },
+        [](C_Modifiers &c, std::vector<Modifier> modifiers) {
+            c.modifiers_ = std::move(modifiers);
+            IRPrefab::Modifier::detail::globalFieldRegistry().armDecay();
+        }
     );
 }
 
