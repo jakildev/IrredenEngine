@@ -5154,7 +5154,8 @@ def _spawn_alert_path(lane: str) -> Path:
 
 
 def _spawn_failed(lane: str, reason: str, detail: str,
-                  alert: tuple[Path, str] | None = None) -> None:
+                  alert: tuple[Path, str] | None = None,
+                  escalate_after: int | None = None) -> None:
     """Record a failed lane spawn, escalating-then-quieting on repetition.
 
     Keyed on `<reason>|<lane>` so a CHANGED failure mode restarts the count — a
@@ -5168,15 +5169,17 @@ def _spawn_failed(lane: str, reason: str, detail: str,
     clears it.
     """
     key = f"{reason}|{lane}"
+    if escalate_after is None:
+        escalate_after = SPAWN_FAIL_ESCALATE_N
     prev_key, count = _spawn_fail_streak.get(lane, ("", 0))
     count = count + 1 if prev_key == key else 1
     _spawn_fail_streak[lane] = (key, count)
 
     path = alert[0] if alert else _spawn_alert_path(lane)
-    if count < SPAWN_FAIL_ESCALATE_N:
+    if count < escalate_after:
         log(detail)
         return
-    if count == SPAWN_FAIL_ESCALATE_N:
+    if count == escalate_after:
         log(detail)
         if alert:
             log(f"{lane}: ESCALATION — {count} consecutive ticks (reason={reason}). "
@@ -5207,11 +5210,16 @@ def _spawn_failed(lane: str, reason: str, detail: str,
         pass
 
 
-def _spawn_ok(lane: str, alert_path: Path | None = None) -> None:
+def _spawn_ok(lane: str, alert_path: Path | None = None,
+              recovery_detail: str | None = None,
+              recover_after: int | None = None) -> None:
     """A spawn succeeded: clear the streak and any standing alert."""
     prev = _spawn_fail_streak.pop(lane, None)
-    if prev is not None and prev[1] >= SPAWN_FAIL_ESCALATE_N:
-        log(f"{lane}: spawn recovered after {prev[1]} consecutive failures")
+    if recover_after is None:
+        recover_after = SPAWN_FAIL_ESCALATE_N
+    if prev is not None and prev[1] >= recover_after:
+        log(recovery_detail or
+            f"{lane}: spawn recovered after {prev[1]} consecutive failures")
     # Unconditional, not gated on `prev`: a scout restart clears the in-process
     # streak but leaves the on-disk alert, so keying the unlink on the streak
     # would strand the file past the recovery it is meant to outlive.
@@ -5219,6 +5227,202 @@ def _spawn_ok(lane: str, alert_path: Path | None = None) -> None:
         (alert_path or _spawn_alert_path(lane)).unlink()
     except OSError:
         pass
+
+
+DISPATCH_LIVENESS_ROLES = ("worker", "sonnet-reviewer", "opus-reviewer")
+DISPATCH_LIVENESS_DEFAULT_SECS = 1800
+_dispatch_liveness_since = {}
+
+
+def _dispatch_liveness_alert_path(lane: str) -> Path:
+    return _alerts_dir() / f"dispatch-liveness-{lane}"
+
+
+def _dispatch_liveness_threshold() -> int:
+    raw = os.environ.get("FLEET_LIVENESS_STALL_SECS", "")
+    return int(raw) if raw.isdigit() else DISPATCH_LIVENESS_DEFAULT_SECS
+
+
+def _dispatch_liveness_now() -> int:
+    raw = os.environ.get("FLEET_LIVENESS_NOW", "")
+    return int(raw) if raw.isdigit() else int(time.time())
+
+
+def _dispatcher_pid_alive() -> bool | None:
+    try:
+        pid = int((STATE_DIR / "dispatcher.pid").read_text().strip())
+    except (OSError, ValueError):
+        return None
+    if pid <= 0:
+        return None
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.OpenProcess(0x1000, False, pid)
+            if not handle:
+                return False
+            code = ctypes.c_ulong()
+            alive = bool(kernel32.GetExitCodeProcess(handle, ctypes.byref(code))) \
+                and code.value == 259
+            kernel32.CloseHandle(handle)
+            return alive
+        except (AttributeError, OSError):
+            return None
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except (PermissionError, OSError):
+        return None
+    return True
+
+
+def _dispatch_inflight_roles() -> set[str] | None:
+    directory = STATE_DIR / "dispatch"
+    if not directory.is_dir():
+        return None
+    try:
+        paths = list(directory.glob("*.json"))
+    except OSError:
+        return None
+    roles = set()
+    for path in paths:
+        try:
+            record = json.loads(path.read_text())
+        except (OSError, ValueError):
+            return None
+        if record.get("role"):
+            roles.add(record["role"])
+    return roles
+
+
+def _dispatch_gate_status(scope: str) -> str | None:
+    try:
+        proc = subprocess.run(
+            _fleet_script_argv(["fleet-dispatcher", "--gate-status", scope]),
+            capture_output=True, text=True, timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
+
+
+def _dispatch_gate_open() -> bool | None:
+    usage_status = _dispatch_gate_status("all")
+    if usage_status and (usage_status == "open" or
+                         usage_status.startswith("open:")):
+        usage_open = True
+    elif usage_status and usage_status.startswith("closed:"):
+        usage_open = False
+    else:
+        return None
+    if not usage_open:
+        return False
+
+    quiet_status = _dispatch_gate_status("quiet")
+    if quiet_status is None:
+        return None
+    quiet_state = quiet_status.split(maxsplit=1)[0]
+    if quiet_state in {"waiting", "draining", "held", "linger"}:
+        return False
+    if quiet_state:
+        return True
+    return None
+
+
+def _dispatch_liveness_targets(lane: str) -> dict | None:
+    path = PROJECTIONS_DIR / f"{lane}.json"
+    try:
+        proc = subprocess.run(
+            _fleet_script_argv([
+                "fleet_task_class.py", "--liveness-targets", str(path), lane]),
+            capture_output=True, text=True, timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        result = json.loads(proc.stdout)
+    except ValueError:
+        return None
+    if not isinstance(result.get("dispatchable"), list) \
+            or not isinstance(result.get("withheld"), list):
+        return None
+    return result
+
+
+def _dispatch_liveness_clear(lane: str) -> None:
+    _dispatch_liveness_since.pop(lane, None)
+    key = f"dispatch-liveness-{lane}"
+    _spawn_ok(key, _dispatch_liveness_alert_path(lane),
+              f"{lane}: dispatch liveness recovered; cleared standing alert",
+              recover_after=1)
+
+
+def check_dispatch_liveness_lane(lane: str, targets: dict, now: int,
+                                 dispatcher_alive: bool,
+                                 inflight: bool, gate_open: bool,
+                                 mode_live: bool) -> None:
+    """Update one lane's standing liveness condition from a complete reading."""
+    dispatchable = targets["dispatchable"]
+    withheld = targets["withheld"]
+    dead = not dispatcher_alive
+    work_waiting = bool(dispatchable or withheld)
+    if not mode_live:
+        _dispatch_liveness_clear(lane)
+        return
+    if not dead and (not gate_open or inflight or not work_waiting):
+        _dispatch_liveness_clear(lane)
+        return
+
+    since = _dispatch_liveness_since.setdefault(lane, now)
+    reason = "dispatcher-dead" if dead else "idle-with-work"
+    if not dead and now - since < _dispatch_liveness_threshold():
+        return
+
+    since_text = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(since))
+    target_names = list(dispatchable) + [item.get("target", "") for item in withheld]
+    first = (f"lane={lane} reason={reason} since={since_text} "
+             f"dispatchable={len(dispatchable)} withheld={len(withheld)} "
+             f"targets={','.join(name for name in target_names if name)}")
+    lines = [first]
+    lines.extend(f"target={target} status=dispatchable" for target in dispatchable)
+    for item in withheld:
+        detail = str(item.get("reason") or "withheld").replace("'", "")
+        lines.append(f"target={item.get('target', '')} status=withheld "
+                     f"reason='{detail}' expires_at={item.get('expires_at', '')}")
+    path = _dispatch_liveness_alert_path(lane)
+    detail = (f"{lane}: dispatch liveness stalled since {since_text}; "
+              f"reason={reason}; targets={','.join(name for name in target_names if name) or '-'}")
+    _spawn_failed(f"dispatch-liveness-{lane}", reason, detail,
+                  alert=(path, "\n".join(lines) + "\n"), escalate_after=1)
+
+
+def run_dispatch_liveness_lanes() -> None:
+    """Read dispatcher state and update the three dispatch-liveness alerts."""
+    try:
+        mode_live = (STATE_DIR / "dispatch-mode").read_text().strip() == "live"
+    except OSError:
+        return
+    if not mode_live:
+        for lane in DISPATCH_LIVENESS_ROLES:
+            _dispatch_liveness_clear(lane)
+        return
+    dispatcher_alive = _dispatcher_pid_alive()
+    inflight_roles = _dispatch_inflight_roles()
+    gate_open = _dispatch_gate_open()
+    if dispatcher_alive is None or inflight_roles is None or gate_open is None:
+        return
+    now = _dispatch_liveness_now()
+    for lane in DISPATCH_LIVENESS_ROLES:
+        targets = _dispatch_liveness_targets(lane)
+        if targets is None:
+            continue
+        check_dispatch_liveness_lane(
+            lane, targets, now, dispatcher_alive, lane in inflight_roles,
+            gate_open, mode_live)
 
 
 def _claim_cleanup_marker_path() -> Path:
@@ -6326,6 +6530,11 @@ def tick_once():
             PROJECTIONS_DIR / f"{role}.json",
             json.dumps(sliced, indent=2, sort_keys=True) + "\n",
         )
+
+    try:
+        run_dispatch_liveness_lanes()
+    except Exception as e:
+        log(f"dispatch-liveness lane failed: {e}")
 
     # Refresh the served bundle (leader only) so followers see this tick's
     # snapshot. Rebuilt from disk — state.json + the detail caches just written

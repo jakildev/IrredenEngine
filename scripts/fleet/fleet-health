@@ -30,6 +30,7 @@ a stretch of autonomous running:
     A `scout-actions-not-starting-*` alert (GitHub is refusing to start jobs,
     e.g. a billing or spending-limit refusal) warns with its repo, since and
     the refusal's annotation; the same host caveat applies.
+    A `dispatch-liveness-*` alert warns with its lane, stall start and targets.
     A `clone-freshness-*` alert is a WARN with its root, reason, count, since,
     and remedy fields; its displayed age comes from `since`, not file mtime.
   * Who spends the GitHub quota? GitHub CLI command attempts per actor in
@@ -618,6 +619,8 @@ def collect_alerts(alerts_dir):
             rec["master_ci"] = parse_master_ci_alert(p, now)
         if p.name.startswith(NOT_STARTING_ALERT_PREFIX):
             rec["actions_not_starting"] = parse_actions_not_starting(fields)
+        if p.name.startswith(DISPATCH_LIVENESS_ALERT_PREFIX):
+            rec["dispatch_liveness"] = fleet_alerts.dispatch_liveness_record(p)
         out.append(rec)
     return out
 
@@ -647,6 +650,7 @@ def parse_master_ci_alert(path, now):
 
 
 NOT_STARTING_ALERT_PREFIX = "scout-actions-not-starting-"
+DISPATCH_LIVENESS_ALERT_PREFIX = "dispatch-liveness-"
 
 
 def parse_actions_not_starting(fields):
@@ -768,6 +772,11 @@ def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts, worktree
         if stuck:
             w.append(f"actions not starting on {stuck['repo']} since {stuck['since']}: "
                      f"\"{stuck['annotation']}\"")
+        stalled = a.get("dispatch_liveness")
+        if stalled:
+            targets = ",".join(item.get("target", "") for item in stalled["targets"])
+            w.append(f"dispatch lane {stalled['lane']} stalled since {stalled['since']}: "
+                     f"{stalled['reason']}; targets={targets or '-'}")
     for lk in worktrees["leaks"]:
         w.append(f"worktree outside the pool layout: [{lk['repo']}] {lk['path']} "
                  "(fleet-worktree-sweep --prune clears the clean ones)")
@@ -921,6 +930,11 @@ def render_text(report):
         if red:
             o.append(f"  master CI red: {red['workflow']}  sha {red['sha'][:9]}  "
                      f"run {fmt_age(red['run_age_s'])} ago  {red['url']}")
+        elif x.get("dispatch_liveness"):
+            stalled = x["dispatch_liveness"]
+            targets = ",".join(item.get("target", "") for item in stalled["targets"])
+            o.append(f"  dispatch lane {stalled['lane']} stalled since "
+                     f"{stalled['since']}  {stalled['reason']}  targets {targets or '-'}")
         else:
             o.append(f"  {x['name']:32s} {fmt_age(x['age_s']):>4s}  {x['line']}")
     o.append("")

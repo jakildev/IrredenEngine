@@ -472,6 +472,30 @@ class ActionsNotStartingAlerts(Env):
         self.assertNotIn("actions_not_starting", row)
 
 
+class DispatchLivenessAlerts(Env):
+    def test_alert_warns_with_lane_start_and_targets(self):
+        path = self.root / "alerts" / "dispatch-liveness-worker"
+        path.write_text(
+            "lane=worker reason=idle-with-work since=2026-09-09T04:00:00Z "
+            "dispatchable=1 withheld=1 targets=task:engine:4979,review:engine:42\n"
+            "target=task:engine:4979 status=dispatchable\n"
+            "target=review:engine:42 status=withheld reason='GPU lease held' "
+            "expires_at=2026-09-09T06:00:00Z\n")
+        rc, report = self.run_report_at("2026-09-09T05:00:00Z")
+        row = next(item for item in report["alerts"]
+                   if item["name"] == "dispatch-liveness-worker")
+        self.assertEqual(row["dispatch_liveness"]["lane"], "worker")
+        self.assertEqual([item["target"] for item in
+                          row["dispatch_liveness"]["targets"]],
+                         ["task:engine:4979", "review:engine:42"])
+        warned = [item for item in report["warnings"]
+                  if item.startswith("dispatch lane worker stalled")]
+        self.assertEqual(warned, [
+            "dispatch lane worker stalled since 2026-09-09T04:00:00Z: "
+            "idle-with-work; targets=task:engine:4979,review:engine:42"])
+        self.assertEqual(rc, 1)
+
+
 AUTOMERGE_LEDGER = "\n".join([
     json.dumps({"ts": "2026-09-08T20:00:00Z", "event": "merge", "repo": "jakildev/IrredenEngine",
                 "pr": 2900, "class": "rebless"}),

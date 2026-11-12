@@ -1905,5 +1905,30 @@ class FableWalledFeedback(unittest.TestCase):
         self.assertIs(parse("0"), False)
 
 
+class LivenessTargets(unittest.TestCase):
+    def test_reports_dispatchable_and_decline_with_reason_and_expiry(self):
+        report = getattr(fleet_task_class, "liveness_targets", None)
+        self.assertIsNotNone(report, "pre-change resolver has no liveness report")
+        with tempfile.TemporaryDirectory() as state_dir:
+            declined = Path(state_dir) / "declined"
+            declined.mkdir()
+            task = _task("#4979", "opus")
+            task.update({"repo": "engine", "updatedAt": "2026-11-11T20:00:00Z"})
+            review = {"number": 42, "repo": "engine",
+                      "updatedAt": "2026-11-11T20:00:00Z"}
+            (declined / "review-engine-42").write_text(
+                f"{review['updatedAt']}\nGPU lease held\nsonnet-reviewer\n")
+            with mock.patch.dict(os.environ, {
+                    "FLEET_STATE_DIR": state_dir, "FLEET_TEST_HOST": "linux"}, clear=False), \
+                 mock.patch.object(fleet_task_class.time, "time", return_value=1000):
+                worker = report({"tasks_open": [task]}, "worker")
+                reviewer = report({"candidate_prs": [review]}, "sonnet-reviewer")
+            self.assertEqual(worker["dispatchable"], ["task:engine:4979"])
+            self.assertEqual(reviewer["dispatchable"], [])
+            self.assertEqual(reviewer["withheld"][0]["target"], "review:engine:42")
+            self.assertEqual(reviewer["withheld"][0]["reason"], "GPU lease held")
+            self.assertTrue(reviewer["withheld"][0]["expires_at"].endswith("Z"))
+
+
 if __name__ == "__main__":
     unittest.main()
