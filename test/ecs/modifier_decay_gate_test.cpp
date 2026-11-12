@@ -113,13 +113,14 @@ TEST_F(ModifierDecayGateTest, PushWithThreeTicksArmsAndExpiresOnTodaysPass) {
     IRPrefab::Modifier::push(target, m_scalar, TransformKind::ADD, 1.0f, m_source, 3);
     EXPECT_TRUE(decayArmed());
 
-    C_Modifiers reference = mods(target);
+    std::vector<EntityId> referenceIds{target};
+    std::vector<C_Modifiers> reference{mods(target)};
     DecaySystem ungated;
     for (int i = 1; i <= 3; ++i) {
         pass();
-        ungated.tick(reference);
+        ungated.tick(IREntity::Archetype{}, referenceIds, reference);
         EXPECT_TRUE(decay().decayedLastPass_) << "pass " << i;
-        EXPECT_EQ(mods(target).modifiers_.size(), reference.modifiers_.size()) << "pass " << i;
+        EXPECT_EQ(mods(target).modifiers_.size(), reference[0].modifiers_.size()) << "pass " << i;
     }
     EXPECT_TRUE(mods(target).modifiers_.empty());
     EXPECT_FALSE(decayArmed());
@@ -223,6 +224,27 @@ TEST_F(ModifierDecayGateTest, InPlacePushesArm) {
     expectArms([&](C_Modifiers &m) { pushOneFrame(m, m_scalar, add, 1.0f, m_source); }, 2);
     expectArms([&](C_Modifiers &m) { pushOneFrame(m, m_vec3, add, offset, m_source); }, 2);
     expectArms([&](C_Modifiers &m) { pushOneFrame(m, m_quat, mul, identity, m_source); }, 2);
+}
+
+// The whole-node tick fans out by itself, so the system must stay out of a
+// multi-system group, where that fan-out would start on a worker.
+TEST_F(ModifierDecayGateTest, DecaySystemIsRejectedInAMultiSystemGroup) {
+    registerPipeline();
+    const IRSystem::SystemAccess decayAccess = m_system_manager.getSystemAccess(m_decay);
+    EXPECT_TRUE(decayAccess.mainThreadOnly_);
+    EXPECT_EQ(m_system_manager.getConcurrency(m_decay), IRSystem::Concurrency::SERIAL);
+
+    const auto sibling =
+        IRSystem::createSystem<C_Modifiers>("TestDecayGateSibling", [](const C_Modifiers &) {});
+    const IRSystem::SystemAccess accesses[]{decayAccess, m_system_manager.getSystemAccess(sibling)};
+    EXPECT_EQ(
+        IRSystem::findPipelineGroupConflict(accesses, 2).kind_,
+        IRSystem::GroupConflictKind::MAIN_THREAD_IN_GROUP
+    );
+#ifndef IR_RELEASE
+    m_system_manager.registerPipelineGroups(IRTime::Events::UPDATE, {{m_decay, sibling}});
+    EXPECT_THROW(m_system_manager.validateAllPipelineGroups(), std::runtime_error);
+#endif
 }
 
 // Workers push in place from a PARALLEL_FOR tick that runs after decay in the
