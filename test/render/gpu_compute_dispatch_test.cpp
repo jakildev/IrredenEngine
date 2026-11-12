@@ -945,7 +945,7 @@ TEST_F(MetalGpuComputeDispatchTest, TextureUploadStagingAllocationsStopAfterWarm
     }
 }
 
-TEST_F(MetalGpuComputeDispatchTest, OversizedTextureUploadUsesDeferredStaging) {
+TEST_F(MetalGpuComputeDispatchTest, OversizedTextureUploadReusesItsStagingAfterDrain) {
     using namespace IRRender;
     constexpr int width = 320;
     constexpr int height = 1024;
@@ -957,20 +957,31 @@ TEST_F(MetalGpuComputeDispatchTest, OversizedTextureUploadUsesDeferredStaging) {
     const std::size_t allocationsBefore = metalStagingBufferAllocationCount();
     const std::size_t deferredBefore = deferredMetalBufferReleaseCount();
 
-    texture.subImage2D(
+    for (int drain = 0; drain < 3; ++drain) {
+        texture.subImage2D(
+            0,
+            0,
+            width,
+            height,
+            PixelDataFormat::RGBA,
+            PixelDataType::FLOAT32,
+            pixels.data()
+        );
+        EXPECT_EQ(metalStagingBufferAllocationCount(), allocationsBefore + 1) << "drain " << drain;
+        EXPECT_EQ(deferredMetalBufferReleaseCount(), drain == 0 ? deferredBefore : 0u);
+        device_->finish();
+    }
+    std::vector<float> readback(pixels.size());
+    texture.getSubImage2D(
         0,
         0,
         width,
         height,
         PixelDataFormat::RGBA,
         PixelDataType::FLOAT32,
-        pixels.data()
+        readback.data()
     );
-
-    EXPECT_EQ(metalStagingBufferAllocationCount(), allocationsBefore + 1);
-    EXPECT_EQ(deferredMetalBufferReleaseCount(), deferredBefore + 1);
-    device_->finish();
-    EXPECT_EQ(deferredMetalBufferReleaseCount(), 0u);
+    EXPECT_EQ(readback, pixels);
 }
 
 TEST_F(MetalGpuComputeDispatchTest, TextureUploadStagingPreservesEverySliceUntilDrain) {
@@ -2315,9 +2326,10 @@ TEST_F(PositionUploadTest, ConsecutivePartialUploadsPreserveGpuWritesAndOldSnaps
     }
 }
 
-// One logical flush of many disjoint runs into an encoded buffer orphans it
-// once, on both the pending-batch and the static-scan (saturated) paths.
-TEST_F(PositionUploadTest, PositionFlushOrphansAnEncodedBufferOnce) {
+// One logical flush of many disjoint runs into an encoded buffer is one staged
+// patch into the same backing, on both the pending-batch and the static-scan
+// (saturated) paths.
+TEST_F(PositionUploadTest, PositionFlushStagesOnePatchIntoAnEncodedBuffer) {
     using namespace IRRender;
     using namespace IRComponents;
     using namespace IRMath;
@@ -2354,9 +2366,14 @@ TEST_F(PositionUploadTest, PositionFlushOrphansAnEncodedBufferOnce) {
         device_->fillBuffer(&positions, bytes, kGpuFill);
 
         std::vector<BufferUploadRange> scratch;
-        const std::size_t orphansBefore = deferredMetalBufferReleaseCount();
+        const std::size_t retiredBefore = deferredMetalBufferReleaseCount();
+        const BufferWriteStats before = metalBufferWriteStats();
+        void *const backing = positions.getNativeBuffer();
         IRSystem::flushPendingPositionRanges(pool, &positions, scratch);
-        EXPECT_EQ(deferredMetalBufferReleaseCount() - orphansBefore, 1u);
+        EXPECT_EQ(deferredMetalBufferReleaseCount(), retiredBefore);
+        EXPECT_EQ(positions.getNativeBuffer(), backing);
+        EXPECT_EQ(metalBufferWriteStats().stagedPatches_ - before.stagedPatches_, 1u);
+        EXPECT_EQ(metalBufferWriteStats().stagedBytes_ - before.stagedBytes_, bytes / 2);
         device_->finish();
 
         std::vector<VoxelGpuPosition> result(slotCount);
@@ -2410,9 +2427,10 @@ TEST_F(PositionUploadTest, EncodedSparseBatchPreservesGapsAndSnapshot) {
             expected[3] = tail[0];
             expected[4] = tail[1];
         }
-        const std::size_t orphansBefore = deferredMetalBufferReleaseCount();
+        const std::size_t retiredBefore = deferredMetalBufferReleaseCount();
         buffer.subDataRanges(ranges);
-        EXPECT_EQ(deferredMetalBufferReleaseCount() - orphansBefore, 1u);
+        // Only a write covering every byte swaps the backing.
+        EXPECT_EQ(deferredMetalBufferReleaseCount() - retiredBefore, coversWholeBuffer ? 1u : 0u);
         device_->finish();
 
         std::vector<std::uint32_t> readback(8);
@@ -2434,8 +2452,10 @@ TEST_F(PositionUploadTest, UnalignedSparseBatchWaitsAndPatchesInPlace) {
         BufferUploadRange{3, 1, &first},
         BufferUploadRange{9, second.size(), second.data()},
     };
+    const std::uint64_t waitsBefore = metalBufferWriteStats().midFrameWaits_;
     bytes.subDataRanges(ranges);
-    // The wait drains every deferred release; an orphan would leave one.
+    EXPECT_EQ(metalBufferWriteStats().midFrameWaits_ - waitsBefore, 1u);
+    // The wait drains every deferred release; a backing swap would leave one.
     EXPECT_EQ(deferredMetalBufferReleaseCount(), 0u);
     device_->finish();
     std::vector<std::uint8_t> result(expected.size());
@@ -2475,6 +2495,179 @@ TEST_F(PositionUploadTest, UnalignedPartialUploadPreservesPendingGpuBytes) {
         std::fill(seed.begin(), seed.begin() + 8, 0x11);
         seed[3] = patch;
         EXPECT_EQ(result, seed);
+    }
+}
+
+using MetalBufferPatchTest = MetalGpuComputeDispatchTest;
+
+// A blit stands in for any encoder reading the buffer at its point in the frame.
+void copyBufferOnGpu(
+    const IRRender::Buffer &source, IRRender::Buffer &destination, std::size_t bytes
+) {
+    auto *blit = IRRender::metalCommandBuffer()->blitCommandEncoder();
+    blit->copyFromBuffer(
+        static_cast<MTL::Buffer *>(source.getNativeBuffer()),
+        0,
+        static_cast<MTL::Buffer *>(destination.getNativeBuffer()),
+        0,
+        bytes
+    );
+    blit->endEncoding();
+}
+
+std::vector<std::uint32_t> readWords(const IRRender::Buffer &buffer, std::size_t count) {
+    std::vector<std::uint32_t> words(count);
+    buffer.getSubData(0, count * sizeof(std::uint32_t), words.data());
+    return words;
+}
+
+TEST_F(MetalBufferPatchTest, EncodersBeforeTheWriteReadOldBytesAndAfterReadNew) {
+    using namespace IRRender;
+    constexpr std::size_t kWords = 8;
+    constexpr std::size_t kBytes = kWords * sizeof(std::uint32_t);
+    const std::vector<std::uint32_t> seed(kWords, 0u);
+    Buffer buffer(seed.data(), kBytes, BUFFER_STORAGE_DYNAMIC);
+    Buffer before(seed.data(), kBytes, BUFFER_STORAGE_DYNAMIC);
+    Buffer after(seed.data(), kBytes, BUFFER_STORAGE_DYNAMIC);
+    const std::array<std::uint32_t, 2> patch{0xA1A1A1A1u, 0xB2B2B2B2u};
+    std::vector<std::uint32_t> expected(kWords, 0x11111111u);
+    expected[2] = patch[0];
+    expected[3] = patch[1];
+    void *const backing = buffer.getNativeBuffer();
+
+    // The second frame proves the steady state: the staging chunk the first
+    // frame allocated is reused and nothing else is allocated.
+    for (int frame = 0; frame < 2; ++frame) {
+        SCOPED_TRACE(frame);
+        device_->fillBuffer(&buffer, kBytes, 0x11);
+        copyBufferOnGpu(buffer, before, kBytes);
+        const BufferWriteStats stats = metalBufferWriteStats();
+        const std::size_t retiredBefore = deferredMetalBufferReleaseCount();
+        buffer.subData(2 * sizeof(std::uint32_t), sizeof(patch), patch.data());
+        copyBufferOnGpu(buffer, after, kBytes);
+
+        const BufferWriteStats &now = metalBufferWriteStats();
+        EXPECT_EQ(now.stagedPatches_ - stats.stagedPatches_, 1u);
+        EXPECT_EQ(now.stagedBytes_ - stats.stagedBytes_, sizeof(patch));
+        EXPECT_EQ(now.fullReplacements_, stats.fullReplacements_);
+        EXPECT_EQ(now.midFrameWaits_, stats.midFrameWaits_);
+        EXPECT_EQ(
+            now.partialWriteAllocations_ - stats.partialWriteAllocations_,
+            frame == 0 ? 1u : 0u
+        );
+        EXPECT_EQ(deferredMetalBufferReleaseCount(), retiredBefore);
+        EXPECT_EQ(buffer.getNativeBuffer(), backing);
+        device_->finish();
+
+        EXPECT_EQ(readWords(before, kWords), std::vector<std::uint32_t>(kWords, 0x11111111u));
+        EXPECT_EQ(readWords(after, kWords), expected);
+        EXPECT_EQ(readWords(buffer, kWords), expected);
+    }
+}
+
+TEST_F(MetalBufferPatchTest, OverlappingPatchesInOneFrameLeaveTheSecondsBytes) {
+    using namespace IRRender;
+    constexpr std::size_t kWords = 8;
+    const std::vector<std::uint32_t> seed(kWords, 0x55555555u);
+    Buffer buffer(seed.data(), kWords * sizeof(std::uint32_t), BUFFER_STORAGE_DYNAMIC);
+    device_->fillBuffer(&buffer, kWords * sizeof(std::uint32_t), 0x11);
+    const std::array<std::uint32_t, 4> first{1u, 2u, 3u, 4u};
+    const std::array<std::uint32_t, 3> second{7u, 8u, 9u};
+    buffer.subData(1 * sizeof(std::uint32_t), sizeof(first), first.data());
+    buffer.subData(3 * sizeof(std::uint32_t), sizeof(second), second.data());
+    device_->finish();
+    EXPECT_EQ(
+        readWords(buffer, kWords),
+        (std::vector<std::uint32_t>{0x11111111u, 1u, 2u, 7u, 8u, 9u, 0x11111111u, 0x11111111u})
+    );
+}
+
+TEST_F(MetalBufferPatchTest, AFullReplacementSwapsTheBackingOnce) {
+    using namespace IRRender;
+    constexpr std::size_t kWords = 4;
+    constexpr std::size_t kBytes = kWords * sizeof(std::uint32_t);
+    const std::vector<std::uint32_t> seed(kWords, 0u);
+    Buffer buffer(seed.data(), kBytes, BUFFER_STORAGE_DYNAMIC);
+    Buffer snapshot(seed.data(), kBytes, BUFFER_STORAGE_DYNAMIC);
+    device_->fillBuffer(&buffer, kBytes, 0x11);
+    copyBufferOnGpu(buffer, snapshot, kBytes);
+    void *const oldBacking = buffer.getNativeBuffer();
+    const BufferWriteStats stats = metalBufferWriteStats();
+    const std::size_t retiredBefore = deferredMetalBufferReleaseCount();
+    const std::vector<std::uint32_t> replacement{5u, 6u, 7u, 8u};
+    buffer.subData(0, kBytes, replacement.data());
+
+    EXPECT_NE(buffer.getNativeBuffer(), oldBacking);
+    EXPECT_EQ(deferredMetalBufferReleaseCount() - retiredBefore, 1u);
+    EXPECT_EQ(metalBufferWriteStats().fullReplacements_ - stats.fullReplacements_, 1u);
+    EXPECT_EQ(metalBufferWriteStats().stagedPatches_, stats.stagedPatches_);
+    device_->finish();
+    EXPECT_EQ(readWords(buffer, kWords), replacement);
+    EXPECT_EQ(readWords(snapshot, kWords), std::vector<std::uint32_t>(kWords, 0x11111111u));
+}
+
+TEST_F(MetalBufferPatchTest, AnAlignedPartialWriteToANineByteBufferIsStagedWithoutAWait) {
+    using namespace IRRender;
+    std::vector<std::uint8_t> expected(9, 0x55);
+    Buffer bytes(expected.data(), expected.size(), BUFFER_STORAGE_DYNAMIC);
+    device_->fillBuffer(&bytes, 8, 0x11);
+    const BufferWriteStats stats = metalBufferWriteStats();
+    const std::array<std::uint8_t, 4> patch{0x21, 0x22, 0x23, 0x24};
+    bytes.subData(4, patch.size(), patch.data());
+
+    EXPECT_EQ(metalBufferWriteStats().midFrameWaits_, stats.midFrameWaits_);
+    EXPECT_EQ(metalBufferWriteStats().stagedPatches_ - stats.stagedPatches_, 1u);
+    device_->finish();
+    std::vector<std::uint8_t> result(expected.size());
+    bytes.getSubData(0, result.size(), result.data());
+    std::fill(expected.begin(), expected.begin() + 4, 0x11);
+    std::copy(patch.begin(), patch.end(), expected.begin() + 4);
+    EXPECT_EQ(result, expected);
+}
+
+TEST_F(MetalBufferPatchTest, AnUnalignedWriteWaitsExactlyOnceAndLandsItsBytes) {
+    using namespace IRRender;
+    std::vector<std::uint8_t> expected(16, 0x55);
+    Buffer bytes(expected.data(), expected.size(), BUFFER_STORAGE_DYNAMIC);
+    device_->fillBuffer(&bytes, 16, 0x11);
+    const BufferWriteStats stats = metalBufferWriteStats();
+    const std::array<std::uint8_t, 4> patch{0x31, 0x32, 0x33, 0x34};
+    bytes.subData(5, patch.size(), patch.data());
+
+    EXPECT_EQ(metalBufferWriteStats().midFrameWaits_ - stats.midFrameWaits_, 1u);
+    EXPECT_EQ(metalBufferWriteStats().stagedPatches_, stats.stagedPatches_);
+    std::vector<std::uint8_t> result(expected.size());
+    bytes.getSubData(0, result.size(), result.data());
+    std::fill(expected.begin(), expected.end(), 0x11);
+    std::copy(patch.begin(), patch.end(), expected.begin() + 5);
+    EXPECT_EQ(result, expected);
+}
+
+TEST_F(MetalBufferPatchTest, APatchLargerThanAStagingChunkAllocatesOnlyOnItsFirstFrame) {
+    using namespace IRRender;
+    constexpr std::size_t kWords = 3u * 1024u * 1024u;
+    constexpr std::size_t kPatchWords = 5u * 256u * 1024u + 3u;
+    std::vector<std::uint32_t> values(kWords, 0u);
+    Buffer buffer(values.data(), kWords * sizeof(std::uint32_t), BUFFER_STORAGE_DYNAMIC);
+    for (std::size_t word = 0; word < kPatchWords; ++word) {
+        values[word] = static_cast<std::uint32_t>(word);
+    }
+    for (int frame = 0; frame < 3; ++frame) {
+        SCOPED_TRACE(frame);
+        device_->fillBuffer(&buffer, kWords * sizeof(std::uint32_t), 0x11);
+        const BufferWriteStats stats = metalBufferWriteStats();
+        buffer.subData(sizeof(std::uint32_t), kPatchWords * sizeof(std::uint32_t), values.data());
+        EXPECT_EQ(
+            metalBufferWriteStats().partialWriteAllocations_ - stats.partialWriteAllocations_,
+            frame == 0 ? 1u : 0u
+        );
+        device_->finish();
+        const std::vector<std::uint32_t> result = readWords(buffer, kWords);
+        EXPECT_EQ(result[0], 0x11111111u);
+        EXPECT_EQ(result[1], 0u);
+        EXPECT_EQ(result[kPatchWords], kPatchWords - 1u);
+        EXPECT_EQ(result[kPatchWords + 1], 0x11111111u);
+        EXPECT_EQ(result.back(), 0x11111111u);
     }
 }
 #endif

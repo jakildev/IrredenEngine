@@ -28,7 +28,7 @@ namespace IRComponents {
 /// per contiguous run of pending indices. The common case —
 /// `reserveSlot()`'s linear-scan reclamation hands out sequential
 /// indices — collapses to exactly one `subData/frame` regardless of
-/// spawn count, eliminating the per-spawn Metal orphan churn that
+/// spawn count, eliminating the per-spawn upload churn that
 /// would otherwise dominate continuous-emitter workloads.
 ///
 /// We never re-upload "untouched" contiguous ranges because the CPU
@@ -103,9 +103,9 @@ struct C_GPUParticlePool {
     /// index in `pendingIndices_`; the actual GPU upload happens in the
     /// next `flushPendingSpawns()` call, which is invoked once per frame
     /// from `UPDATE_GPU_PARTICLES` before the compute dispatch reads the
-    /// SSBO. Batching matters on Metal: each `subData` orphans the whole
-    /// MTL buffer, so per-spawn uploads dominate continuous-emitter
-    /// workloads.
+    /// SSBO. Batching matters on Metal: each `subData` to a buffer the GPU
+    /// may still read encodes its own staged copy, so per-spawn uploads
+    /// dominate continuous-emitter workloads.
     void writeSlot(std::uint32_t index, const IRRender::GpuParticle &particle) {
         particles_[index] = particle;
         pendingIndices_.push_back(index);

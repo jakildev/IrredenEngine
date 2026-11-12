@@ -15,7 +15,9 @@
 #include <irreden/world.hpp>
 #include <irreden/world/main_loop_frame.hpp>
 
+#include <array>
 #include <chrono>
+#include <utility>
 
 namespace IREngine {
 
@@ -37,6 +39,16 @@ class AudioMidiBracket final : public HandOffMidiBracket {
   private:
     IRAudio::AudioManager &m_audioManager;
 };
+
+using BufferWriteCounter = std::uint64_t IRRender::BufferWriteStats::*;
+constexpr std::array<std::pair<const char *, BufferWriteCounter>, 6> kBufferWriteCounters{{
+    {"bufferPartialWriteAllocations", &IRRender::BufferWriteStats::partialWriteAllocations_},
+    {"bufferPartialWriteAllocatedBytes", &IRRender::BufferWriteStats::partialWriteAllocatedBytes_},
+    {"bufferStagedPatches", &IRRender::BufferWriteStats::stagedPatches_},
+    {"bufferStagedBytes", &IRRender::BufferWriteStats::stagedBytes_},
+    {"bufferFullReplacements", &IRRender::BufferWriteStats::fullReplacements_},
+    {"bufferMidFrameWaits", &IRRender::BufferWriteStats::midFrameWaits_},
+}};
 
 } // namespace
 
@@ -417,6 +429,7 @@ void World::gameLoop(std::uint32_t exitAfterRenderFrames) {
                 float ms = std::chrono::duration<float, std::milli>(elapsed).count();
                 m_frameTimesMs.push_back(ms);
                 m_frameUpdateTicks.push_back(updateTicksThisFrame);
+                recordDeviceCounters();
                 m_frameTotalUpdateTicks += updateTicksThisFrame;
                 if (updateTicksThisFrame > m_frameMaxUpdateTicksPerFrame) {
                     m_frameMaxUpdateTicksPerFrame = updateTicksThisFrame;
@@ -524,6 +537,10 @@ void World::enableFrameTiming(bool enabled) {
         m_frameUpdateTicks.reserve(1024);
         m_frameTotalUpdateTicks = 0;
         m_frameMaxUpdateTicksPerFrame = 0;
+        m_frameBufferWrites.clear();
+        m_frameBufferWrites.reserve(1024);
+        m_bufferWritesAtLastFrame = IRRender::device()->deviceStats().bufferWrites_;
+        m_gpuProcessPeakBytes = 0;
         m_systemManager.resetTimingStats();
         IRRender::computeLightVolumeTiming().reset();
         IRRender::fogLosBuildTiming().reset();
@@ -536,6 +553,20 @@ void World::enableFrameTiming(bool enabled) {
         IRProfile::cpuFrameHistogram().enabled_ = true;
         IRProfile::cpuFrameHistogram().resetRun();
     }
+}
+
+void World::recordDeviceCounters() {
+    const IRRender::BufferWriteStats current = IRRender::device()->deviceStats().bufferWrites_;
+    IRRender::BufferWriteStats delta;
+    for (const auto &[name, counter] : kBufferWriteCounters) {
+        delta.*counter = current.*counter - m_bufferWritesAtLastFrame.*counter;
+    }
+    m_frameBufferWrites.push_back(delta);
+    m_bufferWritesAtLastFrame = current;
+    m_gpuProcessPeakBytes = IRMath::max<uint64_t>(
+        m_gpuProcessPeakBytes,
+        IRRender::device()->gpuMemoryStats().processAllocatedBytes_
+    );
 }
 
 void World::buildAndWriteProfileReport() {
@@ -561,6 +592,19 @@ void World::buildAndWriteProfileReport() {
                  static_cast<uint32_t>(gpuFrame.validFrames_)}
             );
         }
+    }
+    report.deviceCountersSupported_ = IRRender::device()->deviceStats().supported_;
+    report.gpuProcessPeakBytes_ = m_gpuProcessPeakBytes;
+    const size_t warmupFrames = m_frameBufferWrites.size() / IRProfile::kProfileWarmupDivisor;
+    for (const auto &[name, counter] : kBufferWriteCounters) {
+        IRProfile::DeviceCounterEntry entry{name};
+        for (size_t frame = 0; frame < m_frameBufferWrites.size(); ++frame) {
+            const uint64_t value = m_frameBufferWrites[frame].*counter;
+            entry.total_ += value;
+            entry.steadyTotal_ += frame >= warmupFrames ? value : 0;
+            entry.maxPerFrame_ = IRMath::max(entry.maxPerFrame_, value);
+        }
+        report.deviceCounters_.push_back(std::move(entry));
     }
     report.frameTimesMs_ = std::move(m_frameTimesMs);
     report.frameUpdateTicks_ = std::move(m_frameUpdateTicks);

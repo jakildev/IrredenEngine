@@ -104,6 +104,15 @@ inline constexpr uint32_t kProfileWarmupDivisor = 4;
 /// the series is for profile windows, not for half an hour of frames.
 inline constexpr size_t kProfileSeriesMaxFrames = 8192;
 
+/// One render-device counter over the recorded frames. The steady total covers
+/// the frames the steady frame-time line covers.
+struct DeviceCounterEntry {
+    std::string name_;
+    uint64_t total_ = 0;
+    uint64_t steadyTotal_ = 0;
+    uint64_t maxPerFrame_ = 0;
+};
+
 /// Aggregated data for a profile report, populated by World at shutdown.
 struct ProfileReport {
     std::vector<float> frameTimesMs_;
@@ -122,6 +131,11 @@ struct ProfileReport {
     uint64_t gpuFrameAttempted_ = 0;
     uint64_t gpuFrameInvalid_ = 0;
     uint64_t gpuFrameCommandBuffers_ = 0;
+    /// False when the backend counts nothing, so every counter row is unknown.
+    bool deviceCountersSupported_ = false;
+    std::vector<DeviceCounterEntry> deviceCounters_;
+    /// Highest process GPU allocation sampled at a frame end; 0 when unavailable.
+    uint64_t gpuProcessPeakBytes_ = 0;
     std::vector<CpuPhaseEntry> cpuPhases_;
     VoxelCullStatsSummary voxelCullStats_;
 };

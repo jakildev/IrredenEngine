@@ -10,6 +10,7 @@
 namespace IRRender {
 
 class RenderDevice;
+struct BufferWriteStats;
 
 // Creates a windowless Metal device, initializes the runtime with a null layer,
 // wires IRRender::device(), and opens an initial command buffer — everything a
@@ -54,6 +55,12 @@ struct MetalVertexLayoutBinding {
 struct MetalStagingBufferSlice {
     MTL::Buffer *buffer_ = nullptr;
     NS::UInteger offset_ = 0;
+    // Bytes of arena storage this reservation allocated; 0 when it reused a chunk.
+    std::size_t allocatedBytes_ = 0;
+
+    std::uint8_t *contents() const {
+        return static_cast<std::uint8_t *>(buffer_->contents()) + offset_;
+    }
 };
 
 void initializeMetalRuntime(MTL::Device *device, CA::MetalLayer *layer);
@@ -129,20 +136,27 @@ MTL::Texture *metalCurrentEntityIdTexture();
 MTL::PixelFormat metalCurrentColorPixelFormat();
 MTL::PixelFormat metalCurrentDepthPixelFormat();
 
-// Encoded buffers retain their old snapshot until queued GPU work completes.
-// Aligned partial uploads orphan and copy untouched spans on the GPU; byte-
-// unaligned uploads wait before patching. Unencoded buffers can be patched
-// directly. Encoder bindings and copy destinations enter the encoded set;
-// releaseDeferredMetalBuffers clears it only after GPU completion.
+// A CPU write to a buffer in the encoded set must not land before queued GPU
+// work that reads it. Word-aligned partial writes are staged and copied in
+// command order; unaligned ones wait; full writes swap in a fresh backing whose
+// predecessor is released here after the next wait. Unencoded buffers are
+// written directly. Encoder bindings and copy destinations enter the encoded
+// set; releaseDeferredMetalBuffers clears it only after GPU completion.
 void deferReleaseMetalBuffer(MTL::Buffer *buffer);
 void releaseDeferredMetalBuffers();
-// Orphaned buffers awaiting the next wait point. Diagnostic only: tests read
-// the delta across one upload to count orphans.
+// Retired backings awaiting the next wait point. Diagnostic only: tests read
+// the delta across one upload to count backing swaps.
 std::size_t deferredMetalBufferReleaseCount();
-// Arena slices remain valid until releaseDeferredMetalBuffers(), which may
-// reuse their storage only after the caller has waited for GPU completion.
-MetalStagingBufferSlice stageMetalTextureUpload(const void *data, std::size_t byteCount);
+// Arena slices for texture and buffer uploads, 256-byte aligned. A slice stays
+// valid and unwritten until releaseDeferredMetalBuffers(), which reuses its
+// storage only after the caller has waited for GPU completion. Chunks persist
+// across frames, an upload larger than a standard chunk included, and are
+// released after a long run of drains that left them unused.
+MetalStagingBufferSlice reserveMetalStaging(std::size_t byteCount);
+MetalStagingBufferSlice stageMetalUpload(const void *data, std::size_t byteCount);
 std::size_t metalStagingBufferAllocationCount();
+// The counters RenderDevice::deviceStats() reports for buffer writes.
+BufferWriteStats &metalBufferWriteStats();
 void replaceMetalBufferInBindings(MTL::Buffer *oldBuffer, MTL::Buffer *newBuffer);
 
 // Null every sticky uniform/storage bind slot (and the active vertex-layout

@@ -204,8 +204,8 @@ inline BufferUploadRange positionUploadRange(
     return {static_cast<std::ptrdiff_t>(start * kStride), (end - start) * kStride, &globals[start]};
 }
 
-// One `subDataRanges` per logical flush: Metal orphans an encoded buffer once
-// per call, so a call per run costs a full-buffer allocation and copy each.
+// One `subDataRanges` per logical flush: Metal encodes one staged copy into an
+// encoded buffer per call, so a call per run costs a blit encoder each.
 inline void submitPositionRanges(Buffer *buf, std::vector<BufferUploadRange> &ranges) {
     if (!ranges.empty()) {
         buf->subDataRanges(ranges);

@@ -17,7 +17,7 @@ using namespace IRRender;
 namespace IRSystem {
 
 /// T-139 Phase 1 — GPU particle update pass; T-159 Phase 2 — folds in
-/// the per-frame spawn flush so per-spawn Metal `subData` orphan churn
+/// the per-frame spawn flush so per-spawn Metal `subData` churn
 /// is replaced by one coalesced upload per frame.
 ///
 /// Per matched canvas (one entity owning a `C_GPUParticlePool`):

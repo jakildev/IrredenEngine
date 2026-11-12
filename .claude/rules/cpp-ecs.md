@@ -55,11 +55,11 @@ See [`engine/prefabs/CLAUDE.md` § "Component method rules"](../../engine/prefab
 
 1. **Push at mutation time.** Each mutating method writes the affected range
    to the destination resource directly (`Buffer::subData`,
-   `Texture2D::subImage2D`). When per-mutation upload cost dominates (Metal
-   `subData` orphans the whole buffer), the mutator queues an index into a
+   `Texture2D::subImage2D`). When per-mutation upload cost dominates (each
+   Metal `subData` encodes a GPU copy), the mutator queues an index into a
    pending list and the owning system flushes once per frame, submitting
    the coalesced contiguous runs in one `Buffer::subDataRanges` call
-   (Metal orphans once per call, not once per run) — bounded,
+   (one Metal copy per call, not one per run) — bounded,
    deterministic, never re-uploading untouched slots. Example:
    `C_VoxelPool::queuePositionRange`, flushed by `VOXEL_TO_TRIXEL_STAGE_1`
    through `flushPendingPositionRanges`.

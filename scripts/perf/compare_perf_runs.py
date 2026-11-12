@@ -92,6 +92,17 @@ WITNESS_OVERFLOW_RE = re.compile(
     r"^Per-axis overflow: maxEntries=(\d+) maxDropped=(\d+) cap=(\d+) samples=(\d+)$"
 )
 
+DEVICE_COUNTERS_SUPPORTED_RE = re.compile(r"^Supported: (0|1)$")
+DEVICE_COUNTER_RE = re.compile(r"^(\w+)\s+(\d+)\s+([\d.]+)\s+(\d+)$")
+GPU_PROCESS_PEAK_RE = re.compile(r"^GPU process allocation: peak=(\d+) bytes$")
+
+
+@dataclass
+class DeviceCounter:
+    total: int
+    steady_per_frame: float
+    max_per_frame: int
+
 
 @dataclass
 class FrameTiming:
@@ -222,6 +233,11 @@ class CellReport:
     # None for a report without the decomposition section.
     frame_split: Optional[FrameSplit] = None
     cull: CullStats = field(default_factory=CullStats)
+    # None for a report without the render device counter section.
+    device_counters_supported: Optional[bool] = None
+    device_counters: Dict[str, DeviceCounter] = field(default_factory=dict)
+    # 0 is a written "unavailable"; None is a report without the line.
+    gpu_process_peak_bytes: Optional[int] = None
     raw: str = ""
 
     def steady_frame_times_ms(self) -> List[float]:
@@ -301,6 +317,9 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
         if s.startswith("--- GPU stage timing"):
             section = "gpu"
             continue
+        if s.startswith("--- Render device counters"):
+            section = "device_counters"
+            continue
         if s.startswith("--- Voxel cull stats"):
             section = "cull"
             continue
@@ -360,6 +379,22 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
                     min_ms=float(metric.group(3)), max_ms=float(metric.group(4)),
                     samples=int(metric.group(5)),
                 ))
+        elif section == "device_counters":
+            m = DEVICE_COUNTERS_SUPPORTED_RE.match(s)
+            if m:
+                report.device_counters_supported = m.group(1) == "1"
+                continue
+            m = GPU_PROCESS_PEAK_RE.match(s)
+            if m:
+                report.gpu_process_peak_bytes = int(m.group(1))
+                continue
+            m = DEVICE_COUNTER_RE.match(s)
+            if m:
+                report.device_counters[m.group(1)] = DeviceCounter(
+                    total=int(m.group(2)),
+                    steady_per_frame=float(m.group(3)),
+                    max_per_frame=int(m.group(4)),
+                )
         elif section == "gpu":
             fmt = GPU_STAGE_FORMAT_RE.match(s)
             if fmt:
