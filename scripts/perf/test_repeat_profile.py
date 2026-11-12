@@ -17,6 +17,7 @@ from repeat_profile import (
     cmake_source_dir,
     demo_binary,
     device_counter_lines,
+    device_error_failure,
     directory_digest,
     engine_logged,
     find_demo_pid,
@@ -559,6 +560,16 @@ class DeviceCounterSummaryTest(unittest.TestCase):
 
     def test_reports_without_the_section_add_nothing(self):
         self.assertEqual(device_counter_lines([CellReport(cell_id="old")]), [])
+
+    def test_a_command_buffer_error_refuses_the_run(self):
+        report = self.report(True, 0.0, 0)
+        report.device_counters["commandBufferErrors"] = DeviceCounter(1, 0.0, 1)
+        self.assertIn("1 command-buffer error", device_error_failure(report))
+
+    def test_zero_command_buffer_errors_are_healthy(self):
+        report = self.report(True, 0.0, 0)
+        report.device_counters["commandBufferErrors"] = DeviceCounter(0, 0.0, 0)
+        self.assertIsNone(device_error_failure(report))
 
 
 class PercentileTest(unittest.TestCase):

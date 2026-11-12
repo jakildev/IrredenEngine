@@ -103,6 +103,8 @@ class World {
     // Per-frame differences of the device's cumulative counters.
     std::vector<IRRender::BufferWriteStats> m_frameBufferWrites;
     IRRender::BufferWriteStats m_bufferWritesAtLastFrame;
+    std::vector<IRRender::DeviceErrorStats> m_frameDeviceErrors;
+    IRRender::DeviceErrorStats m_deviceErrorsAtLastFrame;
     uint64_t m_gpuProcessPeakBytes = 0;
     // adding to world for user should just be attaching things to world ecs
     // entity! I have tried this before btw but wasnt ready

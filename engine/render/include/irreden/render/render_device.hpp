@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 
 namespace IRRender {
 
@@ -34,11 +35,19 @@ struct BufferWriteStats {
     std::uint64_t midFrameWaits_ = 0;
 };
 
+struct DeviceErrorStats {
+    std::uint64_t commandBufferErrors_ = 0;
+    std::uint64_t skippedFrames_ = 0;
+    std::uint64_t firstCommandBufferErrorFrame_ = 0;
+    std::string_view firstCommandBufferError_;
+};
+
 // Backend counters. `supported_` false means the backend counts none of
 // them, so every zero is unknown rather than measured.
 struct RenderDeviceStats {
     bool supported_ = false;
     BufferWriteStats bufferWrites_;
+    DeviceErrorStats errors_;
 };
 
 using GpuTimestampHandle = std::uint32_t;

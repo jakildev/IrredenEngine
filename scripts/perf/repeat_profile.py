@@ -595,6 +595,13 @@ def overflow_failure(target: str, demo_args: list[str], witness: RunWitness) -> 
     return None
 
 
+def device_error_failure(report: CellReport) -> str | None:
+    counter = report.device_counters.get("commandBufferErrors")
+    if counter is not None and counter.total > 0:
+        return f"the GPU reported {counter.total} command-buffer error(s)"
+    return None
+
+
 def witness_checks(target: str, demo_args: list[str], witness: RunWitness) -> dict:
     return {
         "yaw_pose_mismatch": yaw_pose_mismatch(target, demo_args, witness),
@@ -1044,6 +1051,7 @@ def main() -> int:
                 or (row.gpu_frame.supported is True and row.gpu_frame.valid > 0)
             )
             run["gpu_frame_supported"] = row.gpu_frame.supported
+            run["device_error_failure"] = device_error_failure(row)
             rows.append(row)
         gpu_accepted = run.get("gpu_measured") or (
             args.allow_unsupported_gpu_frame and run.get("gpu_frame_supported") is False
@@ -1061,12 +1069,14 @@ def main() -> int:
             or run["yaw_pose_mismatch"] is not None
             or run["pivot_mismatch"] is not None
             or run["overflow_failure"] is not None
+            or run.get("device_error_failure") is not None
             or (sampling is not None and not sampling["complete"])
         ):
             reasons = [
                 run.get("yaw_pose_mismatch"),
                 run.get("pivot_mismatch"),
                 run.get("overflow_failure"),
+                run.get("device_error_failure"),
                 run.get("measurement_failure"),
             ]
             if fresh and not gpu_accepted:

@@ -352,6 +352,14 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
             static_cast<unsigned long long>(counter.maxPerFrame_)
         );
     }
+    if (!report.firstCommandBufferError_.empty()) {
+        std::fprintf(
+            f,
+            "First command-buffer error: frame=%llu text=%s\n",
+            static_cast<unsigned long long>(report.firstCommandBufferErrorFrame_),
+            report.firstCommandBufferError_.c_str()
+        );
+    }
     std::fprintf(
         f,
         "GPU process allocation: peak=%llu bytes\n",
