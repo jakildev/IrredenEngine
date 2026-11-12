@@ -7,6 +7,7 @@
 
 #include <irreden/system/ir_system_types.hpp>
 #include <irreden/system/system_access.hpp>
+#include <irreden/system/static_exclusion.hpp>
 #include <irreden/system/ir_assert_main_thread.hpp>
 
 #include <irreden/common/components/component_name.hpp>
@@ -76,7 +77,12 @@ class SystemManager {
         uint64_t minNs_ = UINT64_MAX;
         uint64_t maxNs_ = 0;
         uint32_t callCount_ = 0;
+        /// Rows in the archetype nodes the system matched, summed over calls.
         uint64_t totalEntityCount_ = 0;
+        /// Rows the system iterated, summed over calls. Equal to
+        /// `totalEntityCount_` unless a whole-node tick reported otherwise
+        /// through `reportRowsWalked`.
+        uint64_t totalWalkedCount_ = 0;
     };
 
     SystemManager();
@@ -101,7 +107,8 @@ class SystemManager {
         int grainSize = kDefaultGrainSize,
         std::uint32_t cadence = 1,
         std::uint32_t offset = 0,
-        SystemAccess accessDescriptor = {}
+        SystemAccess accessDescriptor = {},
+        Archetype staticWrites = {}
     ) {
         m_systemNames.emplace_back(C_Name{name});
         SystemId newSystemId = m_nextSystemId++;
@@ -118,6 +125,7 @@ class SystemManager {
         m_grainSize.emplace_back(grainSize > 0 ? grainSize : 1);
         m_systemAccess.emplace_back(accessDescriptor);
         emplaceCadenceState(cadence, offset);
+        emplaceStaticPolicy(newSystemId, std::move(staticWrites), accessDescriptor.gatesSettled_);
         return newSystemId;
     }
 
@@ -191,8 +199,12 @@ class SystemManager {
         m_ticks[system].archetype_.insert(IREntity::getComponentType<Tag>());
     }
 
+    /// Re-runs the static-resident matching policy: excluding `C_Settled`
+    /// turns a derived-pose writer into a deriving system, which then
+    /// matches settling rows and joins the round.
     template <typename Tag> void addSystemExcludeTag(SystemId system) {
         m_ticks[system].excludeArchetype_.insert(IREntity::getComponentType<Tag>());
+        refreshStaticPolicy(system);
     }
 
     /// Asserts on out-of-range SystemId (debug), same as `replaceSystemBody`
@@ -239,7 +251,8 @@ class SystemManager {
         std::function<void(ArchetypeNode *)> body,
         Concurrency concurrency = Concurrency::SERIAL,
         std::uint32_t cadence = 1,
-        std::uint32_t offset = 0
+        std::uint32_t offset = 0,
+        Archetype readOnly = {}
     );
 
     /// Replace the per-archetype tick body of an existing system in place.
@@ -408,6 +421,31 @@ class SystemManager {
     /// never runs a system; a contract that needs one ticking checks this.
     bool isInPipeline(IRTime::Events event, SystemId system) const;
 
+    /// Whether `system` is a deriving system for static residents: its
+    /// exclude archetype contains `C_Settled`, or it carries `GatesSettled`.
+    bool isDerivingSystem(SystemId system) const;
+
+    /// Round counters for static residents. A round is one completed
+    /// dispatch of every deriving group of every registered pipeline, in
+    /// INPUT, UPDATE, RENDER order. `roundsOpened` advances when a pipeline
+    /// starts and no round is open; `roundsCompleted` takes its value when
+    /// the last deriving group has dispatched. Neither is ever reset.
+    std::uint64_t roundsOpened() const {
+        return m_roundsOpened;
+    }
+    std::uint64_t roundsCompleted() const {
+        return m_roundsCompleted;
+    }
+
+    /// Tests only: start both round counters at `value` and close any open
+    /// round, so a test can run the transitions across a width boundary.
+    void seedRoundCountersForTest(std::uint64_t value);
+
+    /// Called from a whole-node tick on the thread that entered it: adds
+    /// `rows` to the rows the executing system walked this dispatch. A
+    /// system that never calls it is counted at its matched length.
+    static void reportRowsWalked(std::uint64_t rows);
+
   private:
     SystemId m_nextSystemId = 0;
     std::vector<C_Name> m_systemNames;
@@ -458,6 +496,39 @@ class SystemManager {
     std::vector<Concurrency> m_concurrency;
     std::vector<int> m_grainSize;
     std::vector<SystemAccess> m_systemAccess;
+
+    // Static-resident matching policy, parallel to m_ticks. m_staticWrites
+    // is the guarded write set the lane declared; m_policyExcludesStatic
+    // records that the policy, not the registration, put C_Static in the
+    // exclude archetype, so a re-run can take it back out.
+    std::vector<Archetype> m_staticWrites;
+    std::vector<std::uint8_t> m_gatesSettled;
+    std::vector<std::uint8_t> m_policyExcludesStatic;
+
+    // Round tracking. Main-thread state: written at pipeline start and once
+    // per group after its dispatch has joined, never from a tick.
+    struct DerivingGroup {
+        IRTime::Events event_;
+        std::size_t groupIndex_;
+        std::vector<SystemId> members_;
+    };
+    std::vector<DerivingGroup> m_derivingGroups;
+    bool m_derivingGroupsStale{true};
+    std::uint64_t m_roundsOpened{0};
+    std::uint64_t m_roundsCompleted{0};
+    bool m_roundOpen{false};
+    std::size_t m_roundCursor{0};
+    std::vector<SystemId> m_roundPending;
+
+    void emplaceStaticPolicy(SystemId system, Archetype staticWrites, bool gatesSettled);
+    void refreshStaticPolicy(SystemId system);
+    // A change to which systems a round covers abandons the open round.
+    void abandonRound();
+    void rebuildDerivingGroups();
+    void openRoundAtPipelineStart();
+    void closeRoundIfCursorPastEnd();
+    void
+    advanceRoundAfterGroup(IRTime::Events event, std::size_t groupIndex, const SystemId *dispatched, std::size_t count);
 
     // Per-system update cadence. Parallel to m_ticks; emplaced in
     // both system-creation paths via emplaceCadenceState.

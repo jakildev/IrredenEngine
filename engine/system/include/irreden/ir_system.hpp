@@ -206,7 +206,8 @@ constexpr SystemId createSystem(
         grainSize,
         cadence,
         offset,
-        accessDescriptor
+        accessDescriptor,
+        detail::guardedWrites<TickComponents...>()
     );
 }
 
@@ -479,16 +480,37 @@ inline SystemId createSystemDynamic(
     IREntity::Archetype includeArchetype,
     IREntity::Archetype excludeArchetype,
     std::function<void(IREntity::ArchetypeNode *)> body,
-    Concurrency concurrency = Concurrency::SERIAL
+    Concurrency concurrency = Concurrency::SERIAL,
+    IREntity::Archetype readOnly = {}
 ) {
     return getSystemManager().createSystemDynamic(
         std::move(name),
         std::move(includeArchetype),
         std::move(excludeArchetype),
         std::move(body),
-        concurrency
+        concurrency,
+        1,
+        0,
+        std::move(readOnly)
     );
 }
+
+namespace detail {
+
+template <typename PerNodeFn>
+void walkQueryNodes(
+    const IREntity::Archetype &includeArchetype,
+    const IREntity::Archetype &excludeArchetype,
+    PerNodeFn &&body
+) {
+    IR_ASSERT_MAIN_THREAD();
+    auto nodes = IREntity::queryArchetypeNodesSimple(includeArchetype, excludeArchetype);
+    for (auto *node : nodes) {
+        body(node);
+    }
+}
+
+} // namespace detail
 
 // One-shot query execution — the run-now counterpart to `createSystemDynamic`
 // (#17). Runs `body` once per archetype node matching `(includeArchetype,
@@ -503,17 +525,20 @@ inline SystemId createSystemDynamic(
 // worker-safe). Structural changes inside `body` must use the `IREntity::
 // deferred*` API; this primitive does NOT flush (the pipeline's group boundary
 // owns that). Zero matches is a silent no-op — correct for a command.
+//
+// The body is opaque, so every included component counts as written for the
+// static-resident matching policy: a query that includes a pose component
+// does not visit static entities. Use `executeQuery<const C...>` to read
+// them.
 template <typename PerNodeFn>
 void executeQueryDynamic(
     const IREntity::Archetype &includeArchetype,
     const IREntity::Archetype &excludeArchetype,
     PerNodeFn &&body
 ) {
-    IR_ASSERT_MAIN_THREAD();
-    auto nodes = IREntity::queryArchetypeNodesSimple(includeArchetype, excludeArchetype);
-    for (auto *node : nodes) {
-        body(node);
-    }
+    IREntity::Archetype exclude = excludeArchetype;
+    detail::applyStaticExclusion(includeArchetype, exclude, includeArchetype, false, "query");
+    detail::walkQueryNodes(includeArchetype, exclude, std::forward<PerNodeFn>(body));
 }
 
 namespace detail {
@@ -531,7 +556,7 @@ template <typename... Cs> struct RunQueryRows<TypeList<Cs...>> {
     run(const IREntity::Archetype &includeArchetype,
         const IREntity::Archetype &excludeArchetype,
         FunctionTick &&tick) {
-        executeQueryDynamic(
+        walkQueryNodes(
             includeArchetype,
             excludeArchetype,
             [&tick](IREntity::ArchetypeNode *node) {
@@ -577,6 +602,13 @@ void executeQuery(FunctionTick &&tick) {
         detail::ArchetypeFromList<typename Partition::Excluded>::value();
     using IncludedList = detail::FilterTags_t<QueryComponents...>;
     IREntity::Archetype includeArchetype = detail::ArchetypeFromList<IncludedList>::value();
+    detail::applyStaticExclusion(
+        includeArchetype,
+        excludeArchetype,
+        detail::guardedWrites<QueryComponents...>(),
+        false,
+        "query"
+    );
     detail::RunQueryRows<IncludedList>::run(
         includeArchetype,
         excludeArchetype,
@@ -734,6 +766,28 @@ inline std::uint32_t cadenceFromRate(double targetHz) {
     const double divisor = static_cast<double>(IRConstants::kFPS) / targetHz;
     const long rounded = static_cast<long>(divisor + 0.5); // round-half-up (divisor > 0)
     return rounded < 1 ? 1u : static_cast<std::uint32_t>(rounded);
+}
+
+/// Whether `system` is a deriving system for static residents
+/// (`docs/design/static-residents.md`, "The matching policy").
+inline bool isDerivingSystem(SystemId system) {
+    return getSystemManager().isDerivingSystem(system);
+}
+
+/// Round counters the static-resident transition step compares against.
+/// See `SystemManager::roundsOpened`.
+inline std::uint64_t roundsOpened() {
+    return getSystemManager().roundsOpened();
+}
+inline std::uint64_t roundsCompleted() {
+    return getSystemManager().roundsCompleted();
+}
+
+/// A whole-node tick reports the rows it iterated, for the profile report's
+/// `Walked` column. Call it on the thread that entered the tick; a system
+/// that never calls it is counted at its matched length.
+inline void reportRowsWalked(std::uint64_t rows) {
+    SystemManager::reportRowsWalked(rows);
 }
 
 inline void setTimingEnabled(bool enabled) {

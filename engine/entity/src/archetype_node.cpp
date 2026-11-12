@@ -25,6 +25,7 @@ ArchetypeNode::ArchetypeNode(NodeId nodeId, const Archetype &archetype)
         if (isPureComponent(*itr)) {
             components_[*itr] = createComponentData(*itr);
         }
+        hasForeignCleared_ = hasForeignCleared_ || isClearedByForeignMove(*itr);
     }
     IRE_LOG_INFO(
         "Created archetype node with components: {}, id={}",

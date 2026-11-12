@@ -41,6 +41,78 @@ void EntityManager::cacheComponentType(std::size_t slot, ComponentId componentTy
     m_componentTypeCache[slot] = componentType;
 }
 
+void EntityManager::recordComponentTraits(
+    ComponentId componentType, StaticGuard guard, bool foreignCleared
+) {
+    if (guard != StaticGuard::NONE) {
+        m_staticGuards.emplace(componentType, guard);
+    }
+    if (foreignCleared) {
+        m_foreignClearedComponents.push_back(componentType);
+    }
+}
+
+bool EntityManager::eraseForeignCleared(
+    const ArchetypeNode *fromNode, ComponentId named, Archetype &type
+) const {
+    if (!fromNode->hasForeignCleared_) {
+        return false;
+    }
+    bool erased = false;
+    for (ComponentId component : m_foreignClearedComponents) {
+        if (component != named && type.erase(component) > 0) {
+            erased = true;
+        }
+    }
+    return erased;
+}
+
+void EntityManager::removeForeignClearedRows(
+    ArchetypeNode *fromNode, const ArchetypeNode *toNode, ComponentId named, unsigned int row
+) {
+    for (ComponentId component : m_foreignClearedComponents) {
+        if (component != named && fromNode->type_.contains(component) &&
+            !toNode->type_.contains(component)) {
+            fromNode->components_.at(component)->removeDataAndPack(static_cast<int>(row));
+        }
+    }
+}
+
+ArchetypeNode *
+EntityManager::moveForAddedComponent(EntityRecord &record, ComponentId componentType) {
+    ArchetypeNode *fromNode = record.archetypeNode;
+    const unsigned int fromRow = static_cast<unsigned int>(record.row);
+    Archetype type = fromNode->type_;
+    if (!eraseForeignCleared(fromNode, componentType, type)) {
+        type.insert(componentType);
+        ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(type);
+        moveEntityByArchetype(record, fromNode->type_, fromNode, toNode);
+        return toNode;
+    }
+    const Archetype kept = type;
+    type.insert(componentType);
+    ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(type);
+    moveEntityByArchetype(record, kept, fromNode, toNode);
+    removeForeignClearedRows(fromNode, toNode, componentType, fromRow);
+    return toNode;
+}
+
+void EntityManager::takeEntityNotes(std::vector<EntityId> &out) {
+    IR_ASSERT(
+        isMainThreadForDeferred(),
+        "EntityManager::takeEntityNotes must run on the main thread"
+    );
+    for (WorkerStaging &staging : m_workerStaging) {
+        out.insert(out.end(), staging.entityNotes_.begin(), staging.entityNotes_.end());
+        staging.entityNotes_.clear();
+    }
+}
+
+void EntityManager::registerRelationChangeHook(RelationChangeHook hook) {
+    IR_ASSERT(static_cast<bool>(hook), "registerRelationChangeHook called with empty hook");
+    m_relationChangeHooks.push_back(std::move(hook));
+}
+
 void EntityManager::resizeWorkerStaging(std::size_t workerSlots) {
     IR_ASSERT(
         workerSlots >= 1,
@@ -309,6 +381,7 @@ void EntityManager::removeComponentById(EntityId entity, ComponentId componentTy
     }
 
     type.erase(componentType);
+    eraseForeignCleared(fromNode, componentType, type);
     ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(type);
     removeComponentById(record, entity, componentType, fromNode, toNode);
 }
@@ -384,6 +457,7 @@ void EntityManager::flushStructuralChanges() {
                 }
 
                 type.erase(componentType);
+                eraseForeignCleared(fromNode, componentType, type);
                 ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(type);
 
                 std::sort(entities.begin(), entities.end(), [this](EntityId a, EntityId b) {
@@ -689,18 +763,26 @@ void EntityManager::setChildOfRelation(EntityId entity, RelationId relation) {
     if (current == relation) {
         return;
     }
+    for (std::size_t i = 0; i < m_relationChangeHooks.size(); ++i) {
+        m_relationChangeHooks[i](entity);
+    }
     // Relations carry no column, so the shared type is everything except the
     // outgoing relation.
     Archetype kept = fromNode->type_;
     if (current != kNullRelation) {
         kept.erase(current);
     }
+    const bool cleared = eraseForeignCleared(fromNode, kNullComponent, kept);
     Archetype target = kept;
     if (relation != kNullRelation) {
         target.insert(relation);
     }
     ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(target);
+    const unsigned int fromRow = static_cast<unsigned int>(record.row);
     moveEntityByArchetype(record, kept, fromNode, toNode);
+    if (cleared) {
+        removeForeignClearedRows(fromNode, toNode, kNullComponent, fromRow);
+    }
     ++m_hierarchyRevision;
     IRE_LOG_DEBUG("Moved entity to new archetype with relation {}", relation);
 }
@@ -888,11 +970,7 @@ EntityManager::registerComponentDynamic(const std::string &typeName, smart_Compo
 }
 
 void EntityManager::addComponentByIdImpl(EntityRecord &record, ComponentId componentType) {
-    ArchetypeNode *fromNode = record.archetypeNode;
-    Archetype type = fromNode->type_;
-    type.insert(componentType);
-    ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(type);
-    moveEntityByArchetype(record, fromNode->type_, fromNode, toNode);
+    ArchetypeNode *toNode = moveForAddedComponent(record, componentType);
     bool ok = toNode->components_[componentType]->appendDefaultRow();
     IR_ASSERT(
         ok,
@@ -988,6 +1066,9 @@ void EntityManager::removeComponentById(
     moveEntityByArchetype(record, toNode->type_, fromNode, toNode);
 
     fromNode->components_[componentType]->removeDataAndPack(row);
+    if (fromNode->hasForeignCleared_) {
+        removeForeignClearedRows(fromNode, toNode, componentType, row);
+    }
 
     IRE_LOG_DEBUG(
         "Removed component type={} from entity={} (new row={})",
