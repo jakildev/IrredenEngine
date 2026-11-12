@@ -6,7 +6,7 @@ functions for reading files and composing paths. Used by `asset/`,
 
 ## Entry point
 
-`engine/utility/ir_utility.hpp` — umbrella header that pulls in
+`engine/utility/include/irreden/ir_utility.hpp` — umbrella header that pulls in
 `file_utils.hpp` and `path_utils.hpp`.
 
 ## What's here

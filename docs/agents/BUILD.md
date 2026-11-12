@@ -209,7 +209,7 @@ A green `fleet-run IrredenEngineTest` on this host means every test passes.
 The raw form they run, for debugging the wrappers themselves:
 
 ```bash
-cmd.exe /c "set PATH=C:\\msys64\\mingw64\\bin;%PATH% && \"C:/Program Files/CMake/bin/cmake.EXE\" --build C:/Users/evinj/VSCODE_PROJECTS/repos/IrredenEngine/build --target IRShapeDebug -- -j4" 2>&1
+cmd.exe /c "set PATH=C:\\msys64\\mingw64\\bin;%PATH% && \"C:/Program Files/CMake/bin/cmake.EXE\" --build <engine-clone>/build --target IRShapeDebug -- -j4" 2>&1
 ```
 
 ### `cc1plus` silent crash (Windows only)
@@ -290,7 +290,7 @@ force a real compile.
 **Windows only:** `cc1plus` diagnostics sometimes stream through the Bash
 tool heavily buffered. If output looks empty after the PATH fix, redirect
 inside the `cmd /c` argument string, not as a Bash-tool shell redirect
-(`> C:\Users\evinj\AppData\Local\Temp\build.log 2>&1`), and `cat` the file.
+(`> <temp-dir>\build.log 2>&1`), and `cat` the file.
 
 ## Running an executable
 
