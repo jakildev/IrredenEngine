@@ -42,6 +42,12 @@ def cpp(source):
     return source.replace("thread ", "").replace("faceFrame.", "")
 
 
+def caster_position_expression(source):
+    rigid = re.search(r"const bool rigidSource = [^;]+;", source)[0]
+    position = re.search(r"position = (rigidSource \?[\s\S]*?);", source)[1]
+    return rigid + "\nconst vec3 position = " + position + ";"
+
+
 PREAMBLE = r"""
 #include <algorithm>
 #include <cmath>
@@ -247,8 +253,7 @@ vec3 storedScatterOrigin(ivec2 iso,int encoded,int axis,int cardinal) {
     const int wFrac4=decodeWFrac4PerAxis(encoded);
     vec3 eu,ev;faceInPlaneUnitAxes(axis,eu,ev);
 """ + cpp(scatter_origin) + "\nreturn origin;\n}\n"
-    select = re.search(r"const bool rigidSource = [^;]+;\s*const vec3 position = [^;]+;",
-                       caster)[0]
+    select = caster_position_expression(caster)
     legacy = ("vec3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz)"
               " * subdivisions)) / subdivisions")
     previous = select.replace("perAxisRenderedVoxelCenter(positions[index].xyz)", legacy)

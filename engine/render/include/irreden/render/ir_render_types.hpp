@@ -1493,6 +1493,9 @@ constexpr std::uint32_t kBufferIndex_SurfaceLightVolumeParams = kBufferIndex_Fra
 constexpr std::uint32_t kBufferIndex_ChunkVisibility = 24;
 constexpr std::uint32_t kBufferIndex_CompactedVoxelIndices = 25;
 constexpr std::uint32_t kBufferIndex_IndirectDispatchParams = 26;
+// The voxel sun-face count/scan/bake sequence borrows the indirect-params slot
+// and restores IndirectDispatchParams before returning.
+constexpr std::uint32_t kBufferIndex_SunFaceAdmissionScratch = kBufferIndex_IndirectDispatchParams;
 constexpr std::uint32_t kBufferIndex_FrameDataLightingToTrixel = 27;
 // Slot 28: feeds only the light-volume propagate shader (voxel-existence
 // + SDF-blocker bits). Neither AO nor sun-shadow reads this bitfield SSBO

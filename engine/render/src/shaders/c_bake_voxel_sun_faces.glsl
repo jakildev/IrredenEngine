@@ -20,10 +20,12 @@ layout(std430, binding = 8) readonly buffer VoxelActiveMask { uint activeMask[];
 layout(std430, binding = 5) readonly buffer PositionBuffer { vec4 positions[]; };
 layout(std430, binding = 6) readonly buffer ColorBuffer { VoxelSunSample voxels[]; };
 layout(std430, binding = 28) restrict buffer SunShadowDepthMap { uint sunDepthBuf[]; };
+layout(std430, binding = 26) restrict buffer SunFaceAdmissionScratch { uint admissionScratch[]; };
 layout(std140, binding = 16) uniform VoxelSunFaceFrame {
     vec4 worldOrigin; // xyz: world translation; w: per-axis raster enabled
     vec4 viewToWorld;
     ivec4 dispatch;
+    ivec4 admission;
 };
 layout(std140, binding = 29) uniform FrameDataSun {
     uniform vec4 sunDirection;
@@ -70,26 +72,60 @@ void rasterSunFace(vec3 corner, vec3 edgeU, vec3 edgeV, vec2 origin, vec2 texelS
 
 #include "ir_sun_face_index.glsl"
 
-void main() {
-    const uint index = (gl_WorkGroupID.y * uint(dispatch.y) + gl_WorkGroupID.x) * 64u + gl_LocalInvocationID.x;
+shared uint sharedRecordCounts[64];
 
-    if (index >= uint(dispatch.x)) return;
-    if ((voxels[index].colorPacked >> 24u) == 0u) return;
-    if ((activeMask[index >> 5u] & (1u << (index & 31u))) == 0u) return;
-    const uint flags = (voxels[index].materialFlagBone >> 8u) & 0xFFu;
+void main() {
+    const uint lane = gl_LocalInvocationID.x;
+    if (admission.x == 1) {
+        if (lane == 0u) {
+            uint total = 0u;
+            for (uint group = 0u; group < uint(admission.y); ++group) {
+                const uint count = admissionScratch[group];
+                admissionScratch[group] = total;
+                total += count;
+            }
+            const uint boundWords = uint(sunDepthBuf.length());
+            const uint capacity = sourceFaceCapacity(boundWords);
+            const uint base = atomicAdd(sunDepthBuf[sourceFaceHeaderIndex(boundWords)], total);
+            admissionScratch[uint(admission.y)] = base;
+            admissionScratch[uint(admission.y) + 1u] = total;
+            if (total > 0u && (base >= capacity || total > capacity - base)) {
+                atomicExchange(sunDepthBuf[sourceFaceHierarchyNeededIndex(capacity)], 1u);
+            }
+        }
+        return;
+    }
+
+    const uint index = (gl_WorkGroupID.y * uint(dispatch.y) + gl_WorkGroupID.x) * 64u + gl_LocalInvocationID.x;
+    bool activeVoxel = index < uint(dispatch.x);
+    if (activeVoxel) activeVoxel = (voxels[index].colorPacked >> 24u) != 0u;
+    if (activeVoxel) activeVoxel = (activeMask[index >> 5u] & (1u << (index & 31u))) != 0u;
+    const uint flags = activeVoxel ? (voxels[index].materialFlagBone >> 8u) & 0xFFu : 0u;
     const float subdivisions = float(dispatch.z);
     // Basis 2 preserves authored centers and rotates original faces; basis 1
     // carries the camera-aligned cells produced by detached revoxelization.
     const bool rigidSource = dispatch.w == 2;
-    const vec3 position = rigidSource ? positions[index].xyz
-        : worldOrigin.w != 0.0 ? perAxisRenderedVoxelCenter(positions[index].xyz)
-        : vec3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
-    const vec3 worldCenter = rotateByQuat(position, viewToWorld) + worldOrigin.xyz;
-    const bool fogBody = (voxels[index].reserved & (1u << 3u)) != 0u;
-    if (!(fogBody) && fogCeilingEnabled.x != 0 && fogShadowVisionCircleCount > 0 &&
-        !fogFieldCastsSunShadow(worldCenter, false, fogCeilingEnabled.x,
-            fogShadowCell(worldCenter))) return;
-    for (int axis = 0; axis < 3; ++axis) {
+    vec3 position = vec3(0.0);
+    vec3 worldCenter = vec3(0.0);
+    bool fogBody = false;
+    if (activeVoxel) {
+        position = rigidSource ? positions[index].xyz
+            : worldOrigin.w != 0.0 ? perAxisRenderedVoxelCenter(positions[index].xyz)
+            : vec3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
+        worldCenter = rotateByQuat(position, viewToWorld) + worldOrigin.xyz;
+        fogBody = (voxels[index].reserved & (1u << 3u)) != 0u;
+        if (!(fogBody) && fogCeilingEnabled.x != 0 && fogShadowVisionCircleCount > 0 &&
+            !fogFieldCastsSunShadow(worldCenter, false, fogCeilingEnabled.x,
+                fogShadowCell(worldCenter))) activeVoxel = false;
+    }
+
+    vec3 projectedCorners[3];
+    vec3 projectedEdgesU[3];
+    vec3 projectedEdgesV[3];
+    uint faceMarkers[3];
+    uint faceMask = 0u;
+    uint recordMask = 0u;
+    for (int axis = 0; activeVoxel && axis < 3; ++axis) {
         vec3 normal = vec3(0.0);
         normal[axis] = 1.0;
         const vec3 worldAxis = rotateByQuat(normal, viewToWorld);
@@ -115,8 +151,53 @@ void main() {
         const vec3 projected = sunSpaceProject(corner, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
         const vec3 projectedU = sunSpaceProject(edgeU, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
         const vec3 projectedV = sunSpaceProject(edgeV, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
-        indexSourceSunFace(projected, projectedU, projectedV);
-        rasterSunFace(projected, projectedU, projectedV, cascadeOriginUV_0, cascadeTexelSize_0, int(kSourceFaceFallbackOffset), faceMarker);
-        rasterSunFace(projected, projectedU, projectedV, cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount + int(kSourceFaceFallbackOffset), faceMarker);
+        projectedCorners[axis] = projected;
+        projectedEdgesU[axis] = projectedU;
+        projectedEdgesV[axis] = projectedV;
+        faceMarkers[axis] = faceMarker;
+        faceMask |= 1u << uint(axis);
+        if (sourceSunFaceNeedsRecord(projected, projectedU, projectedV)) {
+            recordMask |= 1u << uint(axis);
+        }
+    }
+
+    sharedRecordCounts[lane] = bitCount(recordMask);
+    memoryBarrierShared();
+    barrier();
+    const uint group = gl_WorkGroupID.y * uint(dispatch.y) + gl_WorkGroupID.x;
+    if (admission.x == 0) {
+        if (lane == 0u) {
+            uint total = 0u;
+            for (uint item = 0u; item < 64u; ++item) total += sharedRecordCounts[item];
+            admissionScratch[group] = total;
+        }
+        return;
+    }
+
+    if (lane == 0u) {
+        uint prefix = 0u;
+        for (uint item = 0u; item < 64u; ++item) {
+            const uint count = sharedRecordCounts[item];
+            sharedRecordCounts[item] = prefix;
+            prefix += count;
+        }
+    }
+    memoryBarrierShared();
+    barrier();
+    uint faceIndex = admissionScratch[uint(admission.y)] + admissionScratch[group] + sharedRecordCounts[lane];
+    for (int axis = 0; axis < 3; ++axis) {
+        const uint bit = 1u << uint(axis);
+        if ((faceMask & bit) == 0u) continue;
+        if ((recordMask & bit) != 0u) {
+            indexSourceSunFaceAssigned(
+                projectedCorners[axis], projectedEdgesU[axis], projectedEdgesV[axis], faceIndex
+            );
+            ++faceIndex;
+        }
+        rasterSunFace(projectedCorners[axis], projectedEdgesU[axis], projectedEdgesV[axis],
+            cascadeOriginUV_0, cascadeTexelSize_0, int(kSourceFaceFallbackOffset), faceMarkers[axis]);
+        rasterSunFace(projectedCorners[axis], projectedEdgesU[axis], projectedEdgesV[axis],
+            cascadeOriginUV_1, cascadeTexelSize_1,
+            kCascadeTexelCount + int(kSourceFaceFallbackOffset), faceMarkers[axis]);
     }
 }
