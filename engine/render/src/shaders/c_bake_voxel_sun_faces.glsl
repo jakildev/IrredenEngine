@@ -162,6 +162,7 @@ void main() {
     }
 
     sharedRecordCounts[lane] = bitCount(recordMask);
+    memoryBarrierShared();
     barrier();
     const uint group = gl_WorkGroupID.y * uint(dispatch.y) + gl_WorkGroupID.x;
     if (admission.x == 0) {
@@ -181,6 +182,7 @@ void main() {
             prefix += count;
         }
     }
+    memoryBarrierShared();
     barrier();
     uint faceIndex = admissionScratch[uint(admission.y)] + admissionScratch[group] + sharedRecordCounts[lane];
     for (int axis = 0; axis < 3; ++axis) {

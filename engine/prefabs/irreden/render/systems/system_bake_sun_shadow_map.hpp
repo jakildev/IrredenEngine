@@ -370,7 +370,6 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     Buffer *voxelFaceFrameBuf_ = nullptr;
     Buffer *voxelFaceAdmissionScratch_ = nullptr;
     std::size_t voxelFaceAdmissionGroups_ = 0;
-    Buffer *voxelIndirectBuf_ = nullptr;
     ShaderProgram *clearProgram_ = nullptr;
     ShaderProgram *bakeProgram_ = nullptr;
     Buffer *sunShadowDepthMap_ = nullptr;
@@ -1273,10 +1272,6 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
         IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-        voxelIndirectBuf_->bindBase(
-            BufferTarget::SHADER_STORAGE,
-            kBufferIndex_IndirectDispatchParams
-        );
         revoxelizeParamsBuf_->bindBase(
             BufferTarget::UNIFORM,
             kBufferIndex_RevoxelizeDetachedParams
@@ -1386,12 +1381,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                                             "VoxelSunFaceAdmissionScratch",
                                             nullptr,
                                             2 * sizeof(std::uint32_t),
-                                            BUFFER_STORAGE_DYNAMIC,
-                                            BufferTarget::SHADER_STORAGE,
-                                            kBufferIndex_SunFaceAdmissionScratch
+                                            BUFFER_STORAGE_DYNAMIC
         )
                                             .second;
-        p->voxelIndirectBuf_ = IRRender::getNamedResource<Buffer>("IndirectDispatchParams");
         p->detachedShadowFrameBuf_ = IRRender::createNamedResource<Buffer>(
                                          "DetachedShadowFrameBuffer",
                                          nullptr,
