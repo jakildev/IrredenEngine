@@ -748,16 +748,19 @@ for raw in am_bytes[am_start:am_end].split(b"\n"):
 
 total = len(merge_queue) + len(decisions) + len(closeouts)
 scope = "+".join(repo for repo, _, _, _ in repos)
-print(f"fleet-decisions: {total} decision(s) waiting   [{scope}]")
+ready = [row for row in merge_queue if not row[3]]
+held = [row for row in merge_queue if row[3]]
+print(f"fleet-decisions: {total} decision(s) waiting "
+      f"({len(ready)} ready to merge, {len(held)} held)   [{scope}]")
 
 if not_starting:
     print()
     for repo, since, annotation in not_starting:
         print(f'actions not starting on {repo} since {since}: "{annotation}"')
 
-if merge_queue:
-    print(f"\n## Merge queue ({len(merge_queue)})")
-    for repo, pr, has_nits, holds, notes, wip_mismatch in merge_queue:
+
+def print_merge_rows(rows):
+    for repo, pr, has_nits, holds, notes, wip_mismatch in rows:
         nits = "+nits" if has_nits else ""
         print(f"  {repo} PR #{pr['number']}  {pr['title']}  [approved{nits}]")
         for hold in holds:
@@ -769,6 +772,16 @@ if merge_queue:
                 "      warn: title still carries [WIP] with no fleet:wip label — "
                 "strip before merge (squash uses the title as the commit subject)"
             )
+
+
+# A PR with any hold is listed apart from the ready ones: branch protection
+# requires only the lint contexts, so GitHub's merge button is enabled on it.
+if ready:
+    print(f"\n## Merge queue: ready ({len(ready)})")
+    print_merge_rows(ready)
+if held:
+    print(f"\n## Merge queue: held ({len(held)})")
+    print_merge_rows(held)
 
 if decisions:
     print(f"\n## Decisions ({len(decisions)})")

@@ -20,6 +20,9 @@
 #     awaiting (informational below); feedback cue flips to OVERDUE when the
 #     .last-reviewed marker is >= 14 days old or absent (informational when
 #     fresh) — both arms of each threshold exercised
+#   - merge queue split: an approved PR with no hold is listed under the
+#     ready section, one with a hold under the held section with its hold
+#     lines, and the headline gives the two counts
 #   - headline decision count = merge queue + decisions
 #   - unreachable repo is skipped with a warning, not fatal
 #   - both repos reachable at once: each repo's manifest-indexed artifacts
@@ -298,7 +301,9 @@ assert_eq "$status" "0" "default run exits 0 despite unreachable game repo"
 assert_contains "$err" "skipping jakildev/irreden" "unreachable repo warned on stderr"
 
 assert_contains "$out" "9 decision(s) waiting" "headline counts merge queue + decisions and close-outs"
-assert_contains "$out" "Merge queue (3)" "merge queue counts all three approved PRs"
+assert_contains "$out" "Merge queue: ready (3)" "merge queue counts all three approved PRs as ready"
+assert_absent "$out" "Merge queue: held" "no held section when no approved PR has a hold"
+assert_contains "$out" "(3 ready to merge, 0 held)" "headline gives the ready and held counts"
 assert_contains "$out" "engine PR #101" "clean approved PR listed"
 assert_contains "$out" "#102" "approved-with-nits PR listed"
 assert_contains "$out" "[approved+nits]" "has-nits annotated"
@@ -565,6 +570,57 @@ assert_eq "$status" "0" "an API failure is not fatal to the digest"
 assert_contains "$out" \
     "hold: gate coverage unreadable (gh api repos/jakildev/IrredenEngine: gh: API rate limit exceeded (HTTP 403))" \
     "an API failure prints an unreadable hold, never a clean reading"
+
+# --- merge queue split: ready apart from held --------------------------------
+#
+# One clean approved PR and one whose head failed a workflow: the clean one is
+# listed as ready, the red one as held with its hold, and the headline counts
+# each. GitHub's merge button is enabled on both.
+
+cat > "$TMP/engine-prs-split.json" << 'EOF'
+[
+  {"number": 4101, "title": "engine: clean approved", "url": "u",
+   "headRefOid": "aaaaaaaaa1010000000000000000000000000000",
+   "labels": [{"name": "fleet:approved"}]},
+  {"number": 4102, "title": "engine: approved on a red head", "url": "u",
+   "headRefOid": "fffffffff4102000000000000000000000000000",
+   "labels": [{"name": "fleet:approved"}, {"name": "fleet:checks-red"}]}
+]
+EOF
+python3 - "$TMP/api-default.json" "$TMP/api-split.json" << 'PYEOF'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    spec = json.load(f)
+spec["runs"]["fffffffff4102000000000000000000000000000"] = [
+    {"id": 41 + i, "path": f".github/workflows/{name}", "status": "completed",
+     "conclusion": conclusion, "created_at": "2026-01-02T00:00:00Z"}
+    for i, (name, conclusion) in enumerate((("comment-refs.yml", "success"),
+                                            ("instruction-size.yml", "failure"),
+                                            ("no-plan-files.yml", "success")))]
+spec["master"] = {"instruction-size.yml": "success"}
+with open(sys.argv[2], "w", encoding="utf-8") as f:
+    json.dump(spec, f)
+PYEOF
+python3 "$TMP/write_api.py" "$TMP/api-split" "$TMP/api-split.json"
+
+status=$(GH_STUB_ENGINE_PRS="$TMP/engine-prs-split.json" GH_STUB_API="$TMP/api-split" \
+    run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "split run exits 0"
+assert_contains "$out" "(1 ready to merge, 1 held)" "the headline counts ready and held apart"
+ready_section=$(awk '/^## Merge queue: ready/{on=1; print; next} /^## /{on=0} on' "$TMP/out.txt")
+held_section=$(awk '/^## Merge queue: held/{on=1; print; next} /^## /{on=0} on' "$TMP/out.txt")
+assert_contains "$ready_section" "## Merge queue: ready (1)" "the ready section carries its count"
+assert_contains "$ready_section" "engine PR #4101" "the clean approved PR is ready"
+assert_absent "$ready_section" "#4102" "the red PR is not listed as ready"
+assert_contains "$held_section" "## Merge queue: held (1)" "the held section carries its count"
+assert_contains "$held_section" "engine PR #4102" "the red PR is held"
+assert_contains "$held_section" \
+    "hold: .github/workflows/instruction-size.yml failed on head fffffffff (master: success)" \
+    "the held PR keeps its hold line"
+assert_absent "$held_section" "#4101" "the clean PR is not listed as held"
 
 # --- CI gate derivation over every `on:` spelling ---------------------------
 #

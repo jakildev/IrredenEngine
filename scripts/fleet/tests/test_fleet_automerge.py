@@ -446,6 +446,24 @@ class Gates(AutomergeCase):
                 self.mutate(rollup=rollup)
                 self.assert_refused(fragment)
 
+    def test_non_required_check_red_or_running_refuses(self):
+        """Branch protection requires only the five lint contexts; the lane
+        refuses on any other check that failed or has not finished."""
+        required = [dict(GREEN[0], name=name, workflowName=name, detailsUrl=f"https://x/r{i}")
+                    for i, name in enumerate(("comment-refs", "instruction-size",
+                                              "no-plan-files", "closes-lint", "whitespace"))]
+        perf_failed = dict(GREEN[0], name="perf-gate", workflowName="Perf Gate",
+                           conclusion="FAILURE", detailsUrl="https://x/p")
+        harness_running = dict(GREEN[0], name="render-harness-tests",
+                               workflowName="Render Harness Tests", status="IN_PROGRESS",
+                               conclusion=None, detailsUrl="https://x/h")
+        for extra, fragment in ((perf_failed, "check perf-gate is COMPLETED/FAILURE"),
+                                (harness_running, "check render-harness-tests is IN_PROGRESS")):
+            with self.subTest(fragment=fragment):
+                self.gh_log.write_text("")
+                self.mutate(rollup=required + [extra])
+                self.assert_refused(fragment)
+
     def test_one_code_file_drops_to_human(self):
         self.mutate(files=REBLESS_FILES + ["engine/render/src/trixel.cpp"])
         self.assert_refused("engine/render/src/trixel.cpp is outside every auto class")

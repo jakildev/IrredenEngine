@@ -3923,6 +3923,26 @@ def project_opus_reviewer(state):
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
+def _checks_red_edge_items(repo, repo_state, master_ci_red):
+    """Reconcile R12's edges: an approved head turning red, the end of it,
+    and, while any such head exists, a master-CI alert raised or cleared (it
+    moves which of those failures are the PR's own).
+
+    Reads fleet:approved and the checks reading, never the fleet:checks-red
+    label R12 writes, so its own write cannot re-fire it. R12 covers the
+    engine repo only, the one whose master the alerts describe."""
+    approved_red = [pr for pr in repo_state.get("prs", [])
+                    if "fleet:approved" in (pr.get("labels") or ())
+                    and pr.get("checks") == "red" and not pr.get("not_started")]
+    items = [{"kind": "approved_red", "repo": repo,
+              "pr": pr.get("number"), "head": pr.get("headRefOid", "")}
+             for pr in approved_red]
+    if approved_red:
+        items.append({"kind": "master_red", "repo": repo,
+                      "workflows": list(master_ci_red or ())})
+    return items
+
+
 def project_queue_manager(state):
     items = []
     for repo, repo_state in state["repos"].items():
@@ -3939,6 +3959,8 @@ def project_queue_manager(state):
             items.append({"kind": "merged_pr", "repo": repo,
                           "pr": pr["number"],
                           "base": pr.get("baseRefName", "")})
+        if repo == "engine":
+            items += _checks_red_edge_items(repo, repo_state, state.get("master_ci_red"))
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
@@ -5505,6 +5527,15 @@ def _master_ci_prune_orphans(workflows: list[str]) -> None:
         log(f"master-ci: removed orphan alert {path.name} (workflow no longer exists)")
 
 
+def _master_ci_red_workflows() -> list[str]:
+    """Workflow file names with a standing master-CI alert, sorted."""
+    try:
+        return sorted(p.name[len(MASTER_CI_ALERT_PREFIX):]
+                      for p in _alerts_dir().glob(f"{MASTER_CI_ALERT_PREFIX}*"))
+    except OSError:
+        return []
+
+
 def run_master_ci_lane() -> None:
     """Alert on a red master workflow run, per workflow, until its next green run.
 
@@ -6229,6 +6260,11 @@ def tick_once():
             run_actions_not_starting_lane(state)
         except Exception as e:
             log(f"actions-not-starting lane failed: {e}")
+
+    # Projection input only, read after this tick's master-CI pass so an alert
+    # it raised or cleared moves the queue-manager hash on the same tick.
+    # state.json was emitted above and never carries it.
+    state["master_ci_red"] = _master_ci_red_workflows()
 
     triggers_fired = []
     for role, projector in PROJECTORS.items():
