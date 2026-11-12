@@ -76,8 +76,12 @@ struct VoxelCullStatsSummary {
 struct LightOcclusionChunkStatsSummary {
     uint64_t visitedSum_ = 0;
     uint64_t totalSum_ = 0;
+    uint64_t staleVisitedSum_ = 0;
+    uint64_t worldBoundsRebuiltSum_ = 0;
     uint32_t maxVisited_ = 0;
     uint32_t maxTotal_ = 0;
+    uint32_t maxStaleVisited_ = 0;
+    uint32_t maxWorldBoundsRebuilt_ = 0;
     uint32_t sampleCount_ = 0;
 };
 

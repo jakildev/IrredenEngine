@@ -491,13 +491,57 @@ struct C_VoxelPool {
         return m_chunkBounds;
     }
 
-    std::span<const ChunkWorldBounds> getChunkWorldBounds() {
+    void prepareChunkWorldBounds() {
         const int chunkCount = getChunkCount();
-        ensureChunkWorldBounds(chunkCount);
-        return std::span<const ChunkWorldBounds>{
-            m_chunkWorldBounds.data(),
-            m_chunkWorldBounds.size()
-        };
+        const bool fullDebt =
+            m_chunkWorldBoundsDirty || static_cast<int>(m_chunkWorldBounds.size()) != chunkCount;
+        m_chunkWorldBounds.resize(static_cast<std::size_t>(chunkCount));
+        if (!fullDebt) {
+            return;
+        }
+        m_chunkCullPending.resize(static_cast<std::size_t>(chunkCount), 0u);
+        for (int chunk = 0; chunk < chunkCount; ++chunk) {
+            std::uint8_t &flags = m_chunkCullPending[static_cast<std::size_t>(chunk)];
+            if ((flags & kCullPendingWorld) == 0) {
+                m_pendingWorldChunks.push_back(static_cast<std::size_t>(chunk));
+                flags |= kCullPendingWorld;
+            }
+        }
+        m_chunkWorldBoundsDirty = false;
+    }
+
+    bool isChunkWorldBoundsCurrent(std::size_t chunk) const {
+        return !m_chunkWorldBoundsDirty && chunk < m_chunkWorldBounds.size() &&
+               chunk < m_chunkCullPending.size() &&
+               (m_chunkCullPending[chunk] & kCullPendingWorld) == 0;
+    }
+
+    const ChunkWorldBounds &chunkWorldBounds(std::size_t chunk) const {
+        IR_ASSERT(isChunkWorldBoundsCurrent(chunk), "chunkWorldBounds reads stale chunk {}", chunk);
+        return m_chunkWorldBounds[chunk];
+    }
+
+    std::size_t refreshOldestChunkWorldBounds(std::size_t budget) {
+        prepareChunkWorldBounds();
+        const int chunkCount = getChunkCount();
+        std::size_t rebuilt = 0;
+        while (m_pendingWorldChunkRead_ < m_pendingWorldChunks.size() && rebuilt < budget) {
+            const std::size_t chunk = m_pendingWorldChunks[m_pendingWorldChunkRead_++];
+            if (chunk >= m_chunkCullPending.size() ||
+                (m_chunkCullPending[chunk] & kCullPendingWorld) == 0) {
+                continue;
+            }
+            m_chunkCullPending[chunk] &= static_cast<std::uint8_t>(~kCullPendingWorld);
+            if (static_cast<int>(chunk) < chunkCount) {
+                rebuildChunkWorldBounds(static_cast<int>(chunk));
+                ++rebuilt;
+            }
+        }
+        if (m_pendingWorldChunkRead_ == m_pendingWorldChunks.size()) {
+            m_pendingWorldChunks.clear();
+            m_pendingWorldChunkRead_ = 0;
+        }
+        return rebuilt;
     }
 
     // @p useContinuousYaw (smooth camera Z-yaw): while the per-axis
@@ -1000,11 +1044,14 @@ struct C_VoxelPool {
     std::vector<std::uint8_t> m_chunkCullPending;
     // Chunk indices whose corresponding bit is set, so a consumer walks its
     // pending set instead of scanning the flag array. A chunk is appended only
-    // on the 0 -> 1 transition of its bit, so the lists carry no duplicates
-    // and overlapping notifications coalesce. Capacity is retained across
-    // frames (cleared, never shrunk) — the steady state allocates nothing.
+    // on the 0 -> 1 transition of its bit, so each active suffix carries no
+    // duplicates and overlapping notifications coalesce. The world reader
+    // advances through its prefix without shifting the remaining debt.
+    // Capacity is retained across frames (cleared, never shrunk) — the steady
+    // state allocates nothing.
     std::vector<std::size_t> m_pendingCardinalChunks;
     std::vector<std::size_t> m_pendingWorldChunks;
+    std::size_t m_pendingWorldChunkRead_ = 0;
     CullRebuildCounters m_cullRebuildCounters{};
     // Conservative origin-centered world-AABB for a detached re-voxelize pool.
     // Set once by setStaticReVoxelizeBound; when present, rebuildChunkBounds
@@ -1149,16 +1196,19 @@ struct C_VoxelPool {
                 rebuildChunkWorldBounds(c);
             }
             dropPendingChunks(m_pendingWorldChunks, kCullPendingWorld);
+            m_pendingWorldChunkRead_ = 0;
         } else {
             // Consume ONLY the world bit — the cardinal consumer may not have
             // run yet and must still see these chunks as pending.
-            for (const std::size_t c : m_pendingWorldChunks) {
+            for (std::size_t i = m_pendingWorldChunkRead_; i < m_pendingWorldChunks.size(); ++i) {
+                const std::size_t c = m_pendingWorldChunks[i];
                 m_chunkCullPending[c] &= static_cast<std::uint8_t>(~kCullPendingWorld);
                 if (static_cast<int>(c) < chunkCount) {
                     rebuildChunkWorldBounds(static_cast<int>(c));
                 }
             }
             m_pendingWorldChunks.clear();
+            m_pendingWorldChunkRead_ = 0;
         }
         m_chunkWorldBoundsDirty = false;
     }

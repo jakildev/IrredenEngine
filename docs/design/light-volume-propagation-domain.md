@@ -59,10 +59,30 @@ stores remain nondeterministic; independent seed dispatches with colliding
 sources are not an equality oracle. The existing multi-canvas spotlight
 restriction also remains in force.
 
+## Occlusion-grid read domain
+
+The CPU occlusion grid uses a conservative world-cell box that covers both
+propagation neighbor reads and boundary-seed relocation. Each eligible local
+light contributes a box around its clamped seed: reach `K + 1` for an
+unclamped seed and `2K + 1` for a clamped seed. Their union is clipped to the
+camera-anchored light-volume window grown by one cell. Pool chunks with a
+current world AABB are visited only when that AABB, grown by half a cell for
+round-half-up assignment, intersects the box. Every visited voxel is still
+clipped to the box, so chunk admission state cannot change the grid.
+
+World-AABB debt is paid without coupling the world and cardinal cull caches.
+A stale chunk is admitted without an AABB test. Before admission, a frame
+whose stage-1 cull uses world bounds refreshes all stale world AABBs; another
+frame refreshes at most 64, oldest first. A cold or resized cache first becomes
+per-chunk debt, and each refresh clears only the world-cache pending bit. The
+no-light path touches neither cache. This moves refresh work ahead of stage 1
+on continuous-yaw and spatial-view frames while bounding added work at a
+cardinal pose.
+
 ## Cost model
 
 One fixed union box favors localized lighting. Widely separated sources can
 cover the full volume and retain the full propagation cost plus the additional
 clear. Measure the complete light-volume stage, including that clear, with
 identical window mode and pacing in each control. This changes neither the
-volume's memory footprint nor the cost of constructing the occlusion grid.
+volume's memory footprint nor the occlusion grid's fixed clear and upload sizes.

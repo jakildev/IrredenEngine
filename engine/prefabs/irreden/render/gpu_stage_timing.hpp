@@ -167,19 +167,33 @@ inline ComputeLightVolumeTiming &computeLightVolumeTiming() {
 
 struct BuildLightOcclusionGridTiming {
     CpuPhaseTiming clear_;
+    CpuPhaseTiming refresh_;
     CpuPhaseTiming visit_;
     CpuPhaseTiming upload_;
     std::uint64_t chunksVisitedSum_ = 0;
     std::uint64_t chunksTotalSum_ = 0;
+    std::uint64_t chunksStaleVisitedSum_ = 0;
+    std::uint64_t worldBoundsRebuiltSum_ = 0;
     std::uint32_t chunksVisitedMax_ = 0;
     std::uint32_t chunksTotalMax_ = 0;
+    std::uint32_t chunksStaleVisitedMax_ = 0;
+    std::uint32_t worldBoundsRebuiltMax_ = 0;
     std::uint32_t chunkSampleCount_ = 0;
 
-    void recordChunks(std::uint32_t visited, std::uint32_t total) {
+    void recordChunks(
+        std::uint32_t visited,
+        std::uint32_t total,
+        std::uint32_t staleVisited = 0,
+        std::uint32_t worldBoundsRebuilt = 0
+    ) {
         chunksVisitedSum_ += visited;
         chunksTotalSum_ += total;
+        chunksStaleVisitedSum_ += staleVisited;
+        worldBoundsRebuiltSum_ += worldBoundsRebuilt;
         chunksVisitedMax_ = IRMath::max(chunksVisitedMax_, visited);
         chunksTotalMax_ = IRMath::max(chunksTotalMax_, total);
+        chunksStaleVisitedMax_ = IRMath::max(chunksStaleVisitedMax_, staleVisited);
+        worldBoundsRebuiltMax_ = IRMath::max(worldBoundsRebuiltMax_, worldBoundsRebuilt);
         ++chunkSampleCount_;
     }
 

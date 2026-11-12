@@ -577,6 +577,12 @@ void World::buildAndWriteProfileReport() {
          occlusionGridTiming.clear_.sampleCount_}
     );
     report.cpuPhases_.push_back(
+        {"BuildLightOcclusionGrid::Refresh",
+         occlusionGridTiming.refresh_.totalMs_,
+         occlusionGridTiming.refresh_.maxMs_,
+         occlusionGridTiming.refresh_.sampleCount_}
+    );
+    report.cpuPhases_.push_back(
         {"BuildLightOcclusionGrid::Visit",
          occlusionGridTiming.visit_.totalMs_,
          occlusionGridTiming.visit_.maxMs_,
@@ -634,8 +640,14 @@ void World::buildAndWriteProfileReport() {
     const auto &occlusionChunks = IRRender::buildLightOcclusionGridTiming();
     report.lightOcclusionChunkStats_.visitedSum_ = occlusionChunks.chunksVisitedSum_;
     report.lightOcclusionChunkStats_.totalSum_ = occlusionChunks.chunksTotalSum_;
+    report.lightOcclusionChunkStats_.staleVisitedSum_ = occlusionChunks.chunksStaleVisitedSum_;
+    report.lightOcclusionChunkStats_.worldBoundsRebuiltSum_ =
+        occlusionChunks.worldBoundsRebuiltSum_;
     report.lightOcclusionChunkStats_.maxVisited_ = occlusionChunks.chunksVisitedMax_;
     report.lightOcclusionChunkStats_.maxTotal_ = occlusionChunks.chunksTotalMax_;
+    report.lightOcclusionChunkStats_.maxStaleVisited_ = occlusionChunks.chunksStaleVisitedMax_;
+    report.lightOcclusionChunkStats_.maxWorldBoundsRebuilt_ =
+        occlusionChunks.worldBoundsRebuiltMax_;
     report.lightOcclusionChunkStats_.sampleCount_ = occlusionChunks.chunkSampleCount_;
 
     const auto &witness = IRRender::renderRunWitness();

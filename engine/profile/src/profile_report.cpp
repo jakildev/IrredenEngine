@@ -480,10 +480,26 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
         );
         std::fprintf(
             f,
-            "%-12s %14.1f %14u %10u\n\n",
+            "%-12s %14.1f %14u %10u\n",
             "Total",
             static_cast<double>(c.totalSum_) / samples,
             c.maxTotal_,
+            c.sampleCount_
+        );
+        std::fprintf(
+            f,
+            "%-12s %14.1f %14u %10u\n",
+            "StaleVisit",
+            static_cast<double>(c.staleVisitedSum_) / samples,
+            c.maxStaleVisited_,
+            c.sampleCount_
+        );
+        std::fprintf(
+            f,
+            "%-12s %14.1f %14u %10u\n\n",
+            "WorldRebuild",
+            static_cast<double>(c.worldBoundsRebuiltSum_) / samples,
+            c.maxWorldBoundsRebuilt_,
             c.sampleCount_
         );
     }

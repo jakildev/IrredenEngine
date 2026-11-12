@@ -23,6 +23,7 @@
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -425,4 +426,153 @@ TEST_F(LightVolumeBoundarySeedTest, DomainRasterMatchesFullGridInsideAndZerosOut
 TEST_F(LightVolumeBoundarySeedTest, NoEligibleLocalLightProducesNoDomain) {
     const IREntity::EntityId canvas = IREntity::createEntity();
     EXPECT_FALSE(IRSystem::detail::lightOcclusionDomain(canvas, kGridOrigin).populated_);
+}
+
+TEST_F(LightVolumeBoundarySeedTest, ChunkWalkMatchesWithCurrentStaleAndMixedWorldBounds) {
+    constexpr int kChunk = IRRender::kVoxelChunkSize;
+    C_VoxelPool pool(ivec3(kChunk * 3, 1, 1));
+    pool.allocateVoxels(kChunk * 3);
+    const std::array<vec3, 3> positions{vec3(0), vec3(50), vec3(1, 0, 0)};
+    for (std::size_t chunk = 0; chunk < positions.size(); ++chunk) {
+        const std::size_t slot = chunk * kChunk;
+        pool.getPositionGlobals()[slot].pos_ = positions[chunk];
+        pool.getColors()[slot].color_ = Color{255, 255, 255, 255};
+    }
+    pool.resyncActiveMaskFromColors(0, kChunk * 3);
+
+    IRSystem::detail::LightOcclusionDomain domain;
+    domain.populated_ = true;
+    domain.min_ = ivec3(-2);
+    domain.max_ = ivec3(2);
+    IRRender::CpuPhaseTiming refreshTiming;
+    IRRender::CpuPhaseTiming visitTiming;
+    const auto run = [&](std::size_t budget, bool refreshAll) {
+        std::fill(m_voxelBits.begin(), m_voxelBits.end(), 0u);
+        return IRSystem::detail::populateLightOcclusionGrid(
+            pool,
+            domain,
+            kGridOrigin,
+            budget,
+            refreshAll,
+            m_voxelBits,
+            refreshTiming,
+            visitTiming
+        );
+    };
+
+    const auto current = run(0, true);
+    EXPECT_EQ(current.staleVisited_, 0u);
+    EXPECT_EQ(current.visited_, 2u);
+    const std::vector<std::uint32_t> expected = m_voxelBits;
+
+    pool.markCullBoundsDirty(0, kChunk * 3);
+    const auto stale = run(0, false);
+    EXPECT_EQ(stale.staleVisited_, 3u);
+    EXPECT_EQ(m_voxelBits, expected);
+
+    run(0, true);
+    pool.markCullBoundsDirty(kChunk, kChunk);
+    const auto mixed = run(0, false);
+    EXPECT_EQ(mixed.staleVisited_, 1u);
+    EXPECT_EQ(m_voxelBits, expected);
+}
+
+TEST_F(LightVolumeBoundarySeedTest, StaleChunkRewrittenIntoDomainRasterizesWithZeroBudget) {
+    constexpr int kChunk = IRRender::kVoxelChunkSize;
+    C_VoxelPool pool(ivec3(kChunk, 1, 1));
+    pool.allocateVoxels(kChunk);
+    pool.getPositionGlobals()[0].pos_ = vec3(50, 0, 0);
+    pool.getColors()[0].color_ = Color{255, 255, 255, 255};
+    pool.resyncActiveMaskFromColors(0, kChunk);
+
+    IRSystem::detail::LightOcclusionDomain domain;
+    domain.populated_ = true;
+    domain.min_ = ivec3(-2);
+    domain.max_ = ivec3(2);
+    IRRender::CpuPhaseTiming refreshTiming;
+    IRRender::CpuPhaseTiming visitTiming;
+    IRSystem::detail::populateLightOcclusionGrid(
+        pool,
+        domain,
+        kGridOrigin,
+        0,
+        true,
+        m_voxelBits,
+        refreshTiming,
+        visitTiming
+    );
+
+    std::fill(m_voxelBits.begin(), m_voxelBits.end(), 0u);
+    pool.getPositionGlobals()[0].pos_ = vec3(0);
+    pool.markCullBoundsDirty(0, 1);
+    const auto result = IRSystem::detail::populateLightOcclusionGrid(
+        pool,
+        domain,
+        kGridOrigin,
+        0,
+        false,
+        m_voxelBits,
+        refreshTiming,
+        visitTiming
+    );
+    EXPECT_EQ(result.staleVisited_, 1u);
+    EXPECT_TRUE(IRSystem::detail::gridGetBit(m_voxelBits, 0, 0, 0, kGridOrigin));
+}
+
+TEST_F(LightVolumeBoundarySeedTest, BoundedRefreshPaysDownOldestWorldDebt) {
+    constexpr int kChunk = IRRender::kVoxelChunkSize;
+    constexpr int kChunks = 5;
+    constexpr std::size_t kBudget = 2;
+    C_VoxelPool pool(ivec3(kChunk * kChunks, 1, 1));
+    pool.allocateVoxels(kChunk * kChunks);
+    for (int chunk = 0; chunk < kChunks; ++chunk) {
+        const std::size_t slot = static_cast<std::size_t>(chunk * kChunk);
+        pool.getPositionGlobals()[slot].pos_ = vec3(static_cast<float>(chunk), 0, 0);
+        pool.getColors()[slot].color_ = Color{255, 255, 255, 255};
+    }
+    pool.resyncActiveMaskFromColors(0, kChunk * kChunks);
+
+    IRSystem::detail::LightOcclusionDomain domain;
+    domain.populated_ = true;
+    domain.min_ = ivec3(-10);
+    domain.max_ = ivec3(10);
+    IRRender::CpuPhaseTiming refreshTiming;
+    IRRender::CpuPhaseTiming visitTiming;
+    for (int build = 0; build < 3; ++build) {
+        std::fill(m_voxelBits.begin(), m_voxelBits.end(), 0u);
+        const auto result = IRSystem::detail::populateLightOcclusionGrid(
+            pool,
+            domain,
+            kGridOrigin,
+            kBudget,
+            false,
+            m_voxelBits,
+            refreshTiming,
+            visitTiming
+        );
+        EXPECT_LE(result.worldBoundsRebuilt_, kBudget);
+    }
+    for (int chunk = 0; chunk < kChunks; ++chunk) {
+        EXPECT_TRUE(pool.isChunkWorldBoundsCurrent(static_cast<std::size_t>(chunk)));
+    }
+    const auto counters = pool.consumeCullRebuildCounters();
+    EXPECT_EQ(counters.worldChunks_, kChunks);
+}
+
+TEST_F(LightVolumeBoundarySeedTest, WorldRefreshLeavesCardinalDebtPending) {
+    constexpr int kChunk = IRRender::kVoxelChunkSize;
+    C_VoxelPool pool(ivec3(kChunk, 1, 1));
+    pool.allocateVoxels(kChunk);
+    pool.getPositionGlobals()[0].pos_ = vec3(0);
+    pool.getColors()[0].color_ = Color{255, 255, 255, 255};
+    pool.resyncActiveMaskFromColors(0, kChunk);
+    pool.rebuildChunkBounds(CardinalIndex::k0);
+
+    pool.getPositionGlobals()[0].pos_ = vec3(1, 0, 0);
+    pool.markCullBoundsDirty(0, 1);
+    pool.prepareChunkWorldBounds();
+    EXPECT_EQ(pool.refreshOldestChunkWorldBounds(1), 1u);
+
+    const IsoBounds2D distant{vec2(1000), vec2(1001)};
+    EXPECT_TRUE(pool.isRangeVisible(0, 1, distant));
 }

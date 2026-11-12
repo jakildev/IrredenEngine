@@ -120,8 +120,8 @@ IRPrefab::VoxelPool::markCullBoundsDirty(startIndex, count, canvasEntity);
 
 Call it after any in-place alpha or position rewrite of an owned span.
 Invalidation is per voxel chunk; overlapping ranges coalesce and a zero count
-is a no-op. The caches keep independent pending bits because their consumers
-can run on different frames and neither may consume the other's work.
+is a no-op. The world cache also feeds light-occlusion chunk admission; independent
+pending bits let either cache consumer run without consuming the other's work.
 
 Allocation, deallocation, queued-position uploads, active-mask mutations, and
 the voxel-set mutators already invalidate. A set-level alpha mutator must
