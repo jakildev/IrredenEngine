@@ -45,12 +45,12 @@
 // On-screen entities re-rasterize unconditionally each frame (assume
 // dynamic). The only work we skip is for entities the camera can't see —
 // a cull concern, not a "did the transform change" concern. The system
-// queries the canvas voxel pool's per-chunk iso bounds (the same data the
-// GPU chunk-visibility mask reads) and skips a voxel set whose pool chunks
-// are all outside the cull viewport. There is deliberately NO per-set
-// snapshot-compare early-out: a "did this change since last frame"
-// side-channel is a dirty flag in disguise (see `cpp-ecs.md` "No dirty
-// flags").
+// skips a voxel set whose pool chunks (the same per-chunk iso bounds the GPU
+// chunk-visibility mask reads) and whose current transform are both outside
+// the cull viewport (`IRPrefab::Voxel::isVoxelSetCullVisible`). There is
+// deliberately NO per-set snapshot-compare early-out: a "did this change
+// since last frame" side-channel is a dirty flag in disguise (see
+// `cpp-ecs.md` "No dirty flags").
 //
 // Entities WITHOUT `C_RotationMode` are implicitly GRID and are covered by
 // the twin arm `REBUILD_GRID_VOXELS_IMPLICIT` in this same header — register
@@ -61,7 +61,8 @@
 //    the per-canvas TRS composite (system_entity_canvas_to_framebuffer)
 //    and never touch the world voxel pool's positions.
 //  - `numVoxels_ <= 0` — headless / pre-canvas staging.
-//  - The voxel set's pool chunks are all outside the cull viewport.
+//  - The voxel set's pool chunks and current transform are outside the cull
+//    viewport.
 
 #include <cstdint>
 #include <span>
@@ -82,6 +83,7 @@
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/face_occupancy.hpp>
 #include <irreden/voxel/grid_rotation.hpp>
+#include <irreden/voxel/set_cull_gate.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -201,15 +203,11 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         C_VoxelPool &pool = *lastPool_;
 
         // Cull gate over the whole allocation: skip re-rasterization when
-        // none of this set's pool chunks are visible. A fail-closed set has
-        // no live voxels to bound, so it bypasses the gate until a pose is
-        // admitted again.
+        // neither this set's stored pool chunks nor its current transform
+        // reach the viewport. A fail-closed set has no live voxels to bound,
+        // so it bypasses the gate until a pose is admitted again.
         if (cullValid_ && voxelSet.unadmittedDestinationCells_ == 0 &&
-            !pool.isRangeVisible(
-                voxelSet.voxelStartIdx_,
-                static_cast<std::size_t>(voxelSet.allocatedVoxels_),
-                chunkVp_
-            )) {
+            !IRPrefab::Voxel::isVoxelSetCullVisible(voxelSet, pool, worldTransform, chunkVp_)) {
             return;
         }
 

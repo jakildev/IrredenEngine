@@ -128,17 +128,17 @@ the voxel-set mutators already invalidate. A set-level alpha mutator must
 invalidate even while `visible_ == false`: visibility suppresses the mask,
 whereas bounds derive from authored alpha.
 
-Detached GPU revoxelization is exempt as a producer because its static bound
-does not read the stale CPU mirror. Its static-bound branch is still a cache
-consumer and must clear the pending cardinal state, or `isRangeVisible` admits
-every detached range forever: a branch answering a cache query owns that
-cache's pending state even when it derives the answer elsewhere.
+Detached GPU revoxelization is exempt as a producer: its static bound does not
+read the stale CPU mirror. The static-bound and continuous-yaw branches are still
+cardinal-cache consumers and clear its pending bits, or `isRangeVisible` admits their
+ranges forever: a branch answering a cache query owns that cache's pending state
+even when it derives the answer elsewhere.
 
-UPDATE movers run before render rebuilds these caches. A pending range is
-therefore admitted conservatively for one tick; answering from stale bounds
-could keep an edited off-screen set permanently latched out. Validate changes
-with `test/ecs/chunk_bounds_eviction_test.cpp` and
-`IRShapeDebug --auto-screenshot --cull-evict-test`.
+UPDATE movers run before render rebuilds these caches, so a pending range is admitted
+for one tick. Stored bounds sit where a set was last written; pose writers gate on
+`IRPrefab::Voxel::isVoxelSetCullVisible`, which also admits a set whose transform is
+in view (squash-stretch offsets unmodelled). Validate with `chunk_bounds_eviction_test`,
+`voxel_update_cull_gate_test` and `IRShapeDebug --auto-screenshot --cull-evict-test`.
 
 ## Prefab.spawn voxel_ref → ECS components
 
