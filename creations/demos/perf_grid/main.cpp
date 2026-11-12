@@ -580,6 +580,9 @@ bool g_staticCells = false;
 bool g_staticFixture = false;
 bool g_staticBudgetLifted = false;
 bool g_staticWindowOpen = false;
+// Set when the fixture is ready; the next frame's first system opens the
+// profile window, so the window holds whole frames only.
+bool g_staticWindowOpening = false;
 int g_staticFixtureUpdates = 0;
 int g_staticFixtureFrames = 0;
 int g_staticFixtureExitCode = 0;
@@ -2045,7 +2048,17 @@ void initSystems() {
     IRSystem::registerPipelineGroups(IRTime::Events::UPDATE, updateGroups);
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
-        {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
+        {IRSystem::createSystem<C_Camera>(
+             "StaticFixtureWindow",
+             [](C_Camera &) {},
+             []() {
+                 if (g_staticWindowOpening) {
+                     g_staticWindowOpening = false;
+                     IREngine::enableFrameTiming(true);
+                 }
+             }
+         ),
+         IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
     // PERF_STATS_OVERLAY implicitly enables both timing histograms at
@@ -2171,8 +2184,15 @@ void initSystems() {
                         return;
                     }
                     g_staticWindowOpen = true;
+                    g_staticWindowOpening = true;
                     g_autoProfileCount = 0;
-                    IREngine::enableFrameTiming(true);
+                    // The window replays the sweep from its first pose, so
+                    // it covers the poses the same command covers when no
+                    // fixture delays it.
+                    g_yawSweepFrames = 0;
+                    if (g_cliOverrides.yawStep_ != 0.0f || g_cliOverrides.yawFirstFrameSet_) {
+                        IRPrefab::Camera::setYaw(g_settings.initialYaw_);
+                    }
                     return;
                 }
                 ++g_autoProfileCount;
