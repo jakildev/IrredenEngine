@@ -194,9 +194,10 @@ asserts that every protocol declaring a delta table has a wrapper in each
 fleet-enabled repo root, and that every wrapper answers every declared key
 — the role analogue of the skill-sharing CI check. A missing key in a
 present wrapper is an error; an extra key, or a fleet-enabled repo with no
-wrapper at all, is a warn (`--strict` promotes warns to errors). Nothing
-runs it automatically today — no CI job, hook, or install step invokes it —
-so it stays a cue-driven check. Its alias map
+wrapper at all, is a warn (`--strict` promotes warns to errors). The
+`test_fleet_validate_roles.py` fleet suite runs the command-line entry in
+strict mode on every relevant pull request, so missing wrappers block CI.
+Its alias map
 (`DELTA_KEY_ALIASES`) is currently empty: key names must match the wrapper
 verbatim, and the deferred rename of the downstream architect wrapper's
 legacy key names now has the lint in place to catch regressions.
