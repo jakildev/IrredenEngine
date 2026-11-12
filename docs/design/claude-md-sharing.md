@@ -41,11 +41,14 @@ by name. Per-section opt-out via heading text in the creation's own
 
 Concretely:
 
-1. The cross-cutting sections (ECS footgun, naming, style, Bash rules,
-   what-belongs-in-CLAUDE.md, cross-repo isolation) live verbatim in
-   `docs/agents/CLAUDE-BASELINE.md`. The project-root `CLAUDE.md` no
-   longer holds them; instead it points at the baseline file at the
-   top.
+1. Every cross-cutting section has its heading in
+   `docs/agents/CLAUDE-BASELINE.md`, the baseline API. The sections every
+   session needs (ECS footgun, Bash rules, cross-repo isolation, and the
+   rest) live there in full; naming, style and
+   what-belongs-in-agent-docs are stubs there, and their full text lives
+   in the on-demand files named in item 4. The project-root `CLAUDE.md`
+   no longer holds any of them; instead it points at the baseline file
+   at the top.
 2. Each creation's `CLAUDE.md` has an `## Inherits from engine
    baseline` block near the top declaring inheritance. Without an
    `Opt-outs` subsection, every baseline section applies. With an

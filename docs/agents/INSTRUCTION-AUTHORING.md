@@ -14,7 +14,7 @@ Applies to every doc loaded into an agent's context: `CLAUDE.md`,
 `SKILL.md`, role files, the `docs/agents/` protocols.
 
 **Point, don't dump.** State each rule, table, procedure, or template once
-in its canonical home (the baseline's `## Canonical-home map`) and link to it
+in its canonical home (the `## Canonical-home map` below) and link to it
 everywhere else. If nothing owns the topic, file an issue for a home rather
 than starting a third copy.
 
@@ -52,3 +52,10 @@ tracking issues. Cite the **shape** of what you measured, not a raw tally
 headers"), or name the scope the number was measured over. Inclusion test:
 would this section survive a rename refactor? Names are fine inside a
 pattern example or an actionable gotcha, clutter when they list what exists.
+
+---
+
+## Canonical-home map
+
+A pointer, not a copy: the map lives in the baseline,
+[`CLAUDE-BASELINE.md` § Canonical-home map](CLAUDE-BASELINE.md#canonical-home-map).
