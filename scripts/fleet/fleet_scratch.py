@@ -12,12 +12,13 @@ else (no flag, no other variable) moves a root. Its roots:
   * the pane's worktrees: the assigned one and the same-named worktree of the
     engine clone or of the game clone nested in it, where one exists.
 
-`rm` deletes a path inside the scratch root when that root is a real directory
-the caller owns, or inside a pane worktree when the path is under a top-level
-build* directory, is ignored by git, or lies in a __pycache__ directory, and in
-every worktree case holds no tracked file. A worktree root and any .git path
-are never deletable. Each argument is made absolute, collapsed lexically, and
-has every component but the last resolved through symlinks; containment is
+`rm` deletes a path inside the scratch root when that root is a real
+owner-only (0700) directory the caller owns, or inside a pane worktree when the
+path is under a top-level build* directory, is ignored by git, or lies in a
+__pycache__ directory, and in every worktree case holds no tracked file. A
+worktree root and any .git path are never deletable. Each argument is made
+absolute, collapsed lexically, and has every component but the last resolved
+through symlinks; containment is
 tested on that result, and that result is what gets deleted. A final-component
 symlink is unlinked, never followed. Every argument is checked before any is
 deleted: one refusal deletes nothing.
@@ -25,11 +26,11 @@ deleted: one refusal deletes nothing.
 `reap` signals a pid only when the caller's user owns it, its working directory
 resolves inside a pane root, and it is not pid 1, the caller, or an ancestor of
 the caller. It sends SIGTERM, waits up to 10 s, re-checks, then sends SIGKILL
-only when the pid still names the process it first checked (same start time);
-a pid recycled to another process is never signalled again.
-A process started through fleet-jobs is stopped with `fleet-jobs kill`. On a
-native-Windows host `reap` refuses: its two process tables number pids
-independently.
+only when the pid still names the process it first checked (same kernel start
+time: clock ticks on Linux, microseconds on macOS); a pid recycled to another
+process is never signalled again. It refuses on every other host; a
+native-Windows host has two process tables that number pids independently.
+A process started through fleet-jobs is stopped with `fleet-jobs kill`.
 
 Exit status: 0 done, 1 refused by a check (nothing done), 2 usage or identity
 error (nothing done).
@@ -37,11 +38,14 @@ error (nothing done).
 The tool runs outside the sandboxed runtime's sandbox (its allow entry becomes
 an allow rule there), so these checks are the only boundary.
 """
+import ctypes
+import errno
 import os
 import re
 import shutil
 import signal
 import stat
+import struct
 import subprocess
 import sys
 import time
@@ -184,17 +188,24 @@ def pane_from_env(environ=None, tmp=None):
 # ---------------------------------------------------------------------------
 
 def _check_private_dir(path):
-    """Accept an existing real directory the caller owns. Anything else (a
-    symlink, a file, another user's directory, nothing) is refused, since /tmp
-    is shared and anyone may pre-create the predictable name."""
+    """Accept an existing real directory the caller owns and nobody else can
+    enter. Anything else (a symlink, a file, another user's directory, one with
+    any group or other permission bit, nothing) is refused: /tmp is shared, so
+    anyone may pre-create the predictable name or plant an entry in a directory
+    others can write."""
     try:
         info = os.lstat(path)
     except FileNotFoundError:
         raise Refusal(f"'{path}' does not exist") from None
     if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
         raise Refusal(f"'{path}' exists and is not a directory")
-    if hasattr(os, "getuid") and info.st_uid != os.getuid():
-        raise Refusal(f"'{path}' exists and belongs to another user")
+    if hasattr(os, "getuid"):
+        if info.st_uid != os.getuid():
+            raise Refusal(f"'{path}' exists and belongs to another user")
+        mode = stat.S_IMODE(info.st_mode)
+        if mode & 0o077:
+            raise Refusal(f"'{path}' is open to other users (mode {mode:04o}); "
+                          "only an owner-only (0700) directory is used")
 
 
 def _ensure_private_dir(path):
@@ -354,16 +365,40 @@ def _read_process_linux(pid):
                         cwd=cwd, started=started)
 
 
-def _read_process_ps(pid):
-    try:
-        ps = subprocess.run(["/bin/ps", "-o", "uid=,ruid=,ppid=,stat=,lstart=", "-p", str(pid)],
-                            capture_output=True, text=True, timeout=PROBE_TIMEOUT_S)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    fields = ps.stdout.split()
-    if ps.returncode != 0 or len(fields) < 4:
-        return None
-    started = " ".join(fields[4:]) or None
+# libproc's PROC_PIDTBSDINFO returns struct proc_bsdinfo (<sys/proc_info.h>):
+# twelve uint32 (status at 1, ppid at 4, uid at 5, ruid at 7), 48 bytes of
+# names, six more uint32, then the start time as uint64 seconds and microseconds.
+_PROC_PIDTBSDINFO = 3
+_BSDINFO_SIZE = 136
+_BSDINFO_START_OFFSET = 120
+_SZOMB = 5
+_libproc = None
+
+
+def _darwin_bsdinfo(pid):
+    """(uid, ruid, ppid, zombie, started) from one proc_pidinfo call, or None
+    when no such process exists. Raises OSError when it cannot be read (another
+    user's process). `started` is the kernel's microsecond start time; `ps -o
+    lstart` is only second-precise, so two processes can share it."""
+    global _libproc
+    if _libproc is None:
+        _libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+        _libproc.proc_pidinfo.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64,
+                                          ctypes.c_void_p, ctypes.c_int]
+    buf = ctypes.create_string_buffer(_BSDINFO_SIZE)
+    if _libproc.proc_pidinfo(pid, _PROC_PIDTBSDINFO, 0, buf, _BSDINFO_SIZE) != _BSDINFO_SIZE:
+        err = ctypes.get_errno()
+        if err == errno.ESRCH:
+            return None
+        raise OSError(err, os.strerror(err))
+    fields = struct.unpack_from("=12I", buf.raw)
+    seconds, micros = struct.unpack_from("=QQ", buf.raw, _BSDINFO_START_OFFSET)
+    return fields[5], fields[7], fields[4], fields[1] == _SZOMB, f"{seconds}.{micros:06d}"
+
+
+def _read_process_darwin(pid):
+    # The cwd is read before the identity, so a pid recycled between the two
+    # reads shows a start time that no longer matches.
     cwd = None
     try:
         lsof = subprocess.run(["/usr/sbin/lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn"],
@@ -373,22 +408,36 @@ def _read_process_ps(pid):
             cwd = names[0]
     except (OSError, subprocess.SubprocessError):
         pass
-    return ProcessFacts(pid=pid, uid=int(fields[0]), ruid=int(fields[1]), ppid=int(fields[2]),
-                        zombie=fields[3].startswith("Z"), cwd=cwd, started=started)
+    info = _darwin_bsdinfo(pid)
+    if info is None:
+        return None
+    uid, ruid, ppid, zombie, started = info
+    return ProcessFacts(pid=pid, uid=uid, ruid=ruid, ppid=ppid, zombie=zombie, cwd=cwd,
+                        started=started)
+
+
+def _reap_platform():
+    if os.path.isdir("/proc/self"):
+        return "linux"
+    return "darwin" if sys.platform == "darwin" else None
 
 
 def read_process(pid):
-    """Facts for `pid`, or None when no such process exists."""
-    if os.path.isdir("/proc/self"):
+    """Facts for `pid`, or None when no such process exists. Raises OSError
+    when the process exists but cannot be read."""
+    if _reap_platform() == "linux":
         return _read_process_linux(pid)
-    return _read_process_ps(pid)
+    return _read_process_darwin(pid)
 
 
 def _ancestors(pid, reader):
     chain, seen = [], set()
     while pid > 1 and pid not in seen and len(chain) < MAX_ANCESTRY:
         seen.add(pid)
-        facts = reader(pid)
+        try:
+            facts = reader(pid)
+        except OSError:
+            break
         if facts is None:
             break
         chain.append(facts.ppid)
@@ -404,7 +453,10 @@ def check_reap_target(pane, pid, reader=read_process, my_pid=None, my_uid=None):
         raise Refusal("pid 1 is never reaped")
     if pid == my_pid:
         raise Refusal("that is this process")
-    facts = reader(pid)
+    try:
+        facts = reader(pid)
+    except OSError as exc:
+        raise Refusal(f"its process facts could not be read: {exc}") from None
     if facts is None or facts.zombie:
         raise Refusal("no such process")
     if facts.uid != my_uid or facts.ruid != my_uid:
@@ -426,7 +478,10 @@ def _wait_gone(target, reader, deadline_s, sleep, clock):
     """True once `target` has exited; a pid now naming a newer process counts as exited."""
     end = clock() + deadline_s
     while True:
-        facts = reader(target.pid)
+        try:
+            facts = reader(target.pid)
+        except OSError:
+            facts = target
         if facts is None or facts.zombie or facts.started != target.started:
             return True
         if clock() >= end:
@@ -439,6 +494,10 @@ def cmd_reap(pane, pid_arg, reader=read_process, kill=os.kill, sleep=time.sleep,
     if _native_windows():
         print(f"{PROG}: refused '{pid_arg}': reap is not supported on a native-Windows host "
               "(its two process tables number pids independently)", file=sys.stderr)
+        return EXIT_REFUSED
+    if _reap_platform() is None:
+        print(f"{PROG}: refused '{pid_arg}': reap reads process identity only on Linux and "
+              "macOS", file=sys.stderr)
         return EXIT_REFUSED
     if not re.fullmatch(r"[0-9]+", pid_arg or "") or int(pid_arg) < 1:
         raise UsageError(f"'{pid_arg}' is not a process id")

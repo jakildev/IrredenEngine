@@ -270,13 +270,36 @@ class RmScratchRoot(unittest.TestCase):
     @unittest.skipUnless(hasattr(os, "getuid"), "ownership needs a uid")
     def test_root_owned_by_another_user_is_refused(self):
         root, planted = self.planted_pane("foreign")
-        root.mkdir(mode=0o777)
+        root.mkdir(mode=0o700)
         theirs = _touch(root / "theirs.txt", "keep")
         self.assertIsNotNone(fs.check_rm_target(planted, str(theirs)))
         with mock.patch.object(fs.os, "getuid", return_value=os.getuid() + 1):
             self.assertNothingDeleted(planted, theirs, theirs)
             with self.assertRaisesRegex(fs.Refusal, "belongs to another user"):
                 fs.check_rm_target(planted, str(root))
+
+    @unittest.skipUnless(hasattr(os, "getuid"), "permission bits need a POSIX host")
+    def test_caller_owned_root_open_to_others_is_refused(self):
+        # The caller owns the root, but its group or other bits let another user
+        # plant an entry; neither rm nor dir uses it.
+        for mode in (0o777, 0o770, 0o733, 0o755):
+            with self.subTest(f"{mode:04o}"):
+                root, planted = self.planted_pane(f"mode-{mode:o}")
+                root.mkdir()
+                os.chmod(root, mode)
+                entry = _touch(root / "planted.txt", "keep")
+                self.assertNothingDeleted(planted, entry, entry)
+                with self.assertRaisesRegex(fs.Refusal, "open to other users"):
+                    fs.check_rm_target(planted, str(entry))
+                with self.assertRaisesRegex(fs.Refusal, "open to other users"):
+                    fs.cmd_dir(planted, "sub")
+                self.assertFalse((root / "sub").exists())
+        root, private = self.planted_pane("mode-700")
+        root.mkdir()
+        os.chmod(root, 0o700)
+        mine = _touch(root / "mine.txt")
+        self.assertEqual(fs.cmd_rm(private, [str(mine)]), fs.EXIT_OK)
+        self.assertFalse(mine.exists())
 
     def test_absent_root_is_refused(self):
         _, planted = self.planted_pane("absent")
@@ -400,6 +423,15 @@ class ReapUnit(unittest.TestCase):
         }
         return facts.get
 
+    def unreadable_target(self):
+        table = self.table()
+
+        def reader(pid):
+            if pid == self.TARGET:
+                raise PermissionError(1, "Operation not permitted")
+            return table(pid)
+        return reader
+
     def reap(self, pid, reader):
         sent = []
         clock = iter(range(0, 10_000)).__next__
@@ -416,6 +448,7 @@ class ReapUnit(unittest.TestCase):
             "cwd outside": (self.TARGET, self.table(cwd=str(S["outside"]))),
             "cwd unreadable": (self.TARGET, self.table(cwd=None)),
             "start time unreadable": (self.TARGET, self.table(started=None)),
+            "facts unreadable": (self.TARGET, self.unreadable_target()),
             "prefix sibling cwd": (self.TARGET, self.table(cwd=str(S["sibling"]))),
             "zombie": (self.TARGET, self.table(zombie=True)),
             "missing": (9999, self.table()),
@@ -460,11 +493,53 @@ class ReapUnit(unittest.TestCase):
         self.assertEqual(sent, [(self.TARGET, signal.SIGTERM)])
 
     @unittest.skipIf(NATIVE_WINDOWS, "reap refuses on a native-Windows host")
+    def test_unreadable_facts_during_the_wait_never_reach_sigkill(self):
+        def unreadable(pid):
+            raise PermissionError(1, "Operation not permitted")
+        reads = iter([self.table()] * 3 + [unreadable] * 1000)
+        status, sent = self.reap(self.TARGET, lambda pid: next(reads)(pid))
+        self.assertEqual(status, fs.EXIT_REFUSED)
+        self.assertEqual(sent, [(self.TARGET, signal.SIGTERM)])
+
+    @unittest.skipIf(NATIVE_WINDOWS, "reap refuses on a native-Windows host")
     def test_real_process_has_a_start_time(self):
         facts = fs.read_process(os.getpid())
         self.assertIsNotNone(facts)
         self.assertTrue(facts.started)
         self.assertEqual(fs.read_process(os.getpid()).started, facts.started)
+        self.assertEqual((facts.uid, facts.ruid, facts.ppid), (os.geteuid(), os.getuid(),
+                                                               os.getppid()))
+        self.assertEqual(os.path.realpath(facts.cwd), os.path.realpath(os.getcwd()))
+
+    @unittest.skipUnless(sys.platform == "darwin", "the macOS identity reader")
+    def test_processes_sharing_an_lstart_second_have_distinct_identities(self):
+        # `ps -o lstart` is second-precise; the identity guarding SIGKILL must
+        # tell apart two processes it prints identically.
+        for _attempt in range(5):
+            pair = [subprocess.Popen(["/bin/sleep", "30"]) for _ in range(2)]
+            S["procs"].extend(pair)
+            pids = ",".join(str(p.pid) for p in pair)
+            lstart = subprocess.run(["/bin/ps", "-o", "lstart=", "-p", pids],
+                                    capture_output=True, text=True).stdout.split("\n")
+            identities = [fs.read_process(p.pid).started for p in pair]
+            for proc in pair:
+                proc.kill()
+                proc.wait()
+            self.assertNotEqual(identities[0], identities[1])
+            if lstart[0].strip() and lstart[0] == lstart[1]:
+                return
+        self.fail("no two back-to-back processes shared an lstart second in five tries")
+
+    @unittest.skipUnless(sys.platform == "darwin", "the macOS identity reader")
+    def test_darwin_reader_tells_missing_from_unreadable(self):
+        gone = subprocess.Popen(["/bin/sleep", "0"])
+        gone.wait()
+        self.assertIsNone(fs.read_process(gone.pid))
+        if os.getuid() != 0:
+            with self.assertRaises(OSError):
+                fs.read_process(1)
+            status, sent = self.reap(self.TARGET, lambda pid: fs.read_process(1))
+            self.assertEqual((status, sent), (fs.EXIT_REFUSED, []))
 
     def test_native_windows_refuses(self):
         original = fs._native_windows
