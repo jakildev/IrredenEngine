@@ -12,19 +12,19 @@ creation logic.
 
 ## Modules and entry points
 
-`engine/` is a set of static libraries — `asset`, `audio`, `command`,
-`common`, `entity` (IRECS, the archetype ECS), `input`, `math`, `prefabs`
-(header-only components / systems / commands / entities), `profile`,
-`render`, `script` (LuaJIT 2.1 + sol2), `system`, `time`, `video`,
-`window`, `world` — beside `creations/` (demos, editors, the gitignored
-private `game/`), `cmake/`, `docs/`, and `test/`. Each module has a
-`CLAUDE.md`.
+`engine/` contains the static-library modules and the header-only prefab
+library. Each module has a `CLAUDE.md` that owns its local architecture and
+conventions. Tracked creations live under `creations/`; the
+[creation instructions](../../creations/CLAUDE.md) describe the supported
+categories and the visibility boundary for local projects.
 
 `engine/include/irreden/ir_engine.hpp` is the single top-level entry point:
 it creates the `World`, sets `cwd` to the exe directory, and derives the
 scripts directory from the exe stem (`IRMidiPolyrhythm/`). Each module
 exposes its own `ir_<module>.hpp` (`ir_system.hpp`, `ir_entity.hpp`,
-`ir_math.hpp`, …); creations include those, never internal module headers.
+`ir_math.hpp`, …). Creations prefer those module entry points; public prefab
+component and system headers may be included directly when no umbrella exports
+them, while private implementation headers remain off limits.
 
 ## The `World` class
 
@@ -42,15 +42,16 @@ member in dependency order (`EntityManager`, `SystemManager`,
    `engine/prefabs/irreden/<domain>/components/component_*.hpp`:
    ```cpp
    namespace IRComponents {
-   struct C_MoveOrder {
-       IRMath::ivec3 targetCell_;
-       C_MoveOrder() : targetCell_{0, 0, 0} {}
-       C_MoveOrder(IRMath::ivec3 targetCell) : targetCell_{targetCell} {}
+   struct C_PositionInt3D {
+       ivec3 pos_;
+
+       C_PositionInt3D(ivec3 pos)
+           : pos_{pos} {}
    };
    }
    ```
-2. **Systems** — `IRSystem::System<SYSTEM_NAME>` specializations with a
-   static `create()` returning `SystemId`, at
+2. **Systems** — `IRSystem::System<SYSTEM_NAME>` specializations with named
+   member hooks and a static `create()` returning `SystemId`, at
    `engine/prefabs/irreden/<domain>/systems/system_*.hpp`. A new prefab
    system first adds its name to the `SystemName` enum in
    `ir_system_types.hpp`. Three tick signatures — per-component,
@@ -58,14 +59,15 @@ member in dependency order (`EntityManager`, `SystemManager`,
    (`const Archetype&, std::vector<EntityId>&, std::vector<C_A>&`); the
    per-component form:
    ```cpp
-   template <> struct System<VELOCITY_DRAG> {
+   template <> struct System<VELOCITY_3D> {
+       void tick(C_LocalTransform &localXform, const C_Velocity3D &velocity) {
+           localXform.translation_ +=
+               velocity.velocity_ * vec3(IRTime::deltaTime(IRTime::UPDATE));
+       }
+
        static SystemId create() {
-           return createSystem<C_Velocity3D, C_VelocityDrag>(
-               "VelocityDrag",
-               [](C_Velocity3D& velocity, C_VelocityDrag& drag) {
-                   // uses IRTime::deltaTime(IRTime::UPDATE)
-               }
-           );
+           return registerSystem<VELOCITY_3D, C_LocalTransform, C_Velocity3D>(
+               "Velocity3D");
        }
    };
    ```
@@ -73,19 +75,20 @@ member in dependency order (`EntityManager`, `SystemManager`,
    `engine/system/CLAUDE.md`.
 3. **Entities** — `IREntity::createEntity(C_A{...}, ...)`;
    `createEntityBatch(n, ...)` / `createEntityBatchWithFunctions(...)` for
-   per-index init. `createEntity` always adds `C_PositionGlobal3D`.
+   per-index init. `createEntity` always adds `C_LocalTransform` and
+   `C_WorldTransform` unless the caller supplies either explicitly.
 
 `SystemId` is an alias for `EntityId` — systems are entities in the ECS
-(with components such as `C_SystemEvent`). Relations `CHILD_OF`,
-`PARENT_TO`, `SIBLING_OF` express hierarchy; pass a `RelationParams<>` to
-`createSystem` for relation-aware systems. Per-entity `getComponent` in
-ticks, deferred entity ops, component-method tiers:
+(with components such as `C_SystemEvent`). `CHILD_OF` is the implemented
+hierarchy relation; pass a `RelationParams<>` when registering a
+relation-aware system. Per-entity `getComponent` in ticks, deferred entity
+ops, component-method tiers:
 [`CLAUDE-BASELINE.md`](CLAUDE-BASELINE.md),
 [`.claude/rules/cpp-ecs.md`](../../.claude/rules/cpp-ecs.md).
 
 Prefabs are header-only (compiled when a creation includes them) and grouped
-by domain under `engine/prefabs/irreden/` (`common/`, `update/`, `voxel/`,
-`input/`, `render/`, `audio/`, `video/`), one file pattern per kind:
+by domain under `engine/prefabs/irreden/`. Each domain's `CLAUDE.md` owns its
+catalog and local patterns; the common file patterns are:
 
 | Kind       | Path pattern                   |
 |------------|--------------------------------|
@@ -93,9 +96,6 @@ by domain under `engine/prefabs/irreden/` (`common/`, `update/`, `voxel/`,
 | Systems    | `*/systems/system_*.hpp`       |
 | Commands   | `*/commands/command_*.hpp`     |
 | Entities   | `*/entities/entity_*.hpp`      |
-
-`engine/prefabs/irreden/update/nav_query.hpp` (free functions for the
-chunked A\* query API) sits directly in `update/`.
 
 ## Commands
 
@@ -183,20 +183,20 @@ Face assignment and per-face trixel placement happen in
 
 ### Position components
 
-| Component            | Type    | Purpose                                             |
-|----------------------|---------|-----------------------------------------------------|
-| `C_PositionGlobal3D` | `vec3`  | World-space position (auto-added by `createEntity`) |
-| `C_Position3D`       | `vec3`  | General-purpose 3D position                         |
-| `C_PositionInt3D`    | `ivec3` | Integer cell / grid position                        |
-| `C_Position2DIso`    | `vec2`  | 2D isometric grid position                          |
-| `C_Position2D`       | `vec2`  | 2D screen / game-resolution position                |
+| Component          | Type    | Purpose                                      |
+|--------------------|---------|----------------------------------------------|
+| `C_LocalTransform` | SQT     | Transform relative to the `CHILD_OF` parent  |
+| `C_WorldTransform` | SQT     | Resolved world transform used by consumers   |
+| `C_PositionInt3D`  | `ivec3` | Integer cell / grid position                 |
+| `C_Position2DIso`  | `vec2`  | 2D isometric grid position                   |
+| `C_Position2D`     | `vec2`  | 2D screen / game-resolution position         |
 
-Per-frame additive offsets (idle bob, gizmo nudges) travel through the
-modifier framework's `POSITION_OFFSET_3D` vec3 field and are folded into
-`C_PositionGlobal3D` by `APPLY_POSITION_OFFSET` once per UPDATE tick; the
-rendered position is whatever `C_PositionGlobal3D` holds after that pass.
+`createEntity` attaches the transform pair. Per-frame additive offsets travel
+through the modifier fields `TRANSFORM_TRANSLATION` and `TRANSFORM_SCALE`;
+`PROPAGATE_TRANSFORM` composes them with the local and parent transforms into
+`C_WorldTransform` before its consumers run.
 
-### Planes, tiles, navigation, velocity
+### Planes, tiles, velocity
 
 - `enum class PlaneIso { XY = 0, XZ = 1, YZ = 2 }` selects the 2D plane the
   layout helpers (`layoutGridCentered`, `layoutCircle`, …) place into: `XY`
@@ -205,12 +205,6 @@ rendered position is whatever `C_PositionGlobal3D` holds after that pass.
 - 2D isometric tile basis (`kIHatGridToScreenIso` / `kJHatGridToScreenIso`):
   `iHat = (1.0, 0.5) * objectSize/2`, `jHat = (-1.0, 0.5) * objectSize/2` —
   the standard 2:1 diamond.
-- Navigation adds a chunked layer: **world cell** (`ivec3`), **chunk
-  coordinate** (`ChunkCoord` = `ivec2`, XY only), **local cell** (`ivec3`);
-  conversions `worldCellToChunkCoord`, `worldCellToLocalCell`,
-  `localCellToWorldCell` in `nav_types.hpp`. Chunked A\* types live in
-  `engine/math/`; the query functions, components, and systems in
-  `engine/prefabs/irreden/update/`.
 - `C_Velocity3D` is blocks per second; integrators use
   `IRTime::deltaTime(IRTime::UPDATE)`.
 
@@ -220,14 +214,13 @@ LuaJIT 2.1 + sol2. C++ sets up systems and pipelines; Lua drives entity
 creation, configuration, and runtime logic. A Lua creation carries
 `main_lua.cpp` (entry: `registerLuaBindings`, `IREngine::init`, loop),
 `lua_bindings.{hpp,cpp}`, `lua_component_pack.hpp`, `config.lua`,
-`main.lua`, `scripts/`, and `lua_defs/irreden_api.lua` (LSP definitions,
-not loaded at runtime). `creations/demos/default/` is the reference.
+`main.lua`, and `scripts/`. `creations/demos/default/` is the reference.
 
 1. **`config.lua`** defines a `config = { ... }` table parsed at startup
    (window size, resolution, fit mode, MIDI device, video capture).
-2. **`lua_component_pack.hpp`** lists the components to bulk-register,
-   including each one's `*_lua.hpp` variant:
-   `using LuaComponentPack = std::tuple<C_RhythmicLaunch, ...>;`
+2. **`lua_component_pack.hpp`** includes each component's `*_lua.hpp`
+   variant and defines a registration function that calls
+   `registerTypesFromTraits<...>()` with the opted-in component types.
 3. A **`*_lua.hpp` variant** opts a component in by specializing
    `kHasLuaBinding<T> = true` and implementing `bindLuaType<T>(LuaScript&)`.
 4. **`lua_bindings.cpp`** calls `IREngine::registerLuaBindings(lambda)`
@@ -237,34 +230,24 @@ not loaded at runtime). `creations/demos/default/` is the reference.
 5. **`main.lua`** loads sub-scripts with `dofile(SCRIPT_DIR .. "name.lua")`;
    `SCRIPT_DIR` is `ExeDir/ExeStem/scripts/`.
 
-Namespaces exposed to scripts: `IREntity.*`, `IRAudio.*`, `IRInput.*`,
-`IRPhysics.*` (registered via calls like
-`luaScript.registerCreateEntityFunction(...)`).
+Core bindings expose namespaces including `IRMath`, `IRComponent`, `IREnum`,
+`IREntity`, `IRWorld`, and `IRSystem`; creations may register additional
+tables and functions such as
+`luaScript.registerCreateEntityFunction(...)`.
 `IREngine::resolveScriptPath(filename)`: bare filenames resolve from
 `ExeDir/ExeStem/`; paths with a directory component resolve from cwd.
 
 ## Creations
 
-1. Add `creations/demos/<name>/` (or `editors/`), with a `CMakeLists.txt`
-   that `add_executable(...)`s and links `PUBLIC IrredenEngine`, and
-   register it in the parent `CMakeLists.txt`.
+1. Add a tracked creation in one of the categories documented by
+   the [creation instructions](../../creations/CLAUDE.md), with a
+   `CMakeLists.txt` that
+   `add_executable(...)`s and links `PUBLIC IrredenEngine`, and register it
+   in the parent `CMakeLists.txt`.
 2. C++-only: `main.cpp`. Lua-driven: the file set above.
 3. Register pipelines in `IREngine::init`, including only the components
    and systems the creation needs.
 
-A private game lives at `creations/game/`; the root `CMakeLists.txt`
-auto-adds it when `creations/game/CMakeLists.txt` exists, so it builds in
-the same root graph as the demos (shared code in a library target such as
-`IRGameLib`, the runnable in `IRGame`, helper targets `IRGameAssets` /
-`IRGameRun` as needed):
-
-- macOS: `cmake --preset macos-debug`, then
-  `cmake --build --preset macos-build-all --target IRGame`
-- Linux: `cmake --preset linux-debug`, then
-  `cmake --build --preset linux-build-all --target IRGame`
-  (`scripts/bootstrap_linux.sh` first on Debian/Ubuntu)
-- Windows (MinGW/MSYS2): `cmake --preset windows-debug`, then
-  `cmake --build --preset windows-build-all --target IRGame`
-
-`IRREDEN_USER_PROJECTS` attaches additional external CMake projects without
-using `creations/game/`.
+Build and platform setup live in [`BUILD.md`](BUILD.md).
+`IRREDEN_USER_PROJECTS` attaches additional external CMake projects to the
+engine build.
