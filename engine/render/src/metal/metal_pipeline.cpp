@@ -3,7 +3,9 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_utility.hpp>
 
+#include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -276,21 +278,29 @@ std::uint32_t nextMetalPipelineHandle() {
     return s_nextHandle++;
 }
 
-std::string renderPipelineCacheKey(
-    MTL::PixelFormat colorPixelFormat,
-    MTL::PixelFormat depthPixelFormat,
-    const MTL::VertexDescriptor *vertexDescriptor,
-    bool blendingEnabled
-) {
-    return std::to_string(static_cast<int>(colorPixelFormat)) + ":" +
-           std::to_string(static_cast<int>(depthPixelFormat)) + ":" +
-           std::to_string(reinterpret_cast<std::uintptr_t>(vertexDescriptor)) + ":" +
-           (blendingEnabled ? "1" : "0") + ":" +
-           std::to_string(static_cast<int>(metalCurrentEntityIdTexture()
-               ? metalCurrentEntityIdTexture()->pixelFormat() : MTL::PixelFormatInvalid));
+std::size_t combineHash(std::size_t seed, std::uint64_t value) {
+    return seed ^ (std::hash<std::uint64_t>{}(value) + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2));
 }
 
 } // namespace
+
+std::size_t MetalRenderPipelineKeyHash::operator()(const MetalRenderPipelineKey &key) const noexcept {
+    std::size_t seed = 0;
+    seed = combineHash(seed, static_cast<std::uint64_t>(key.colorPixelFormat_));
+    seed = combineHash(seed, static_cast<std::uint64_t>(key.depthPixelFormat_));
+    seed = combineHash(seed, static_cast<std::uint64_t>(key.entityIdPixelFormat_));
+    seed = combineHash(seed, key.blendingEnabled_ ? 1U : 0U);
+    const MetalVertexLayoutSignature &layout = key.vertexLayout_;
+    seed = combineHash(seed, layout.attributeCount_);
+    seed = combineHash(seed, layout.stride_);
+    for (std::uint32_t i = 0; i < layout.attributeCount_; ++i) {
+        const MetalVertexAttributeSignature &attribute = layout.attributes_[i];
+        seed = combineHash(seed, static_cast<std::uint64_t>(attribute.format_));
+        seed = combineHash(seed, attribute.offset_);
+        seed = combineHash(seed, attribute.bufferIndex_);
+    }
+    return seed;
+}
 
 class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPipelineStateProvider {
   public:
@@ -369,20 +379,12 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
     }
 
     MTL::RenderPipelineState *getRenderPipelineState(
-        MTL::PixelFormat colorPixelFormat,
-        MTL::PixelFormat depthPixelFormat,
-        const MTL::VertexDescriptor *vertexDescriptor,
-        bool blendingEnabled
+        const MetalRenderPipelineKey &key,
+        const MTL::VertexDescriptor *vertexDescriptor
     ) override {
         if (m_vertexFunction == nullptr || m_fragmentFunction == nullptr || vertexDescriptor == nullptr) {
             return nullptr;
         }
-        const std::string key = renderPipelineCacheKey(
-            colorPixelFormat,
-            depthPixelFormat,
-            vertexDescriptor,
-            blendingEnabled
-        );
         const auto cached = m_renderStates.find(key);
         if (cached != m_renderStates.end()) {
             return cached->second;
@@ -393,16 +395,16 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
         descriptor->setFragmentFunction(m_fragmentFunction);
         descriptor->setVertexDescriptor(vertexDescriptor);
         auto *colorAttachment = descriptor->colorAttachments()->object(0);
-        colorAttachment->setPixelFormat(colorPixelFormat);
-        if (auto *ids = metalCurrentEntityIdTexture()) {
+        colorAttachment->setPixelFormat(key.colorPixelFormat_);
+        if (key.entityIdPixelFormat_ != MTL::PixelFormatInvalid) {
             auto *attachment = descriptor->colorAttachments()->object(1);
-            attachment->setPixelFormat(ids->pixelFormat());
+            attachment->setPixelFormat(key.entityIdPixelFormat_);
             attachment->setBlendingEnabled(false);
         }
         // Matches GL's glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA),
         // which applies the same factors to RGB and alpha.
-        colorAttachment->setBlendingEnabled(blendingEnabled);
-        if (blendingEnabled) {
+        colorAttachment->setBlendingEnabled(key.blendingEnabled_);
+        if (key.blendingEnabled_) {
             colorAttachment->setSourceRGBBlendFactor(MTL::BlendFactorSourceAlpha);
             colorAttachment->setDestinationRGBBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
             colorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorSourceAlpha);
@@ -412,8 +414,8 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
         // never sets a stencil attachment. Metal requires a pipeline state's
         // stencil pixel format to stay `Invalid` while no stencil texture is
         // attached, so declaring one here aborts under `MTL_DEBUG_LAYER=1`.
-        if (depthPixelFormat != MTL::PixelFormatInvalid) {
-            descriptor->setDepthAttachmentPixelFormat(depthPixelFormat);
+        if (key.depthPixelFormat_ != MTL::PixelFormatInvalid) {
+            descriptor->setDepthAttachmentPixelFormat(key.depthPixelFormat_);
         }
 
         NS::Error *error = nullptr;
@@ -432,8 +434,12 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
         }
 
         IR_ASSERT(pipelineState != nullptr, "Failed to create Metal render pipeline state");
-        m_renderStates[key] = pipelineState;
+        m_renderStates.emplace(key, pipelineState);
         return pipelineState;
+    }
+
+    std::size_t renderPipelineStateCount() const override {
+        return m_renderStates.size();
     }
 
     MTL::ComputePipelineState *getComputePipelineState() override {
@@ -481,7 +487,8 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
     MTL::ComputePipelineState *m_computeState = nullptr;
     MTL::Size m_computeThreadsPerThreadgroup = MTL::Size(1, 1, 1);
     bool m_usesImageAtomicScratch = false;
-    std::unordered_map<std::string, MTL::RenderPipelineState *> m_renderStates;
+    std::unordered_map<MetalRenderPipelineKey, MTL::RenderPipelineState *, MetalRenderPipelineKeyHash>
+        m_renderStates;
 };
 
 std::unique_ptr<ShaderPipelineImpl> createShaderPipelineImpl(const std::vector<ShaderStage> &stages) {

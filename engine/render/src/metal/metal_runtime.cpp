@@ -229,13 +229,27 @@ MetalPipelineStateProvider *activeMetalPipeline() {
 void setActiveMetalVertexLayout(
     MTL::Buffer *vertexBuffer,
     MTL::Buffer *indexBuffer,
-    MTL::VertexDescriptor *vertexDescriptor
+    MTL::VertexDescriptor *vertexDescriptor,
+    const MetalVertexLayoutSignature &signature
 ) {
-    g_runtime().activeVertexLayout_ = {vertexBuffer, indexBuffer, vertexDescriptor};
+    g_runtime().activeVertexLayout_ = {vertexBuffer, indexBuffer, vertexDescriptor, signature};
 }
 
 const MetalVertexLayoutBinding &activeMetalVertexLayout() {
     return g_runtime().activeVertexLayout_;
+}
+
+MetalRenderPipelineKey currentMetalRenderPipelineKey(bool blendingEnabled) {
+    const auto &runtime = g_runtime();
+    return MetalRenderPipelineKey{
+        .colorPixelFormat_ = runtime.colorPixelFormat_,
+        .depthPixelFormat_ = runtime.depthPixelFormat_,
+        .entityIdPixelFormat_ = runtime.entityIdTexture_ != nullptr
+                                    ? runtime.entityIdTexture_->pixelFormat()
+                                    : MTL::PixelFormatInvalid,
+        .blendingEnabled_ = blendingEnabled,
+        .vertexLayout_ = runtime.activeVertexLayout_.signature_,
+    };
 }
 
 void bindMetalBuffer(BufferTarget target, std::uint32_t index, MTL::Buffer *buffer, NS::UInteger offset) {
