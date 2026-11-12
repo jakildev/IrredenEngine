@@ -37,7 +37,7 @@ from repeat_profile import (
     witness_checks,
     yaw_pose_mismatch,
 )
-from test_profile_parser import WITNESSED_REPORT
+from test_profile_parser import FRAME_SPLIT_SECTION, WITNESSED_REPORT
 
 
 def witnessed(
@@ -305,6 +305,76 @@ class CanvasStaticPoseTest(unittest.TestCase):
                     self.assertIsNone(run["zoom_min"])
                 else:
                     self.assertEqual(run["zoom_min"], float(bounds.split()[0][4:]))
+
+
+class SummaryFrameSplitTest(unittest.TestCase):
+    def summary(self, text):
+        launched_ns = 1_700_000_000_000_000_000
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            demo = root / "build/creations/demos/canvas_stress"
+            demo.mkdir(parents=True)
+            (demo / "IRCanvasStress").write_bytes(b"fixture executable")
+            for name in ("shaders", "scripts", "save_files"):
+                (demo / name).mkdir()
+            output = root / "results"
+
+            def capture(command, repo, log, binary, seconds, delay):
+                log.write_text("ir-run: QUIET=guarded exe=IRCanvasStress\nRESULT=CLEAN\n")
+                report = demo / "save_files/profile_report.txt"
+                report.write_text(text)
+                os.utime(report, ns=(launched_ns, launched_ns + 1_000_000_000))
+                return 0, None
+
+            with (
+                patch("repeat_profile.__file__", str(root / "scripts/perf/repeat_profile.py")),
+                patch.dict("os.environ", {"IRREDEN_BUILD_DIR": str(root / "build")}),
+                patch("sys.argv", ["repeat_profile.py", "--target", "IRCanvasStress",
+                                   "--output", str(output), "--repeats", "1", "--",
+                                   "--auto-profile", "--profile-frames", "8",
+                                   "--no-auto-rotate", "--yaw", "0"]),
+                patch("repeat_profile.subprocess.check_output", return_value="fixture"),
+                patch("repeat_profile.platform.platform", return_value="fixture host"),
+                patch("repeat_profile.host_power_source", return_value=None),
+                patch("repeat_profile.host_battery_percent", return_value=None),
+                patch("repeat_profile.time.time_ns", return_value=launched_ns),
+                patch("repeat_profile.run_profile", side_effect=capture),
+                patch("sys.stdout", new_callable=io.StringIO) as stdout,
+            ):
+                self.assertEqual(main(), 0, stdout.getvalue())
+            return (output / "summary.md").read_text()
+
+    def base_report(self):
+        return WITNESSED_REPORT.replace("-135.000", "0.000").replace("maxDropped=7", "maxDropped=0")
+
+    def test_each_row_of_the_split_is_listed_with_its_mean_and_run_range(self):
+        text = self.base_report().replace(
+            "--- GPU stage timing ---\n", FRAME_SPLIT_SECTION + "--- GPU stage timing ---\n"
+        )
+        rows = {line.split("|")[1].strip(): line for line in self.summary(text).splitlines()
+                if line.startswith("| frame split")}
+        self.assertEqual(
+            sorted(rows),
+            sorted(f"frame split {term}" for term in
+                   ("INPUT", "UPDATE", "RENDER", "GPU", "Pacing", "Remainder")),
+        )
+        self.assertIn("| 10.300 | 10.300–10.300 |", rows["frame split UPDATE"])
+        self.assertIn("| 11.840 |", rows["frame split Remainder"])
+
+    def test_a_report_without_the_split_lists_no_rows(self):
+        self.assertNotIn("frame split", self.summary(self.base_report()))
+
+    def test_an_unavailable_gpu_row_is_not_listed_and_the_remainder_says_what_it_holds(self):
+        text = self.base_report().replace(
+            "--- GPU stage timing ---\n",
+            FRAME_SPLIT_SECTION.replace(
+                "GPU            18.210     39.07%\n", "GPU         unavailable\n"
+            ).replace("25.40%\n", "25.40%  includes GPU time\n")
+            + "--- GPU stage timing ---\n",
+        )
+        summary = self.summary(text)
+        self.assertNotIn("frame split GPU", summary)
+        self.assertIn("frame split Remainder (includes GPU time)", summary)
 
 
 class YawSweepTest(unittest.TestCase):

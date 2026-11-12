@@ -7,6 +7,7 @@
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/texture.hpp>
 
+#include <irreden/profile/profile_report.hpp>
 #include <irreden/profile/scope_timer.hpp>
 
 #include <array>
@@ -14,7 +15,6 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
-#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -25,7 +25,6 @@ namespace {
 
 constexpr std::uint32_t kMaxMetalBindings = 32;
 constexpr NS::UInteger kTimestampAttachmentIndex = 0;
-constexpr std::string_view kOffscreenPacingPhase = "offscreenPacing";
 // Sample pairs per stage counter buffer. The device caps how many counter sample
 // buffers exist, so a stage grows its own buffer instead of taking one per
 // encoder. The largest stage at the million rotated control creates 72 encoders.
@@ -1340,7 +1339,7 @@ class MetalRenderDevice final : public RenderDevice {
     // A frame that finishes after its deadline does not sleep at all (a
     // sleep there would add a whole interval to every over-budget frame
     // time); the schedule re-anchors at its completion. Every frame records
-    // its sleep, 0 ms when late, as the `kOffscreenPacingPhase` CPU phase row
+    // its sleep, 0 ms when late, as the `IRProfile::kOffscreenPacingPhase` CPU phase row
     // of the profile report — in every build type, not behind IR_PROFILE_SCOPE.
     void paceOffscreenFrame() {
         if (!isOffscreen()) {
@@ -1356,7 +1355,7 @@ class MetalRenderDevice final : public RenderDevice {
             )
                           .count();
         }
-        IRProfile::cpuFrameHistogram().record(kOffscreenPacingPhase, sleptMs);
+        IRProfile::cpuFrameHistogram().record(IRProfile::kOffscreenPacingPhase, sleptMs);
     }
 
     // Persists across draws, encoders, and frames until the matching

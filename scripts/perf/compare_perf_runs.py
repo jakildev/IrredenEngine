@@ -67,6 +67,12 @@ GPU_EXCLUSIVE_SUM_RE = re.compile(
 # without the line wrote windows as the cost (profile_report.hpp).
 GPU_STAGE_FORMAT_EXCLUSIVE = "exclusive+window"
 GPU_STAGE_FORMAT_WINDOW = "window"
+FRAME_SPLIT_TERMS = ("INPUT", "UPDATE", "RENDER", "GPU", "Pacing", "Remainder")
+FRAME_SPLIT_ROW_RE = re.compile(
+    r"^(INPUT|UPDATE|RENDER|GPU|Pacing|Remainder|Frame)\s+(-?[\d.]+)\s+(-?[\d.]+)%"
+    r"(\s+includes GPU time)?\s*$"
+)
+FRAME_SPLIT_GPU_UNAVAILABLE_RE = re.compile(r"^GPU\s+unavailable\s*$")
 GPU_RE = re.compile(r"^(\S+)\s+([\d.]+)\s+([\d.]+)\s*$")
 GPU_FRAME_COVERAGE_RE = re.compile(
     r"^Coverage: supported=(0|1) attempted=(\d+) valid=(\d+) "
@@ -174,6 +180,18 @@ class RunWitness:
 
 
 @dataclass
+class FrameSplit:
+    """The mean recorded frame split by term. `ms` and `percent` are keyed by the
+    row label (FRAME_SPLIT_TERMS plus "Frame"); the GPU key is absent when the
+    report states the GPU row unavailable, in which case the remainder includes GPU
+    time."""
+    ms: Dict[str, float] = field(default_factory=dict)
+    percent: Dict[str, float] = field(default_factory=dict)
+    gpu_unavailable: bool = False
+    remainder_includes_gpu: bool = False
+
+
+@dataclass
 class CellReport:
     cell_id: str
     frame: FrameTiming = field(default_factory=FrameTiming)
@@ -201,6 +219,8 @@ class CellReport:
     gpu_stage_format: Optional[str] = None
     gpu_exclusive_sum_ms: Optional[float] = None
     gpu_frame: GpuFrameTiming = field(default_factory=GpuFrameTiming)
+    # None for a report without the decomposition section.
+    frame_split: Optional[FrameSplit] = None
     cull: CullStats = field(default_factory=CullStats)
     raw: str = ""
 
@@ -271,6 +291,10 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
         if s.startswith("--- Per-system timing"):
             section = "systems"
             continue
+        if s.startswith("--- Frame decomposition"):
+            section = "frame_split"
+            report.frame_split = FrameSplit()
+            continue
         if s.startswith("--- GPU frame timing"):
             section = "gpu_frame"
             continue
@@ -311,6 +335,16 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
                     calls=int(m.group(7)),
                     entities=int(m.group(8)),
                 ))
+        elif section == "frame_split":
+            if FRAME_SPLIT_GPU_UNAVAILABLE_RE.match(s):
+                report.frame_split.gpu_unavailable = True
+                continue
+            m = FRAME_SPLIT_ROW_RE.match(s)
+            if m:
+                report.frame_split.ms[m.group(1)] = float(m.group(2))
+                report.frame_split.percent[m.group(1)] = float(m.group(3))
+                if m.group(4):
+                    report.frame_split.remainder_includes_gpu = True
         elif section == "gpu_frame":
             coverage = GPU_FRAME_COVERAGE_RE.match(s)
             if coverage:

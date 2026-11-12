@@ -2,6 +2,7 @@
 #include <irreden/ir_profile.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <numeric>
@@ -37,6 +38,8 @@ Percentiles computePercentiles(std::vector<float> values) {
     return p;
 }
 
+const char *kCommandBufferSpansMetric = "commandBufferSpans";
+
 const char *kPipelineOrder[] = {"INPUT", "UPDATE", "RENDER"};
 
 int pipelineRank(const std::string &pipeline) {
@@ -62,6 +65,98 @@ void writeSeries(
         std::fputc(endsLine ? '\n' : ' ', f);
     }
     std::fputc('\n', f);
+}
+
+// Milliseconds as whole thousandths, the precision the decomposition prints, so
+// the printed rows add up to the printed frame mean exactly.
+int64_t toThousandths(double ms) {
+    return static_cast<int64_t>(std::llround(ms * 1000.0));
+}
+
+void writeDecompositionRow(
+    FILE *f, const char *label, int64_t thousandths, int64_t meanThousandths, const char *note
+) {
+    const double share = meanThousandths != 0 ? 100.0 * static_cast<double>(thousandths) /
+                                                    static_cast<double>(meanThousandths)
+                                              : 0.0;
+    std::fprintf(
+        f,
+        "%-10s %10.3f %8.2f%%%s\n",
+        label,
+        static_cast<double>(thousandths) / 1000.0,
+        share,
+        note
+    );
+}
+
+// Splits the mean recorded frame into per-pipeline system CPU, GPU, offscreen
+// pacing and a remainder. The GPU term is the command-buffer spans mean: the
+// envelope also counts the gaps between submissions, in which the CPU runs
+// systems. Every divisor is the recorded frame count, the frames of the
+// `Frame time` line.
+void writeFrameDecomposition(FILE *f, const ProfileReport &report, float frameMeanMs) {
+    const double frames = static_cast<double>(report.frameTimesMs_.size());
+    const int64_t mean = toThousandths(frameMeanMs);
+
+    double pipelineNs[3] = {0.0, 0.0, 0.0};
+    for (const auto &entry : report.systemTimings_) {
+        const int rank = pipelineRank(entry.pipeline_);
+        if (rank < 3)
+            pipelineNs[rank] += static_cast<double>(entry.totalNs_);
+    }
+
+    const GpuStageEntry *spans = nullptr;
+    for (const auto &metric : report.gpuFrameTimings_) {
+        if (metric.name_ == kCommandBufferSpansMetric && metric.sampleCount_ > 0)
+            spans = &metric;
+    }
+
+    double pacingTotalMs = 0.0;
+    for (const auto &phase : report.cpuPhases_) {
+        if (phase.name_ == kOffscreenPacingPhase)
+            pacingTotalMs += phase.totalMs_;
+    }
+
+    std::fprintf(f, "--- Frame decomposition ---\n");
+    std::fprintf(
+        f,
+        "Mean over the %zu recorded frames of the Frame time line; the rows add up to the frame "
+        "mean.\n"
+        "System rows are a pipeline's summed Total(ms) over those frames. GPU is the "
+        "commandBufferSpans mean.\n"
+        "Pacing is the offscreen pacer's sleep. Remainder is the frame mean minus the other "
+        "rows (present() commits and waits outside any system); a negative remainder means the "
+        "terms overlap.\n",
+        report.frameTimesMs_.size()
+    );
+    std::fprintf(f, "%-10s %10s %9s\n", "Term", "ms/frame", "Share");
+
+    int64_t accounted = 0;
+    for (int rank = 0; rank < 3; ++rank) {
+        const int64_t value = toThousandths(pipelineNs[rank] / 1e6 / frames);
+        accounted += value;
+        writeDecompositionRow(f, kPipelineOrder[rank], value, mean, "");
+    }
+    if (spans != nullptr) {
+        const int64_t value =
+            toThousandths(spans->totalMs_ / static_cast<double>(spans->sampleCount_));
+        accounted += value;
+        writeDecompositionRow(f, "GPU", value, mean, "");
+    } else {
+        std::fprintf(f, "%-10s %10s\n", "GPU", "unavailable");
+    }
+    const int64_t pacing = toThousandths(pacingTotalMs / frames);
+    accounted += pacing;
+    writeDecompositionRow(f, "Pacing", pacing, mean, "");
+    writeDecompositionRow(
+        f,
+        "Remainder",
+        mean - accounted,
+        mean,
+        spans != nullptr ? "" : "  includes GPU time"
+    );
+    writeDecompositionRow(f, "Frame", mean, mean, "");
+    std::fprintf(f, "\n");
 }
 
 } // namespace
@@ -233,6 +328,11 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
     }
     std::fprintf(f, "\n");
 
+    // --- Frame decomposition ---
+    if (!report.frameTimesMs_.empty()) {
+        writeFrameDecomposition(f, report, computePercentiles(report.frameTimesMs_).avg_);
+    }
+
     // --- GPU stage timing ---
     if (!report.gpuStages_.empty()) {
         std::fprintf(f, "--- GPU stage timing ---\n");
@@ -298,7 +398,7 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
 
         const GpuStageEntry *spans = nullptr;
         for (const auto &metric : report.gpuFrameTimings_) {
-            if (metric.name_ == "commandBufferSpans" && metric.sampleCount_ > 0) {
+            if (metric.name_ == kCommandBufferSpansMetric && metric.sampleCount_ > 0) {
                 spans = &metric;
             }
         }

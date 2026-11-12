@@ -25,6 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from compare_perf_runs import (  # noqa: E402
+    FRAME_SPLIT_TERMS,
     GPU_STAGE_FORMAT_WINDOW,
     CellReport,
     RunWitness,
@@ -1071,6 +1072,15 @@ def main() -> int:
                 "steady frame p99": [row.steady_frame.p99 for row in rows],
             }
         )
+    splits = [row.frame_split for row in rows]
+    if all(split is not None for split in splits):
+        for term in FRAME_SPLIT_TERMS:
+            values = [split.ms.get(term) for split in splits]
+            if all(value is not None for value in values):
+                label = f"frame split {term}"
+                if term == "Remainder" and any(split.remainder_includes_gpu for split in splits):
+                    label += " (includes GPU time)"
+                metrics[label] = values
     frame_names = sorted({metric.name for row in rows for metric in row.gpu_frame.metrics})
     for name in frame_names:
         values = [next((m.avg_ms for m in row.gpu_frame.metrics if m.name == name), None)
