@@ -25,7 +25,9 @@ system and reader may assume about it.
   systems stop matching the entity. A change to the entity's inputs, or to
   the global modifiers, while it is settling restarts the wait. No second
   code path computes derived state: a settled entity holds exactly what the
-  ordinary systems last wrote.
+  ordinary systems last wrote. Only the engine can add
+  `C_Settled`: the one call that attaches it re-checks the rule, and every
+  public C++, Lua and snapshot lane refuses the tag.
 - Every engine mutator that can change a static entity's inputs reaches the
   entity and thaws or resettles it, including the `C_VoxelSetNew` methods,
   which find it through the owner id the set already stores, and the
@@ -93,8 +95,10 @@ read only by the transition step, and only for settling rows (see
 `C_Static` is the owner's declaration. It carries one engine-owned field,
 `std::uint64_t settleStamp_`, zero until the transition step first sees the
 entity (the width is fixed under [§ Settle](#settle-settling-to-settled),
-"Counter width"). `C_Settled` is empty and engine-owned: only the engine adds or removes
-it, and it never exists without `C_Static`.
+"Counter width"). `C_Settled` is empty and engine-owned: only the engine adds
+it, and it never exists without `C_Static`. Any lane may remove it, which
+returns the entity to settling. Both properties hold by construction, not by
+convention ([§ The engine-owned boundary](#the-engine-owned-boundary)).
 
 Why two tags and not one. Removing the pose writers and removing the
 deriving systems cannot happen at the same instant. If both stopped
@@ -109,6 +113,91 @@ at the same flush.
 The same shape is already in the tree: `FOG_SUBJECT_ADOPT` matches entities
 that lack `C_FogRevealed`, processes each once, and attaches the component
 so the entity leaves its matched set.
+
+### The engine-owned boundary
+
+Promotion is the one transition that must never run early, so its two
+inputs are closed to every public lane: no C++, Lua or snapshot call can put
+`C_Settled` on an entity, and no call can give a settling row a stamp the
+system layer did not write.
+
+**Adding `C_Settled`.** One call can:
+`IRSystem::promoteSettled(std::span<const IREntity::EntityId>)`, on the
+system manager, which the drain calls at its step 4
+([§ Settle](#settle-settling-to-settled)). It re-checks each id against the
+system layer's own state and queues the attach only when all of these hold:
+
+- the entity is live, carries `C_Static` and lacks `C_Settled`;
+- its settle stamp is nonzero;
+- `roundsCompleted_ >= max(settleStamp_, globalFloor_)`.
+
+An id that fails is skipped and counted in the return value. The drain
+never passes one, so it asserts that the count is zero, and any other caller
+can promote only a row the drain would have promoted. For that check to be
+self-contained, `globalFloor_` sits on the system manager beside the round
+counters. The drain raises it through `IRSystem::raiseSettleFloor()` and
+writes stamps through `IRSystem::restampSettling(entity)`. Both write
+`roundsOpened_ + 1` and never lower a value, so both are public and both can
+only delay a promotion. All three calls are implemented by one class,
+`IRSystem::detail::SettlePromoter`.
+
+`promoteSettled` attaches through an entity-layer entry point that takes a
+key, `EntityManager::attachEngineComponentDeferred<T>(entity,
+IREntity::EngineAttachKey<T>)`. The trait `IREntity::EngineAttach<T>` (primary
+template: not restricted) names, for a restricted component, the one type
+that may construct its key and the companion component it requires.
+`component_static.hpp` specializes it for `C_Settled`: restricted, key owner
+`SettlePromoter`, companion `C_Static`. Both names live in the system layer,
+so the entity layer names neither. When the staged attach applies at the
+flush, the entity layer drops it if the entity no longer carries the
+companion. So `C_Settled` cannot land beside a missing `C_Static`, whatever
+the order of the operations staged before it.
+
+**Every other lane refuses it.** `registerComponent<T>` copies the
+restricted bit into the per-`ComponentId` table beside the guard and the
+move traits, and each archetype node caches whether its type holds a
+restricted component.
+
+| Lane | Refusal |
+|---|---|
+| Typed: `createEntity` (both forms) and the `createEntityBatch*` helpers over it, `insertReservedEntity`, `createEntitiesBatch`, `setComponent`, `setComponents`, `setComponentDeferred`, `getOrCreateSingleton<T>` and `singleton<T>`, with their `IREntity::` wrappers | A constraint on the template, `requires (IREntity::GenericAttachable<Cs> && ...)`, where the concept means "not restricted". The call does not compile. It is a constraint and not a `static_assert` in the body, so a test states the refusal as `static_assert(!requires { … })` in an ordinary build. |
+| By id: `addComponentDynamic` (Lua `components` tables and every name-resolved attach) and `getOrCreateSingletonByComponentId` | The call reads the table bit. On a restricted id it changes nothing and logs an error. The test is an ordinary branch, so a release build refuses too; an `IR_ASSERT` beside it fails in an assert build. |
+| Snapshot load: `findCreateArchetypeNode`, then `restoreEntitiesBatch` | `C_Settled` is `IR_SAVE_OPT_OUT`, so no save names it. The loader removes any restricted id from a resolved type before it builds the node, so a hand-edited file loads the entity settling (or dynamic, if it lacks `C_Static`). `restoreEntitiesBatch` refuses a node whose cached bit is set, the same way as the by-id lanes. |
+| Lua | `C_Settled` has no binding in the component pack, so `C_Settled = {}` in a `components` table is an unknown component. A name that resolves anyway reaches `addComponentDynamic` and is refused there. |
+
+Naming `C_Settled` in a filter or a read stays legal on every lane:
+`Exclude<C_Settled>`, an exclude list, `getArchetype`, `hasComponent`,
+`IRPrefab::Static::isSettled`. Only attaching it is restricted. No existing
+component is restricted, so the constraint changes no call that compiles
+today.
+
+**Removing it.** Any lane may remove `C_Settled`, and removing `C_Static`
+drops it ([§ Any other archetype move](#any-other-archetype-move-settled-to-settling)).
+Every move that drops it, whether or not the move names it, logs the id, so
+the drain restamps the row before it can be judged again. A removal is
+always safe: the row waits for a new round and costs what a dynamic row
+costs until then.
+
+**The stamp.** `settleStamp_` is private on `C_Static`. `settleStamp()`
+reads it, and `SettlePromoter` is the only friend that writes it. A stamp
+travels only with its own row:
+
+- Copy construction and copy assignment produce a zero stamp. Every typed
+  attach lane takes its components by `const &` and copies them into the
+  column, so a `C_Static` copied from a settled entity, or an old copy of the
+  entity's own written back, arrives as zero, and the drain stamps the row
+  as new.
+- Move construction keeps the stamp and is `noexcept`. Column growth and
+  archetype moves move rows and never copy them (`engine/entity/CLAUDE.md`
+  § "Cross-module contracts and pitfalls"), so they keep it.
+- Move assignment keeps the stamp and is private, with
+  `IREntity::IComponentDataImpl<C_Static>` as its friend for the swap-and-pop
+  in `packInto`. No public code can move-assign one row's stamp onto another
+  row.
+
+A zero stamp only ever adds a round, which is never wrong. Lua's
+`C_Static = {}` and a snapshot load both append a default row, whose stamp
+is zero.
 
 ## What makes an entity static
 
@@ -296,7 +385,9 @@ the next frame, one round later than necessary, and is never early.
 modifiers, which are not an input of any one entity. The global-modifier
 mutators ([§ Engine mutators](#engine-mutators)) advance a monotonic
 `globalModifierRevision_`. When the drain finds a revision it has not seen,
-it sets one world-scoped integer, `globalFloor_ = roundsOpened_ + 1`. It does
+it raises one world-scoped integer on the system manager, `globalFloor_`, to
+`roundsOpened_ + 1` (`IRSystem::raiseSettleFloor()`,
+[§ The engine-owned boundary](#the-engine-owned-boundary)). It does
 this before it evaluates any promotion (step 2 of the drain, below), so no
 row can be judged against the floor that predates the change. A
 global change therefore restarts every settling entity at once, with no
@@ -350,12 +441,15 @@ In order, it:
    after the stamp is written. A log entry also runs the eligibility check,
    so an entity now under a dynamic parent is refused.
 2. Compares the global-modifier revision and, on a new one, raises
-   `globalFloor_`.
+   `globalFloor_` through `IRSystem::raiseSettleFloor()`.
 3. Walks the settling archetype nodes (`C_Static` without `C_Settled`).
-   Rows whose stamp is zero are new: it stamps them, runs the eligibility
+   Rows whose stamp is zero are new: it stamps them
+   (through `IRSystem::restampSettling`, like every stamp), runs the eligibility
    check, and adopts the owner of every voxel set on them (below). Then it
    collects the rows that can be promoted, against the floor step 2 left.
-4. Promotes, lowest stamp first, up to the budget.
+4. Promotes, lowest stamp first, up to the budget, through
+   `IRSystem::promoteSettled`, which re-checks every row
+   ([§ The engine-owned boundary](#the-engine-owned-boundary)).
 5. Flushes the removals and additions it queued.
 
 The order of steps 2 and 3 is the cutover for global changes. A push that
@@ -455,7 +549,7 @@ so the cost on any other move is one boolean test.
 The entity layer cannot write the settle stamp, and the stamp the entity
 carries is from an earlier round, so dropping the tag alone would let the
 next drain promote the row again at once. So every move that drops a
-cleared component also appends the entity's id to the entity layer's
+cleared component, including a removal that names it, also appends the entity's id to the entity layer's
 *tracked-change log*, `EntityManager::takeTrackedChanges(out)`. That is a
 main-thread vector: every archetype move runs on the main thread, eagerly or
 at a flush. Step 1 of the drain takes the log and stamps each entry that is
@@ -874,6 +968,8 @@ startup.
 | `C_Static`, `C_Settled` | System, `engine/system/include/irreden/system/components/component_static.hpp` | The exclusion adds `C_Static`'s id to effective exclude archetypes and the round tracker reads `C_Settled` in declared ones. The system layer resolves both with `IREntity::getComponentType<…>()`. |
 | The exclusion: one function, `IRSystem::detail::applyStaticExclusion(declaredExclude, writeGuard, deriving)`, which returns the effective exclude archetype. `writeGuard` is the highest `kStaticGuard` over the lane's write set (`INPUT` above `DERIVED` above `NONE`). `deriving` is computed by the caller: a system lane passes "declared set contains `C_Settled`, or `GatesSettled`"; a query lane passes `false`. | System | Every lane below calls it. It is the only implementation. It is a pure function of its arguments, so it can be re-run at any time. |
 | Declared and effective exclusions: `C_SystemEvent<TICK>::declaredExcludeArchetype_` beside the existing `excludeArchetype_`; per system, the `writeGuard` and the `GatesSettled` bit, recorded once at creation | System, `component_system_event.hpp` and `SystemManager` | The policy needs to know which exclusions the author declared. One stored filter cannot tell it (the paragraph after the lanes table). |
+| `IREntity::EngineAttach<T>`, `EngineAttachKey<T>`, the `GenericAttachable` concept, `EntityManager::attachEngineComponentDeferred<T>`, the restricted bit per `ComponentId` | Entity, `ir_entity_types.hpp` and `EntityManager`. `component_static.hpp` specializes the trait for `C_Settled`. | Every attach lane is an entity-layer call, so the refusal sits where the lanes are; the key owner and the companion are named by the specialization, which depends downward ([§ The engine-owned boundary](#the-engine-owned-boundary)). |
+| `promoteSettled`, `restampSettling`, `raiseSettleFloor`, `globalFloor_` | System, `IRSystem::detail::SettlePromoter` on `SystemManager` | The promotion check reads the round counters, the floor and the stamp, all system-layer state, so the one call that attaches `C_Settled` can verify the transition rule without trusting its caller |
 | Rounds | System, on `SystemManager` | Membership, the pending sets and the one cursor over the deriving groups of all three pipelines come from pipeline registration, and the cursor moves at each group's join inside `executePipeline` |
 | Freeze, thaw, resettle, notes, drain, eligibility, `C_StaticSettings` | Prefab, `IRPrefab::Static` in `engine/prefabs/irreden/common/` | Eligibility reads rotation mode, GPU slots and skeletons, all of which are prefab knowledge |
 
@@ -1041,6 +1137,7 @@ The scheduler gains three things:
 | The settle stamp and the global floor are round numbers written when a change is applied and compared by the transition step. No deriving system reads them, and nothing clears them. | `.claude/rules/cpp-ecs.md` § "No dirty flags on components", pattern 1 (the mutator queues, the owner flushes); § "A change-gated recompute must trigger on every input its function reads" (a monotonic value compared with the last one seen) |
 | The guard is a trait on the component, recorded when its id is created; the tags sit in the system layer that applies the rule | `engine/CLAUDE.md`: "keep dependency direction clear: low-level modules … do not depend on high-level ones" |
 | `C_Settled` never exists without `C_Static`; every failure path removes both or neither | `.claude/rules/cpp-ecs.md` § "Multi-field honest gates must stay consistent across failure paths" |
+| Only `promoteSettled` attaches `C_Settled`, and it re-checks the transition rule itself; every generic lane refuses the tag; the stamp is private and a copy arrives as zero. No caller has to remember the rule. | `.claude/rules/cpp-ecs.md` § "System-owned invariants: encapsulate, don't delegate to callers", route 1 |
 | The gated fog and LOD passes. The fog revision is a monotonic counter the mutators advance; each consumer remembers the value it last saw and nothing clears it, so it is a change signal and not a dirty flag | `.claude/rules/cpp-ecs.md` § "A change-gated recompute must trigger on every input its function reads" |
 | Cull bounds follow the settle-time write | `engine/prefabs/irreden/voxel/CLAUDE.md` § "Cull-bounds invalidation" |
 | The settle-time position write ignores the render viewport | `engine/prefabs/irreden/voxel/CLAUDE.md` § "Transform and revoxelization pipeline", last paragraph (a narrower viewport freezes off-screen casters) |
@@ -1156,6 +1253,8 @@ attaches no `C_Static` sees no change in behaviour.
 | `IREntity::kStaticGuard<T>`, `kClearedByForeignMove<T>` and `kTracksParentChain<T>` traits; the per-`ComponentId` guard table; `EntityManager::takeTrackedChanges` | New entity-layer surface. The four pose components specialize the guard. |
 | `setParent`, `setRelation`, `clearParent`, `detachChildren`, and destroying a parent, on a static entity or one with static descendants | New behaviour for static entities only: the subtree resettles in the same call. |
 | `IRPrefab::Static::freeze`, `thaw`, `resettle`, `noteChanged`, `drain`, `isStatic`, `isSettled`, `stats` | New prefab namespace. `drain` is called by the World. |
+| `IREntity::EngineAttach<T>`, `EngineAttachKey<T>`, `GenericAttachable`; `EntityManager::attachEngineComponentDeferred<T>`; a `GenericAttachable` constraint on every typed attach lane, and a refusal of restricted ids on `addComponentDynamic`, `getOrCreateSingletonByComponentId` and `restoreEntitiesBatch` | New entity-layer surface. Only `C_Settled` is restricted, so no call that compiles today changes. |
+| `IRSystem::promoteSettled`, `restampSettling`, `raiseSettleFloor`; `C_Static::settleStamp()` with a private stamp, zeroed by copy, kept by the `noexcept` move constructor and the private move assignment | New scheduler surface. `C_Static{}` in a bundle and `C_Static = {}` in Lua work as before. |
 | `IRStatic` Lua table with `freeze`, `thaw`, `resettle`, `isStatic`, `isSettled`, `stats`; `reads = { … }` on Lua `registerSystem` | New Lua surface. |
 | `IRSystem::GatesSettled` access tag; `IRSystem::reportRowsWalked`; `IRSystem::roundsOpened`, `roundsCompleted`; a `readOnly` archetype parameter on `createSystemDynamic` and on `executeQueryDynamic` (defaulting to empty) | New scheduler surface. |
 | One-shot queries exclude `C_Static` when they write pose inputs or derived pose; `GatesSettled` in an `executeQuery` pack is a compile error | New matching rule. A query is never a deriving system. It affects only entities that carry `C_Static`. |
@@ -1464,6 +1563,40 @@ holds on every lane:
   `declaredExcludeArchetype_` sets hold exactly what was declared. The case
   runs again with the calls in the opposite order, and again as a Lua EVAL
   system that lists `C_Static` in `exclude`.
+- **The engine-owned boundary.** Fixture: a dynamic entity, a settling
+  entity and a settled entity, each beside a twin that no call touches.
+  - In the test translation unit, `static_assert(!requires { … })` over
+    every typed lane in [§ The engine-owned boundary](#the-engine-owned-boundary)
+    with `C_Settled` (`createEntity`, `setComponent`, `setComponents`,
+    `setComponentDeferred`, `insertReservedEntity`, `createEntitiesBatch`,
+    `createEntityBatch`, `singleton<C_Settled>`). The same expressions with
+    `C_Static` hold, as the positive control.
+  - `addComponentDynamic` with `C_Settled`'s id, a Lua `components` table
+    naming `C_Settled`, and `getOrCreateSingletonByComponentId`, on the
+    dynamic and the settling entity. The archetype is unchanged,
+    `isSettled` stays false and the error is logged. In an assert build the
+    call raises the assert, which the test expects. The settling entity is
+    promoted at the same drain as its twin.
+  - A snapshot edited to list `C_Settled` on an entity with `C_Static` and
+    on one without it. The first loads settling and settles by the ordinary
+    rule; the second loads dynamic. A direct `restoreEntitiesBatch` into a
+    node that holds `C_Settled` is refused.
+  - `promoteSettled` called directly on the dynamic entity, on the settling
+    entity before its round closes, on one held only by the global floor,
+    and on one whose `C_Static` is removed by an operation staged before the
+    attach. None gains `C_Settled`, the return value counts each, and each
+    promotion lands at the same drain as its twin's.
+  - A `C_Static` read from the settled entity and passed to `createEntity`,
+    the same value passed to `setComponent` on the settling entity, and an
+    old copy of the settling entity's own `C_Static` written back after a
+    `resettle`. Each row reads `settleStamp() == 0` before the next drain,
+    which stamps it, and none is promoted before a round that opens after
+    the write. `static_assert`s state that `settleStamp_` is not accessible
+    and that `C_Static` has no public move assignment.
+  - `removeComponent<C_Settled>` on the settled entity leaves it settling,
+    with a new stamp at the next drain and no promotion before a round
+    that opens after the removal. `removeComponent<C_Static>` leaves it
+    dynamic with neither tag.
 
 **Gate 6, no cost to dynamic entities.** Million control without
 `--wave-freeze`, Release, same rounds as gate 2: the per-call means of the
@@ -1548,8 +1681,12 @@ sibling epics' work.
 ## Decisions the owner signs
 
 1. Static is declared per entity with `C_Static`; the default is dynamic.
-2. Three states by two tags; `C_Settled` is engine-owned. Both tags live in
-   the system layer.
+2. Three states by two tags; `C_Settled` is engine-owned by construction.
+   Only `IRSystem::promoteSettled`, which re-checks the transition rule,
+   can attach it, through an entity-layer key. Every typed lane refuses it
+   at compile time, and every by-id, Lua and snapshot lane refuses it at
+   run time. The settle stamp is private, and a copied `C_Static` arrives
+   with a zero stamp. Both tags live in the system layer.
 3. Freeze, thaw and resettle are deferred to the next structural flush.
    Promotion needs a complete round that opened after the entity's inputs
    last changed: the settle stamp, restarted by every change to a static
