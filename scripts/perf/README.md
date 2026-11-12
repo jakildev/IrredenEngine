@@ -292,8 +292,14 @@ The `--- Static residents ---` section carries the populations and the
 transition step's counters at report time, the largest promotion and drain in
 milliseconds, and the voxel-pool work of every rendered frame in the window:
 bytes submitted to the position buffer and cull-bound slots rebuilt, each as
-a total, the largest single frame, and the frames that did any.
-`compare_perf_runs.parse_report(...).static_residents` exposes them.
+a total, the largest single frame, and the frames that did any. `Cull bounds
+by cause` splits the slots: `invalidated` were rebuilt because a position or
+alpha write evicted their chunk, `whole_cache` by a sweep of the whole cache
+(the camera reached a cardinal yaw, the chunk count changed, or the first
+build). A yaw sweep therefore shows whole-cache frames on any scene.
+`compare_perf_runs.parse_report(...).static_residents` exposes them. The
+transition step itself is the `staticDrain` row of `--- CPU phase timing ---`:
+average and maximum per call inside the window, and the calls.
 
 `IRPerfGrid` fixtures: `--wave-freeze` creates every cell static;
 `--no-static` is the all-dynamic twin of the same command;

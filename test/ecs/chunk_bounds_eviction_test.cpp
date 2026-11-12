@@ -465,6 +465,48 @@ TEST_F(ChunkBoundsEvictionTest, CacheLocalityOneNotifiedChunkVisitsOneChunk) {
     expectBoundsMatchOracle(pool, 1023, CardinalIndex::k90);
 }
 
+// The counters name the cause of a rebuild: a whole-cache sweep (first build,
+// a cardinal change, a cardinal frame after a continuous-yaw one) or a write
+// that invalidated a chunk.
+TEST_F(ChunkBoundsEvictionTest, RebuildCountersSeparateWholeCacheSweepsFromInvalidation) {
+    C_VoxelPool pool = makeTwoChunkPool(vec3(2, 2, 2));
+    const std::size_t all = 2u * static_cast<std::size_t>(kChunk);
+
+    pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f);
+    auto counters = pool.consumeCullRebuildCounters();
+    EXPECT_EQ(counters.cardinalSlots_, all);
+    EXPECT_EQ(counters.wholeCacheSlots_, all) << "the first build sweeps the cache";
+
+    pool.markCullBoundsDirty(0, 1);
+    pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f);
+    counters = pool.consumeCullRebuildCounters();
+    EXPECT_EQ(counters.cardinalSlots_, static_cast<std::size_t>(kChunk));
+    EXPECT_EQ(counters.wholeCacheSlots_, 0u) << "an invalidated chunk is not a sweep";
+
+    pool.rebuildChunkBounds(CardinalIndex::k90, false, 0.0f);
+    counters = pool.consumeCullRebuildCounters();
+    EXPECT_EQ(counters.cardinalSlots_, all);
+    EXPECT_EQ(counters.wholeCacheSlots_, all) << "a cardinal change";
+
+    // A continuous-yaw frame reads the world cache, built whole on first use.
+    pool.rebuildChunkBounds(CardinalIndex::k90, true, 0.3f);
+    counters = pool.consumeCullRebuildCounters();
+    EXPECT_EQ(counters.cardinalSlots_, 0u);
+    EXPECT_EQ(counters.worldSlots_, all);
+    EXPECT_EQ(counters.wholeCacheSlots_, all);
+
+    pool.rebuildChunkBounds(CardinalIndex::k90, false, 0.0f);
+    counters = pool.consumeCullRebuildCounters();
+    EXPECT_EQ(counters.cardinalSlots_, all);
+    EXPECT_EQ(counters.wholeCacheSlots_, all) << "a cardinal frame after a continuous-yaw one";
+
+    pool.markCullBoundsDirty(static_cast<std::size_t>(kChunk), 1);
+    pool.rebuildChunkBounds(CardinalIndex::k90, true, 0.3f);
+    counters = pool.consumeCullRebuildCounters();
+    EXPECT_EQ(counters.worldSlots_, static_cast<std::size_t>(kChunk));
+    EXPECT_EQ(counters.wholeCacheSlots_, 0u);
+}
+
 TEST_F(ChunkBoundsEvictionTest, PartialAndEmptyChunksVisitOnlyAllocatedSlots) {
     C_VoxelPool pool(ivec3(16, 16, 4)); // 1,024 slots of capacity
     pool.allocateVoxels(300);           // chunk 0 full, chunk 1 holds 44 slots

@@ -123,6 +123,11 @@ struct StaticResidentsSummary {
     uint64_t cullSlots_ = 0;
     uint64_t maxFrameCullSlots_ = 0;
     uint32_t cullRebuildFrames_ = 0;
+    // Of `cullSlots_`, the slots a whole-cache sweep rebuilt and the frames
+    // that ran one; and the frames that rebuilt a slot a write invalidated.
+    uint64_t cullWholeCacheSlots_ = 0;
+    uint32_t cullWholeCacheFrames_ = 0;
+    uint32_t cullInvalidatedFrames_ = 0;
     /// Rendered frames the pool figures cover.
     uint32_t poolFrames_ = 0;
 };

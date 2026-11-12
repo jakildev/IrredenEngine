@@ -14,6 +14,7 @@
 // calls freeze / thaw / resettle; only `drain` promotes.
 
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/ir_system.hpp>
 
 #include <irreden/common/components/component_modifiers.hpp>
@@ -382,6 +383,7 @@ inline void drain() {
         // No registration has named C_Static, so no entity can carry it.
         return;
     }
+    IR_PROFILE_SCOPE("staticDrain");
     using Clock = std::chrono::steady_clock;
     const Clock::time_point drainStart = Clock::now();
 

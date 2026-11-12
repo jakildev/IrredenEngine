@@ -653,6 +653,9 @@ void World::buildAndWriteProfileReport() {
     report.staticResidents_.cullSlots_ = witness.cullSlots_;
     report.staticResidents_.maxFrameCullSlots_ = witness.maxFrameCullSlots_;
     report.staticResidents_.cullRebuildFrames_ = witness.cullRebuildFrames_;
+    report.staticResidents_.cullWholeCacheSlots_ = witness.cullWholeCacheSlots_;
+    report.staticResidents_.cullWholeCacheFrames_ = witness.cullWholeCacheFrames_;
+    report.staticResidents_.cullInvalidatedFrames_ = witness.cullInvalidatedFrames_;
     report.staticResidents_.poolFrames_ = witness.poolFrames_;
 
     // Collect per-system timing, grouped by pipeline

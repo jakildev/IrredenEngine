@@ -2171,7 +2171,7 @@ void initSystems() {
                         return;
                     }
                     g_staticWindowOpen = true;
-                    g_autoProfileCount = g_autoProfileFrames / 4;
+                    g_autoProfileCount = 0;
                     IREngine::enableFrameTiming(true);
                     return;
                 }

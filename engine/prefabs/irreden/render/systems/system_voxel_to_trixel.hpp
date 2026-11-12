@@ -1563,6 +1563,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             ~CullRebuildWitness() {
                 const C_VoxelPool::CullRebuildCounters rebuilt = pool_.consumeCullRebuildCounters();
                 renderRunWitness().frameCullSlots_ += rebuilt.cardinalSlots_ + rebuilt.worldSlots_;
+                renderRunWitness().frameCullWholeCacheSlots_ += rebuilt.wholeCacheSlots_;
             }
         } cullRebuildWitness{voxelPool};
 

@@ -563,6 +563,15 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
         residents.cullRebuildFrames_,
         residents.poolFrames_
     );
+    std::fprintf(
+        f,
+        "Cull bounds by cause: invalidated_slots=%llu invalidated_frames=%u "
+        "whole_cache_slots=%llu whole_cache_frames=%u\n",
+        static_cast<unsigned long long>(residents.cullSlots_ - residents.cullWholeCacheSlots_),
+        residents.cullInvalidatedFrames_,
+        static_cast<unsigned long long>(residents.cullWholeCacheSlots_),
+        residents.cullWholeCacheFrames_
+    );
     std::fprintf(f, "\n");
 
     if (report.frameTimesMs_.size() <= kProfileSeriesMaxFrames) {
