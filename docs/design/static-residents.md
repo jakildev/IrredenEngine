@@ -769,8 +769,8 @@ every registration and query lane reaches the same answer.
 - it declares a write to derived pose (`C_WorldTransform`,
   `C_ResolvedFields`) and is not a deriving system.
 
-A **deriving system** is one whose exclude archetype contains `C_Settled`,
-or that carries the access tag `IRSystem::GatesSettled`. Both are explicit
+A **deriving system** is one whose declared exclude archetype contains
+`C_Settled`, or that carries the access tag `IRSystem::GatesSettled`. Both are explicit
 in the registration, so membership is declared, not inferred from what the
 system writes. A creation's own system that adds `Exclude<C_Settled>`
 (migration step 3) becomes a deriving system. It joins the round, so an
@@ -791,15 +791,16 @@ startup.
 | The guard of each component: `IREntity::kStaticGuard<T>`, an enum `NONE` / `INPUT` / `DERIVED`, primary template `NONE` | Entity, `engine/entity/include/irreden/entity/ir_entity_types.hpp`. The four pose components specialize it in their own headers under `engine/prefabs/irreden/common/components/`. | The prefab module states a fact about its own types and depends downward to state it. Every translation unit that names a pose component includes its header and sees the specialization, so the value cannot differ between units. |
 | The guard per `ComponentId` | Entity. `EntityManager::registerComponent<T>` copies `kStaticGuard<T>`, and the two move traits below, into a table indexed by `ComponentId`, beside the existing type cache. A node built from ids computes its cached bits from that table. | `registerComponent<T>` is the only place that holds both `T` and the id. A `ComponentId` cannot exist without its guard. |
 | `IREntity::kClearedByForeignMove<T>`, `IREntity::kTracksParentChain<T>`, the tracked-change log | Entity, same header; the log on `EntityManager`. `component_static.hpp` specializes both traits, depending downward. | The archetype-move and parent-change rules run inside entity-layer moves, link changes and destruction. The prefab layer reads the log by calling down, so the entity layer never names `IRPrefab::Static`. |
-| `C_Static`, `C_Settled` | System, `engine/system/include/irreden/system/components/component_static.hpp` | The exclusion adds `C_Static`'s id to exclude archetypes and the round tracker reads `C_Settled` in them. The system layer resolves both with `IREntity::getComponentType<…>()`. |
-| The exclusion: one function, `IRSystem::detail::applyStaticExclusion(include, exclude, writes)` | System | Every lane below calls it. It is the only implementation. |
+| `C_Static`, `C_Settled` | System, `engine/system/include/irreden/system/components/component_static.hpp` | The exclusion adds `C_Static`'s id to effective exclude archetypes and the round tracker reads `C_Settled` in declared ones. The system layer resolves both with `IREntity::getComponentType<…>()`. |
+| The exclusion: one function, `IRSystem::detail::applyStaticExclusion(declaredExclude, writeGuard, gatesSettled)`, which returns the effective exclude archetype. `writeGuard` is the highest `kStaticGuard` over the lane's write set (`INPUT` above `DERIVED` above `NONE`). | System | Every lane below calls it. It is the only implementation. It is a pure function of its arguments, so it can be re-run at any time. |
+| Declared and effective exclusions: `C_SystemEvent<TICK>::declaredExcludeArchetype_` beside the existing `excludeArchetype_`; per system, the `writeGuard` and the `GatesSettled` bit, recorded once at creation | System, `component_system_event.hpp` and `SystemManager` | The policy needs to know which exclusions the author declared. One stored filter cannot tell it (the paragraph after the lanes table). |
 | Rounds | System, on `SystemManager` | Membership, the pending sets and the one cursor over the deriving groups of all three pipelines come from pipeline registration, and the cursor moves at each group's join inside `executePipeline` |
 | Freeze, thaw, resettle, notes, drain, eligibility, `C_StaticSettings` | Prefab, `IRPrefab::Static` in `engine/prefabs/irreden/common/` | Eligibility reads rotation mode, GPU slots and skeletons, all of which are prefab knowledge |
 
 **The lanes.** Each lane differs only in how it knows what the system
 writes:
 
-| Lane | Entry point | The write set passed to `applyStaticExclusion` |
+| Lane | Entry point | The write set the lane reduces to `writeGuard` |
 |---|---|---|
 | C++ system | `IRSystem::createSystem<Cs...>` | The `SystemAccess` it already derives: the non-const types in the pack plus `AlsoWrites<...>` (`system_access.hpp`, `applyComponent`). Computed at compile time. |
 | C++ enum system | `IRSystem::registerSystem<N, Cs...>` | It calls `createSystem<Cs...>`, so it is the row above |
@@ -809,13 +810,47 @@ writes:
 | C++ query | `IRSystem::executeQuery<Cs...>` | The same compile-time derivation over its pack. It dispatches through an internal node walk, not through the public `executeQueryDynamic`, so the dynamic lane's conservative rule is not applied on top. |
 | Runtime query | `IRSystem::executeQueryDynamic` | Every included component |
 
-The function runs when a system is created and again whenever
-`addSystemExcludeTag` changes its exclude archetype. So
-`addSystemExcludeTag<C_Settled>` after creation turns a derived-pose writer
-into a deriving system, and it stops being excluded from static rows. The
-round tracker recomputes membership, and abandons the open round, whenever a
-pipeline's composition or a member's exclude archetype changes
-([§ Settle](#settle-settling-to-settled)).
+**Declared and effective exclusions.** Today a system has one exclude
+filter, `C_SystemEvent<TICK>::excludeArchetype_`. `SystemManager::addSystemExcludeTag` inserts into it in place
+(`system_manager.hpp`), and `executeSystem` passes it to the node query
+(`system_manager.cpp`). If the policy wrote `C_Static` into that set, a later
+call could not tell whether the entry was the policy's or the author's
+`Exclude<C_Static>`. Keeping the entry would leave a newly deriving system
+blind to settling rows. Erasing it would silently drop an exclusion the author
+declared, and [§ Systems that neither write pose inputs nor derive](#systems-that-neither-write-pose-inputs-nor-derive)
+tells creations to declare exactly that one.
+
+So a system keeps two sets:
+
+- `declaredExcludeArchetype_` holds what the author declared: the
+  `Exclude<...>` pack, or the lane's exclude list, plus every later
+  `addSystemExcludeTag<T>`. The policy never writes it.
+- `excludeArchetype_` stays the filter that `executeSystem` reads. Only
+  `applyStaticExclusion` writes it: the declared set, plus `C_Static` when
+  the rule holds.
+
+The scheduler also records two inputs at creation and never changes them:
+the system's `writeGuard`, and whether it carries `GatesSettled`. The
+dynamic lanes' write set is not kept in `SystemAccess`, which is empty for
+them, so it has to be reduced to the guard while the lane still has it.
+
+`addSystemExcludeTag<T>` inserts `T` into the declared set. It then rebuilds
+the effective set from the declared set and the recorded inputs. It never
+edits the effective set in place. `addSystemTag` changes neither input, but
+it rebuilds the same way, so every mutation of a system's filters goes
+through one path. No API removes an exclusion today. One added later must
+remove the tag from the declared set and rebuild the same way. Deriving
+membership is read from the declared set, so the round tracker never sees the
+policy's entry. The query lanes keep no state: each call passes its pack's
+exclusions as the declared set.
+
+So `addSystemExcludeTag<C_Settled>` after creation turns a derived-pose
+writer into a deriving system, and it starts visiting settling rows. The
+same call on a writer that declared `Exclude<C_Static>` makes it deriving
+too, but `C_Static` stays in its declared set. It still visits no static row.
+It now counts in the round, which can only delay promotion. The round tracker recomputes membership,
+and abandons the open round, whenever a pipeline's composition or a member's
+declared exclusions change ([§ Settle](#settle-settling-to-settled)).
 
 **Initialization order.** None. The compiled lanes evaluate the trait at
 compile time. The runtime lanes read the per-`ComponentId` table, which the
@@ -987,7 +1022,9 @@ Per settled single-voxel resident with the million control's component set.
 While a gated fog pass is armed it streams the evaluator's own read set for
 that update, as today. Beyond the stamp, the transition step's only state
 is transient: 8 bytes per staged change note until the next drain, and a
-few integers for the rounds and the global floor.
+few integers for the rounds and the global floor. Per system, not per
+resident, the scheduler keeps a second exclude archetype, the write guard and
+the `GatesSettled` bit.
 
 Memory per resident does not fall, and this design does not try to make it
 fall. The two levers that would are named in
@@ -1006,6 +1043,7 @@ attaches no `C_Static` sees no change in behaviour.
 | `IRPrefab::Static::freeze`, `thaw`, `resettle`, `noteChanged`, `drain`, `isStatic`, `isSettled`, `stats` | New prefab namespace. `drain` is called by the World. |
 | `IRStatic` Lua table with `freeze`, `thaw`, `resettle`, `isStatic`, `isSettled`, `stats`; `reads = { … }` on Lua `registerSystem` | New Lua surface. |
 | `IRSystem::GatesSettled` access tag; `IRSystem::reportRowsWalked`; `IRSystem::roundsOpened`, `roundsCompleted`; a `readOnly` archetype parameter on `createSystemDynamic` | New scheduler surface. |
+| `C_SystemEvent<TICK>::declaredExcludeArchetype_`; `addSystemExcludeTag` and `addSystemTag` rebuild `excludeArchetype_` from the declared set | Internal scheduler state. `excludeArchetype_` becomes policy-owned. A system with no pose write sees the same filter as today. |
 | `C_VoxelSetNew::setLodBand`, `C_VoxelSetNew::ownerStatic_`; `IRPrefab::Voxel::adoptOwner` | New method, field and helper. The `lodMin_` / `lodMax_` fields stay public. |
 | `IRPrefab::Fog::setOverride`, `setChannels` | New setters. The fields stay public. |
 | Systems that write pose inputs do not match static archetypes | New matching rule. It affects only entities that carry `C_Static`. |
@@ -1254,6 +1292,16 @@ holds on every lane:
   exists and an identical Lua EVAL system created after static entities
   exist match the same nodes. `addSystemExcludeTag<C_Settled>` after
   creation turns a `C_WorldTransform` writer into a deriving system.
+- **Declared exclusions survive reclassification.** Two otherwise identical
+  `C_WorldTransform` writers, one plain and one declared with
+  `Exclude<C_Static>`. A third, also plain, gets
+  `addSystemExcludeTag<C_Static>` after creation. All three then get
+  `addSystemExcludeTag<C_Settled>`. The plain one starts visiting settling
+  rows, still skips settled rows, and joins the round. The other two visit
+  no settling or settled row and still visit dynamic rows. All three
+  `declaredExcludeArchetype_` sets hold exactly what was declared. The case
+  runs again with the calls in the opposite order, and again as a Lua EVAL
+  system that lists `C_Static` in `exclude`.
 
 **Gate 6, no cost to dynamic entities.** Million control without
 `--wave-freeze`, Release, same rounds as gate 2: the per-call means of the
@@ -1360,7 +1408,8 @@ sibling epics' work.
 7. The matching policy: a guard trait on each component, recorded per
    `ComponentId` by the entity layer, and one exclusion function on every
    registration and query lane. A deriving system is one that excludes
-   `C_Settled` or carries `GatesSettled`.
+   `C_Settled` or carries `GatesSettled`. A system's declared exclusions are
+   kept apart from the effective filter, which is always rebuilt from them.
 8. Fog and LOD stay correct through gated passes with the trigger tables
    above; fog cost is unchanged while the fog changes every update.
 9. Modifiers on a static entity are frozen, and later global modifiers do
