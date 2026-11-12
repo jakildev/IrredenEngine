@@ -2,10 +2,12 @@
 
 #include <irreden/render/ir_render_enums.hpp>
 #include <irreden/render/metal/metal_types.hpp>
+#include <irreden/render/vao.hpp>
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 namespace IRRender {
 
@@ -16,6 +18,49 @@ class RenderDevice;
 // compute test needs to drive dispatchCompute + readback without a swapchain.
 // Returns nullptr when no Metal device is available so the caller can skip.
 RenderDevice *bootstrapHeadlessRenderDevice();
+
+struct MetalVertexAttributeSignature {
+    MTL::VertexFormat format_ = MTL::VertexFormatInvalid;
+    std::uint32_t offset_ = 0;
+    std::uint32_t bufferIndex_ = 0;
+
+    bool operator==(const MetalVertexAttributeSignature &) const = default;
+};
+
+// The contents of a vertex layout's MTL::VertexDescriptor. Slots past
+// attributeCount_ stay value-initialized so equal layouts compare equal.
+// Holds every layout the shared VertexLayout contract admits.
+struct MetalVertexLayoutSignature {
+    static constexpr std::uint32_t kMaxAttributes = kMaxVertexAttributes;
+
+    std::array<MetalVertexAttributeSignature, kMaxAttributes> attributes_{};
+    std::uint32_t attributeCount_ = 0;
+    std::uint32_t stride_ = 0;
+
+    bool operator==(const MetalVertexLayoutSignature &) const = default;
+};
+
+// Every input an MTLRenderPipelineState bakes besides the program's shader
+// functions. Two draws with equal keys share one pipeline state.
+struct MetalRenderPipelineKey {
+    MTL::PixelFormat colorPixelFormat_ = MTL::PixelFormatInvalid;
+    MTL::PixelFormat depthPixelFormat_ = MTL::PixelFormatInvalid;
+    // Invalid when no entity-id attachment is bound.
+    MTL::PixelFormat entityIdPixelFormat_ = MTL::PixelFormatInvalid;
+    bool blendingEnabled_ = false;
+    MetalVertexLayoutSignature vertexLayout_{};
+
+    bool operator==(const MetalRenderPipelineKey &) const = default;
+};
+
+static_assert(
+    std::is_trivially_copyable_v<MetalRenderPipelineKey>,
+    "The render-pipeline cache key must be a plain value: no owned or pointed-to state"
+);
+
+struct MetalRenderPipelineKeyHash {
+    std::size_t operator()(const MetalRenderPipelineKey &key) const noexcept;
+};
 
 class MetalPipelineStateProvider {
   public:
@@ -28,15 +73,14 @@ class MetalPipelineStateProvider {
     // scratch bind in bindComputeResources so the slot stays free for
     // kernels that declare unrelated data there.
     virtual bool usesImageAtomicScratch() const = 0;
-    // Blend state is baked into an MTLRenderPipelineState, so each blend
-    // setting is a separate cached state. `blendingEnabled` mirrors the
-    // RenderDevice enableBlending()/disableBlending() toggle.
+    // Cached per key. On a miss the state is built from `vertexDescriptor`,
+    // which must be the descriptor `key.vertexLayout_` describes; the cache
+    // keeps no pointer to it.
     virtual MTL::RenderPipelineState *getRenderPipelineState(
-        MTL::PixelFormat colorPixelFormat,
-        MTL::PixelFormat depthPixelFormat,
-        const MTL::VertexDescriptor *vertexDescriptor,
-        bool blendingEnabled
+        const MetalRenderPipelineKey &key,
+        const MTL::VertexDescriptor *vertexDescriptor
     ) = 0;
+    virtual std::size_t renderPipelineStateCount() const = 0;
     virtual MTL::ComputePipelineState *getComputePipelineState() = 0;
 };
 
@@ -49,6 +93,7 @@ struct MetalVertexLayoutBinding {
     MTL::Buffer *vertexBuffer_ = nullptr;
     MTL::Buffer *indexBuffer_ = nullptr;
     MTL::VertexDescriptor *vertexDescriptor_ = nullptr;
+    MetalVertexLayoutSignature signature_{};
 };
 
 struct MetalStagingBufferSlice {
@@ -81,9 +126,13 @@ MetalPipelineStateProvider *activeMetalPipeline();
 void setActiveMetalVertexLayout(
     MTL::Buffer *vertexBuffer,
     MTL::Buffer *indexBuffer,
-    MTL::VertexDescriptor *vertexDescriptor
+    MTL::VertexDescriptor *vertexDescriptor,
+    const MetalVertexLayoutSignature &signature
 );
 const MetalVertexLayoutBinding &activeMetalVertexLayout();
+// The key for a draw with the bound render target, the active vertex layout
+// and the given blend setting.
+MetalRenderPipelineKey currentMetalRenderPipelineKey(bool blendingEnabled);
 
 void bindMetalBuffer(BufferTarget target, std::uint32_t index, MTL::Buffer *buffer, NS::UInteger offset);
 const MetalBufferBinding &boundMetalBuffer(BufferTarget target, std::uint32_t index);

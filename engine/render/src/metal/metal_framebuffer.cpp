@@ -2,6 +2,9 @@
 #include <irreden/render/framebuffer.hpp>
 #include <irreden/render/metal/metal_runtime.hpp>
 #include <irreden/render/vao.hpp>
+#include <irreden/ir_profile.hpp>
+
+#include <cstdint>
 
 namespace IRRender {
 
@@ -25,6 +28,43 @@ MTL::VertexFormat toMetalVertexFormat(VertexAttributeDataType type, int size) {
 
 std::size_t vertexAttributeSizeBytes(const VertexArrayAttribute &attribute) {
     return static_cast<std::size_t>(attribute.size_) * sizeof(float);
+}
+
+// Attributes are packed back to back in buffer 0.
+MetalVertexLayoutSignature vertexLayoutSignature(
+    unsigned int numAttributes,
+    const VertexArrayAttribute *attributes
+) {
+    IR_ASSERT(
+        numAttributes <= MetalVertexLayoutSignature::kMaxAttributes,
+        "Vertex layout has more attributes than kMaxVertexAttributes"
+    );
+    MetalVertexLayoutSignature signature{};
+    std::size_t stride = 0;
+    for (unsigned int i = 0; i < numAttributes; ++i) {
+        signature.attributes_[i] = MetalVertexAttributeSignature{
+            .format_ = toMetalVertexFormat(attributes[i].type_, attributes[i].size_),
+            .offset_ = static_cast<std::uint32_t>(stride),
+            .bufferIndex_ = 0,
+        };
+        stride += vertexAttributeSizeBytes(attributes[i]);
+    }
+    signature.attributeCount_ = numAttributes;
+    signature.stride_ = static_cast<std::uint32_t>(stride);
+    return signature;
+}
+
+MTL::VertexDescriptor *newVertexDescriptor(const MetalVertexLayoutSignature &signature) {
+    auto *vertexDescriptor = MTL::VertexDescriptor::alloc()->init();
+    for (std::uint32_t i = 0; i < signature.attributeCount_; ++i) {
+        const MetalVertexAttributeSignature &source = signature.attributes_[i];
+        auto *attribute = vertexDescriptor->attributes()->object(i);
+        attribute->setFormat(source.format_);
+        attribute->setOffset(source.offset_);
+        attribute->setBufferIndex(source.bufferIndex_);
+    }
+    vertexDescriptor->layouts()->object(0)->setStride(signature.stride_);
+    return vertexDescriptor;
 }
 
 } // namespace
@@ -92,20 +132,9 @@ class MetalVertexLayoutImpl final : public VertexLayoutImpl {
         const VertexArrayAttribute *attributes
     )
         : m_vertexBufferWrapper(vertexBuffer)
-        , m_indexBufferWrapper(indexBuffer) {
-        auto *vertexDescriptor = MTL::VertexDescriptor::alloc()->init();
-        std::size_t stride = 0;
-        for (unsigned int i = 0; i < numAttributes; ++i) {
-            const auto attributeSize = vertexAttributeSizeBytes(attributes[i]);
-            auto *attribute = vertexDescriptor->attributes()->object(i);
-            attribute->setFormat(toMetalVertexFormat(attributes[i].type_, attributes[i].size_));
-            attribute->setOffset(static_cast<NS::UInteger>(stride));
-            attribute->setBufferIndex(0);
-            stride += attributeSize;
-        }
-        vertexDescriptor->layouts()->object(0)->setStride(static_cast<NS::UInteger>(stride));
-        m_vertexDescriptor = vertexDescriptor;
-    }
+        , m_indexBufferWrapper(indexBuffer)
+        , m_signature(vertexLayoutSignature(numAttributes, attributes))
+        , m_vertexDescriptor(newVertexDescriptor(m_signature)) {}
 
     ~MetalVertexLayoutImpl() override {
         if (m_vertexDescriptor != nullptr) {
@@ -123,12 +152,14 @@ class MetalVertexLayoutImpl final : public VertexLayoutImpl {
         MTL::Buffer *indexBuffer = m_indexBufferWrapper != nullptr
             ? static_cast<MTL::Buffer *>(m_indexBufferWrapper->getNativeBuffer())
             : nullptr;
-        setActiveMetalVertexLayout(vertexBuffer, indexBuffer, m_vertexDescriptor);
+        setActiveMetalVertexLayout(vertexBuffer, indexBuffer, m_vertexDescriptor, m_signature);
     }
 
   private:
     const Buffer *m_vertexBufferWrapper = nullptr;
     const Buffer *m_indexBufferWrapper = nullptr;
+    MetalVertexLayoutSignature m_signature{};
+    // Built from m_signature, which the pipeline cache keys on.
     MTL::VertexDescriptor *m_vertexDescriptor = nullptr;
 };
 

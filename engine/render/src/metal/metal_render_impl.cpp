@@ -627,10 +627,8 @@ class MetalRenderDevice final : public RenderDevice {
         }
 
         auto *pipelineState = pipeline->getRenderPipelineState(
-            metalCurrentColorPixelFormat(),
-            metalCurrentDepthPixelFormat(),
-            layout.vertexDescriptor_,
-            m_blendingEnabled
+            currentMetalRenderPipelineKey(m_blendingEnabled),
+            layout.vertexDescriptor_
         );
         IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
         encoder->setRenderPipelineState(pipelineState);
@@ -667,10 +665,8 @@ class MetalRenderDevice final : public RenderDevice {
         }
 
         auto *pipelineState = pipeline->getRenderPipelineState(
-            metalCurrentColorPixelFormat(),
-            metalCurrentDepthPixelFormat(),
-            layout.vertexDescriptor_,
-            m_blendingEnabled
+            currentMetalRenderPipelineKey(m_blendingEnabled),
+            layout.vertexDescriptor_
         );
         IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
         encoder->setRenderPipelineState(pipelineState);
@@ -717,10 +713,8 @@ class MetalRenderDevice final : public RenderDevice {
         }
 
         auto *pipelineState = pipeline->getRenderPipelineState(
-            metalCurrentColorPixelFormat(),
-            metalCurrentDepthPixelFormat(),
-            layout.vertexDescriptor_,
-            m_blendingEnabled
+            currentMetalRenderPipelineKey(m_blendingEnabled),
+            layout.vertexDescriptor_
         );
         IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
         encoder->setRenderPipelineState(pipelineState);
@@ -794,10 +788,8 @@ class MetalRenderDevice final : public RenderDevice {
         }
 
         auto *pipelineState = pipeline->getRenderPipelineState(
-            metalCurrentColorPixelFormat(),
-            metalCurrentDepthPixelFormat(),
-            layout.vertexDescriptor_,
-            m_blendingEnabled
+            currentMetalRenderPipelineKey(m_blendingEnabled),
+            layout.vertexDescriptor_
         );
         IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
         encoder->setRenderPipelineState(pipelineState);
@@ -833,10 +825,8 @@ class MetalRenderDevice final : public RenderDevice {
         }
 
         auto *pipelineState = pipeline->getRenderPipelineState(
-            metalCurrentColorPixelFormat(),
-            metalCurrentDepthPixelFormat(),
-            layout.vertexDescriptor_,
-            m_blendingEnabled
+            currentMetalRenderPipelineKey(m_blendingEnabled),
+            layout.vertexDescriptor_
         );
         IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
         encoder->setRenderPipelineState(pipelineState);
