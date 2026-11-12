@@ -459,6 +459,7 @@ class Queue(FleetSurveyFixture):
         report = self.run_survey(state=state)
         queue = report["repos"]["engine"]["queue"]
         self.assertNotIn("#101", [row["id"] for row in queue["ghost"]])
+        self.assertNotIn("#101", [row["id"] for row in queue["declined"]])
         blocked = next(row for row in queue["blocked"] if row["id"] == "#101")
         self.assertEqual(blocked["blocked_by"], "#4904")
         rendered = _mod.render(report)
