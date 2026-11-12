@@ -77,6 +77,10 @@ struct GpuStageTiming {
     std::uint32_t visibleVoxelCount_ = 0;
     std::uint32_t totalVoxelCount_ = 0;
     std::uint32_t axisEntryCount_ = 0;
+    // Pool slots admitted to the finite sun-face bake by the frame's
+    // frustum-only chunk mask. Unlike visibleVoxelCount_, this includes every
+    // slot in an admitted chunk and is never reduced by the occlusion pre-pass.
+    std::uint32_t sunFaceAdmittedVoxelCount_ = 0;
     // Shadow-feeder (struct 1) survivors from the same prior-frame readback —
     // the shadow-feeder tail population targeted by the domain-widened cull.
     // 0 whenever shadows are off / per-axis split active (feeders
@@ -224,23 +228,28 @@ struct VoxelCullAccumulator {
     std::uint64_t totalSum_ = 0;
     std::uint64_t feederSum_ = 0;
     std::uint64_t axisEntrySum_ = 0;
+    std::uint64_t sunFaceAdmittedSum_ = 0;
     std::uint32_t maxVisible_ = 0;
     std::uint32_t maxTotal_ = 0;
     std::uint32_t maxFeeder_ = 0;
     std::uint32_t maxAxisEntries_ = 0;
+    std::uint32_t maxSunFaceAdmitted_ = 0;
     std::uint32_t sampleCount_ = 0;
 
     void record(
         std::uint32_t visible,
         std::uint32_t total,
         std::uint32_t feeder,
-        std::uint32_t axisEntries = 0
+        std::uint32_t axisEntries = 0,
+        std::uint32_t sunFaceAdmitted = 0
     ) {
         visibleSum_ += visible;
         totalSum_ += total;
         feederSum_ += feeder;
         axisEntrySum_ += axisEntries;
+        sunFaceAdmittedSum_ += sunFaceAdmitted;
         maxAxisEntries_ = IRMath::max(maxAxisEntries_, axisEntries);
+        maxSunFaceAdmitted_ = IRMath::max(maxSunFaceAdmitted_, sunFaceAdmitted);
         maxVisible_ = IRMath::max(maxVisible_, visible);
         maxTotal_ = IRMath::max(maxTotal_, total);
         maxFeeder_ = IRMath::max(maxFeeder_, feeder);
@@ -252,7 +261,9 @@ struct VoxelCullAccumulator {
         totalSum_ = 0;
         feederSum_ = 0;
         axisEntrySum_ = 0;
+        sunFaceAdmittedSum_ = 0;
         maxAxisEntries_ = 0;
+        maxSunFaceAdmitted_ = 0;
         maxVisible_ = 0;
         maxTotal_ = 0;
         maxFeeder_ = 0;

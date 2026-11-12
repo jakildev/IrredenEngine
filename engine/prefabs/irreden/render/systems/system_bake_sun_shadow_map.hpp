@@ -1203,6 +1203,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     // Positions/colors remain resident only until the next canvas upload.
     void bakeVoxelFaces(
         int count,
+        Buffer &chunkVisibility,
         int subdivisions,
         const C_CanvasLocalRotation &rotation,
         vec3 rasterCellOffset = vec3(0.0f),
@@ -1238,6 +1239,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         };
         voxelFaceFrameBuf_->subData(0, sizeof(params), &params);
         voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
+        chunkVisibility.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ChunkVisibility);
         sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
         bindFogObservers();

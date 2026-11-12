@@ -439,6 +439,14 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
             c.maxVisible_,
             c.sampleCount_
         );
+        std::fprintf(
+            f,
+            "%-12s %14.1f %14u %10u\n",
+            "SunFaceAdmit",
+            static_cast<double>(c.sunFaceAdmittedSum_) / samples,
+            c.maxSunFaceAdmitted_,
+            c.sampleCount_
+        );
         std::fprintf(f, "%-12s %14.1f %14u %10u\n", "Total", avgTotal, c.maxTotal_, c.sampleCount_);
         std::fprintf(
             f,

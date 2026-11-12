@@ -66,7 +66,9 @@ struct VoxelCullStatsSummary {
     // domain-widened per-voxel cull targets. 0 with shadows off.
     uint64_t feederSum_ = 0;
     uint64_t axisEntrySum_ = 0;
+    uint64_t sunFaceAdmittedSum_ = 0;
     uint32_t maxAxisEntries_ = 0;
+    uint32_t maxSunFaceAdmitted_ = 0;
     uint32_t maxVisible_ = 0;
     uint32_t maxTotal_ = 0;
     uint32_t maxFeeder_ = 0;
