@@ -485,7 +485,10 @@ TEST(StaticWorld, AStagedSetIsHeldUntilItIsSeeded) {
         },
         C_Static{}
     );
-    h.frames(4);
+    h.frame();
+    EXPECT_EQ(h.set(entity).ownerEntityId_, entity)
+        << "a staged set, as a snapshot load leaves it, is adopted at the first drain";
+    h.frames(3);
     EXPECT_FALSE(Static::isSettled(entity));
     EXPECT_GE(h.stats().counters_.held_, 3u);
     EXPECT_EQ(h.set(entity).numVoxels_, 0);

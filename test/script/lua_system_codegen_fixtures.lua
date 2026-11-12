@@ -195,3 +195,19 @@ IRSystem.registerSystem({
         end
     end,
 })
+
+-- `reads` declares a component the tick only reads. The emitter lists it
+-- `const` in the createSystem<> pack, so the system declares no write to it.
+IRSystem.registerSystem({
+    name = 'CodegenReadVel',
+    components = { 'CodegenSysPos' },
+    reads = { 'CodegenSysVel' },
+    tick = function(arch)
+        for i = 0, arch.length - 1 do
+            local pos = arch.CodegenSysPos:at(i)
+            local vel = arch.CodegenSysVel:at(i)
+            arch.CodegenSysPos:setAt(i,
+                CodegenSysPos.new(pos.x + vel.x, pos.y))
+        end
+    end,
+})

@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <irreden/system/components/component_static.hpp>
+
 #include "../common/env_var.hpp"
 
 #include <irreden/ir_entity.hpp>
@@ -820,6 +822,28 @@ TEST_F(LuaWorldSnapshotTest, RoundTripThroughLua) {
 // reconstructs in staged mode (numVoxels_ == 0, pendingVoxels_ populated) —
 // attaching it to a live pool is a separate step the caller's UPDATE
 // pipeline performs via SEED_STAGED_VOXELS (lua_world_snapshot_bindings.hpp).
+// A static resident saves as its tag alone. The settle stamp names a round
+// of the saving session and C_Settled records derived state a load does not
+// restore, so the entity must come back static, unstamped and settling.
+TEST_F(LuaWorldSnapshotTest, RoundTripsAStaticResidentAsSettling) {
+    using IRComponents::C_Settled;
+    using IRComponents::C_Static;
+    const EntityId settled = m_entity_manager.createEntity(C_Static{41}, C_Settled{});
+    const EntityId dynamic = m_entity_manager.createEntity(C_Name{"dynamic"});
+
+    const std::string path = tempPath("static_resident");
+    ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + path + "'))"));
+    m_entity_manager.destroyAllEntities();
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + path + "'))"));
+
+    ASSERT_TRUE(m_entity_manager.entityExists(settled));
+    const auto reloaded = m_entity_manager.getComponentOptional<C_Static>(settled);
+    ASSERT_TRUE(reloaded.has_value());
+    EXPECT_EQ((*reloaded)->settleStamp_, 0u);
+    EXPECT_FALSE(m_entity_manager.getComponentOptional<C_Settled>(settled).has_value());
+    EXPECT_FALSE(m_entity_manager.getComponentOptional<C_Static>(dynamic).has_value());
+}
+
 TEST_F(LuaWorldSnapshotTest, RoundTripsVoxelSetNew) {
     const IRMath::ivec3 size{2, 1, 2};
     const IRMath::ivec3 boundsMin{3, -1, 5};

@@ -262,6 +262,7 @@ add_executable(IrredenEngineTest
   script/lua_world_transform_lua_test.cpp
   script/lua_rotation_target_lua_test.cpp
   script/lua_spin_test.cpp
+  script/lua_static_test.cpp
   script/lua_system_codegen_test.cpp
   script/prefab_api_test.cpp
   script/prefab_parts_test.cpp
