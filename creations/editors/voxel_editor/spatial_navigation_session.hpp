@@ -20,6 +20,8 @@ enum class SpatialNavigationOperation {
     UI_CROSSING,
     CURSOR_DRAG,
     ROLL_DRAG,
+    LIVE_ROLL,
+    RELEASE_ROLL,
     PRECISE_PAN,
     SPACE_PAN,
     RESET_KEY,
@@ -41,9 +43,9 @@ struct SpatialNavigationCase {
 // Independent expected poses use the documented default input rates: .04
 // radians per precise-scroll unit, .005 per drag point, .125 wheel octaves,
 // and one octave per magnification unit. Tests must change if that UX changes.
-inline const std::array<SpatialNavigationCase, 20> &spatialNavigationCases() {
+inline const std::array<SpatialNavigationCase, 22> &spatialNavigationCases() {
     using Op = SpatialNavigationOperation;
-    static const std::array<SpatialNavigationCase, 20> cases{{
+    static const std::array<SpatialNavigationCase, 22> cases{{
         {"orbit_xy_30", Op::ORBIT, {.5235988f, .5f, 0}, {.6035988f, .46f, 0}, {2, -1}},
         {"orbit_underside_67",
          Op::ORBIT,
@@ -140,11 +142,21 @@ inline const std::array<SpatialNavigationCase, 20> &spatialNavigationCases() {
          {1.1693706f, -1.4f, 0},
          {1.1293706f, -IRMath::kHalfPi + .01f, 0},
          {-1, -100}},
+        {"shift_added_and_released_during_orbit",
+         Op::LIVE_ROLL,
+         {.5235988f, .5f, 0},
+         {.6735988f, .4f, .15f},
+         {20, -10}},
+        {"shift_release_stops_roll",
+         Op::RELEASE_ROLL,
+         {1.1693706f, -.4f, .2f},
+         {1.3193706f, -.3f, .5f},
+         {60, 0}},
     }};
     return cases;
 }
 
-inline constexpr int kSpatialNavigationShotCount = 20;
+inline constexpr int kSpatialNavigationShotCount = 22;
 inline IRMath::vec2 spatialNavigationAim() {
     return {800, 650};
 }
@@ -286,6 +298,7 @@ inline void resolveSpatialNavigationDragAims(Segment &segment, int shot) {
     using Op = SpatialNavigationOperation;
     const auto &spec = spatialNavigationCases()[shot];
     if (spec.operation_ != Op::CURSOR_DRAG && spec.operation_ != Op::ROLL_DRAG &&
+        spec.operation_ != Op::LIVE_ROLL && spec.operation_ != Op::RELEASE_ROLL &&
         spec.operation_ != Op::MODIFIER_RELEASE && spec.operation_ != Op::SPACE_PAN)
         return;
     const auto origin = IRRender::guiTrixelToScreenPx(spatialNavigationAim());
@@ -296,6 +309,8 @@ inline void resolveSpatialNavigationDragAims(Segment &segment, int shot) {
             event.screenPx_ = origin + IRMath::ivec2(spec.delta_);
         if (event.frameOffset_ == 10)
             event.screenPx_ = origin + IRMath::ivec2(spec.delta_) + IRMath::ivec2(30, 20);
+        if (event.frameOffset_ == 14 && spec.operation_ == Op::LIVE_ROLL)
+            event.screenPx_ = origin + IRMath::ivec2(spec.delta_) + IRMath::ivec2(40, 10);
     }
 }
 
@@ -326,8 +341,8 @@ inline Recipe buildSpatialNavigation() {
     using Phase = IRWindow::PointerGesturePhase;
     Recipe recipe;
     recipe.name_ = "spatial_navigation";
-    static constexpr std::array indices{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,
-                                        10, 11, 12, 13, 14, 15, 16, 17, 18, 19};
+    static constexpr std::array indices{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
+                                        11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21};
     for (int shot = 0; shot < kSpatialNavigationShotCount; ++shot) {
         const auto &spec = spatialNavigationCases()[shot];
         Segment segment;
@@ -376,17 +391,22 @@ inline Recipe buildSpatialNavigation() {
         switch (spec.operation_) {
         case Op::CURSOR_DRAG:
         case Op::ROLL_DRAG:
+        case Op::RELEASE_ROLL:
         case Op::MODIFIER_RELEASE:
         case Op::SPACE_PAN: {
             const auto modifier = spec.operation_ == Op::SPACE_PAN ? IRInput::kKeyButtonSpace
                                                                    : IRInput::kKeyButtonLeftAlt;
             key(2, Type::PRESS, modifier);
-            if (spec.operation_ == Op::ROLL_DRAG)
+            if (spec.operation_ == Op::ROLL_DRAG || spec.operation_ == Op::RELEASE_ROLL)
                 key(3, Type::PRESS, IRInput::kKeyButtonLeftShift);
             key(4, Type::PRESS, IRInput::kMouseButtonLeft);
             move(6, viewport + spec.delta_);
             if (spec.operation_ == Op::MODIFIER_RELEASE) {
                 key(8, Type::RELEASE, modifier);
+                move(10, viewport + spec.delta_ + IRMath::vec2(30, 20));
+            }
+            if (spec.operation_ == Op::RELEASE_ROLL) {
+                key(8, Type::RELEASE, IRInput::kKeyButtonLeftShift);
                 move(10, viewport + spec.delta_ + IRMath::vec2(30, 20));
             }
             key(12, Type::RELEASE, IRInput::kMouseButtonLeft);
@@ -396,6 +416,17 @@ inline Recipe buildSpatialNavigation() {
                 key(15, Type::RELEASE, IRInput::kKeyButtonLeftShift);
             break;
         }
+        case Op::LIVE_ROLL:
+            key(2, Type::PRESS, IRInput::kKeyButtonLeftAlt);
+            key(4, Type::PRESS, IRInput::kMouseButtonLeft);
+            move(6, viewport + spec.delta_);
+            key(8, Type::PRESS, IRInput::kKeyButtonLeftShift);
+            move(10, viewport + spec.delta_ + IRMath::vec2(30, 20));
+            key(12, Type::RELEASE, IRInput::kKeyButtonLeftShift);
+            move(14, viewport + spec.delta_ + IRMath::vec2(40, 10));
+            key(16, Type::RELEASE, IRInput::kMouseButtonLeft);
+            key(18, Type::RELEASE, IRInput::kKeyButtonLeftAlt);
+            break;
         case Op::RESET_KEY:
             key(2, Type::PRESS, IRInput::kKeyButtonHome);
             key(4, Type::RELEASE, IRInput::kKeyButtonHome);

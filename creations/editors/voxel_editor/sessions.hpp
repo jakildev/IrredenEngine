@@ -16,6 +16,7 @@
 #include "region_tools.hpp"
 #include "material_tools_workflow.hpp"
 #include "shapes_workflow.hpp"
+#include "shape_erase_workflow.hpp"
 #include "shadow_rotation.hpp"
 #include "sculpt_panel.hpp"
 #include "hierarchy_panel.hpp"
@@ -170,6 +171,7 @@ enum class Id {
     REGION_TOOLS,
     MATERIAL_TOOLS,
     SHAPES_WORKFLOW,
+    SHAPES_ERASE,
     WORKSPACE_CONTROLS,
     WORKSPACE_RESTORE,
     SHADOW_ROTATION,
@@ -300,6 +302,8 @@ inline Id idFromName(const std::string &name) {
         return Id::WORKSPACE_CONTROLS;
     if (name == "shapes_workflow")
         return Id::SHAPES_WORKFLOW;
+    if (name == "shapes_erase")
+        return Id::SHAPES_ERASE;
     if (name == "material_tools")
         return Id::MATERIAL_TOOLS;
     if (name == "region_tools")
@@ -2160,6 +2164,8 @@ inline Recipe build(
         return buildWorkspaceControls();
     case Id::SHAPES_WORKFLOW:
         return buildShapesWorkflow(sceneSize, sceneOrigin);
+    case Id::SHAPES_ERASE:
+        return buildShapesErase();
     case Id::MATERIAL_TOOLS:
         return buildMaterialTools(sceneSize, sceneOrigin);
     case Id::CAMERA_GESTURES:

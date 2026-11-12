@@ -31,7 +31,10 @@ crossing a pole does not flip the view. Roll is a separate, explicit gesture.
 
 A gold marker identifies the orbit anchor. Camera drags keep ownership through
 button release, including when their modifier releases first; sculpting does
-not consume that release. Native scroll and pinch ownership is decided at the
+not consume that release. During Option/Alt + left-drag, pressing Shift switches
+immediately to roll; releasing Shift resumes upright orbit. Each movement uses
+the current modifier state without resetting the anchor or jumping the view.
+Native scroll and pinch ownership is decided at the
 gesture's initial position and retained through its end or cancellation. A
 gesture beginning on editor UI does not become a camera gesture when it crosses
 into the scene. OS scroll momentum does not move the camera.
