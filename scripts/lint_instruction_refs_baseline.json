@@ -1,0 +1,44 @@
+{
+ ".claude/commands/role-opus-reviewer.md": [
+  "fleet:fork-of-other-pr"
+ ],
+ ".claude/commands/role-sonnet-reviewer.md": [
+  "fleet:fork-of-other-pr"
+ ],
+ ".claude/commands/role-worker.md": [
+  "fleet:awaiting-base",
+  "fleet:fork-of-other-pr"
+ ],
+ ".claude/skills/file-epic/SKILL.md": [
+  "engine/voxel"
+ ],
+ ".claude/skills/simplify/SKILL.md": [
+  "fleet:stacked"
+ ],
+ ".claude/skills/start-next-task/SKILL.md": [
+  "engine/voxel"
+ ],
+ "docs/agents/AGENTS-ARCHITECTURE.md": [
+  "C_PositionGlobal3D",
+  "engine/prefabs/irreden/update/nav_query.hpp"
+ ],
+ "docs/agents/architect-protocol.md": [
+  "fleet:stacked"
+ ],
+ "engine/CLAUDE.md": [
+  "C_PositionGlobal3D",
+  "C_Rotation",
+  "engine/system/include/irreden/ir_system_types.hpp"
+ ],
+ "engine/prefabs/CLAUDE.md": [
+  "C_PositionGlobal3D",
+  "C_Rotation",
+  "engine/system/include/irreden/ir_system_types.hpp"
+ ],
+ "engine/prefabs/irreden/video/CLAUDE.md": [
+  "C_FramebufferCapture"
+ ],
+ "engine/utility/CLAUDE.md": [
+  "engine/utility/ir_utility.hpp"
+ ]
+}
