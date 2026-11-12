@@ -391,6 +391,10 @@ class MetalRenderDevice final : public RenderDevice {
         return {.processAllocatedBytes_ = gpu == nullptr ? 0 : gpu->currentAllocatedSize()};
     }
 
+    RenderDeviceStats deviceStats() const override {
+        return {.supported_ = true, .bufferWrites_ = metalBufferWriteStats()};
+    }
+
     void recordCompletedFrameBuffer(MTL::CommandBuffer *commandBuffer) {
         m_gpuFrameTiming.addCompletedBuffer(
             commandBuffer->GPUStartTime(),

@@ -24,8 +24,8 @@
 //       acquireJointBlock (a contiguous block per skeleton; bone_id is the offset
 //       within the block).
 //   Each system uploads only its own region, so the two never overwrite each
-//   other — and Metal's subData orphan copies head+tail, so the disjoint partial
-//   uploads compose on both backends.
+//   other — and Metal's partial subData touches only its own bytes, so the
+//   disjoint partial uploads compose on both backends.
 //
 // SCHEDULING: register in the RENDER pipeline AFTER PROPAGATE_TRANSFORM (so each
 //   joint's C_WorldTransform is the current posed transform) and BEFORE

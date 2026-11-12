@@ -256,6 +256,10 @@ class RunWitnessParserTest(unittest.TestCase):
             '"Steady frame time (first %zu of %zu frames excluded):   avg=%.2fms   p50=%.2fms   "',
             '"--- Frame times (ms, in order) ---\\n"',
             '"--- Update ticks (per frame, in order) ---\\n"',
+            '"--- Render device counters ---\\n"',
+            '"Supported: %u\\n"',
+            '"%-36s %14llu %14.3f %14llu\\n"',
+            '"GPU process allocation: peak=%llu bytes\\n"',
         ):
             self.assertIn(written, writer)
 
@@ -371,6 +375,20 @@ OLD_FORMAT_STAGES = (
 )
 
 
+DEVICE_COUNTER_REPORT = (
+    "--- Render device counters ---\n"
+    "Supported: 1\n"
+    "Counter                                       Total   Steady/frame      Max/frame\n"
+    "bufferPartialWriteAllocations                    12          0.000              7\n"
+    "bufferStagedPatches                            2250          7.500             16\n"
+    "GPU process allocation: peak=734003200 bytes\n"
+    "\n"
+    "--- GPU stage timing ---\n"
+    "voxelStage1 1.000 0.500 2.000 8\n"
+    "=== END REPORT ===\n"
+)
+
+
 class ExclusiveStageFormatTest(unittest.TestCase):
     def parse(self, text, cell_id="fixture"):
         with tempfile.TemporaryDirectory() as directory:
@@ -445,6 +463,35 @@ class ExclusiveStageFormatTest(unittest.TestCase):
             '"Exclusive sum: %.3f ms; commandBufferSpans: unavailable\\n"',
         ):
             self.assertIn(written, writer)
+
+
+class DeviceCounterParserTest(unittest.TestCase):
+    def parse(self, text):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profile.txt"
+            path.write_text(text)
+            return parse_report(path, "fixture")
+
+    def test_counter_rows_support_and_peak_are_read(self):
+        report = self.parse(DEVICE_COUNTER_REPORT)
+        self.assertTrue(report.device_counters_supported)
+        self.assertEqual(sorted(report.device_counters),
+                         ["bufferPartialWriteAllocations", "bufferStagedPatches"])
+        staged = report.device_counters["bufferStagedPatches"]
+        self.assertEqual((staged.total, staged.steady_per_frame, staged.max_per_frame),
+                         (2250, 7.5, 16))
+        self.assertEqual(report.gpu_process_peak_bytes, 734003200)
+        self.assertEqual([stage.name for stage in report.gpu_stages], ["voxelStage1"])
+
+    def test_an_unsupported_backend_reads_false_not_absent(self):
+        report = self.parse(DEVICE_COUNTER_REPORT.replace("Supported: 1", "Supported: 0"))
+        self.assertIs(report.device_counters_supported, False)
+
+    def test_a_report_without_the_section_reads_absent_never_zero(self):
+        report = self.parse("--- GPU stage timing ---\nvoxelStage1 1.000 0.500 2.000 8\n")
+        self.assertIsNone(report.device_counters_supported)
+        self.assertEqual(report.device_counters, {})
+        self.assertIsNone(report.gpu_process_peak_bytes)
 
 
 if __name__ == "__main__":

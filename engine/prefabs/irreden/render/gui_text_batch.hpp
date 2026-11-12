@@ -440,7 +440,8 @@ inline void stampGlyphLayout(
 // and distance images, uploading through `cmdBuf` (kMaxGlyphCommands capacity,
 // bound at kBufferIndex_GlyphDrawCommands) and dispatching one chunk at a time.
 // Re-uploading after a queued dispatch is safe on both backends: GL orders
-// buffer updates after prior reads, and Metal orphans an encoded buffer.
+// buffer updates after prior reads, and Metal orders a write to an encoded
+// buffer after the encoders already queued.
 inline void dispatchGlyphCommands(
     const IRRender::Buffer &cmdBuf, std::span<const IRRender::GlyphDrawCommand> commands
 ) {

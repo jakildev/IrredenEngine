@@ -185,7 +185,7 @@ class MetalTexture2DImpl final : public Texture2DImpl {
         // CPU texture writes are not ordered against queued encoders. Arena
         // slices keep each upload immutable until the command buffer drains,
         // while the blit preserves ordering with earlier clear/compute work.
-        const MetalStagingBufferSlice staging = stageMetalTextureUpload(data, totalSize);
+        const MetalStagingBufferSlice staging = stageMetalUpload(data, totalSize);
 
         auto *blit = commandBuffer->blitCommandEncoder();
         blit->copyFromBuffer(

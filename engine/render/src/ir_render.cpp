@@ -513,9 +513,9 @@ MouseTrixelPick getMouseTrixelPick() {
     if (!buf)
         return {};
 
-    // Re-fetch every frame: on Metal, subData orphans the MTL::Buffer on
-    // write (metal_buffer.cpp:58–79); a statically-cached pointer from
-    // mapRange would be stale by the next frame.
+    // Re-fetch every frame: on Metal a full subData of an encoded buffer
+    // swaps its MTL::Buffer, so a statically-cached pointer from mapRange
+    // could be stale by the next frame.
     void *mappedPtr = buf->mapRange(
         0,
         sizeof(HoveredEntityIdLayout),

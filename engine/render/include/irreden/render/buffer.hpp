@@ -56,8 +56,8 @@ class Buffer {
     void subData(std::ptrdiff_t offset, std::size_t size, const void *data) const;
     // One logical upload of several disjoint spans: bytes outside them keep
     // their contents, including queued GPU writes. `ranges` must be sorted by
-    // offset, non-overlapping, and inside the buffer. On Metal an encoded
-    // buffer is orphaned once per call, not once per range.
+    // offset, non-overlapping, and inside the buffer. On Metal a partial write
+    // to an encoded buffer is one staged GPU copy per call, not one per range.
     void subDataRanges(std::span<const BufferUploadRange> ranges) const;
     void getSubData(std::ptrdiff_t offset, std::size_t size, void *data) const;
     void bindRange(BufferTarget target, std::uint32_t index, std::ptrdiff_t offset, std::size_t size);

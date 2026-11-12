@@ -1,6 +1,7 @@
 #include <irreden/render/metal/metal_runtime.hpp>
 #include <irreden/ir_profile.hpp>
 
+#include <bit>
 #include <cstring>
 #include <unordered_map>
 #include <unordered_set>
@@ -16,8 +17,11 @@ constexpr std::size_t kMetalStagingChunkSize = 4u * 1024u * 1024u;
 constexpr std::size_t kMetalStagingAlignment = 256;
 constexpr std::size_t kMetalStagingIdleDrainLimit = 120;
 
+// A chunk larger than kMetalStagingChunkSize serves only uploads larger than
+// that, so small uploads cannot fragment it and leave the large one unserved.
 struct MetalStagingChunk {
     MTL::Buffer *buffer_ = nullptr;
+    std::size_t capacity_ = 0;
     std::size_t cursor_ = 0;
     std::size_t idleDrainCount_ = 0;
 };
@@ -61,19 +65,19 @@ struct MetalRuntimeState {
     std::unordered_map<MTL::Texture *, MTL::Buffer *> imageAtomicScratchBuffers_;
     MTL::Buffer *currentImageAtomicScratch_ = nullptr;
 
-    // MTL::Buffers orphaned by subData() that may still be referenced by
-    // an in-flight command encoder.  Released after the next
-    // present/waitUntilCompleted boundary.
+    // Retired buffer backings that may still be referenced by an in-flight
+    // command encoder. Released after the next present/waitUntilCompleted
+    // boundary.
     std::vector<MTL::Buffer *> pendingReleaseBuffers_;
 
     std::vector<MetalStagingChunk> stagingChunks_;
     std::size_t stagingBufferAllocationCount_ = 0;
+    BufferWriteStats bufferWriteStats_;
 
     // Buffers that have been encoded into a command encoder since the
-    // previous wait point. subData() consults this set to decide whether
-    // an orphan is required (encoded → orphan; not encoded → in-place
-    // write). Cleared inside releaseDeferredMetalBuffers() right after
-    // the GPU drains.
+    // previous wait point. subData() writes an unencoded buffer in place and
+    // orders a write to an encoded one on the GPU timeline. Cleared inside
+    // releaseDeferredMetalBuffers() right after the GPU drains.
     std::unordered_set<MTL::Buffer *> encodedBuffers_;
 };
 
@@ -437,52 +441,49 @@ std::size_t deferredMetalBufferReleaseCount() {
     return g_runtime().pendingReleaseBuffers_.size();
 }
 
-MetalStagingBufferSlice stageMetalTextureUpload(const void *data, std::size_t byteCount) {
-    IR_ASSERT(data != nullptr, "Metal texture staging data must not be null");
-    IR_ASSERT(byteCount > 0, "Metal texture staging byte count must be positive");
+MetalStagingBufferSlice reserveMetalStaging(std::size_t byteCount) {
+    IR_ASSERT(byteCount > 0, "Metal staging byte count must be positive");
 
     auto &runtime = g_runtime();
-    if (byteCount > kMetalStagingChunkSize) {
-        auto *buffer = runtime.device_->newBuffer(
-            data,
-            static_cast<NS::UInteger>(byteCount),
-            MTL::ResourceStorageModeShared
-        );
-        IR_ASSERT(buffer != nullptr, "Failed to create oversized Metal texture staging buffer");
-        ++runtime.stagingBufferAllocationCount_;
-        deferReleaseMetalBuffer(buffer);
-        return {buffer, 0};
-    }
-
+    const bool oversized = byteCount > kMetalStagingChunkSize;
     for (auto &chunk : runtime.stagingChunks_) {
-        const std::size_t alignedOffset =
-            (chunk.cursor_ + kMetalStagingAlignment - 1) & ~(kMetalStagingAlignment - 1);
-        if (alignedOffset > kMetalStagingChunkSize ||
-            byteCount > kMetalStagingChunkSize - alignedOffset) {
+        if ((chunk.capacity_ > kMetalStagingChunkSize) != oversized) {
             continue;
         }
-        std::memcpy(
-            static_cast<std::uint8_t *>(chunk.buffer_->contents()) + alignedOffset,
-            data,
-            byteCount
-        );
+        const std::size_t alignedOffset =
+            (chunk.cursor_ + kMetalStagingAlignment - 1) & ~(kMetalStagingAlignment - 1);
+        if (alignedOffset > chunk.capacity_ || byteCount > chunk.capacity_ - alignedOffset) {
+            continue;
+        }
         chunk.cursor_ = alignedOffset + byteCount;
         return {chunk.buffer_, static_cast<NS::UInteger>(alignedOffset)};
     }
 
+    // Power-of-two capacities bound how often a growing upload reallocates.
+    const std::size_t capacity = oversized ? std::bit_ceil(byteCount) : kMetalStagingChunkSize;
     auto *buffer = runtime.device_->newBuffer(
-        static_cast<NS::UInteger>(kMetalStagingChunkSize),
+        static_cast<NS::UInteger>(capacity),
         MTL::ResourceStorageModeShared
     );
-    IR_ASSERT(buffer != nullptr, "Failed to create Metal texture staging arena chunk");
+    IR_ASSERT(buffer != nullptr, "Failed to create Metal staging arena chunk");
     ++runtime.stagingBufferAllocationCount_;
-    runtime.stagingChunks_.push_back({buffer, byteCount, 0});
-    std::memcpy(buffer->contents(), data, byteCount);
-    return {buffer, 0};
+    runtime.stagingChunks_.push_back({buffer, capacity, byteCount, 0});
+    return {buffer, 0, capacity};
+}
+
+MetalStagingBufferSlice stageMetalUpload(const void *data, std::size_t byteCount) {
+    IR_ASSERT(data != nullptr, "Metal staging data must not be null");
+    const MetalStagingBufferSlice slice = reserveMetalStaging(byteCount);
+    std::memcpy(slice.contents(), data, byteCount);
+    return slice;
 }
 
 std::size_t metalStagingBufferAllocationCount() {
     return g_runtime().stagingBufferAllocationCount_;
+}
+
+BufferWriteStats &metalBufferWriteStats() {
+    return g_runtime().bufferWriteStats_;
 }
 
 void markMetalBufferEncoded(MTL::Buffer *buffer) {
@@ -527,13 +528,13 @@ void untrackMetalBuffer(MTL::Buffer *buffer) {
     if (buffer == nullptr) {
         return;
     }
-    // Null-out every sticky table entry via the orphan-retarget helper. A
+    // Null-out every sticky table entry via the backing-retarget helper. A
     // cleared binding keeps its stale offset, which is benign — the flush
     // loops gate on buffer_ != nullptr.
     replaceMetalBufferInBindings(buffer, nullptr);
     // Also drop it from the encoded-since-last-wait set: a future buffer
     // allocated at the same address would otherwise false-positive
-    // wasMetalBufferEncoded and orphan on its first subData for no reason.
+    // wasMetalBufferEncoded and stage its first subData for no reason.
     g_runtime().encodedBuffers_.erase(buffer);
 }
 
