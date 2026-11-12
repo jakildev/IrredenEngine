@@ -13,6 +13,48 @@
 #include <utility>
 #include <vector>
 
+namespace sol {
+
+// Every Lua write into a `Modifier` vector arms MODIFIER_DECAY. A script can
+// hold the live `C_Modifiers.modifiers` userdata across decay passes, so
+// fetching the vector proves nothing about when an entry is added. Removals
+// need no arm. `C_GlobalModifiers` shares the type; an arm from it costs one
+// scan.
+template <>
+struct usertype_container<std::vector<IRComponents::Modifier>>
+    : container_detail::usertype_container_default<std::vector<IRComponents::Modifier>> {
+  private:
+    using Default =
+        container_detail::usertype_container_default<std::vector<IRComponents::Modifier>>;
+
+    static void arm() {
+        IRPrefab::Modifier::detail::globalFieldRegistry().armDecay();
+    }
+
+  public:
+    static int set(lua_State *L) {
+        arm();
+        return Default::set(L);
+    }
+
+    static int index_set(lua_State *L) {
+        arm();
+        return Default::set(L);
+    }
+
+    static int add(lua_State *L) {
+        arm();
+        return Default::add(L);
+    }
+
+    static int insert(lua_State *L) {
+        arm();
+        return Default::insert(L);
+    }
+};
+
+} // namespace sol
+
 namespace IRScript {
 
 template <> inline constexpr bool kHasLuaBinding<IRComponents::Modifier> = true;
@@ -92,13 +134,10 @@ template <> inline void bindLuaType<IRComponents::C_Modifiers>(LuaScript &luaScr
     using IRComponents::Modifier;
     sol::usertype<C_Modifiers> type =
         luaScript.registerType<C_Modifiers, C_Modifiers()>("C_Modifiers");
-    // The live vector is writable from Lua, so handing it out arms
-    // MODIFIER_DECAY: a script may add a finite-lifetime entry through it.
+    // The getter hands out the live vector; its writes arm MODIFIER_DECAY
+    // through `sol::usertype_container<std::vector<Modifier>>`.
     type["modifiers"] = sol::property(
-        [](C_Modifiers &c) -> std::vector<Modifier> & {
-            IRPrefab::Modifier::detail::globalFieldRegistry().armDecay();
-            return c.modifiers_;
-        },
+        [](C_Modifiers &c) -> std::vector<Modifier> & { return c.modifiers_; },
         [](C_Modifiers &c, std::vector<Modifier> modifiers) {
             c.modifiers_ = std::move(modifiers);
             IRPrefab::Modifier::detail::globalFieldRegistry().armDecay();

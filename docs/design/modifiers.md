@@ -128,9 +128,9 @@ better interpreter — the host language and the source entity's tick
 function.
 
 A finite lifetime enters a `C_Modifiers` only through `push`,
-`pushFrameLocal` or `pushOneFrame` (the Lua reflection binding's
-`C_Modifiers.modifiers` and `Modifier.ticksRemaining` writes count as
-pushes). Each such push arms a world-wide flag on the field registry;
+`pushFrameLocal` or `pushOneFrame` (a Lua write into a `Modifier` vector,
+including a retained `C_Modifiers.modifiers` userdata, and a
+`Modifier.ticksRemaining` write count as pushes; a read does not). Each such push arms a world-wide flag on the field registry;
 `MODIFIER_DECAY` skips every row while it is clear, and only a decay pass
 that leaves no finite lifetime behind clears it. Upserts write `-1` and do
 not arm. One live finite modifier anywhere keeps the whole scan on. A

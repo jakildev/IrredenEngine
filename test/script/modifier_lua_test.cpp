@@ -333,6 +333,56 @@ TEST_F(ModifierLuaReflectionDecayTest, ModifierAddedThroughVectorExpires) {
     EXPECT_FALSE(decayArmed());
 }
 
+// The vector is fetched and held before a clear pass, so only the write
+// through the retained userdata can arm.
+TEST_F(ModifierLuaReflectionDecayTest, ModifierWrittenThroughRetainedVectorExpires) {
+    const char *const writes[] = {
+        "held:add(stray)",
+        "held[#held + 1] = stray",
+        "held:insert(1, stray)",
+    };
+    m_lua.lua()["mods"] = &mods();
+    m_lua.lua()["stray"] =
+        IRComponents::Modifier{m_field_id, TransformKind::ADD, 1.0f, IREntity::kNullEntity, 2};
+    for (const char *write : writes) {
+        SCOPED_TRACE(write);
+        auto held = m_lua.lua().safe_script("held = mods.modifiers");
+        ASSERT_TRUE(held.valid()) << sol::error{held}.what();
+        pass();
+        ASSERT_FALSE(decayArmed());
+
+        auto result = m_lua.lua().safe_script(write);
+        ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+        ASSERT_EQ(mods().modifiers_.size(), 1u);
+        EXPECT_TRUE(decayArmed());
+
+        pass();
+        EXPECT_EQ(mods().modifiers_.size(), 1u);
+        pass();
+        EXPECT_TRUE(mods().modifiers_.empty());
+        EXPECT_FALSE(decayArmed());
+    }
+}
+
+TEST_F(ModifierLuaReflectionDecayTest, ReadingTheVectorDoesNotArm) {
+    IRPrefab::Modifier::upsertBySource(
+        m_entity,
+        m_field_id,
+        TransformKind::ADD,
+        1.0f,
+        IREntity::kNullEntity
+    );
+    pass();
+    ASSERT_FALSE(decayArmed());
+
+    m_lua.lua()["mods"] = &mods();
+    auto result =
+        m_lua.lua().safe_script("local v = mods.modifiers; return #v + v[1].ticksRemaining");
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    EXPECT_EQ(result.get<int>(), 0);
+    EXPECT_FALSE(decayArmed());
+}
+
 TEST_F(ModifierLuaReflectionDecayTest, LifetimeWrittenOnHeldEntryExpires) {
     IRPrefab::Modifier::upsertBySource(
         m_entity,
