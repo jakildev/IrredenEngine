@@ -219,6 +219,24 @@ reaches the Python modules the other way, through CLI arms
 (`fleet_task_class.py --pick`, `fleet_completion.py assess`): the dispatcher
 fetches, the module decides on files it is handed.
 
+## Fleet pane command guards
+
+A fleet worktree can be rooted in either repository, while the Bash guard and
+its policy module live in the engine clone. The generated per-worktree
+settings therefore register that absolute engine path for every root. Trying
+to suppress the generated registration when project settings already supply
+one would make guard presence depend on correctly identifying every session
+root; the duplicate engine-root invocation is the smaller failure mode.
+
+The Codex policy is deliberately a conservative projection rather than a
+second shell parser. Prefix rules can refuse a fixed leading argv shape, so
+they cover explicit write methods before a REST endpoint and bypass flags in
+a fixed position. They cannot inspect a GraphQL document inside an argument,
+discover which branch a checkout currently names, or match a significant
+token after arbitrary options. The Bash guard remains the semantic policy;
+Codex pins the expressible prefixes and documents the residual instead of
+reimplementing command parsing in the policy generator.
+
 ## Shared clones and the ff-only guard
 
 `git merge --ff-only` refuses only when the incoming commits overlap the

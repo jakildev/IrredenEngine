@@ -159,6 +159,12 @@ assert_eq "$(q "$F5" "len([g for g in d['hooks']['PreToolUse'] if 'fleet-quiet-w
     "1" "fresh settings contain exactly one quiet-wait hook"
 assert_eq "$(q "$F5" "[g for g in d['hooks']['PreToolUse'] if 'fleet-quiet-wait' in str(g)][0]['matcher']")" "*" \
     "quiet-wait hook covers every tool call"
+assert_eq "$(q "$F5" "len([g for g in d['hooks']['PreToolUse'] if 'fleet-guard-bash' in str(g)])")" \
+    "1" "fresh settings contain exactly one Bash guard hook"
+assert_eq "$(q "$F5" "next((g for g in d['hooks']['PreToolUse'] if 'fleet-guard-bash' in str(g)), {}).get('matcher', '')")" "Bash" \
+    "Bash guard hook matches Bash"
+assert_eq "$(q "$F5" "'/eng/scripts/fleet/fleet-guard-bash' in next((h.get('command', '') for g in d['hooks']['PreToolUse'] if 'fleet-guard-bash' in str(g) for h in g.get('hooks', [])), '')")" \
+    "True" "Bash guard command references the engine clone by absolute path"
 
 # --- T6: hand-added env survives; fleet wins only on its own env key ----------
 echo "T6: hand-added env entries survive regeneration; fleet key wins"
@@ -185,6 +191,7 @@ json.dump({
         "PreToolUse": [
             # stale variant of the fleet's own guard (bare, no [ -x ] wrapper)
             {"matcher": "Edit|Write", "hooks": [{"type": "command", "command": "fleet-guard-worktree-edit"}]},
+            {"matcher": "Bash", "hooks": [{"type": "command", "command": "fleet-guard-bash"}]},
             # a human's own PreToolUse hook — must survive
             {"matcher": "Bash", "hooks": [{"type": "command", "command": "echo hand-added-pre"}]},
         ],
@@ -198,6 +205,41 @@ assert_eq "$(q "$F7" "'echo hand-added-pre' in str(d['hooks']['PreToolUse'])")" 
     "True" "hand-added non-fleet PreToolUse group preserved"
 assert_eq "$(q "$F7" "len([g for g in d['hooks']['PreToolUse'] if 'fleet-quiet-wait' in str(g)])")" \
     "1" "quiet-wait hook remains unique after regeneration"
+assert_eq "$(q "$F7" "len([g for g in d['hooks']['PreToolUse'] if 'fleet-guard-bash' in str(g)])")" \
+    "1" "stale Bash guard is replaced rather than duplicated"
+assert_eq "$(q "$F7" "'echo hand-added-pre' in str(d['hooks']['PreToolUse'])")" \
+    "True" "hand-added Bash hook survives Bash guard regeneration"
+
+echo "T8: engine, game pool, and game architect settings share the Bash guard"
+for spec in \
+    "engine|/eng/.claude/worktrees/pool-2" \
+    "game-pool|/game/.claude/worktrees/pool-2" \
+    "game-architect|/game/.claude/worktrees/game-architect"; do
+    name=${spec%%|*}
+    worktree=${spec#*|}
+    file="$TMPROOT/t8-$name/settings.local.json"
+    mkdir -p "$(dirname "$file")"
+    regen "$file" "$worktree" "/eng"
+    assert_eq "$(q "$file" "next((h.get('command', '') for g in d['hooks']['PreToolUse'] if 'fleet-guard-bash' in str(g) for h in g.get('hooks', [])), '')")" \
+        '[ -x "/eng/scripts/fleet/fleet-guard-bash" ] && "/eng/scripts/fleet/fleet-guard-bash" || true' \
+        "$name uses the engine clone's absolute Bash guard"
+done
+
+echo "T9: generated Bash guard denies a protected push and allows a feature push"
+FIXTURE_REPO="$TMPROOT/t9/repo"
+mkdir -p "$FIXTURE_REPO"
+git -C "$FIXTURE_REPO" init -b feature >/dev/null
+git -C "$FIXTURE_REPO" remote add origin https://github.com/jakildev/IrredenEngine.git
+F9="$TMPROOT/t9/settings.local.json"
+regen "$F9" "$FIXTURE_REPO" "$SCRIPT_DIR/../.."
+bash_guard_cmd=$(q "$F9" "next((h.get('command', '') for g in d['hooks']['PreToolUse'] if 'fleet-guard-bash' in str(g) for h in g.get('hooks', [])), '')")
+protected_input=$(python3 -c 'import json,sys; print(json.dumps({"tool_input": {"command": "git push origin HEAD:master"}, "cwd": sys.argv[1]}))' "$FIXTURE_REPO")
+feature_input=$(python3 -c 'import json,sys; print(json.dumps({"tool_input": {"command": "git push origin HEAD:feature"}, "cwd": sys.argv[1]}))' "$FIXTURE_REPO")
+protected_output=$(printf '%s\n' "$protected_input" | bash -c "$bash_guard_cmd")
+feature_output=$(printf '%s\n' "$feature_input" | bash -c "$bash_guard_cmd")
+assert_eq "$(python3 -c 'import json,sys; text=sys.stdin.read().strip(); print(json.loads(text)["hookSpecificOutput"]["permissionDecision"] if text else "")' <<<"$protected_output")" \
+    "deny" "generated command denies a protected-branch push"
+assert_eq "$feature_output" "" "generated command allows a feature-branch push"
 
 echo
 echo "passed: $PASS  failed: $FAIL"

@@ -20,10 +20,13 @@ DISPLAY_VALIDATORS = (
     "scripts/perf/grid_capacity_controls.py", "scripts/perf/repeat_profile.py",
     "scripts/perf/sdf_controls.py", "scripts/perf/sun_depth_slab_capture.py",
     "scripts/perf/sun_depth_slab_timing.py",
+    "scripts/perf/sun_record_loss_stability.py",
     "scripts/perf/perf_grid_matrix.sh")
 # The fleet-jobs profiles that run a DISPLAY_VALIDATORS script detached;
 # fleet-jobs' DISPLAY_PROFILES names the same set.
 DISPLAY_PROFILES = ("render-verify", "light-verify", "gui-verify")
+API_WRITE_METHODS = (
+    "POST", "PUT", "PATCH", "DELETE", "post", "put", "patch", "delete")
 
 
 def rules(worktree, role):
@@ -46,11 +49,19 @@ def rules(worktree, role):
             rule(prefix + ["push", "origin", flag], "forbidden")
         for ref in ("master", "main", "HEAD:master", "HEAD:main", ":master", ":main"):
             rule(prefix + ["push", "origin", ref], "forbidden")
+        for verb in ("commit", "merge", "push"):
+            rule(prefix + [verb, "--no-verify"], "forbidden")
+        rule(prefix + ["commit", "-n"], "forbidden")
         if role in REVIEW_ROLES:
             rule(prefix + [["commit", "push"]], "forbidden")
     rule(["gh", "pr", ["list", "view", "diff", "checks", "edit", "review"]], "allow")
     rule(["gh", "issue", ["list", "view", "edit", "comment"]], "allow")
     rule(["gh", "pr", "merge"], "forbidden")
+    for method_flag in ("-X", "--method"):
+        rule(["gh", "api", method_flag, list(API_WRITE_METHODS)], "forbidden")
+    rule(["gh", "api", [f"-X{method}" for method in API_WRITE_METHODS]], "forbidden")
+    rule(["gh", "api", [f"--method={method}" for method in API_WRITE_METHODS]],
+         "forbidden")
     # The tier-0 auto-merge executor is the daemon's alone (FLEET.md "Who
     # merges"); every role is refused the bare and checkout-relative forms.
     executor = "scripts/fleet/fleet-automerge"

@@ -1357,6 +1357,10 @@ session_track_cmd = (
 # double-fire is accepted (two identical verdicts; deny still wins).
 guard_path = f"{engine_root}/scripts/fleet/fleet-guard-worktree-edit"
 guard_cmd = f'[ -x "{guard_path}" ] && "{guard_path}" || true'
+bash_guard_path = f"{engine_root}/scripts/fleet/fleet-guard-bash"
+bash_guard_cmd = (
+    f'[ -x "{bash_guard_path}" ] && "{bash_guard_path}" || true'
+)
 quiet_wait_cmd = (
     "command -v fleet-quiet-wait >/dev/null 2>&1"
     " && fleet-quiet-wait || true"
@@ -1369,6 +1373,7 @@ quiet_wait_cmd = (
 FLEET_HOOK_MARKERS = (
     "fleet-session-track",
     "fleet-guard-worktree-edit",
+    "fleet-guard-bash",
     "fleet-quiet-wait",
 )
 hooks_out = {
@@ -1389,6 +1394,10 @@ hooks_out = {
         {
             "matcher": "Edit|Write|MultiEdit",
             "hooks": [{"type": "command", "command": guard_cmd}],
+        },
+        {
+            "matcher": "Bash",
+            "hooks": [{"type": "command", "command": bash_guard_cmd}],
         }
     ],
 }
