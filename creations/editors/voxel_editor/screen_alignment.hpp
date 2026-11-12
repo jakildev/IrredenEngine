@@ -73,13 +73,25 @@ inline const char *screenAlignmentPhaseName(ScreenAlignmentPhase phase) {
 
 // Images have the same top-down RGBA layout as readDefaultFramebuffer and PNG output.
 // Cursor selection uses observed albedo/normal pixels, never a world projection or pick ray.
+// An orthographic cube silhouette is centrally symmetric: its complete
+// screen bounds locate the voxel center even when a whole edge is vertical
+// at 45 degrees. The lower endpoint of an extreme column does not: it can
+// lie on the front edge of the support footprint and select a neighboring
+// floor cell after pixel rounding. Bounds are inclusive raster pixels.
+inline IRMath::vec2 screenAlignmentSupportCenter(
+    IRMath::ivec2 minimum, IRMath::ivec2 maximum, IRMath::vec2 halfVoxelZFramebuffer
+) {
+    return (IRMath::vec2(minimum + maximum) + IRMath::vec2(1.0f)) * .5f + halfVoxelZFramebuffer;
+}
+
 class ScreenAlignmentProbe {
   public:
     bool capture(
         int shot,
         std::span<const std::uint8_t> rgba,
         IRMath::ivec2 framebufferSize,
-        IRMath::ivec2 windowSize
+        IRMath::ivec2 windowSize,
+        IRMath::vec2 halfVoxelZFramebuffer
     ) {
         m_error.clear();
         if (framebufferSize.x <= 0 || framebufferSize.y <= 0 || windowSize.x <= 0 ||
@@ -97,8 +109,8 @@ class ScreenAlignmentProbe {
             m_cursor[static_cast<std::size_t>(index)].reset();
             int left = framebufferSize.x;
             int right = -1;
-            int leftBottom = -1;
-            int rightBottom = -1;
+            int top = framebufferSize.y;
+            int bottom = -1;
             for (int y = 0; y < framebufferSize.y; ++y) {
                 for (int x = 0; x < framebufferSize.x; ++x) {
                     const std::size_t offset =
@@ -107,29 +119,19 @@ class ScreenAlignmentProbe {
                         rgba[offset + 1] != kScreenAlignmentSourceColor[1] ||
                         rgba[offset + 2] != kScreenAlignmentSourceColor[2])
                         continue;
-                    if (x < left) {
-                        left = x;
-                        leftBottom = y;
-                    } else if (x == left) {
-                        leftBottom = y;
-                    }
-                    if (x > right) {
-                        right = x;
-                        rightBottom = y;
-                    } else if (x == right) {
-                        rightBottom = y;
-                    }
+                    left = IRMath::min(left, x);
+                    right = IRMath::max(right, x);
+                    top = IRMath::min(top, y);
+                    bottom = IRMath::max(bottom, y);
                 }
             }
-            if (right <= left || leftBottom < 0 || rightBottom < 0) {
+            if (right <= left || bottom <= top) {
                 m_error = "albedo baseline has no isolated source voxel silhouette";
                 return false;
             }
             const auto slot = static_cast<std::size_t>(index);
-            const IRMath::vec2 supportCenter(
-                (static_cast<float>(left + right) + 1.0f) * 0.5f,
-                (static_cast<float>(leftBottom + rightBottom) + 1.0f) * 0.5f
-            );
+            const auto supportCenter =
+                screenAlignmentSupportCenter({left, top}, {right, bottom}, halfVoxelZFramebuffer);
             m_floorCursor[slot] = IRMath::roundVec(
                 supportCenter * IRMath::vec2(windowSize) / IRMath::vec2(framebufferSize)
             );

@@ -28,23 +28,22 @@ voxel extent and records; it does not decimate or narrow the source LOD band.
 
 ## Picking contract
 
-Camera orbit uses the shared `CursorPivot::OrbitAnchor` with click anchoring
-enabled by default through `Camera::setCursorPivotByDefault(true)`. Right-drag,
-Alt+left-drag and Ctrl+middle-drag resolve an editable surface once at press,
-falling back to the current authoring floor, and show a gold anchor while held.
-Release hides the marker and retains the focus; reanchoring preserves the view.
-`Camera::setCursorPivotOptions` supplies the editor resolver to the standard
-controls; the custom right-drag uses the same options and starts only when no
-widget owns the pointer and document interaction is unblocked.
-Horizontal two-finger scroll orbits the center of the active construction plane.
-Option/Alt+left-drag anchors on the surface or floor beneath the pointer. Vertical
-scroll changes zoom continuously by `--scroll-zoom-rate` octaves per unit (default
-0.125). The editor uses the renderer's continuous placement policy and discrete
-authored LOD tiers. Space+left pans. RESET VIEW, Home, or Command+0 on macOS
-centers the floor in the clear work area and restores yaw/pitch. Its zoom is
-`--home-zoom` (default 4, or 0 to preserve zoom). On compact Mac keyboards,
-Fn+Left sends Home. The native `viewport_scroll` session checks 30° and 67°
-orbits, fractional zoom, LOD crossings, panel ownership, and reset inputs.
+The editor defaults to the engine's spatial view; `--legacy-view` selects the
+yaw-only compatibility path. Camera orientation, input units, platform controls,
+and persistent configuration are defined in
+[editor spatial navigation](../../../docs/design/editor-spatial-navigation.md).
+Orbit uses `CursorPivot::OrbitAnchor`: ordinary right-drag and precise two-axis
+scroll orbit the construction-plane center; Option/Alt+left and Ctrl+middle
+resolve the editable surface or floor once at press. The gold marker identifies
+that anchor. World up is -Z, elevation crosses the horizon to reveal undersides,
+and pole clamps keep ordinary orbit upright; Option/Alt+Shift+left rolls explicitly.
+Native pinch and wheel zoom anchor at each event's window position. Shift+swipe,
+middle-drag, and Space+left pan. Camera ownership survives modifier release,
+and phased scroll/pinch retain their initial UI or viewport ownership. OS scroll
+momentum does not move the camera. RESET VIEW/Home (Command+0 or Fn+Left on Mac)
+restores the centered upright view and configured zoom, default 4; 0 preserves
+zoom. Continuous zoom retains discrete authored LOD tiers. `spatial_navigation`
+is the spatial native session; `viewport_scroll` covers the legacy yaw flow.
 macOS supports Command+N/O/S/Shift+S for documents and Command+Z/Shift+Z
 for history. Focused text fields consume shortcuts. Control+Alt+Y toggles
 rotational symmetry.
@@ -56,10 +55,10 @@ from an edit path.
 - **The nearest editable voxel under the cursor is what a click edits.** If a
   pixel of an editable voxel is on screen, clicking it edits that voxel.
 - **The face is the one drawn under the cursor.** The
-  `SCREEN_PIXEL` ray follows the full camera yaw and resolves each visible
-  face separately. At yaw zero these are `-x`, `-y`, and `-z`; orbit changes
-  the visible X/Y face signs. The depth parameter stays in the cardinal
-  storage frame used by drag anchors.
+  `SCREEN_PIXEL` ray follows the full spatial camera orientation and resolves
+  each visible face separately, including undersides. In legacy view it follows
+  yaw and keeps the cardinal-storage depth convention. Explicit spatial
+  view-depth queries use the continuous camera basis.
 - **Reference furniture never takes a click.** Voxel-set furniture carries
   `C_EditorReference` and is passed through even when drawn in front; SDF
   shapes are left out of the edit pick wholesale (a shape hit has no face). A
@@ -68,8 +67,8 @@ from an edit path.
   joint placement and FK posing need it too). Outside it they draw dimmed and a
   click on one edits the scene beneath. In it a handle owns exactly the pixels
   it is drawn on (`cursorOnGizmoHandle()`, the GPU entity-id readback).
-- A voxel's underside is never visible from the iso camera; I places on the
-  far side of the picked face. That is a fact of the view, not of the pick.
+- Spatial orbit can reveal a voxel's underside. I places on the far side of the
+  picked face; the legacy fixed-elevation camera does not reveal undersides.
 
 The cardinal executor for "the face drawn under the cursor" is `face_pick`'s
 `*_pick_matches_render`, which compares the pick with the main canvas's face

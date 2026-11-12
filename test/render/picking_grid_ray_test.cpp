@@ -3,6 +3,8 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/render/picking.hpp>
 
+#include "../../creations/editors/voxel_editor/screen_alignment.hpp"
+
 #include <limits>
 #include <optional>
 #include <set>
@@ -244,6 +246,19 @@ TEST(PickingGridRay, SpatialProjectionSelectsVisibleFacesAboveAndBelowWithRoll) 
             }
         }
     }
+}
+
+TEST(ScreenAlignmentSupport, EdgeOnSilhouetteTargetsSupportCenterInsteadOfFrontEdge) {
+    // Actual 45-degree native capture: both extreme columns span the full
+    // rectangle. Their bottom endpoints target window Y=496, the boundary
+    // of the neighboring cell. The center plus half-height targets Y=490.
+    const auto support =
+        IRVoxelEditor::screenAlignmentSupportCenter({1482, 936}, {1525, 991}, {0, 16});
+    EXPECT_EQ(support, IRMath::vec2(1504, 980));
+    EXPECT_EQ(IRMath::roundVec(support / 2.0f), IRMath::ivec2(752, 490));
+    const auto rolled =
+        IRVoxelEditor::screenAlignmentSupportCenter({100, 200}, {119, 229}, {-3, 7});
+    EXPECT_EQ(rolled, IRMath::vec2(107, 222));
 }
 
 } // namespace

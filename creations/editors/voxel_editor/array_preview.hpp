@@ -158,11 +158,10 @@ class ArrayPreview {
     }
 
     void append(
-        float yaw,
+        IRMath::vec3 ray,
         std::vector<IRPrefab::WorldPrimitiveVertex> &triangles,
         std::vector<IRPrefab::WorldPrimitiveVertex> &lines
     ) const {
-        const auto ray = IRMath::isoPixelToPos3DYawed(IRMath::vec2(0), 3.0f, yaw);
         for (const auto &face : m_faces) {
             if (IRMath::dot(face.normal_, ray) >= 0)
                 continue;
@@ -170,6 +169,14 @@ class ArrayPreview {
                 triangles.push_back({face.corners_[corner], face.color_});
         }
         lines.insert(lines.end(), m_guides.begin(), m_guides.end());
+    }
+
+    void append(
+        float yaw,
+        std::vector<IRPrefab::WorldPrimitiveVertex> &triangles,
+        std::vector<IRPrefab::WorldPrimitiveVertex> &lines
+    ) const {
+        append(IRMath::isoPixelToPos3DYawed(IRMath::vec2(0), 3.0f, yaw), triangles, lines);
     }
 
   private:
