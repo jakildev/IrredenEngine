@@ -28,6 +28,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from fleet.fleet_codex_doctor import classify_display, display_counts
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 RENDER_COMPARE = SCRIPT_DIR / "render-compare.py"
 
@@ -97,10 +99,39 @@ EXIT_ENV_FAIL = 69
 
 def report_no_display(prefix: str) -> None:
     """Report the host state that prevents a display-backed verifier from running."""
+    counts = _display_counts()
+    suffix = ""
+    if counts is not None:
+        online, awake, screens = counts
+        suffix = f" (CoreGraphics online={online} awake={awake} NSScreen={screens})"
     print(
         f"{prefix}ENV-FAIL: Discovered 0 display monitors "
         "(the host session has no WindowServer connection; sign in or wake the Aqua session)"
+        f"{suffix}"
     )
+
+
+def _display_counts() -> tuple[int, int, int] | None:
+    if platform.system() != "Darwin":
+        return None
+    try:
+        return display_counts()
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def display_preflight(prefix: str) -> int | None:
+    """Stop a verifier before launch when macOS cannot expose engine monitors."""
+    counts = _display_counts()
+    if counts is None or classify_display(*counts) != "mismatch":
+        return None
+    online, awake, screens = counts
+    print(
+        f"{prefix}ENV-FAIL: display domain mismatch (CoreGraphics online={online} "
+        f"awake={awake} NSScreen={screens}; the engine will discover 0 monitors) "
+        "— wake the display or run from the logged-in Aqua session"
+    )
+    return EXIT_ENV_FAIL
 
 
 def run_result(output: str) -> str | None:

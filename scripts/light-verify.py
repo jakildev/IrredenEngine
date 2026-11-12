@@ -437,6 +437,8 @@ def main(argv: list[str] | None = None) -> int:
     worktree = verify_common.detect_worktree_root(Path.cwd())
     if args.if_changed and not _if_changed_requires_run(worktree, args.against):
         return 0
+    if verify_common.display_preflight("[light-verify] ") is not None:
+        return verify_common.EXIT_ENV_FAIL
     build_dir = Path(args.build_dir) if args.build_dir else worktree / "build"
     backend = verify_common.detect_backend(build_dir)
     demo_dir = worktree / "creations" / "demos" / DEMO_NAME

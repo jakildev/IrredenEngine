@@ -98,6 +98,7 @@ class IrRunNoDisplayTest(unittest.TestCase):
 class VerifierNoDisplayTest(unittest.TestCase):
     def test_gui_verify_exits_with_env_fail(self) -> None:
         with patch.object(sys, "argv", ["gui-verify.py", "IRFake", "--no-build"]), \
+                patch.object(verify_common, "display_preflight", return_value=None), \
                 patch.object(verify_common, "run_capture", return_value=(69, NO_DISPLAY_OUTPUT)), \
                 redirect_stdout(io.StringIO()) as captured:
             with self.assertRaises(SystemExit) as exit_code:
@@ -120,6 +121,7 @@ class VerifierNoDisplayTest(unittest.TestCase):
             with patch.object(
                 render_verify.verify_common, "find_exe", return_value=root / "fake"
             ), \
+                    patch.object(verify_common, "display_preflight", return_value=None), \
                     patch.object(
                         render_verify,
                         "_capture_pass",
@@ -153,12 +155,63 @@ class VerifierNoDisplayTest(unittest.TestCase):
                         "run_pass",
                         return_value=(69, NO_DISPLAY_OUTPUT, []),
                     ) as run_pass, \
+                    patch.object(verify_common, "display_preflight", return_value=None), \
                     redirect_stdout(io.StringIO()) as captured:
                 result = light_verify.main(["--no-build"])
 
         self.assertEqual(result, verify_common.EXIT_ENV_FAIL)
         self.assertEqual(run_pass.call_count, 1)
         self.assertEqual(captured.getvalue().count("ENV-FAIL:"), 1)
+
+    def test_display_domain_mismatch_stops_each_verifier_before_fleet_run(self) -> None:
+        with patch.object(verify_common.platform, "system", return_value="Darwin"), \
+                patch.object(verify_common, "display_counts", return_value=(1, 0, 0)), \
+                redirect_stdout(io.StringIO()) as captured:
+            self.assertEqual(verify_common.display_preflight("[test] "),
+                             verify_common.EXIT_ENV_FAIL)
+        self.assertIn("display domain mismatch", captured.getvalue())
+
+        with patch.object(sys, "argv", ["gui-verify.py", "IRFake", "--no-build"]), \
+                patch.object(verify_common, "display_preflight",
+                             return_value=verify_common.EXIT_ENV_FAIL), \
+                patch.object(verify_common, "run_capture") as gui_run:
+            with self.assertRaises(SystemExit) as exit_code:
+                gui_verify.main()
+        self.assertEqual(exit_code.exception.code, verify_common.EXIT_ENV_FAIL)
+        gui_run.assert_not_called()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            demo = root / "creations/demos/fake"
+            manifest = demo / "test/references/manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text('{"target": "IRFake", "shots": ["shot"]}')
+            args = argparse.Namespace(
+                no_build=True, warmup=None, timeout=10, demo_arg=[],
+                update_references=False, force=True,
+            )
+            with patch.object(verify_common, "display_preflight",
+                              return_value=verify_common.EXIT_ENV_FAIL), \
+                    patch.object(render_verify, "_capture_pass") as render_run:
+                result = render_verify._verify_one(
+                    args=args, worktree=root, build_dir=root / "build", backend="test",
+                    target="IRFake", demo_dir=demo,
+                )
+        self.assertEqual(result["rc"], verify_common.EXIT_ENV_FAIL)
+        render_run.assert_not_called()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch.object(
+                light_verify.verify_common, "detect_worktree_root", return_value=root
+            ), patch.object(
+                light_verify, "_if_changed_requires_run", return_value=True
+            ), patch.object(
+                verify_common, "display_preflight", return_value=verify_common.EXIT_ENV_FAIL
+            ), patch.object(verify_common, "run_pass") as light_run:
+                result = light_verify.main(["--no-build", "--if-changed"])
+        self.assertEqual(result, verify_common.EXIT_ENV_FAIL)
+        light_run.assert_not_called()
 
 
 if __name__ == "__main__":
