@@ -832,26 +832,139 @@ TEST(StaticWorld, ReparentingUnderADynamicEntityMakesTheSubtreeDynamic) {
     expectTreeUnder(h, tree, twin, worldOf(mover), worldOf(twinMover), "following the mover");
 }
 
-TEST(StaticWorld, DestroyingAParentResettlesTheChildrenThatSurviveIt) {
+void destroyRoots(Harness &h, const Tree &tree, const Tree &twin, bool eager) {
+    for (const EntityId root : {tree.root_, twin.root_}) {
+        if (eager) {
+            h.entities_.destroyEntity(root);
+        } else {
+            IREntity::destroyEntity(root);
+        }
+    }
+    if (!eager) {
+        h.entities_.destroyMarkedEntities();
+    }
+}
+
+TEST(StaticWorld, ADestroyedParentsSurvivorsKeepTheirLinkAndDeriveAsRoots) {
     for (const bool eager : {true, false}) {
         Harness h;
         const Tree tree = makeTree(h, true);
+        const Tree twin = makeTree(h, false);
         h.frames(3);
         ASSERT_TRUE(Static::isSettled(tree.grandchild_));
-        if (eager) {
-            h.entities_.destroyEntity(tree.root_);
-        } else {
-            IREntity::destroyEntity(tree.root_);
-            h.entities_.destroyMarkedEntities();
-        }
+        ASSERT_NE(worldOf(tree.child_), kChildLocal) << "the root sits away from the origin";
+
+        destroyRoots(h, tree, twin, eager);
+
         for (const EntityId entity : {tree.child_, tree.grandchild_}) {
             EXPECT_TRUE(Static::isStatic(entity));
             EXPECT_FALSE(Static::isSettled(entity));
         }
+        for (const Tree &each : {tree, twin}) {
+            EXPECT_EQ(
+                h.entities_.getParent(each.child_) & IR_ENTITY_ID_BITS,
+                each.root_ & IR_ENTITY_ID_BITS
+            );
+            EXPECT_EQ(h.entities_.findRecord(each.root_), nullptr);
+            const std::vector<EntityId> orphans = h.entities_.getChildren(each.root_);
+            ASSERT_EQ(orphans.size(), 1u);
+            EXPECT_EQ(orphans[0] & IR_ENTITY_ID_BITS, each.child_ & IR_ENTITY_ID_BITS);
+            EXPECT_EQ(
+                h.entities_.getParent(each.grandchild_) & IR_ENTITY_ID_BITS,
+                each.child_ & IR_ENTITY_ID_BITS
+            );
+        }
+
         Static::drain();
         EXPECT_FALSE(Static::isSettled(tree.child_)) << "restamped, not promoted, at the drain";
+        EXPECT_FALSE(Static::isSettled(tree.grandchild_));
         EXPECT_EQ(h.stamp(tree.child_), h.systems_.roundsOpened() + 1);
+
+        h.frames(2);
+        for (const EntityId entity : {tree.child_, tree.grandchild_}) {
+            EXPECT_TRUE(Static::isStatic(entity));
+            EXPECT_TRUE(Static::isSettled(entity));
+        }
+        EXPECT_EQ(h.stats().counters_.refused_, 0u);
+        expectTreeUnder(h, tree, twin, vec3(0.0f), vec3(0.0f), eager ? "eager" : "deferred");
     }
+}
+
+TEST(StaticWorld, APreDestroyHookThatReparentsASurvivorLeavesItUnderTheNewRoot) {
+    Harness h;
+    const Tree tree = makeTree(h, true);
+    const Tree twin = makeTree(h, false);
+    const EntityId other = h.makeBody(true);
+    const EntityId twinOther = h.makeBody(false);
+    h.frames(3);
+    ASSERT_TRUE(Static::isSettled(tree.grandchild_));
+
+    const auto hook = h.entities_.registerPreDestroyHook([&](EntityId dying) {
+        if ((dying & IR_ENTITY_ID_BITS) == (tree.root_ & IR_ENTITY_ID_BITS)) {
+            IREntity::setParent(tree.child_, other);
+        } else if ((dying & IR_ENTITY_ID_BITS) == (twin.root_ & IR_ENTITY_ID_BITS)) {
+            IREntity::setParent(twin.child_, twinOther);
+        }
+    });
+    destroyRoots(h, tree, twin, true);
+    h.entities_.unregisterPreDestroyHook(hook);
+
+    EXPECT_EQ(h.entities_.getParent(tree.child_) & IR_ENTITY_ID_BITS, other & IR_ENTITY_ID_BITS);
+    EXPECT_FALSE(Static::isSettled(tree.child_));
+    EXPECT_FALSE(Static::isSettled(tree.grandchild_));
+    EXPECT_TRUE(Static::isSettled(other));
+    h.frames(2);
+    EXPECT_TRUE(Static::isSettled(tree.child_));
+    EXPECT_TRUE(Static::isSettled(tree.grandchild_));
+    expectTreeUnder(h, tree, twin, worldOf(other), worldOf(twinOther), "re-parented by the hook");
+}
+
+// A one-shot query, as a command body runs it between fixed updates, never
+// counts as a derivation: it moves no round and no stamp, and it reaches no
+// static row it could leave half-derived.
+TEST(StaticWorld, AQueryBetweenUpdatesNeitherDerivesNorDelaysASettlingEntity) {
+    const auto framesToSettle = [](bool runQueries) {
+        Harness h;
+        const EntityId entity = h.makeBody(true);
+        const EntityId dynamic = h.makeBody(false);
+        int frames = 0;
+        while (!Static::isSettled(entity) && frames < 12) {
+            if (runQueries) {
+                const std::uint64_t opened = h.systems_.roundsOpened();
+                const std::uint64_t completed = h.systems_.roundsCompleted();
+                const std::uint64_t stamp = h.stamp(entity);
+                int derivedRows = 0;
+                IRSystem::executeQuery<C_WorldTransform, IRSystem::Exclude<C_Settled>>(
+                    [&derivedRows](C_WorldTransform &) { ++derivedRows; }
+                );
+                int runtimeRows = 0;
+                IRSystem::executeQueryDynamic(
+                    IREntity::getArchetype<C_WorldTransform>(),
+                    IREntity::getArchetype<C_Settled>(),
+                    [&runtimeRows](IREntity::ArchetypeNode *node) {
+                        runtimeRows += node->length_;
+                    }
+                );
+                int readRows = 0;
+                IRSystem::executeQuery<const C_LocalTransform, const C_VoxelSetNew>(
+                    [&readRows](const C_LocalTransform &, const C_VoxelSetNew &) { ++readRows; }
+                );
+                EXPECT_EQ(derivedRows, runtimeRows);
+                EXPECT_EQ(readRows, 2) << "a reader visits the settling body and the dynamic one";
+                EXPECT_EQ(h.systems_.roundsOpened(), opened);
+                EXPECT_EQ(h.systems_.roundsCompleted(), completed);
+                EXPECT_EQ(h.stamp(entity), stamp);
+            }
+            h.frame();
+            ++frames;
+        }
+        EXPECT_FALSE(Static::isStatic(dynamic));
+        return frames;
+    };
+    const int undisturbed = framesToSettle(false);
+    EXPECT_GT(undisturbed, 0);
+    EXPECT_LT(undisturbed, 12);
+    EXPECT_EQ(framesToSettle(true), undisturbed);
 }
 
 TEST(StaticWorld, ReparentingToTheSameParentLeavesTheChildSettled) {

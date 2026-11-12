@@ -179,28 +179,81 @@ TEST_F(StaticPolicy, DynamicLaneTreatsEveryColumnAsWrittenUnlessReadOnly) {
     EXPECT_EQ(visits(deriving), 2);
 }
 
-TEST_F(StaticPolicy, QueryLanesFollowTheSameRule) {
+TEST_F(StaticPolicy, ATypedQueryIsNeverDeriving) {
     makePopulation();
-    int writes = 0;
-    IRSystem::executeQuery<C_LocalTransform>([&writes](C_LocalTransform &) { ++writes; });
+    int inputWrites = 0;
+    IRSystem::executeQuery<C_LocalTransform>([&inputWrites](C_LocalTransform &) {
+        ++inputWrites;
+    });
     int reads = 0;
     IRSystem::executeQuery<const C_LocalTransform>([&reads](const C_LocalTransform &) {
         ++reads;
     });
-    int derived = 0;
-    IRSystem::executeQuery<C_WorldTransform, Exclude<C_Settled>>([&derived](C_WorldTransform &) {
-        ++derived;
+    int derivedWrites = 0;
+    IRSystem::executeQuery<C_WorldTransform>([&derivedWrites](C_WorldTransform &) {
+        ++derivedWrites;
     });
-    int dynamicRows = 0;
-    IRSystem::executeQueryDynamic(
-        IREntity::getArchetype<C_LocalTransform>(),
-        {},
-        [&dynamicRows](IREntity::ArchetypeNode *node) { dynamicRows += node->length_; }
+    int derivedWritesExcludingSettled = 0;
+    IRSystem::executeQuery<C_WorldTransform, Exclude<C_Settled>>(
+        [&derivedWritesExcludingSettled](C_WorldTransform &) { ++derivedWritesExcludingSettled; }
     );
-    EXPECT_EQ(writes, 1);
+    int inputWritesExcludingSettled = 0;
+    IRSystem::executeQuery<C_LocalTransform, Exclude<C_Settled>>(
+        [&inputWritesExcludingSettled](C_LocalTransform &) { ++inputWritesExcludingSettled; }
+    );
+    EXPECT_EQ(inputWrites, 1);
     EXPECT_EQ(reads, 3);
-    EXPECT_EQ(derived, 2);
-    EXPECT_EQ(dynamicRows, 1) << "a runtime query counts every included component as written";
+    EXPECT_EQ(derivedWrites, 1);
+    EXPECT_EQ(derivedWritesExcludingSettled, 1)
+        << "excluding C_Settled filters a query; it does not make it a deriving system";
+    EXPECT_EQ(inputWritesExcludingSettled, 1)
+        << "a pose-input write beside the exclusion is a filter, not a registration error";
+}
+
+TEST_F(StaticPolicy, ARuntimeQueryCountsEveryColumnAsWrittenExceptReadOnly) {
+    makePopulation();
+    const auto rowsOf = [](IREntity::Archetype include,
+                           IREntity::Archetype exclude,
+                           IREntity::Archetype readOnly) {
+        int rows = 0;
+        IRSystem::executeQueryDynamic(
+            include,
+            exclude,
+            [&rows](IREntity::ArchetypeNode *node) { rows += node->length_; },
+            readOnly
+        );
+        return rows;
+    };
+    const IREntity::Archetype local = IREntity::getArchetype<C_LocalTransform>();
+    const IREntity::Archetype world = IREntity::getArchetype<C_WorldTransform>();
+    const IREntity::Archetype settled = IREntity::getArchetype<C_Settled>();
+
+    int defaulted = 0;
+    IRSystem::executeQueryDynamic(local, {}, [&defaulted](IREntity::ArchetypeNode *node) {
+        defaulted += node->length_;
+    });
+    EXPECT_EQ(defaulted, 1) << "without readOnly every included component counts as written";
+    EXPECT_EQ(rowsOf(local, {}, local), 3);
+    EXPECT_EQ(rowsOf(world, {}, world), 3);
+    EXPECT_EQ(rowsOf(world, {}, {}), 1);
+    EXPECT_EQ(rowsOf(world, settled, {}), 1)
+        << "C_Settled in the exclude list does not make a query deriving";
+    EXPECT_EQ(rowsOf(world, settled, world), 2)
+        << "a read-only query that excludes C_Settled is filtered by it and nothing else";
+}
+
+TEST_F(StaticPolicy, AQueryMovesNoRoundCounter) {
+    makePopulation();
+    const std::uint64_t opened = IRSystem::roundsOpened();
+    const std::uint64_t completed = IRSystem::roundsCompleted();
+    IRSystem::executeQuery<C_WorldTransform, Exclude<C_Settled>>([](C_WorldTransform &) {});
+    IRSystem::executeQueryDynamic(
+        IREntity::getArchetype<C_WorldTransform>(),
+        IREntity::getArchetype<C_Settled>(),
+        [](IREntity::ArchetypeNode *) {}
+    );
+    EXPECT_EQ(IRSystem::roundsOpened(), opened);
+    EXPECT_EQ(IRSystem::roundsCompleted(), completed);
 }
 
 TEST_F(StaticPolicy, ASystemCreatedBeforeAnyEntityMatchesLikeOneCreatedAfter) {

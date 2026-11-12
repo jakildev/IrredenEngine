@@ -278,6 +278,31 @@ without it, never zeros; `ms` and `percent` keyed by row label, `gpu_unavailable
 per term to `summary.md`. Executor: `python3 scripts/perf/test_profile_parser.py`
 and `python3 scripts/perf/test_repeat_profile.py`.
 
+## Read the static-resident witnesses
+
+A report's per-system table ends with a `Walked` column beside `Entities`.
+`Entities` is the rows in the archetype nodes a system matched; `Walked` is
+the rows it iterated. They differ for a gated system (the fog subject systems,
+`GATE_VOXEL_SETS_BY_LOD`), which matches settled static residents and walks
+them only when a world-scoped input changed
+([`static-residents.md`](../../docs/design/static-residents.md)). The parser
+reads `walked` as `None` from a report that predates the column.
+
+The `--- Static residents ---` section carries the populations and the
+transition step's counters at report time, the largest promotion and drain in
+milliseconds, and the voxel-pool work of every rendered frame in the window:
+bytes submitted to the position buffer and cull-bound slots rebuilt, each as
+a total, the largest single frame, and the frames that did any.
+`compare_perf_runs.parse_report(...).static_residents` exposes them.
+
+`IRPerfGrid` fixtures: `--wave-freeze` creates every cell static;
+`--no-static` is the all-dynamic twin of the same command;
+`--moving-fraction F` keeps every `1/F`-th cell dynamic under the live wave;
+`--static-cycle` thaws, moves and refreezes every hundredth cell;
+`--recolor-every-update` recolors every set each update. Under `--wave-freeze`
+the profile window opens only once every static cell has settled, so every
+frame a report covers is a settled frame; a fixture that never settles exits 3.
+
 ## Split a system row with `IR_PROFILE_SCOPE`
 
 The `--- CPU phase timing ---` section of every cell's report lists the fixed

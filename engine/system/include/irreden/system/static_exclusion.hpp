@@ -81,7 +81,8 @@ inline bool isDeriving(const IREntity::Archetype &declaredExclude, bool gatesSet
 }
 
 /// A deriving system that writes a pose input would exclude itself from
-/// the rows it must derive: a registration error every lane asserts on.
+/// the rows it must derive: a registration error every system lane asserts
+/// on.
 inline bool derivingWritesPoseInput(
     const IREntity::Archetype &declaredExclude, IREntity::StaticGuard writeGuard, bool gatesSettled
 ) {
@@ -91,15 +92,16 @@ inline bool derivingWritesPoseInput(
 /// The effective exclude archetype of a system or query: what it declared,
 /// plus `C_Static` when it may not match a static archetype. That is when
 /// it writes a pose input, or writes derived pose without being a deriving
-/// system. A pure function of its arguments, so it is re-run whenever the
-/// declared set changes.
+/// system. `deriving` is the caller's: a system lane passes `isDeriving` of
+/// its declared set, a query lane passes `false`, because a one-shot query
+/// joins no round and so can never derive a settling row. A pure function
+/// of its arguments, so it is re-run whenever the declared set changes.
 inline IREntity::Archetype applyStaticExclusion(
-    const IREntity::Archetype &declaredExclude, IREntity::StaticGuard writeGuard, bool gatesSettled
+    const IREntity::Archetype &declaredExclude, IREntity::StaticGuard writeGuard, bool deriving
 ) {
     IREntity::Archetype effective = declaredExclude;
     if (writeGuard == IREntity::StaticGuard::INPUT ||
-        (writeGuard == IREntity::StaticGuard::DERIVED &&
-         !isDeriving(declaredExclude, gatesSettled))) {
+        (writeGuard == IREntity::StaticGuard::DERIVED && !deriving)) {
         effective.insert(IREntity::getComponentType<IRComponents::C_Static>());
     }
     return effective;

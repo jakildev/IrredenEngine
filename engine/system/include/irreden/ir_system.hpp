@@ -574,24 +574,27 @@ void walkQueryNodes(
 // owns that). Zero matches is a silent no-op — correct for a command.
 //
 // The body is opaque, so every included component counts as written for the
-// static-resident matching policy: a query that includes a pose component
-// does not visit static entities. Use `executeQuery<const C...>` to read
-// them.
+// static-resident matching policy, minus `readOnly`: a query that includes a
+// pose component it has not declared read-only does not visit static
+// entities. `readOnly` is a declaration the body is trusted to honour. A
+// query is never a deriving system, so `C_Settled` in `excludeArchetype`
+// only filters; a derived-pose writer visits no static row either way.
 template <typename PerNodeFn>
 void executeQueryDynamic(
     const IREntity::Archetype &includeArchetype,
     const IREntity::Archetype &excludeArchetype,
-    PerNodeFn &&body
+    PerNodeFn &&body,
+    const IREntity::Archetype &readOnly = {}
 ) {
-    const IREntity::StaticGuard writeGuard = detail::writeGuardOf(includeArchetype);
-    IR_ASSERT(
-        !detail::derivingWritesPoseInput(excludeArchetype, writeGuard, false),
-        "executeQueryDynamic: a query that excludes C_Settled cannot include a pose input; "
-        "every included component counts as written."
-    );
+    IREntity::Archetype writes;
+    for (IREntity::ComponentId component : includeArchetype) {
+        if (!readOnly.contains(component)) {
+            writes.insert(component);
+        }
+    }
     detail::walkQueryNodes(
         includeArchetype,
-        detail::applyStaticExclusion(excludeArchetype, writeGuard, false),
+        detail::applyStaticExclusion(excludeArchetype, detail::writeGuardOf(writes), false),
         std::forward<PerNodeFn>(body)
     );
 }
@@ -657,12 +660,12 @@ void executeQuery(FunctionTick &&tick) {
         detail::ArchetypeFromList<typename Partition::Excluded>::value();
     using IncludedList = detail::StripConst_t<detail::FilterTags_t<QueryComponents...>>;
     IREntity::Archetype includeArchetype = detail::ArchetypeFromList<IncludedList>::value();
-    constexpr IREntity::StaticGuard writeGuard = detail::writeGuardOf<QueryComponents...>();
-    IR_ASSERT(
-        !detail::derivingWritesPoseInput(excludeArchetype, writeGuard, false),
-        "executeQuery: a query that excludes C_Settled declares a write to a pose input. "
-        "Declare the input const."
+    static_assert(
+        !(detail::IsGatesSettledTag<QueryComponents>::value || ...),
+        "executeQuery<Cs...>: GatesSettled marks a deriving system, and a one-shot query "
+        "joins no round, so it is never one. Drop the tag."
     );
+    constexpr IREntity::StaticGuard writeGuard = detail::writeGuardOf<QueryComponents...>();
     detail::RunQueryRows<IncludedList>::run(
         includeArchetype,
         detail::applyStaticExclusion(excludeArchetype, writeGuard, false),

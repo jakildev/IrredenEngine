@@ -140,8 +140,11 @@ void SystemManager::emplaceStaticPolicy(
         m_systemNames[system].name_
     );
     C_SystemEvent<TICK> &tick = m_ticks[system];
-    tick.excludeArchetype_ =
-        detail::applyStaticExclusion(tick.declaredExcludeArchetype_, writeGuard, gatesSettled);
+    tick.excludeArchetype_ = detail::applyStaticExclusion(
+        tick.declaredExcludeArchetype_,
+        writeGuard,
+        detail::isDeriving(tick.declaredExcludeArchetype_, gatesSettled)
+    );
 }
 
 void SystemManager::rebuildEffectiveExclude(SystemId system) {
@@ -149,7 +152,7 @@ void SystemManager::rebuildEffectiveExclude(SystemId system) {
     tick.excludeArchetype_ = detail::applyStaticExclusion(
         tick.declaredExcludeArchetype_,
         m_writeGuard[system],
-        m_gatesSettled[system] != 0
+        detail::isDeriving(tick.declaredExcludeArchetype_, m_gatesSettled[system] != 0)
     );
     abandonRound();
 }
