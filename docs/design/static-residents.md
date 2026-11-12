@@ -33,7 +33,10 @@ system and reader may assume about it.
   entity and thaws or resettles it, including the `C_VoxelSetNew` methods,
   which find it through the owner id the set already stores, and the
   entity-layer parent-link calls, which resettle the static subtree
-  themselves.
+  themselves. A typed overwrite of a component the entity already carries
+  (`setComponent`, `setComponents`, `setComponentDeferred`, and the Lua
+  bindings over them) resettles it inside `setComponent`. Only a write
+  through a raw reference is retained without being derived.
 - Becoming dynamic again removes both tags. Each transition is one
   archetype move, measured at 0.20 to 0.28 µs per entity.
 - Two families read world-scoped inputs as well as the entity's own: the
@@ -396,6 +399,7 @@ Writing it again is the restart. It is written for these events:
 |---|---|
 | The entity enters the settling state: freeze, creation with `C_Static`, snapshot load, or `C_Settled` dropped by another archetype move | At the drain after the flush that moved it |
 | A parent change or a parent's destruction on a static entity or a static ancestor, settled or settling | At the drain after the call, from the tracked-change log |
+| A typed overwrite of a component the entity already carries, on the entity or, for a pose component, a static ancestor, settled or settling | At the drain after the call, from the tracked-change log |
 | A `resettle` or a resettle-worthy mutation ([§ Engine mutators](#engine-mutators)) on a static entity, settled or settling | At the first drain after the call, from its change note, whether or not the removal of `C_Settled` has flushed yet |
 | A deriving system holds the row (below) | At the drain after the dispatch that held it |
 
@@ -504,7 +508,8 @@ carrying a stamp written before its last change. Each route in is covered:
 | Freeze, creation with `C_Static`, snapshot load | The stamp is zero; step 3 stamps the row as new |
 | A note on a settled entity (component method, fog setter, `resettle`) | Step 1 stamps it, before the removal it queues |
 | A note on a settling entity | Step 1 stamps it |
-| `C_Settled` dropped by another archetype move, a parent change, a parent's destruction | The move logs the id; step 1 stamps it |
+| `C_Settled` dropped by another archetype move, a parent change, a parent's destruction, a typed overwrite | The move logs the id; step 1 stamps it |
+| A typed overwrite on a settling entity | The overwrite logs the id without a move; step 1 stamps it |
 
 Its cost is proportional to the settling population and the staged notes. At
 steady state that is zero rows. The walk reads the 8-byte stamp column, not
@@ -600,9 +605,10 @@ bindings (`lua_hierarchy_bindings.hpp`), and the destruction of a parent,
 whose children survive and still name it (`engine/entity/CLAUDE.md`
 § "Parent/child hierarchy"). `IRPrefab::Static` cannot be called from that
 layer. The entity layer applies the transition itself, through a second
-generic trait, `IREntity::kTracksParentChain<T>`, true only for `C_Static`.
+generic trait, `IREntity::kTracksInputChanges<T>`, true only for `C_Static`.
 Each archetype node caches whether its type contains such a component, as
-for the first trait.
+for the first trait. The same cached bit gates the typed-overwrite rule
+([§ A typed overwrite](#a-typed-overwrite-settled-or-settling-to-settling)).
 
 The rule has two triggers, and both are inside the entity layer, so no
 caller can skip them:
@@ -703,6 +709,75 @@ does not start motion. It also has no exemptions:
 
 A creation that wants the entity to move with a new parent thaws it.
 
+### A typed overwrite: settled or settling to settling
+
+`EntityManager::setComponent<T>` has two branches
+(`engine/entity/include/irreden/entity/entity_manager.hpp`). When the
+entity lacks `T` it moves the entity through `insertNewComponent`, and the
+archetype-move rule above applies. When the entity already carries `T` it
+assigns into the existing column and moves nothing. `setComponents` calls
+`setComponent` once per component, and `setComponentDeferred` calls it at
+the flush. The Lua component factories (`prefab_component_factory.hpp`, the
+`C_LodTierOverride` binding) call it too. Every entity carries
+`C_LocalTransform` and `C_WorldTransform`, so on today's tree
+`IREntity::setComponent(entity, C_LocalTransform{…})` on a settled entity
+would change a frozen input with no move, no log entry and no new stamp.
+
+The overwrite branch therefore applies the rule itself, keyed on the same
+cached `kTracksInputChanges` bit. When the entity's node carries the bit,
+before the assignment the branch:
+
+1. handles the entity as in
+   [§ A parent change](#a-parent-change-settled-or-settling-to-settling):
+   it drops `C_Settled` if present, in one archetype move, and appends the
+   id to the tracked-change log;
+2. when `kStaticGuard<T>` is not `NONE`, also handles every static
+   descendant through `getChildren`, the same walk, because a descendant
+   composes under the entity's pose. Any other component is the entity's
+   own input, so only the entity is handled;
+3. assigns into the column of the node the entity sits in after those
+   moves, and returns a reference into that column. It takes the reference
+   last because the moves can grow or compact that column.
+
+The test is on the entity's node, not on `T`, so no component has to be
+listed for the rule to cover it: `C_LocalTransform`, `C_Modifiers`, an
+attached `C_LodTierOverride`, a fog subject's components, a `C_VoxelSetNew`
+replaced whole, a `C_Static` copied back, and a creation's own C++
+component are all handled the same way. That matches the archetype-move rule, which
+also does not ask what was attached. On a dynamic entity the branch tests
+one bit and does nothing else. On a static entity an overwrite that does
+not change a derived value still costs one archetype move, and one
+derivation round if the entity was settled. That is never wrong.
+
+The rule is on the typed setter, which is the one entity-layer call that
+replaces a whole component value. The Lua-typed lanes write rows by id
+instead: `attachComponentFromLua` on an `IRComponent.register` component
+the entity already carries (`addComponentDynamic` is a no-op on a present
+id, then `writeRowFromTable` writes the existing row) and
+`IREntity.setLuaField`. Both are the raw path of
+[§ Forbidden writes](#forbidden-writes). They reach only Lua-typed
+components, which no engine deriving system reads; a creation whose own
+deriving system reads one follows the write with `IRStatic.resettle`.
+
+The branch runs where `setComponent` already may: on the main thread,
+between ticks or inside a flush (`.claude/rules/cpp-ecs.md` § "Deferred
+entity operations during tick"), which is where the parent-change handling
+runs too. A tick that overwrites calls `setComponentDeferred`, and the
+handling happens when the flush replays it.
+
+The outcome is a resettle, not a thaw. A typed overwrite of `C_Modifiers`
+is resolved once in the next round, and its modifiers do not decay while
+the entity is static (decision 9). `IRPrefab::Modifier::push` is the call
+that thaws.
+
+A deriving system writes its outputs through its column references, not
+through the typed setter, so no dispatch restamps the rows it derives. The
+one typed write a deriving system makes on a static entity is
+`FOG_SUBJECT_ADOPT*`'s `setComponentDeferred` of `C_FogRevealed`, which
+attaches a component the row lacks. The system matches only rows without
+it, so it stops writing once that attach has flushed; a second dispatch
+staged before the flush replays as an overwrite and restamps the row once.
+
 ### Engine mutators
 
 A mutator that changes something a static entity's derived state depends on
@@ -721,11 +796,12 @@ entity's set pays one boolean test per mutation and no note.
 | `IRPrefab::Modifier::push`, `pushFrameLocal`, `pushOneFrame`, `pushLambda`, `upsertBySource`, `upsertBySourceInPlace` | Thaw. A modifier needs resolving and decaying every update. | Its `EntityId` argument |
 | `IRPrefab::Modifier::removeBySource`, including the pre-destroy sweep | Resettle each static entity whose vectors it shortened | It walks nodes through `IREntity::queryArchetypeNodesSimple` instead of `forEachComponent`, so it has `node->entities_`. Only nodes whose type contains `C_Static` compare vector lengths. |
 | `IRPrefab::Modifier::pushGlobal`, `upsertBySourceGlobal`, the global half of `removeBySource`, an expiry in `GLOBAL_MODIFIER_DECAY` | Advance `globalModifierRevision_` | World-scoped. `GLOBAL_MODIFIER_DECAY` advances the revision only when its `erase` removed an entry. The decrement of `ticksRemaining_` changes no composed value. |
-| `IREntity::setParent`, `EntityManager::setRelation`, `clearParent`, `detachChildren`, and their Lua bindings | Resettle the entity and its static descendants, at once; under a dynamic parent the drain then refuses it | Inside the entity layer, through `kTracksParentChain` and the tracked-change log. [§ A parent change](#a-parent-change-settled-or-settling-to-settling) |
+| `IREntity::setParent`, `EntityManager::setRelation`, `clearParent`, `detachChildren`, and their Lua bindings | Resettle the entity and its static descendants, at once; under a dynamic parent the drain then refuses it | Inside the entity layer, through `kTracksInputChanges` and the tracked-change log. [§ A parent change](#a-parent-change-settled-or-settling-to-settling) |
 | Destroying a static entity's parent | Resettle each static child and its static descendants, at once | `destroyEntity`, after the pre-destroy hooks. Same section |
 | `IRPrefab::RotationMode::setMode` | Thaw | Its argument |
 | Attaching a gizmo to the entity as its drag anchor | Thaw | Its argument |
 | Allocating a GPU transform slot, attaching a skeleton, or any other component attach or detach | Settled to settling, then eligibility | [§ Any other archetype move](#any-other-archetype-move-settled-to-settling) |
+| `setComponent`, `setComponents` and `setComponentDeferred` on a component the entity already carries, their `IREntity::` wrappers, and the Lua bindings over them | Resettle, at once; for a pose component, with the static descendants | Inside the overwrite branch of `setComponent`, through `kTracksInputChanges` and the tracked-change log. [§ A typed overwrite](#a-typed-overwrite-settled-or-settling-to-settling) |
 | `C_VoxelSetNew` record, alpha and edit mutators: `changeVoxelColor`, `changeVoxelColorAll`, `changeVoxelPriority`, `changeVoxelPriorityAll`, `activateAll`, `deactivateAll`, `fillPlane`, `reshape`, `editVoxels`, `carve`, `resyncAfterRawEdits`, `resyncAfterAuthoredEdits` | Resettle | `ownerEntityId_`. Every one of them already ends with one entity-keyed call per mutation, `IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, …)` that bumps `markRecordsChanged()`. Most reach it through `markPoolRecordsChanged(first, count)`, directly or via `resyncDerivedState`. `changeVoxelPriority` and `changeVoxelPriorityAll` make the call inline. #5009 folds those sites into one private helper that also calls `noteChanged(ownerEntityId_)`. A new record mutator that bumps the generation therefore resettles too. |
 | `C_VoxelSetNew` span and canvas changes: `attachToCanvas`, `detachToStaged` (the canvas-teardown re-stage) | Resettle | `ownerEntityId_` |
 | `C_VoxelSetNew` LOD band: the new `setLodBand(min, max)`; the Lua `lodMin` / `lodMax` properties (`component_voxel_set_lua.hpp`), whose setters call it instead of assigning the fields | Resettle | `ownerEntityId_` |
@@ -864,8 +940,11 @@ system. Attaching or detaching `C_LodTierOverride` on a settled entity
 leaves it settling
 ([§ Any other archetype move](#any-other-archetype-move-settled-to-settling)).
 A band change through `setLodBand` or the Lua `lodMin` / `lodMax`
-properties resettles it. A C++ assignment to `lodMin_` / `lodMax_`, or to an
-attached override's tier, is a raw write.
+properties resettles it, and so does replacing an attached override through
+`setComponent`, from C++ or the Lua `C_LodTierOverride` binding
+([§ A typed overwrite](#a-typed-overwrite-settled-or-settling-to-settling)).
+A C++ assignment to `lodMin_` / `lodMax_`, or to an attached override's
+tier through a reference, is a raw write.
 
 **Hidden, LOD-culled and ghost-held sets.** These gates are written only by
 the fog evaluators and the LOD gate, which keep running when their inputs
@@ -927,13 +1006,14 @@ chunk as it does for any other component write.
 ## Forbidden writes
 
 A write that would change a static entity's pose inputs reaches the entity
-by one of three paths. None is silently lost.
+by one of four paths. None is silently lost.
 
 | Path | Example | Outcome |
 |---|---|---|
 | A registered system or a query, on any lane in [§ The matching policy](#the-matching-policy) | `VELOCITY_3D` over an entity with `C_Velocity3D` | **Impossible.** A system that declares a write to a pose input does not match static archetypes, so the row is never visited. The entity does not move, and nothing is written. |
+| A typed overwrite | `IREntity::setComponent(entity, C_LocalTransform{…})` on an entity that has one (every entity does), `setComponents`, `setComponentDeferred`, a Lua binding that attaches a C++ component through them (a codegen or prefab component factory, the `C_LodTierOverride` binding) to an entity that already carries it | **Honoured.** The overwrite branch of `setComponent` resettles the entity, and for a pose component its static descendants, before it assigns ([§ A typed overwrite](#a-typed-overwrite-settled-or-settling-to-settling)). The entity is derived from the new value in the next round that opens after the call. |
 | An engine mutator | `IRPrefab::Modifier::push(entity, …)` | **Honoured.** The mutator thaws or resettles the entity as tabled above. A thaw, or a resettle through an `IRPrefab::` function, applies at the next flush like any structural change. A resettle from a component method (a `C_VoxelSetNew` mutator) applies at the drain that ends the pipeline, which stamps the entity before it queues the removal of `C_Settled`. In both cases the entity is derived from the new inputs in the next round that opens after the change. |
-| A raw reference | `IREntity::getComponent<C_LocalTransform>(entity).translation_ = p`, a Lua entity-handle field write, `forEachComponent` | **Retained, not derived.** The value is stored. Derived state does not change until the entity is next resettled or thawed, at which point it is derived from the then-current inputs. |
+| A raw reference | `IREntity::getComponent<C_LocalTransform>(entity).translation_ = p`, a Lua entity-handle field write (`IREntity.setLuaField`, or a Lua-typed component table applied to a component the entity already carries), `forEachComponent` | **Retained, not derived.** The value is stored. Derived state does not change until the entity is next resettled or thawed, at which point it is derived from the then-current inputs. |
 
 For the raw path:
 
@@ -993,7 +1073,7 @@ startup.
 |---|---|---|
 | The guard of each component: `IREntity::kStaticGuard<T>`, an enum `NONE` / `INPUT` / `DERIVED`, primary template `NONE` | Entity, `engine/entity/include/irreden/entity/ir_entity_types.hpp`. The four pose components specialize it in their own headers under `engine/prefabs/irreden/common/components/`. | The prefab module states a fact about its own types and depends downward to state it. Every translation unit that names a pose component includes its header and sees the specialization, so the value cannot differ between units. |
 | The guard per `ComponentId` | Entity. `EntityManager::registerComponent<T>` copies `kStaticGuard<T>`, and the two move traits below, into a table indexed by `ComponentId`, beside the existing type cache. A node built from ids computes its cached bits from that table. | `registerComponent<T>` is the only place that holds both `T` and the id. A `ComponentId` cannot exist without its guard. |
-| `IREntity::kClearedByForeignMove<T>`, `IREntity::kTracksParentChain<T>`, the tracked-change log | Entity, same header; the log on `EntityManager`. `component_static.hpp` specializes both traits, depending downward. | The archetype-move and parent-change rules run inside entity-layer moves, link changes and destruction. The prefab layer reads the log by calling down, so the entity layer never names `IRPrefab::Static`. |
+| `IREntity::kClearedByForeignMove<T>`, `IREntity::kTracksInputChanges<T>`, the tracked-change log | Entity, same header; the log on `EntityManager`. `component_static.hpp` specializes both traits, depending downward. | The archetype-move, parent-change and typed-overwrite rules run inside entity-layer moves, link changes, destruction and `setComponent`. The prefab layer reads the log by calling down, so the entity layer never names `IRPrefab::Static`. |
 | `C_Static`, `C_Settled` | System, `engine/system/include/irreden/system/components/component_static.hpp` | The exclusion adds `C_Static`'s id to effective exclude archetypes and the round tracker reads `C_Settled` in declared ones. The system layer resolves both with `IREntity::getComponentType<…>()`. |
 | The exclusion: one function, `IRSystem::detail::applyStaticExclusion(declaredExclude, writeGuard, deriving)`, which returns the effective exclude archetype. `writeGuard` is the highest `kStaticGuard` over the lane's write set (`INPUT` above `DERIVED` above `NONE`). `deriving` is computed by the caller: a system lane passes "declared set contains `C_Settled`, or `GatesSettled`"; a query lane passes `false`. | System | Every lane below calls it. It is the only implementation. It is a pure function of its arguments, so it can be re-run at any time. |
 | Declared and effective exclusions: `C_SystemEvent<TICK>::declaredExcludeArchetype_` beside the existing `excludeArchetype_`; per system, the `writeGuard` and the `GatesSettled` bit, recorded once at creation | System, `component_system_event.hpp` and `SystemManager` | The policy needs to know which exclusions the author declared. One stored filter cannot tell it (the paragraph after the lanes table). |
@@ -1279,8 +1359,9 @@ attaches no `C_Static` sees no change in behaviour.
 | Change | Kind |
 |---|---|
 | `C_Static`, `C_Settled` in `engine/system/include/irreden/system/components/`; `C_StaticSettings` in `engine/prefabs/irreden/common/components/` | New components. `C_Static` is saved with no fields (the stamp is not saved); the other two are not saved. |
-| `IREntity::kStaticGuard<T>`, `kClearedByForeignMove<T>` and `kTracksParentChain<T>` traits; the per-`ComponentId` guard table; `EntityManager::takeTrackedChanges` | New entity-layer surface. The four pose components specialize the guard. |
+| `IREntity::kStaticGuard<T>`, `kClearedByForeignMove<T>` and `kTracksInputChanges<T>` traits; the per-`ComponentId` guard table; `EntityManager::takeTrackedChanges` | New entity-layer surface. The four pose components specialize the guard. |
 | `setParent`, `setRelation`, `clearParent`, `detachChildren`, and destroying a parent, on a static entity or one with static descendants | New behaviour for static entities only: the subtree resettles in the same call. |
+| `setComponent`, `setComponents`, `setComponentDeferred` and their `IREntity::` wrappers, overwriting a component a static entity already carries | New behaviour for static entities only: the entity, and for a pose component its static subtree, resettles in the same call. The returned reference points into the column the entity sits in after that move. A dynamic entity's overwrite tests one cached bit. |
 | `IRPrefab::Static::freeze`, `thaw`, `resettle`, `noteChanged`, `drain`, `isStatic`, `isSettled`, `stats` | New prefab namespace. `drain` is called by the World. |
 | `IREntity::EngineAttach<T>`, `EngineAttachKey<T>`, `GenericAttachable`; `EntityManager::attachEngineComponentDeferred<T>`; a `GenericAttachable` constraint on every typed attach lane; `EntityManager::insertNewComponent<T>` moved to `private` (its only caller is `setComponent`); a restricted-bit assert in the private archetype-move primitives; and a refusal of restricted ids on `addComponentDynamic`, `getOrCreateSingletonByComponentId` and `restoreEntitiesBatch` | New entity-layer surface. Only `C_Settled` is restricted, so no call that compiles today changes, except a call to `insertNewComponent` from outside `EntityManager`; the engine and its creations have none. |
 | `IRSystem::promoteSettled`, `restampSettling`, `raiseSettleFloor`; `C_Static::settleStamp()` with a private stamp, zeroed by copy, kept by the `noexcept` move constructor and the private move assignment | New scheduler surface. `C_Static{}` in a bundle and `C_Static = {}` in Lua work as before. |
@@ -1480,7 +1561,10 @@ system at a time:
 **Gate 5, forbidden writes.** Unit tests, any build type, one per path:
 a registered mover never visits a static entity and its `Walked` count
 shows it; `IRPrefab::Modifier::push` on a settled entity thaws it and the
-offset reaches the world transform in the same update as on a twin; a raw
+offset reaches the world transform in the same update as on a twin;
+`IREntity::setComponent` of a new `C_LocalTransform` on a settled entity
+resettles it in the call and, after the next round, its world transform
+equals the twin's (the typed-overwrite cases below); a raw
 `C_LocalTransform` write on a settled entity leaves the world transform
 and pool positions unchanged, `resettle` then makes them equal to the
 twin's, and in an assert build the audit fires within 256 updates when
@@ -1630,6 +1714,34 @@ holds on every lane:
     with a new stamp at the next drain and no promotion before a round
     that opens after the removal. `removeComponent<C_Static>` leaves it
     dynamic with neither tag.
+- **Typed overwrites.** Fixture: a static root with a static child, both
+  carrying `C_LodTierOverride`, beside a dynamic twin of the same tree. Each
+  case runs on the settled tree and again on a settling tree after
+  `PROPAGATE_TRANSFORM` and `GATE_VOXEL_SETS_BY_LOD` have dispatched in the
+  open round, through each of `IREntity::setComponent`, `setComponents`
+  (with `C_LocalTransform` and `C_LodTierOverride` in one call), and
+  `setComponentDeferred` drained at a flush; the twin gets the same writes.
+  - `C_LocalTransform` with a new translation on the root. Once the call has
+    run (for the deferred form, once the flush has), `isSettled` is false
+    for the root and the child. Neither is promoted at the drain that
+    follows; each carries a stamp newer than its old one. After the next
+    round their `C_WorldTransform` and pool positions equal the twin's, and
+    both are still static.
+  - `C_LodTierOverride` with a new tier on the root. The root leaves the
+    settled state and the child does not (not a pose component). After the
+    next round `lodCulled_` and the pool mask equal the twin's. The Lua
+    `C_LodTierOverride` binding applied to the root gives the same result.
+  - `C_Modifiers` with one active modifier on the root: it is resolved once,
+    `C_ResolvedFields` then equals the twin's first resolve, and the
+    modifier's lifetime does not advance while the root is static.
+  - The reference `setComponent` returns, written through after the call,
+    lands in the entity's row: the test compares it with `getComponent`
+    taken after the call.
+  - A dynamic entity with a dynamic subtree of 10,000 has its
+    `C_LocalTransform` overwritten: the tracked-change log stays empty and
+    no entity changes archetype.
+  - `IREntity.setLuaField` on a Lua-typed component of the settled root
+    leaves it settled (the raw path).
 
 **Gate 6, no cost to dynamic entities.** Million control without
 `--wave-freeze`, Release, same rounds as gate 2: the per-call means of the
@@ -1739,8 +1851,10 @@ sibling epics' work.
 5. The first implementation is limited to GRID, CPU-direct, non-skeletal
    entities.
 6. System writes to pose inputs are impossible; mutator writes thaw or
-   resettle; raw writes are retained, audited in assert builds, and applied
-   by `resettle`. Voxel-set mutators reach their entity through
+   resettle; a typed overwrite through `setComponent` resettles the entity
+   (and, for a pose component, its static subtree) inside the call; raw
+   writes are retained, audited in assert builds, and applied by
+   `resettle`. Voxel-set mutators reach their entity through
    `ownerEntityId_`, with no signature change.
 7. The matching policy: a guard trait on each component, recorded per
    `ComponentId` by the entity layer, and one exclusion function on every
