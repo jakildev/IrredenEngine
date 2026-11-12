@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""fleet-issue — live-first issue reads, with the scout's cache as the fallback.
+"""fleet-issue — live-first issue reads, and the validated routing-line write.
 
-Subcommand:
-  view <N>      full issue body + comments + labels + state
+Subcommands:
+  view <N>       full issue body + comments + labels + state
+  set-field <N>  (--blocked-by <ref>... | --host <os>) --reason <text> [--dry-run]
+                 write the issue's standalone `**Blocked by:**` or `**Host:**`
+                 line(s) and record the change in an issue comment
 
 Repo selection:
   --repo {engine,game}  default: engine
@@ -23,6 +26,17 @@ Keep the cache-fallback wording in sync with fleet-pr: the two scripts are
 standalone by install design and share no code, so the policy is mirrored and
 pinned by tests/test_fleet_cache_reader_freshness.sh's parity assertion.
 
+set-field policy:
+  It never falls back to the cache: the edit is composed against the live
+  body. The result is accepted only when the readers dispatch uses
+  (`fleet_blocked_by`, `fleet_issue_fields`) read back exactly the requested
+  value, every blocker reference resolves on GitHub, and the issue is open and
+  not `human:owned`. The record comment is posted before the body, so a
+  failure between the two leaves a record and a re-run finishes the edit. A
+  change that already holds writes nothing. The comment carries only the
+  caller's reason, the two line values and the caller's fleet identity: the
+  engine repository is public.
+
 Source of truth: scripts/fleet/fleet-issue in the engine repo.
 Installed to ~/bin/fleet-issue by scripts/fleet/install.sh.
 """
@@ -30,11 +44,21 @@ Installed to ~/bin/fleet-issue by scripts/fleet/install.sh.
 import argparse
 import json
 import os
+import re
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import fleet_github  # noqa: E402
+import fleet_task_class  # noqa: E402
+from fleet_blocked_by import blocker_refs, has_blocked_by_field  # noqa: E402
+from fleet_issue_fields import (  # noqa: E402
+    HOST_KEYS,
+    body_required_host,
+    compose_field_lines,
+    host_field_keys,
+)
 
 STATE_DIR = Path.home() / ".fleet" / "state"
 ISSUES_DIR = STATE_DIR / "issues"
@@ -140,9 +164,181 @@ def cmd_view(args):
     return 0
 
 
+# `**Host:**` words set-field writes: one OS each. The reader also takes
+# `mac`, `opengl` and multi-host values, but a written line names one OS.
+SETTABLE_HOSTS = ("linux", "windows", "macos")
+_REF_ARG_RE = re.compile(r"(?:(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)#|#)?(\d+)")
+
+
+def refuse(msg):
+    warn(f"set-field: refused: {msg}")
+    return 1
+
+
+def fetch_issue_for_edit(slug, issue_number):
+    result = fleet_github.run(
+        ["issue", "view", str(issue_number), "--repo", slug,
+         "--json", "number,state,labels,body"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        sys.stderr.write(result.stderr)
+        return None
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        warn(f"gh json output is corrupt: {e}")
+        return None
+
+
+def ref_resolves(slug, number):
+    result = fleet_github.run(
+        ["api", f"repos/{slug}/issues/{number}", "--jq", ".number"],
+        capture_output=True, text=True,
+    )
+    return result.returncode == 0 and result.stdout.strip() == str(number)
+
+
+def blocker_plan(raw_refs, slug, issue_number):
+    """(line values, expected (slug, number) pairs) or an error string."""
+    if raw_refs == ["none"]:
+        return ["(none)"], []
+    values, expected = [], []
+    for raw in raw_refs:
+        m = _REF_ARG_RE.fullmatch(raw.strip())
+        if not m:
+            return f"{raw!r} is not an issue reference (#N, N or Repo#N; `none` stands alone)"
+        value = raw.strip() if m.group(1) else f"#{m.group(2)}"
+        # The parser decides where a qualified ref points; an unknown repo
+        # name silently routes to this repo, so it must be refused here.
+        read = blocker_refs(f"**Blocked by:** {value}", slug)
+        if len(read) != 1:
+            return f"{raw!r} does not read back as one reference"
+        if m.group(1) and read[0][0].split("/")[-1].lower() != m.group(1).lower():
+            return f"{raw!r} names a repository the blocker parser does not route"
+        if read[0] == (slug, str(issue_number)):
+            return "an issue cannot block itself"
+        if read[0] not in expected:
+            values.append(value)
+            expected.append(read[0])
+    for ref_slug, number in expected:
+        if not ref_resolves(ref_slug, number):
+            return f"{ref_slug}#{number} does not resolve on GitHub"
+    return values, expected
+
+
+def caller_identity():
+    agent = os.path.basename(os.environ.get("FLEET_ASSIGNED_WORKTREE") or os.getcwd())
+    return (f"{os.environ.get('FLEET_ROLE') or 'no-role'} "
+            f"{os.environ.get('FLEET_ROLE_MODEL') or 'no-class'} "
+            f"on {fleet_task_class._current_host()} {agent}")
+
+
+def code_span(value):
+    return f"`` {value} ``" if "`" in value else f"`{value}`"
+
+
+def record_comment(field, old_values, new_values, reason):
+    old = "; ".join(old_values) if old_values else None
+    old_text = code_span(old) if old else "(absent)"
+    return (f"fleet-issue set-field: **{field}** {old_text} → "
+            f"{code_span('; '.join(new_values))} — {caller_identity()}\n\n"
+            f"Reason: {reason}\n")
+
+
+def gh_write(args, text):
+    # newline="" keeps a CRLF body CRLF; text mode would translate on Windows.
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="",
+                                     suffix=".md", delete=False) as f:
+        f.write(text)
+        path = f.name
+    try:
+        result = fleet_github.run([*args, "--body-file", path],
+                                  capture_output=True, text=True)
+    finally:
+        os.unlink(path)
+    if result.returncode != 0:
+        sys.stderr.write(result.stderr)
+    return result.returncode == 0
+
+
+def cmd_set_field(args):
+    slug = repo_slug(args.repo)
+    if slug is None:
+        warn(f"unknown repo key: {args.repo}")
+        return 2
+    reason = (args.reason or "").strip()
+    if not reason:
+        return refuse("--reason is empty")
+    if args.host is not None and args.host not in SETTABLE_HOSTS:
+        return refuse(f"--host must be one of {', '.join(SETTABLE_HOSTS)}")
+    if args.blocked_by is not None and "none" in args.blocked_by and len(args.blocked_by) > 1:
+        return refuse("--blocked-by none cannot be combined with a reference")
+
+    issue = fetch_issue_for_edit(slug, args.issue_number)
+    if issue is None:
+        return refuse("live read of the issue failed; set-field never edits from cache")
+    if issue.get("state") != "OPEN":
+        return refuse(f"issue is {issue.get('state', '?')}, not OPEN")
+    labels = [(la["name"] if isinstance(la, dict) else la) for la in issue.get("labels", [])]
+    if "human:owned" in labels:
+        return refuse("issue carries human:owned")
+
+    body = issue.get("body") or ""
+    if args.host is not None:
+        field, values = "Host", [args.host]
+    else:
+        planned = blocker_plan(args.blocked_by, slug, args.issue_number)
+        if isinstance(planned, str):
+            return refuse(planned)
+        field, (values, expected) = "Blocked by", planned
+    new_body, old_values = compose_field_lines(body, field, values)
+
+    if field == "Host":
+        key = HOST_KEYS[args.host]
+        reads_back = (host_field_keys(new_body) == [key]
+                      and body_required_host(new_body) == key)
+    else:
+        reads_back = (sorted(blocker_refs(new_body, slug)) == sorted(expected)
+                      and has_blocked_by_field(new_body))
+    if not reads_back:
+        return refuse(
+            f"the edited body does not read back as `**{field}:** {'; '.join(values)}` — "
+            "the existing line sits where the parser does not look (a quote, a code "
+            "block, prose ahead of the header) or another declaration of the field "
+            "remains; edit the body by hand")
+
+    if new_body == body:
+        print(f"fleet-issue: set-field: #{args.issue_number} already reads "
+              f"`**{field}:** {'; '.join(values)}`; nothing written")
+        return 0
+
+    comment = record_comment(field, old_values, values, reason)
+    if args.dry_run:
+        for value in old_values or ["(absent)"]:
+            print(f"- **{field}:** {value}")
+        for value in values:
+            print(f"+ **{field}:** {value}")
+        print()
+        print(comment, end="")
+        return 0
+
+    where = [str(args.issue_number), "--repo", slug]
+    if not gh_write(["issue", "comment", *where], comment):
+        return refuse("posting the record comment failed; body left unchanged")
+    if not gh_write(["issue", "edit", *where], new_body):
+        warn("set-field: the record comment is posted but the body write failed; "
+             "re-run the same command to finish the edit")
+        return 1
+    print(f"fleet-issue: set-field: #{args.issue_number} now reads "
+          f"`**{field}:** {'; '.join(values)}`")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Live-first issue reads, scout cache as fallback.",
+        description="Live-first issue reads, scout cache as fallback; "
+                    "validated routing-line writes.",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
     sp = sub.add_parser("view")
@@ -151,8 +347,25 @@ def main():
         "--repo", default="engine", choices=["engine", "game"],
         help="Which repo to read (default: engine).",
     )
+    sf = sub.add_parser(
+        "set-field",
+        help="Write an issue's **Blocked by:** or **Host:** line, recorded in a comment.",
+    )
+    sf.add_argument("issue_number", type=int)
+    which = sf.add_mutually_exclusive_group(required=True)
+    which.add_argument(
+        "--blocked-by", nargs="+", metavar="REF",
+        help="Blocker reference(s), one line each: #N, N or Repo#N; `none` writes (none).",
+    )
+    which.add_argument("--host", metavar="OS", help=f"One of {', '.join(SETTABLE_HOSTS)}.")
+    sf.add_argument("--reason", required=True,
+                    help="Why the line changes; posted verbatim in the record comment.")
+    sf.add_argument("--repo", default="engine", choices=["engine", "game"],
+                    help="Which repo the issue is in (default: engine).")
+    sf.add_argument("--dry-run", action="store_true",
+                    help="Print the old line, the new line and the comment; write nothing.")
     args = parser.parse_args()
-    sys.exit(cmd_view(args))
+    sys.exit(cmd_set_field(args) if args.cmd == "set-field" else cmd_view(args))
 
 
 if __name__ == "__main__":

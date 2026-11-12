@@ -49,6 +49,10 @@ Optional:
   whichever GL host is up, where a one-OS pin would strand it on the one
   that is down. A parenthetical in the value is read as an aside, not a host.
 
+`fleet-issue set-field <N> --blocked-by <ref>... | --host <os> --reason <text>`
+writes either line on an existing issue, checked against the same parsers and
+recorded in an issue comment.
+
 ### File with a plan
 
 When the task was planned with the human, or is substantial enough to need

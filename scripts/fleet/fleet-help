@@ -416,6 +416,13 @@ Parallel-agent fleet (tmux + Claude)
                                  live gh read of an issue + its comments; falls
                                  back to scout's per-issue cache only if gh
                                  fails, warned on stderr
+  fleet-issue set-field <N> (--blocked-by <ref>... | --host linux|windows|macos)
+              --reason <text> [--repo engine|game] [--dry-run]
+                                 write the issue's standalone **Blocked by:**
+                                 (one line per ref; `none` writes (none)) or
+                                 **Host:** line; refuses unless the scout's
+                                 parsers read the edit back as requested, and
+                                 records old/new value + reason in a comment
   fleet-gh-poll <owner/repo> <path> [--param k=v]… [--accept MIME]
                                  conditional GitHub REST GET (If-None-Match +
                                  ETag cache); prints the body, exits 0=changed
