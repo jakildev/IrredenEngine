@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace IRProfile {
@@ -42,6 +43,11 @@ struct GpuStageEntry {
 /// Value of the `Format:` line in the GPU stage section. A report without the
 /// line predates exclusive time: its stage rows are windows.
 inline constexpr const char *kGpuStageReportFormat = "exclusive+window";
+
+/// Name of the CPU phase row holding the offscreen frame pacer's sleep: one
+/// sample per paced frame, 0 ms for a late frame. The frame decomposition reads
+/// it; a report without the row has no pacing.
+inline constexpr std::string_view kOffscreenPacingPhase = "offscreenPacing";
 
 /// Named CPU phase timing entry for manually instrumented system sub-blocks.
 struct CpuPhaseEntry {

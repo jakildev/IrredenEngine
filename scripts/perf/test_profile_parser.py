@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from compare_perf_runs import (
+    FRAME_SPLIT_TERMS,
     GPU_STAGE_FORMAT_EXCLUSIVE,
     GPU_STAGE_FORMAT_WINDOW,
     CellReport,
@@ -257,6 +258,79 @@ class RunWitnessParserTest(unittest.TestCase):
             '"--- Update ticks (per frame, in order) ---\\n"',
         ):
             self.assertIn(written, writer)
+
+FRAME_SPLIT_SECTION = (
+    "--- Frame decomposition ---\n"
+    "Mean over the 8 recorded frames of the Frame time line; the rows add up to the frame "
+    "mean.\n"
+    "System rows are a pipeline's summed Total(ms) over those frames. GPU is the "
+    "commandBufferSpans mean.\n"
+    "Pacing is the offscreen pacer's sleep. Remainder is the frame mean minus the other "
+    "rows (present() commits and waits outside any system); a negative remainder means the "
+    "terms overlap.\n"
+    "Term         ms/frame     Share\n"
+    "INPUT           0.010      0.02%\n"
+    "UPDATE         10.300     22.10%\n"
+    "RENDER          6.250     13.41%\n"
+    "GPU            18.210     39.07%\n"
+    "Pacing          0.000      0.00%\n"
+    "Remainder      11.840     25.40%\n"
+    "Frame          46.610    100.00%\n"
+    "\n"
+)
+
+
+class FrameSplitParserTest(unittest.TestCase):
+    def parse(self, text):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profile.txt"
+            path.write_text(text)
+            return parse_report(path, "fixture")
+
+    def test_the_section_is_read(self):
+        split = self.parse(WITNESSED_REPORT.replace(
+            "--- GPU stage timing ---\n", FRAME_SPLIT_SECTION + "--- GPU stage timing ---\n"
+        )).frame_split
+        self.assertIsNotNone(split)
+        self.assertEqual(split.ms["UPDATE"], 10.3)
+        self.assertEqual(split.percent["GPU"], 39.07)
+        self.assertEqual(split.ms["Frame"], 46.61)
+        self.assertFalse(split.gpu_unavailable)
+        self.assertFalse(split.remainder_includes_gpu)
+        for term in FRAME_SPLIT_TERMS:
+            self.assertIn(term, split.ms)
+
+    def test_a_report_without_the_section_reads_absent_never_zeros(self):
+        self.assertIsNone(self.parse(WITNESSED_REPORT).frame_split)
+
+    def test_an_unavailable_gpu_row_is_not_a_zero_and_marks_the_remainder(self):
+        section = FRAME_SPLIT_SECTION.replace(
+            "GPU            18.210     39.07%\n", "GPU         unavailable\n"
+        ).replace("25.40%\n", "25.40%  includes GPU time\n")
+        split = self.parse(section + "=== END REPORT ===\n").frame_split
+        self.assertTrue(split.gpu_unavailable)
+        self.assertNotIn("GPU", split.ms)
+        self.assertTrue(split.remainder_includes_gpu)
+
+    def test_prose_lines_are_not_rows(self):
+        split = self.parse(FRAME_SPLIT_SECTION + "=== END REPORT ===\n").frame_split
+        self.assertEqual(sorted(split.ms), sorted((*FRAME_SPLIT_TERMS, "Frame")))
+
+    def test_the_parsed_lines_are_the_lines_the_engine_writes(self):
+        root = Path(__file__).resolve().parents[2]
+        writer = (root / "engine/profile/src/profile_report.cpp").read_text()
+        for written in (
+            '"--- Frame decomposition ---\\n"',
+            '"%-10s %10.3f %8.2f%%%s\\n"',
+            '"%-10s %10s\\n"',
+            '"  includes GPU time"',
+            '"unavailable"',
+        ):
+            self.assertIn(written, writer)
+        for label in ("Remainder", "Pacing", "Frame", "GPU"):
+            self.assertIn(f'"{label}"', writer)
+        for pipeline in ("INPUT", "UPDATE", "RENDER"):
+            self.assertIn(f'"{pipeline}"', writer)
 
 
 NEW_FORMAT_STAGES = (

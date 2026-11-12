@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -259,6 +260,157 @@ TEST(ProfileReportCpuScopes, ResetRunDropsTotalsButKeepsTheHistogramEnabled) {
 
     EXPECT_TRUE(histogram.runTotals().empty());
     EXPECT_TRUE(histogram.enabled_);
+}
+
+IRProfile::SystemTimingEntry systemEntry(const char *pipeline, uint64_t totalNs) {
+    IRProfile::SystemTimingEntry entry;
+    entry.name_ = std::string(pipeline) + "_SYSTEM";
+    entry.pipeline_ = pipeline;
+    entry.totalNs_ = totalNs;
+    entry.callCount_ = 1;
+    return entry;
+}
+
+// The decomposition's rows, in print order: label, ms per frame, share of the mean.
+struct DecompositionRow {
+    std::string label_;
+    double ms_ = 0.0;
+    double percent_ = 0.0;
+    std::string line_;
+};
+
+bool isDecompositionLabel(const std::string &label) {
+    for (const char *known : {"INPUT", "UPDATE", "RENDER", "GPU", "Pacing", "Remainder", "Frame"}) {
+        if (label == known)
+            return true;
+    }
+    return false;
+}
+
+std::vector<DecompositionRow> decompositionRows(const std::string &text) {
+    std::vector<DecompositionRow> rows;
+    const std::string header = "--- Frame decomposition ---\n";
+    const size_t begin = text.find(header);
+    if (begin == std::string::npos)
+        return rows;
+    const size_t end = text.find("\n\n", begin);
+    std::istringstream lines(text.substr(begin + header.size(), end - begin - header.size()));
+    std::string line;
+    while (std::getline(lines, line)) {
+        std::istringstream words(line);
+        DecompositionRow row;
+        std::string msWord;
+        std::string percentWord;
+        if (!(words >> row.label_ >> msWord) || !isDecompositionLabel(row.label_))
+            continue;
+        row.line_ = line;
+        char *parsedEnd = nullptr;
+        row.ms_ = std::strtod(msWord.c_str(), &parsedEnd);
+        if (parsedEnd == msWord.c_str() || *parsedEnd != '\0') {
+            if (msWord == "unavailable")
+                rows.push_back(row);
+            continue;
+        }
+        if (words >> percentWord)
+            row.percent_ = std::strtod(percentWord.c_str(), nullptr);
+        rows.push_back(row);
+    }
+    return rows;
+}
+
+const DecompositionRow *findRow(const std::vector<DecompositionRow> &rows, const char *label) {
+    for (const auto &row : rows) {
+        if (row.label_ == label)
+            return &row;
+    }
+    return nullptr;
+}
+
+IRProfile::ProfileReport decompositionReport() {
+    IRProfile::ProfileReport report;
+    report.totalFrames_ = 4;
+    report.frameTimesMs_ = {50.0f, 50.0f, 50.0f, 50.0f};
+    report.systemTimings_.push_back(systemEntry("INPUT", 40000));
+    report.systemTimings_.push_back(systemEntry("UPDATE", 30000000));
+    report.systemTimings_.push_back(systemEntry("UPDATE", 10000000));
+    report.systemTimings_.push_back(systemEntry("RENDER", 24000000));
+    report.gpuFrameTimingSupported_ = true;
+    report.gpuFrameTimings_.push_back({"envelope", 100.0f, 25.0f, 25.0f, 4});
+    report.gpuFrameTimings_.push_back({"commandBufferSpans", 80.0f, 20.0f, 20.0f, 4});
+    report.cpuPhases_.push_back({std::string(IRProfile::kOffscreenPacingPhase), 33.32, 8.33, 4});
+    return report;
+}
+
+TEST(ProfileReportDecomposition, RowsCarryTheExpectedPerFrameFigures) {
+    const auto rows = decompositionRows(writeAndRead(decompositionReport()));
+    ASSERT_EQ(rows.size(), 7u);
+    EXPECT_NEAR(findRow(rows, "INPUT")->ms_, 0.010, 1e-9);
+    EXPECT_NEAR(findRow(rows, "UPDATE")->ms_, 10.0, 1e-9);
+    EXPECT_NEAR(findRow(rows, "RENDER")->ms_, 6.0, 1e-9);
+    EXPECT_NEAR(findRow(rows, "GPU")->ms_, 20.0, 1e-9);
+    EXPECT_NEAR(findRow(rows, "Pacing")->ms_, 8.33, 1e-9);
+    EXPECT_NEAR(findRow(rows, "Remainder")->ms_, 5.66, 1e-9);
+    EXPECT_NEAR(findRow(rows, "Frame")->ms_, 50.0, 1e-9);
+    EXPECT_NEAR(findRow(rows, "UPDATE")->percent_, 20.0, 1e-9);
+    EXPECT_NEAR(findRow(rows, "Frame")->percent_, 100.0, 1e-9);
+}
+
+TEST(ProfileReportDecomposition, RowsAddUpToTheFrameMeanAtThePrintedPrecision) {
+    IRProfile::ProfileReport report = decompositionReport();
+    report.frameTimesMs_ = {33.3333f, 41.1111f, 38.7777f};
+    report.systemTimings_[1].totalNs_ = 13333333;
+    report.systemTimings_[3].totalNs_ = 7777777;
+    const auto rows = decompositionRows(writeAndRead(report));
+    ASSERT_EQ(rows.size(), 7u);
+    double sum = 0.0;
+    for (const auto &row : rows) {
+        if (row.label_ != "Frame")
+            sum += row.ms_;
+    }
+    EXPECT_NEAR(sum, findRow(rows, "Frame")->ms_, 1e-9);
+}
+
+TEST(ProfileReportDecomposition, ANegativeRemainderPrintsAsItIs) {
+    IRProfile::ProfileReport report = decompositionReport();
+    report.gpuFrameTimings_[1] = {"commandBufferSpans", 160.0f, 40.0f, 40.0f, 4};
+    const auto rows = decompositionRows(writeAndRead(report));
+    ASSERT_NE(findRow(rows, "Remainder"), nullptr);
+    EXPECT_NEAR(findRow(rows, "Remainder")->ms_, -14.34, 1e-9);
+}
+
+TEST(ProfileReportDecomposition, UnsupportedGpuTimingMarksTheRowUnavailable) {
+    IRProfile::ProfileReport report = decompositionReport();
+    report.gpuFrameTimingSupported_ = false;
+    report.gpuFrameTimings_.clear();
+    const auto rows = decompositionRows(writeAndRead(report));
+    ASSERT_EQ(rows.size(), 7u);
+    EXPECT_NE(findRow(rows, "GPU")->line_.find("unavailable"), std::string::npos);
+    EXPECT_NE(findRow(rows, "Remainder")->line_.find("includes GPU time"), std::string::npos);
+    EXPECT_NEAR(findRow(rows, "Remainder")->ms_, 25.66, 1e-9);
+}
+
+TEST(ProfileReportDecomposition, AGpuTimingWithNoValidFrameMarksTheRowUnavailable) {
+    IRProfile::ProfileReport report = decompositionReport();
+    report.gpuFrameTimings_[0].sampleCount_ = 0;
+    report.gpuFrameTimings_[1].sampleCount_ = 0;
+    const auto rows = decompositionRows(writeAndRead(report));
+    EXPECT_NE(findRow(rows, "GPU")->line_.find("unavailable"), std::string::npos);
+    EXPECT_NE(findRow(rows, "Remainder")->line_.find("includes GPU time"), std::string::npos);
+}
+
+TEST(ProfileReportDecomposition, AMissingPacingSampleReadsZero) {
+    IRProfile::ProfileReport report = decompositionReport();
+    report.cpuPhases_.clear();
+    const auto rows = decompositionRows(writeAndRead(report));
+    ASSERT_NE(findRow(rows, "Pacing"), nullptr);
+    EXPECT_EQ(findRow(rows, "Pacing")->ms_, 0.0);
+    EXPECT_NEAR(findRow(rows, "Remainder")->ms_, 13.99, 1e-9);
+}
+
+TEST(ProfileReportDecomposition, NoRecordedFrameWritesNoSection) {
+    IRProfile::ProfileReport report = decompositionReport();
+    report.frameTimesMs_.clear();
+    EXPECT_EQ(writeAndRead(report).find("Frame decomposition"), std::string::npos);
 }
 
 // The scope timer must exist in every build type: a Release `--auto-profile`

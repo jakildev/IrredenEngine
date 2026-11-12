@@ -253,6 +253,31 @@ and `profile_matrix.py` label older-format stage rows `(window)`.
 `repeat_profile.py` also summarizes the exclusive sum. Executor:
 `python3 scripts/perf/test_profile_parser.py`.
 
+## Read where a frame's time went
+
+The `--- Frame decomposition ---` section splits the mean recorded frame into
+`INPUT`, `UPDATE` and `RENDER` system CPU, `GPU`, `Pacing` and `Remainder`, each
+in ms per frame and as a share of the `Frame time` mean, with a closing `Frame`
+row the others add up to at the printed precision. Every divisor is the recorded
+frame count (the `Frame time` line's frames, not the steady count). A system row
+is a pipeline's summed `Total(ms)` over those frames. `GPU` is the mean
+`commandBufferSpans`; the envelope also counts the gaps between submissions in
+which the CPU runs systems, so it double counts. `Pacing` is the offscreen
+pacer's sleep (the `offscreenPacing` CPU phase row, 0 when absent).
+
+`Remainder` is the frame mean minus the other rows. On Metal it is `present()`
+committing and waiting for the frame's command buffer outside any system's
+timer (about 3.5 ms at the million control). A negative remainder means the
+terms overlap and is printed as it is. Where there is no whole-frame GPU timer
+(OpenGL, `Coverage: supported=0`) or no valid GPU frame, the `GPU` row reads
+`unavailable` and the remainder is marked `includes GPU time`.
+
+`parse_report` exposes the section as `frame_split` (`None` for a report
+without it, never zeros; `ms` and `percent` keyed by row label, `gpu_unavailable`,
+`remainder_includes_gpu`). `repeat_profile.py` adds a `frame split <term>` row
+per term to `summary.md`. Executor: `python3 scripts/perf/test_profile_parser.py`
+and `python3 scripts/perf/test_repeat_profile.py`.
+
 ## Split a system row with `IR_PROFILE_SCOPE`
 
 The `--- CPU phase timing ---` section of every cell's report lists the fixed

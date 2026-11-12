@@ -96,7 +96,8 @@ Run totals: `endFrame()` also folds each finished frame into a run-long map
 boundary still counts; cleared by `resetRun()`). `World::enableFrameTiming(true)`
 enables the histogram and resets the run, and `buildAndWriteProfileReport`
 appends one `--- CPU phase timing ---` row per scope via
-`appendCpuScopePhases` (sample count = scope exits). The histogram is
+`appendCpuScopePhases` (sample count = scope exits). The report's `--- Frame decomposition ---` section reads
+the pacer's `kOffscreenPacingPhase` row (`profile_report.hpp`) among other fields. The histogram is
 single-threaded: an `IR_PROFILE_SCOPE` recorded from a worker thread races
 the unsynchronized maps and is unsupported.
 
