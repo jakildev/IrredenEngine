@@ -62,7 +62,7 @@ grid, GPU-side work, and any reduction in the bytes a resident occupies
 | Derived state | Derived pose plus everything computed from it: pool global positions, the owner-id range, queued position ranges, cull bounds, the GRID-rotated raster, and the fog and LOD gates on the voxel set. |
 | Pose writer | A system that declares a write to a pose input. |
 | Deriving system | A system that maintains derived state. |
-| Round | One completed dispatch of every deriving system registered in a pipeline, group by group in pipeline order. |
+| Round | One completed dispatch of every deriving system registered in INPUT, UPDATE and RENDER, group by group in that order. A round spans the three pipelines; no pipeline's end closes one. |
 
 ## The mechanism
 
@@ -177,17 +177,49 @@ and a cursor over the deriving groups. Each deriving group also has a
 *pending set*: the ids of its deriving members, taken from pipeline
 registration.
 
+- The deriving groups of INPUT, UPDATE and RENDER form one sequence, and the
+  cursor runs over that sequence. There is one cursor, not one per pipeline.
 - `roundsOpened_` advances when a pipeline starts and no round is open. The
-  cursor moves to the first deriving group, and that group's pending set is
-  refilled.
+  cursor moves to the first deriving group of the sequence, which may sit in
+  a later pipeline than the one starting, and that group's pending set is
+  refilled. A pipeline start while a round is open changes nothing.
 - After a group's dispatch has joined, and before that group's structural
   flush, the main thread checks the group. If it is the group under the
   cursor, every deriving member that dispatched in this pass leaves the
   pending set. A member that was off cadence stays in it. When the set is
   empty the cursor moves to the next deriving group and refills its set. A
   dispatch of a deriving group not under the cursor changes nothing.
-- When the cursor passes the last deriving group the round closes and
-  `roundsCompleted_` becomes `roundsOpened_`.
+- When the cursor passes the last deriving group of the sequence the round
+  closes and `roundsCompleted_` becomes `roundsOpened_`. This is the only
+  write to `roundsCompleted_`. The end of a pipeline is not a round boundary.
+
+**Rounds span pipelines.** One frame of `runMainLoopFrame`
+(`engine/world/include/irreden/world/main_loop_frame.hpp`) runs INPUT then
+UPDATE once per due tick, then RENDER once
+(`RenderManager::renderFrame`). A round opened at the frame's first INPUT
+stays open through every UPDATE pass and into RENDER. With
+`UPDATE_VOXEL_SET_CHILDREN` registered in RENDER, the last deriving group of
+the sequence is in RENDER. So `roundsCompleted_` does not change at any
+INPUT or UPDATE drain of that round, and only the join of the RENDER group
+can close it.
+
+A drain can therefore promote an entity whose stamp is `s` only after round
+`s` has closed. Round `s` opened after the entity's inputs last changed, and
+its cursor then passed every deriving group, the RENDER group included. A
+drain at the end of an UPDATE pass can promote an entity only when its RENDER
+derivation has already run over its current inputs. The drain at the end of
+the RENDER pipeline is the first that sees the round closed. A later INPUT or
+UPDATE drain can promote rows the budget held back, against the same closed
+round. A drain never closes or advances a round.
+
+The other dispatches in a frame do not move the cursor: INPUT before the
+second UPDATE tick, and UPDATE passes after the cursor has moved into
+RENDER. They re-derive a settling entity from the same inputs, because any
+change to those inputs would restamp it. A frame with no due UPDATE tick
+runs RENDER alone, and a frame held for the first key press runs INPUT and
+RENDER without UPDATE. A deriving group in UPDATE then stays under the
+cursor, and the round finishes in a later frame. A headless test that runs the pipelines in another order
+gets the same result: a group not under the cursor counts for nothing.
 
 The counters, the cursor and the pending sets are main-thread state. A
 member of a multi-system group runs on a worker, but none of this is written
@@ -289,9 +321,12 @@ comment), so it costs at most one extra round and cannot repeat.
 a listed mutator.
 
 **The drain.** `IRPrefab::Static::drain()` is one main-thread step. The
-World runs it after the final structural flush of each pipeline (INPUT,
-every UPDATE pass, RENDER), and a headless test calls it where it calls the
-pipelines. In order, it:
+World runs it after the final structural flush of each pipeline (every
+INPUT and UPDATE pass, and RENDER), and a headless test calls it where it
+calls the pipelines. Running it after each pipeline only stamps changes
+promptly. Whether a row can be promoted depends on `roundsCompleted_`, which
+the drain reads and never writes ([Rounds span pipelines](#settle-settling-to-settled)).
+In order, it:
 
 1. Applies the staged change notes and holds. A note whose entity is gone
    or not static is dropped, and on a voxel-set note it clears
@@ -668,7 +703,7 @@ startup.
 | `IREntity::kClearedByForeignMove<T>` | Entity, same header | The archetype-move rule above is a move-time rule |
 | `C_Static`, `C_Settled` | System, `engine/system/include/irreden/system/components/component_static.hpp` | The exclusion adds `C_Static`'s id to exclude archetypes and the round tracker reads `C_Settled` in them. The system layer resolves both with `IREntity::getComponentType<…>()`. |
 | The exclusion: one function, `IRSystem::detail::applyStaticExclusion(include, exclude, writes)` | System | Every lane below calls it. It is the only implementation. |
-| Rounds | System, on `SystemManager` | Membership, the pending sets and the cursor come from pipeline registration, and the cursor moves at each group's join inside `executePipeline` |
+| Rounds | System, on `SystemManager` | Membership, the pending sets and the one cursor over the deriving groups of all three pipelines come from pipeline registration, and the cursor moves at each group's join inside `executePipeline` |
 | Freeze, thaw, resettle, notes, drain, eligibility, `C_StaticSettings` | Prefab, `IRPrefab::Static` in `engine/prefabs/irreden/common/` | Eligibility reads rotation mode, GPU slots and skeletons, all of which are prefab knowledge |
 
 **The lanes.** Each lane differs only in how it knows what the system
@@ -739,8 +774,8 @@ The scheduler gains three things:
    called from every registration and query lane, reading a guard the
    entity layer records per component.
 2. **Round tracking.** `roundsOpened_` and `roundsCompleted_`
-   (`std::uint64_t`), the cursor over the deriving groups in pipeline order
-   and each group's pending set ([§ Settle](#settle-settling-to-settled)),
+   (`std::uint64_t`), one cursor over the deriving groups of INPUT, UPDATE
+   and RENDER as a single sequence, and each group's pending set ([§ Settle](#settle-settling-to-settled)),
    read through `IRSystem::roundsOpened()` and `IRSystem::roundsCompleted()`.
    `executePipeline` advances the cursor on the main thread after each
    group's dispatch joins, so grouped deriving systems need no shared
@@ -1027,6 +1062,16 @@ system at a time:
   before the drain restarts the stamp exactly as for a singleton group. An
   assert build checks that the round state is written only on the main
   thread.
+- **Cross-pipeline round.** `PROPAGATE_TRANSFORM` in UPDATE and
+  `UPDATE_VOXEL_SET_CHILDREN` in RENDER, driven through `runMainLoopFrame`
+  with three UPDATE ticks per frame. An entity frozen before the round opens
+  is not promoted at any INPUT or UPDATE drain of that round, and
+  `roundsCompleted_` is unchanged across all of them. It is promoted first at
+  the RENDER drain after `UPDATE_VOXEL_SET_CHILDREN` has dispatched, and its
+  pool positions then equal the twin's. The test fails if any drain before
+  that RENDER dispatch promotes. A second run has a frame with no UPDATE
+  tick in the middle of the round, and the round closes in the next frame
+  that runs UPDATE and RENDER.
 - **Membership change.** `appendToPipeline` of a new deriving system in the
   middle of a round abandons it, and promotion follows the next complete
   round, which includes the new system.
@@ -1175,8 +1220,9 @@ sibling epics' work.
 3. Freeze, thaw and resettle are deferred to the next structural flush.
    Promotion needs a complete round that opened after the entity's inputs
    last changed: the settle stamp, restarted by every change while settling,
-   and the global floor, restarted by every global-modifier change. It is
-   capped per round (default 8,192). Any other archetype move returns a
+   and the global floor, restarted by every global-modifier change. A round
+   spans INPUT, UPDATE and RENDER, and only the join of its last deriving
+   group closes it. Promotion is capped per round (default 8,192). Any other archetype move returns a
    settled entity to settling.
 4. A static entity needs a static parent; thaw and resettle cascade
    downward.
