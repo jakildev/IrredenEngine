@@ -24,7 +24,7 @@
 #   7  stacks: upstream by ancestry, stale base, accidental fork, grandparent,
 #      inherited-branch competitor, stale local default ref
 #   8  --repo slug mismatch fails closed
-#   9  snapshot coherence: head/body/labels or population moved; identical proceeds
+#   9  snapshot coherence: verdict inputs or population moved; irrelevant body and labels proceed
 #   10 a stacked sibling's own delta excludes paths inherited from its base;
 #      its clean edit to the same docs path remains informational
 #   11 a competitor whose base is gone or unrelated drops a path whose blob
@@ -557,6 +557,7 @@ run_tool --pr-json "$TMP/prs-3a.json"
 assert_rc 1 "T8 the omitted flag proceeds"
 
 echo "=== 9: snapshot coherence ==="
+ISSUE_9=4981
 g checkout -q feature-3
 pr_json "$TMP/prs-9a.json" "$(PR_ROW_OID=$(oid pr-104) pr_row 103 pr-103 master false - src/y.txt)"
 run_tool --pr-json "$TMP/prs-9a.json"
@@ -587,16 +588,42 @@ reset_stub
 pr_json "$GH_STUB_DIR/prs.1.json" "$(pr_row 103 pr-103 master false - src/y.txt)"
 pr_json "$GH_STUB_DIR/prs.2.json" "$(PR_ROW_BODY_JSON='"changed"' pr_row 103 pr-103 master false - src/y.txt)"
 run_tool
-assert_rc 2 "T9e a body edit mid-run exits 2"
-assert_contains "$ERR" "#103 body changed" "T9e the delta names the body"
-assert_absent "$OUT" "VERDICT:" "T9e no verdict"
+assert_rc 1 "T9e an irrelevant body edit mid-run proceeds"
+assert_eq "$(verdict_line)" "VERDICT: overlap" "T9e irrelevant body edit keeps the verdict"
+reset_stub
+pr_json "$GH_STUB_DIR/prs.1.json" "$(pr_row 103 pr-103 master false - src/y.txt)"
+pr_json "$GH_STUB_DIR/prs.2.json" "$(PR_ROW_LABELS_JSON='[{"name":"fleet:claim-mac-pool-6"}]' pr_row 103 pr-103 master false - src/y.txt)"
+run_tool
+assert_rc 1 "T9f an irrelevant label edit mid-run proceeds"
+assert_eq "$(verdict_line)" "VERDICT: overlap" "T9f irrelevant label edit keeps the verdict"
 reset_stub
 pr_json "$GH_STUB_DIR/prs.1.json" "$(pr_row 103 pr-103 master false - src/y.txt)"
 pr_json "$GH_STUB_DIR/prs.2.json" "$(PR_ROW_LABELS_JSON='[{"name":"fleet:awaiting-infra"}]' pr_row 103 pr-103 master false - src/y.txt)"
 run_tool
-assert_rc 2 "T9f a label edit mid-run exits 2"
-assert_contains "$ERR" "#103 labels changed" "T9f the delta names the labels"
-assert_absent "$OUT" "VERDICT:" "T9f no verdict"
+assert_rc 2 "T9g an awaiting-infra label edit mid-run exits 2"
+assert_contains "$ERR" "#103 fleet:awaiting-infra changed" "T9g the delta names the PR and label"
+assert_absent "$OUT" "VERDICT:" "T9g no verdict"
+reset_stub
+pr_json "$GH_STUB_DIR/prs.1.json" "$(pr_row 103 pr-103 master false - src/y.txt)"
+pr_json "$GH_STUB_DIR/prs.2.json" "$(PR_ROW_BODY_JSON="\"Parked-until: #${ISSUE_9}\"" pr_row 103 pr-103 master false - src/y.txt)"
+run_tool
+assert_rc 2 "T9h a Parked-until edit mid-run exits 2"
+assert_contains "$ERR" "#103 Parked-until references changed" "T9h the delta names the PR"
+assert_absent "$OUT" "VERDICT:" "T9h no verdict"
+reset_stub
+pr_json "$GH_STUB_DIR/prs.1.json" "$(pr_row 103 pr-103 master false - src/y.txt)"
+pr_json "$GH_STUB_DIR/prs.2.json" "$(pr_row 103 pr-103 stack-base false - src/y.txt)"
+run_tool
+assert_rc 2 "T9i a base edit mid-run exits 2"
+assert_contains "$ERR" "#103 base changed (master → stack-base)" "T9i the delta names the PR and base"
+assert_absent "$OUT" "VERDICT:" "T9i no verdict"
+reset_stub
+pr_json "$GH_STUB_DIR/prs.1.json" "$(pr_row 103 pr-103 master false - src/y.txt)"
+pr_json "$GH_STUB_DIR/prs.2.json" "$(PR_ROW_BODY_JSON="\"Closes #${ISSUE_9}\"" pr_row 103 pr-103 master false - src/y.txt)"
+run_tool --self-pr 103
+assert_rc 2 "T9j a self closing-reference edit mid-run exits 2"
+assert_contains "$ERR" "#103 closing references changed" "T9j the delta names the self PR"
+assert_absent "$OUT" "VERDICT:" "T9j no verdict"
 
 echo "=== 10: a stacked sibling's own delta excludes paths inherited from the shared base ==="
 branch_from stack-base master
