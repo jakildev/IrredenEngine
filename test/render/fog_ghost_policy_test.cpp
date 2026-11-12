@@ -169,6 +169,7 @@ TEST(FogGhostPolicyTest, EvaluatorFreezesLastShownPoseAcrossCadencesAndHiddenMov
         const auto runTick = [&](std::uint64_t frame, C_WorldTransform &pose) {
             system.frameCounter_ = frame;
             system.pending_.reset(1);
+            system.stamped_.reset(1);
             system.restampedByWorker_.assign(1, 0u);
             system.tick(entity, revealed, ghost, pose, voxelSet);
             system.endTick();
@@ -365,6 +366,7 @@ TEST(FogGhostPolicyTest, VoxelRouteRetainsAlphaMaskAndExploredCarrier) {
     system.settings_.staggerPeriod_ = 1;
     system.restampedByWorker_.assign(1, 0u);
     system.pending_.reset(1);
+    system.stamped_.reset(1);
 
     IREntity::EntityId entity = 1;
     C_FogRevealed revealed{};
@@ -383,6 +385,7 @@ TEST(FogGhostPolicyTest, VoxelRouteRetainsAlphaMaskAndExploredCarrier) {
     transform.translation_ = {10.0f, 0.0f, 0.0f};
     system.observers_.visionCircles_[0].x = 20.0f;
     system.pending_.reset(1);
+    system.stamped_.reset(1);
     system.restampedByWorker_.assign(1, 0u);
     system.tick(entity, revealed, ghost, transform, voxelSet);
     system.endTick();
@@ -420,6 +423,7 @@ TEST(FogGhostPolicyTest, VoxelRouteRetainsAlphaMaskAndExploredCarrier) {
 
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> hideSystem;
     hideSystem.pending_.reset(1);
+    hideSystem.stamped_.reset(1);
     hideSystem.restampedByWorker_.assign(1, 0u);
     hideSystem.pending_.push({&voxelSet, &pool, false, false});
     hideSystem.endTick();

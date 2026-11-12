@@ -3914,6 +3914,7 @@ void seedDemoSkeleton() {
         voxelSet.voxels_[i].bone_id_ = bone;
         voxelSet.voxels_[i].color_ = kBoneSegmentColors[bone];
     }
+    voxelSet.markPoolRecordsChanged();
 }
 
 void destroyWidgetPager(

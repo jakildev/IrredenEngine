@@ -252,6 +252,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
             poolColors[baseIdx + i].deactivate();
         }
         pool.applyFogCarrierPolicy(std::span<C_Voxel>{poolColors.data() + baseIdx, capacity});
+        pool.queueRecordRange(baseIdx, capacity);
         pool.resyncActiveMaskFromColors(baseIdx, capacity);
     }
 
@@ -285,6 +286,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
             pool.applyFogCarrierPolicy(std::span<C_Voxel>{poolColors.data() + baseIdx, capacity});
             voxelSet.rotationSourceVoxels_.clear();
             voxelSet.rotationSourceVoxels_.shrink_to_fit();
+            pool.queueRecordRange(baseIdx, capacity);
             pool.resyncActiveMaskFromColors(baseIdx, capacity);
         }
 
@@ -330,6 +332,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
             }
         }
         deactivateTail(voxelSet, poolColors);
+        pool.queueRecordRange(baseIdx, capacity);
         pool.resyncActiveMaskFromColors(baseIdx, capacity);
 
         for (int i = 0; i < authoredCount; ++i) {
@@ -630,6 +633,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         pool.applyFogCarrierPolicy(
             std::span<C_Voxel>{poolColors.data() + baseIdx, static_cast<size_t>(capacity)}
         );
+        pool.queueRecordRange(baseIdx, static_cast<std::size_t>(capacity));
 
         pool.resyncActiveMaskFromColors(baseIdx, static_cast<std::size_t>(capacity));
         if (written > 0) {
@@ -658,9 +662,8 @@ template <> struct System<REBUILD_GRID_VOXELS> {
     // (`c_voxel_to_trixel_stage_{1,2}` faceIsExposed) would gate
     // rotated-frame faces against an unrotated mask and drop / mis-colour
     // whole faces. The inverse arm derives the same
-    // bits directly from its dest grid instead. STAGE_1 re-uploads pool
-    // colours (which carry flags_) every frame, so the rewrite reaches the
-    // GPU.
+    // bits directly from its dest grid instead. The rewritten slots are
+    // queued for STAGE_1's record upload, which carries flags_ to the GPU.
     void recomputeMaskFromGlobals(C_VoxelPool &pool, size_t baseIdx, int safeCount) {
         std::vector<C_Voxel> &poolColors = pool.getColors();
         const std::vector<IRRender::VoxelGpuPosition> &poolGlobals = pool.getPositionGlobals();
@@ -685,6 +688,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
             safeCount,
             occupancyScratch_
         );
+        pool.queueRecordRange(baseIdx, static_cast<size_t>(safeCount));
     }
 
     static SystemId create() {

@@ -253,6 +253,7 @@ inline void fillPoolBox(
             }
         );
     }
+    pool.queueRecordRange(0, count);
     pool.resyncActiveMaskFromColors(0, count);
 }
 

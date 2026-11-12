@@ -626,6 +626,18 @@ void World::buildAndWriteProfileReport() {
     report.witness_.maxOverflowEntries_ = witness.maxOverflowEntries_;
     report.witness_.maxOverflowDropped_ = witness.maxOverflowDropped_;
     report.witness_.overflowCap_ = witness.overflowCap_;
+    const auto summarizeUploads = [](const IRRender::VoxelUploadBytes &uploads) {
+        IRProfile::VoxelUploadSummary summary;
+        summary.firstFrameBytes_ = uploads.firstFrame_;
+        summary.laterMeanBytes_ = uploads.frames_ > 1 ? static_cast<double>(uploads.laterSum_) /
+                                                            static_cast<double>(uploads.frames_ - 1)
+                                                      : 0.0;
+        summary.laterMaxBytes_ = uploads.laterMax_;
+        summary.frames_ = uploads.frames_;
+        return summary;
+    };
+    report.witness_.recordUploads_ = summarizeUploads(witness.recordUploads_);
+    report.witness_.maskUploads_ = summarizeUploads(witness.maskUploads_);
 
     // Collect per-system timing, grouped by pipeline
     auto pipelineName = [](IRTime::Events e) -> const char * {

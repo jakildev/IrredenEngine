@@ -265,6 +265,25 @@ inline VoxelCullAccumulator &voxelCullAccumulator() {
     return instance;
 }
 
+// Per-frame byte counts of one upload stream: the first recorded frame alone,
+// then the sum and maximum of every later frame.
+struct VoxelUploadBytes {
+    std::uint64_t firstFrame_ = 0;
+    std::uint64_t laterSum_ = 0;
+    std::uint64_t laterMax_ = 0;
+    std::uint32_t frames_ = 0;
+
+    void record(std::uint64_t bytes) {
+        if (frames_ == 0) {
+            firstFrame_ = bytes;
+        } else {
+            laterSum_ += bytes;
+            laterMax_ = IRMath::max(laterMax_, bytes);
+        }
+        ++frames_;
+    }
+};
+
 // What a profile report vouches for in a build that logs nothing: the camera
 // pose the voxel pass rendered at and the per-axis overflow lane's worst
 // frame. Recorded every frame, independent of stage timing. Yaw is radians in
@@ -300,6 +319,12 @@ struct RenderRunWitness {
     CpuPhaseTiming perAxisRelease_;
     CpuPhaseTiming perAxisPark_;
     CpuPhaseTiming perAxisUnpark_;
+    // Bytes VOXEL_TO_TRIXEL_STAGE_1 uploaded to the voxel record and
+    // active-mask buffers, summed over the frame's pool canvases. The first
+    // frame of a run uploads every live prefix; later frames upload the
+    // queued ranges, so a frozen scene reads 0 after it.
+    VoxelUploadBytes recordUploads_;
+    VoxelUploadBytes maskUploads_;
 
     void recordPose(float yaw, float zoom, bool explicitPivot) {
         explicitPivotSamples_ += explicitPivot ? 1u : 0u;
@@ -316,6 +341,11 @@ struct RenderRunWitness {
         yawLast_ = yaw;
         zoomLast_ = zoom;
         ++poseSamples_;
+    }
+
+    void recordVoxelUploads(std::uint64_t recordBytes, std::uint64_t maskBytes) {
+        recordUploads_.record(recordBytes);
+        maskUploads_.record(maskBytes);
     }
 
     void recordOverflow(std::uint32_t entries, std::uint32_t dropped, std::uint32_t cap) {

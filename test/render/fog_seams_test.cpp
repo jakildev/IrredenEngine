@@ -100,6 +100,7 @@ TEST(FogSeamsTest, VoxelEvaluatorAppliesOverridesImmediatelyAndNoneUsesTheField)
     system.observers_ = sourceWithChannels(0b10u);
     system.settings_.staggerPeriod_ = 100;
     system.pending_.reset(4);
+    system.stamped_.reset(4);
 
     C_VoxelSetNew voxelSet{};
     C_WorldTransform inside{};

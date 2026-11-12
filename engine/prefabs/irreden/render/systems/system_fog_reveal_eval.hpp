@@ -79,6 +79,7 @@ struct FogRevealEvalGhost {
     std::uint64_t frameCounter_ = 0;
     bool fogAttached_ = false;
     IRJob::WorkerBlockQueue<PendingTransition> pending_;
+    IRJob::WorkerBlockQueue<IRPrefab::Fog::StampedRecords> stamped_;
     // Voxels whose carrier factor was rewritten this frame, per worker, summed
     // into `restampedVoxelsLastFrame_` in endTick for perf probes.
     std::vector<std::uint32_t> restampedByWorker_;
@@ -123,6 +124,7 @@ struct FogRevealEvalGhost {
             population += static_cast<std::size_t>(node->length_);
         }
         pending_.reset(population);
+        stamped_.reset(population);
         // No stagger filter: every anchor's region keeps its access bit each
         // frame, so the gather's eviction keeps a far region a body reads.
         if (fog != nullptr) {
@@ -227,7 +229,9 @@ struct FogRevealEvalGhost {
             const std::uint32_t stamped = IRPrefab::Fog::bodyCarrierBits(*activePool_, voxelSet) >>
                                           IRComponents::VoxelReserved::kFogBodyFactorShift;
             if (stamped != factor) {
-                IRPrefab::Fog::stampBodyCarrier(*activePool_, voxelSet, true, factor);
+                stamped_.push(
+                    IRPrefab::Fog::stampBodyCarrierStaged(*activePool_, voxelSet, true, factor)
+                );
                 const auto slot = static_cast<std::size_t>(IRJob::workerId());
                 if (slot < restampedByWorker_.size()) {
                     restampedByWorker_[slot] += static_cast<std::uint32_t>(voxelSet.numVoxels_);
@@ -247,6 +251,7 @@ struct FogRevealEvalGhost {
         for (std::uint32_t count : restampedByWorker_) {
             restampedVoxelsLastFrame_ += count;
         }
+        stamped_.forEach(IRPrefab::Fog::queueStamped);
         pending_.forEach([](const PendingTransition &transition) {
             detail::applyFogGateToPool(
                 transition.voxelSet_,
@@ -290,6 +295,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
     std::uint64_t frameCounter_ = 0;
     bool fogAttached_ = false;
     IRJob::WorkerBlockQueue<PendingTransition> pending_;
+    IRJob::WorkerBlockQueue<IRPrefab::Fog::StampedRecords> stamped_;
     std::vector<std::uint32_t> restampedByWorker_;
     std::uint32_t restampedVoxelsLastFrame_ = 0;
 
@@ -342,6 +348,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
             population += static_cast<std::size_t>(node->length_);
         }
         pending_.reset(population);
+        stamped_.reset(population);
         if (fog != nullptr) {
             IRPrefab::Fog::touchAnchorRegions(*fog, activeCanvas_, nodes);
         }
@@ -410,7 +417,9 @@ template <> struct System<FOG_REVEAL_EVAL> {
             const std::uint32_t stamped = IRPrefab::Fog::bodyCarrierBits(*activePool_, voxelSet) >>
                                           IRComponents::VoxelReserved::kFogBodyFactorShift;
             if (stamped != factor) {
-                IRPrefab::Fog::stampBodyCarrier(*activePool_, voxelSet, true, factor);
+                stamped_.push(
+                    IRPrefab::Fog::stampBodyCarrierStaged(*activePool_, voxelSet, true, factor)
+                );
                 const auto slot = static_cast<std::size_t>(IRJob::workerId());
                 if (slot < restampedByWorker_.size()) {
                     restampedByWorker_[slot] += static_cast<std::uint32_t>(voxelSet.numVoxels_);
@@ -434,6 +443,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
         for (std::uint32_t count : restampedByWorker_) {
             restampedVoxelsLastFrame_ += count;
         }
+        stamped_.forEach(IRPrefab::Fog::queueStamped);
         pending_.forEach([](const PendingTransition &transition) {
             detail::applyFogGateToPool(
                 transition.voxelSet_,

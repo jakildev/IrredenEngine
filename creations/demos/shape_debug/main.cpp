@@ -5129,6 +5129,7 @@ void applyCheckerboard(C_VoxelSetNew &voxelSet, Color baseColor) {
         }
         voxelSet.voxels_[i].color_ = c;
     }
+    voxelSet.markPoolRecordsChanged();
 }
 
 // Bounding half-extent mirroring the GPU formula in
@@ -5168,6 +5169,7 @@ void applyDepthColor(C_VoxelSetNew &voxelSet, IRRender::ShapeType type, vec4 sdf
         };
         voxelSet.voxels_[i].color_ = c;
     }
+    voxelSet.markPoolRecordsChanged();
 }
 
 // The centered grid fixes the sampling phase: even sizes put cell centers half
@@ -5457,6 +5459,7 @@ void createSkinnedVoxelSmoke() {
     for (std::size_t i = 0; i < vs.voxels_.size(); ++i) {
         vs.voxels_[i].bone_id_ = (vs.positions_[i].pos_.x < 0.0f) ? 0 : 1;
     }
+    vs.markPoolRecordsChanged();
 
     // Root joint at the bar's left end; elbow at the midpoint, CHILD_OF the
     // root with a +8 local offset and posed 30° about +Y away from its rest.

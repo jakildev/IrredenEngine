@@ -4,18 +4,18 @@ API contracts; this file owns cross-header and pipeline constraints.
 
 ## Pool and voxel-set contracts
 
-- A `C_VoxelPool` belongs only on a canvas entity, one pool per canvas.
-  `C_VoxelSetNew` owns one contiguous span in that pool and captures its target
-  canvas at construction. Detached entity canvases, absent from the render
-  manager's named-canvas map, use the entity-keyed `IRPrefab::VoxelPool` facade.
-- `C_VoxelPool::canAllocateVoxels` is a non-mutating capacity query: it follows
-  the allocator's exact freed-span-or-never-allocated-tail policy, so a larger
-  freed span does not satisfy a smaller request. Lua creations call it through
-  `IRRender.canAllocateVoxels` for the active canvas before sizing user data.
+- A `C_VoxelPool` belongs only on a canvas entity, one pool per canvas; each `C_VoxelSetNew` owns one
+  contiguous span and captures its target canvas at construction. Detached entity canvases, absent
+  from the named-canvas map, use the entity-keyed `IRPrefab::VoxelPool` facade.
+- `canAllocateVoxels` is a non-mutating query following the exact freed-span-or-tail policy (a larger
+  freed span does not satisfy a smaller request); Lua sizes user data via `IRRender.canAllocateVoxels`.
 - `C_Voxel` is a 12-byte std430 GPU record. Its alpha defines activity, and
   its face-occlusion and `reserved_` bits are shader-visible encodings. When
   assigning a `reserved_` bit, update the layout comment and every shader
   mirror in the same change; the compiler cannot detect a collision.
+- STAGE_1 uploads only queued record and mask ranges. Pool mask mutators and set mutators queue; a raw
+  `getColors()` / `voxels_` writer calls `markRecordsChanged(start, count)` / `markPoolRecordsChanged`,
+  and a `PARALLEL_FOR` writer stages its range and queues it in `endTick` (`stampBodyCarrierStaged`).
 - The pool active mask must mirror voxel alpha. Use the set's bulk mutators
   or `editVoxels` / `carve`; they restore the rotation-source mirror, active
   mask, and face occupancy in that order. For a multi-pass raw-span edit,

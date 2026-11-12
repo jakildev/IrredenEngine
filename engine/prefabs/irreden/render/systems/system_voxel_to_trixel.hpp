@@ -45,7 +45,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <limits>
+#include <optional>
 #include <span>
 #include <unordered_set>
 #include <utility>
@@ -286,6 +288,159 @@ inline void flushPendingPositionRanges(
     pool.clearPendingPositionRanges();
 }
 
+// The pool's record and active-mask uploads (bindings 6 and 8). Both GPU
+// buffers are shared by every pool canvas, so a queued range is valid only
+// while the buffer still holds this pool's last upload; otherwise, and when
+// the queue saturated, the whole live prefix is uploaded.
+struct PoolUploadTarget {
+    Buffer *buffer_ = nullptr;
+    bool bufferHoldsPool_ = false;
+};
+
+namespace detail {
+
+using PendingRanges = std::vector<std::pair<std::size_t, std::size_t>>;
+
+// Upper bound on the runs one pool upload submits. GL issues one
+// glBufferSubData per run and a Metal orphan blits each gap, so thousands of
+// scattered slots cost more as runs than as one longer copy.
+constexpr std::size_t kMaxPoolUploadRuns = 256;
+
+// Sort @p ranges and merge, in place, entries that overlap or are separated
+// by at most @p minGap elements, each clamped to [0, limit); entries wholly
+// past the limit are dropped.
+inline void coalesceRanges(PendingRanges &ranges, std::size_t limit, std::size_t minGap) {
+    std::sort(ranges.begin(), ranges.end());
+    std::size_t out = 0;
+    for (const auto &[start, count] : ranges) {
+        if (start >= limit) {
+            break;
+        }
+        const std::size_t end = IRMath::min(start + count, limit);
+        if (out > 0 && start <= ranges[out - 1].first + ranges[out - 1].second + minGap) {
+            auto &open = ranges[out - 1];
+            open.second = IRMath::max(open.second, end - open.first);
+            continue;
+        }
+        ranges[out++] = {start, end - start};
+    }
+    ranges.resize(out);
+}
+
+// First element of [0, liveCount) whose bytes differ between @p live and
+// @p uploaded outside the sorted, coalesced @p queued ranges. Elements past
+// `uploaded.size()` were never uploaded and are skipped.
+template <typename T>
+std::optional<std::size_t> firstUnqueuedChange(
+    std::span<const T> live, std::span<const T> uploaded, const PendingRanges &queued
+) {
+    const std::size_t limit = IRMath::min(live.size(), uploaded.size());
+    std::size_t next = 0;
+    auto scanGap = [&](std::size_t end) -> std::optional<std::size_t> {
+        end = IRMath::min(end, limit);
+        if (next < end &&
+            std::memcmp(live.data() + next, uploaded.data() + next, (end - next) * sizeof(T)) !=
+                0) {
+            for (std::size_t i = next; i < end; ++i) {
+                if (std::memcmp(&live[i], &uploaded[i], sizeof(T)) != 0) {
+                    return i;
+                }
+            }
+        }
+        return std::nullopt;
+    };
+    for (const auto &[start, count] : queued) {
+        if (auto slot = scanGap(start)) {
+            return slot;
+        }
+        next = IRMath::max(next, start + count);
+    }
+    return scanGap(limit);
+}
+
+} // namespace detail
+
+// The gap merge for an upload over @p limit elements: every gap left is longer
+// than `limit / kMaxPoolUploadRuns`, so at most kMaxPoolUploadRuns + 1 runs
+// remain, and their union never exceeds the prefix.
+namespace detail {
+inline void coalesceUploadRuns(PendingRanges &ranges, std::size_t limit) {
+    coalesceRanges(ranges, limit, limit / kMaxPoolUploadRuns);
+}
+} // namespace detail
+
+// Drain @p pending to @p target as one batched upload of its coalesced runs
+// over the first @p liveCount elements of @p source, or upload the whole
+// prefix when the target does not hold this pool or the queue saturated.
+// Returns the bytes uploaded. With @p uploadedCopy non-null (assert builds)
+// the copy mirrors what the buffer holds and takes every uploaded byte; with
+// @p audit also set, a range flush first fails, naming the element, if a
+// byte outside every queued range differs from the copy — a write nobody
+// queued. The audit never decides what is uploaded.
+template <typename T>
+std::size_t flushPendingPoolUploads(
+    detail::PendingRanges &pending,
+    const std::vector<T> &source,
+    std::size_t liveCount,
+    PoolUploadTarget target,
+    std::vector<BufferUploadRange> &scratch,
+    std::vector<T> *uploadedCopy,
+    [[maybe_unused]] bool audit,
+    [[maybe_unused]] const char *bufferName
+) {
+    liveCount = IRMath::min(liveCount, source.size());
+    const bool wholePrefix =
+        !target.bufferHoldsPool_ || pending.size() >= C_VoxelPool::kMaxPendingUploadRanges;
+    if (wholePrefix) {
+        pending.assign(1, {0, liveCount});
+    }
+#ifndef IR_RELEASE
+    if (uploadedCopy != nullptr && audit && !wholePrefix) {
+        detail::PendingRanges queued = pending;
+        detail::coalesceRanges(queued, liveCount, 0);
+        const std::optional<std::size_t> unqueued = detail::firstUnqueuedChange<T>(
+            std::span<const T>(source.data(), liveCount),
+            std::span<const T>(*uploadedCopy),
+            queued
+        );
+        IR_ASSERT(
+            !unqueued.has_value(),
+            "{} upload audit: element {} changed since its last upload without a queued "
+            "range — its writer must notify the pool (C_VoxelPool::markRecordsChanged / "
+            "queueRecordRange, or a pool mask mutator)",
+            bufferName,
+            unqueued.value_or(0)
+        );
+    }
+#endif
+    detail::coalesceUploadRuns(pending, liveCount);
+    if (uploadedCopy != nullptr) {
+        if (wholePrefix) {
+            uploadedCopy->assign(source.begin(), source.begin() + liveCount);
+        } else {
+            uploadedCopy->resize(IRMath::max(uploadedCopy->size(), liveCount));
+            for (const auto &[start, count] : pending) {
+                std::copy_n(source.begin() + start, count, uploadedCopy->begin() + start);
+            }
+        }
+    }
+    if (pending.empty()) {
+        return 0;
+    }
+    scratch.clear();
+    std::size_t bytes = 0;
+    for (const auto &[start, count] : pending) {
+        scratch.push_back(
+            {static_cast<std::ptrdiff_t>(start * sizeof(T)), count * sizeof(T), &source[start]}
+        );
+        bytes += count * sizeof(T);
+    }
+    target.buffer_->subDataRanges(scratch);
+    scratch.clear();
+    pending.clear();
+    return bytes;
+}
+
 // Recompute the pool's cardinal-store tie-possibility signal from the
 // CPU position mirror. Called on frames whose CPU upload changed binding 5
 // (pending ranges flushed, or a canvas-switch re-seed) — one walk of the live
@@ -409,6 +564,21 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // Reused span list for the batched position flushes (same high-water-mark
     // capacity rule).
     std::vector<BufferUploadRange> positionUploadScratch_;
+    // The canvas whose pool records and active mask voxelColorBuf_ and
+    // voxelActiveMaskBuf_ hold, so its queued ranges alone are uploaded.
+    // kNullEntity after the inverse re-voxelize dispatch authored both on
+    // the GPU: the next CPU-owned canvas uploads its whole prefix.
+    IREntity::EntityId recordBufferCanvas_ = IREntity::kNullEntity;
+    // Assert builds: what the two buffers hold, for the upload audit, which
+    // compares every kUploadAuditPeriod-th frame. Empty in IR_RELEASE.
+    std::vector<C_Voxel> uploadedRecords_;
+    std::vector<std::uint32_t> uploadedMask_;
+    static constexpr std::uint32_t kUploadAuditPeriod = 8;
+    std::uint32_t uploadAuditFrame_ = 0;
+    // Bytes this frame's canvases uploaded to the two buffers; recorded into
+    // the run witness by endTick.
+    std::size_t frameRecordUploadBytes_ = 0;
+    std::size_t frameMaskUploadBytes_ = 0;
     // Detached re-voxelize GPU scatter: fills binding 5 for a
     // DETACHED_REVOXELIZE pool from its resident locals + the canvas quat, in
     // place of the CPU flushStaticPositionRanges.
@@ -622,6 +792,43 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             }
         }
         return nullptr;
+    }
+
+    // Flush the pool's queued record and active-mask ranges (the whole live
+    // prefix when another canvas, or the GPU, wrote the shared buffers since
+    // this pool's last upload). The mask window is the whole words covering
+    // the live prefix.
+    void uploadPoolRecords(C_VoxelPool &pool, IREntity::EntityId canvas, std::size_t liveCount) {
+        const bool holdsPool = recordBufferCanvas_ == canvas;
+        bool audit = false;
+        std::vector<C_Voxel> *uploadedRecords = nullptr;
+        std::vector<std::uint32_t> *uploadedMask = nullptr;
+#ifndef IR_RELEASE
+        audit = uploadAuditFrame_ % kUploadAuditPeriod == 0;
+        uploadedRecords = &uploadedRecords_;
+        uploadedMask = &uploadedMask_;
+#endif
+        frameRecordUploadBytes_ += flushPendingPoolUploads(
+            pool.getPendingRecordRanges(),
+            pool.getColors(),
+            liveCount,
+            PoolUploadTarget{voxelColorBuf_, holdsPool},
+            positionUploadScratch_,
+            uploadedRecords,
+            audit,
+            "VoxelColorBuffer"
+        );
+        frameMaskUploadBytes_ += flushPendingPoolUploads(
+            pool.getPendingMaskWordRanges(),
+            pool.getActiveMask(),
+            (liveCount + kVoxelActiveMaskBits - 1) / kVoxelActiveMaskBits,
+            PoolUploadTarget{voxelActiveMaskBuf_, holdsPool},
+            positionUploadScratch_,
+            uploadedMask,
+            audit,
+            "VoxelActiveMaskBuffer"
+        );
+        recordBufferCanvas_ = canvas;
     }
 
     // Fill the GPU buffers for a DETACHED_REVOXELIZE pool, replacing the CPU
@@ -2006,7 +2213,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 }
             }
         }
-        // Color + active uploads are source-indexed (slot == source voxel). The
+        // Record + active uploads are source-indexed (slot == source voxel). The
         // inverse-resample path authors both on the GPU per DEST slot
         // instead, so skip the CPU uploads there — they would clobber the GPU's
         // dest-cell color and the atomic-OR'd active bits with source-indexed data.
@@ -2019,22 +2226,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     detachedFaceOccupancy_
                 );
             }
-            voxelColorBuf_
-                ->subData(0, liveVoxelCount * sizeof(C_Voxel), voxelPool.getColors().data());
-            // Active-mask covers the live prefix; upload the matching whole-word
-            // window (`divCeil(liveVoxelCount, kVoxelActiveMaskBits)` words) so
-            // the GPU compact shader sees an up-to-date mirror of CPU alpha.
-            const std::size_t activeMaskWords = IRMath::divCeil(
-                static_cast<int>(liveVoxelCount),
-                static_cast<int>(kVoxelActiveMaskBits)
-            );
-            if (activeMaskWords > 0) {
-                voxelActiveMaskBuf_->subData(
-                    0,
-                    activeMaskWords * sizeof(std::uint32_t),
-                    voxelPool.getActiveMask().data()
-                );
-            }
+            uploadPoolRecords(voxelPool, entity, static_cast<std::size_t>(liveVoxelCount));
+        } else {
+            voxelPool.clearPendingRecordUploads();
+            recordBufferCanvas_ = IREntity::kNullEntity;
         }
         syncEntityIds(
             voxelPool,
@@ -2466,7 +2661,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
     }
 
+    void endTick() {
+        renderRunWitness().recordVoxelUploads(frameRecordUploadBytes_, frameMaskUploadBytes_);
+    }
+
     void beginTick() {
+        frameRecordUploadBytes_ = 0;
+        frameMaskUploadBytes_ = 0;
+        ++uploadAuditFrame_;
         const bool mainBackingResized = IRPrefab::CanvasCoverage::syncMainBacking();
         renderRunWitness().recordPose(
             IRPrefab::Camera::getYaw(),

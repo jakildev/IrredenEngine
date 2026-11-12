@@ -1573,6 +1573,8 @@ TEST(GpuComputeDispatchTest, SkippedOnUnsupportedBackend) {
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <memory>
+#include <optional>
 
 namespace {
 #if defined(IR_GRAPHICS_METAL)
@@ -2478,6 +2480,283 @@ TEST_F(PositionUploadTest, UnalignedPartialUploadPreservesPendingGpuBytes) {
     }
 }
 #endif
+
+// The voxel record (binding 6) and active-mask (binding 8) uploads drain the
+// pool's pending ranges. These tests seed each buffer with a sentinel, so a
+// byte the flush wrote outside its ranges reads back as a mismatch.
+using RecordUploadTest = PositionUploadTest;
+
+constexpr std::size_t kUploadSlots = 64;
+constexpr std::uint8_t kUploadSentinel = 0xAB;
+
+struct UploadBuffers {
+    IRRender::Buffer records_;
+    IRRender::Buffer mask_;
+
+    UploadBuffers()
+        : records_(
+              sentinel(kUploadSlots * sizeof(IRComponents::C_Voxel)).data(),
+              kUploadSlots * sizeof(IRComponents::C_Voxel),
+              IRRender::BUFFER_STORAGE_DYNAMIC
+          )
+        , mask_(
+              sentinel(kUploadSlots / 32 * sizeof(std::uint32_t)).data(),
+              kUploadSlots / 32 * sizeof(std::uint32_t),
+              IRRender::BUFFER_STORAGE_DYNAMIC
+          ) {}
+
+    static std::vector<std::uint8_t> sentinel(std::size_t bytes) {
+        return std::vector<std::uint8_t>(bytes, kUploadSentinel);
+    }
+
+    std::vector<IRComponents::C_Voxel> readRecords() {
+        IRRender::device()->finish();
+        std::vector<IRComponents::C_Voxel> out(kUploadSlots);
+        records_.getSubData(0, out.size() * sizeof(IRComponents::C_Voxel), out.data());
+        return out;
+    }
+
+    std::vector<std::uint32_t> readMask() {
+        IRRender::device()->finish();
+        std::vector<std::uint32_t> out(kUploadSlots / 32);
+        mask_.getSubData(0, out.size() * sizeof(std::uint32_t), out.data());
+        return out;
+    }
+};
+
+IRComponents::C_Voxel sentinelVoxel() {
+    IRComponents::C_Voxel voxel;
+    std::memset(&voxel, kUploadSentinel, sizeof(voxel));
+    return voxel;
+}
+
+bool sameVoxel(const IRComponents::C_Voxel &a, const IRComponents::C_Voxel &b) {
+    return std::memcmp(&a, &b, sizeof(a)) == 0;
+}
+
+IRComponents::C_VoxelPool makeUploadPool() {
+    IRComponents::C_VoxelPool pool(IRMath::ivec3(kUploadSlots, 1, 1));
+    pool.allocateVoxels(kUploadSlots);
+    for (std::size_t i = 0; i < kUploadSlots; ++i) {
+        pool.getColors()[i].color_ = IRMath::Color{static_cast<std::uint8_t>(i), 20, 30, 255};
+    }
+    pool.setActiveMaskRange(0, kUploadSlots);
+    pool.clearPendingRecordUploads();
+    return pool;
+}
+
+std::size_t flushRecords(
+    IRComponents::C_VoxelPool &pool,
+    IRRender::Buffer &buffer,
+    bool holdsPool,
+    std::vector<IRComponents::C_Voxel> *copy = nullptr,
+    bool audit = false
+) {
+    std::vector<IRRender::BufferUploadRange> scratch;
+    return IRSystem::flushPendingPoolUploads(
+        pool.getPendingRecordRanges(),
+        pool.getColors(),
+        kUploadSlots,
+        IRSystem::PoolUploadTarget{&buffer, holdsPool},
+        scratch,
+        copy,
+        audit,
+        "records"
+    );
+}
+
+TEST_F(RecordUploadTest, QueuedRangeReachesTheBufferAndNothingElseIsWritten) {
+    IRComponents::C_VoxelPool pool = makeUploadPool();
+    UploadBuffers buffers;
+    pool.getColors()[10].color_ = IRMath::Color{1, 2, 3, 255};
+    pool.getColors()[11].color_ = IRMath::Color{4, 5, 6, 255};
+    pool.markRecordsChanged(10, 2);
+
+    EXPECT_EQ(flushRecords(pool, buffers.records_, true), 2 * sizeof(IRComponents::C_Voxel));
+    EXPECT_TRUE(pool.getPendingRecordRanges().empty());
+    const auto readback = buffers.readRecords();
+    for (std::size_t i = 0; i < kUploadSlots; ++i) {
+        const bool queued = i == 10 || i == 11;
+        EXPECT_TRUE(sameVoxel(readback[i], queued ? pool.getColors()[i] : sentinelVoxel()))
+            << "slot " << i;
+    }
+    EXPECT_EQ(flushRecords(pool, buffers.records_, true), 0u) << "an empty queue uploads nothing";
+}
+
+TEST_F(RecordUploadTest, MaskMutatorQueuesOnlyItsWord) {
+    IRComponents::C_VoxelPool pool = makeUploadPool();
+    UploadBuffers buffers;
+    pool.clearActiveBit(40);
+    std::vector<IRRender::BufferUploadRange> scratch;
+    const std::size_t bytes = IRSystem::flushPendingPoolUploads(
+        pool.getPendingMaskWordRanges(),
+        pool.getActiveMask(),
+        kUploadSlots / 32,
+        IRSystem::PoolUploadTarget{&buffers.mask_, true},
+        scratch,
+        static_cast<std::vector<std::uint32_t> *>(nullptr),
+        false,
+        "mask"
+    );
+    EXPECT_EQ(bytes, sizeof(std::uint32_t));
+    const auto readback = buffers.readMask();
+    EXPECT_EQ(readback[0], 0xABABABABu) << "word 0 was never queued";
+    EXPECT_EQ(readback[1], pool.getActiveMask()[1]);
+    EXPECT_EQ(readback[1] & (1u << (40 - 32)), 0u);
+}
+
+TEST_F(RecordUploadTest, AdjacentRangesCoalesce) {
+    IRComponents::C_VoxelPool pool = makeUploadPool();
+    pool.queueRecordRange(3, 2);
+    pool.queueRecordRange(5, 1);
+    pool.queueRecordRange(4, 3);
+    EXPECT_EQ(pool.getPendingRecordRanges().size(), 1u)
+        << "appends touching the last entry extend it";
+
+    IRSystem::detail::PendingRanges ranges{{20, 2}, {1, 2}, {22, 1}, {3, 4}, {40, 1}, {60, 9}};
+    IRSystem::detail::coalesceRanges(ranges, kUploadSlots, 0);
+    const IRSystem::detail::PendingRanges expected{{1, 6}, {20, 3}, {40, 1}, {60, 4}};
+    EXPECT_EQ(ranges, expected);
+}
+
+TEST_F(RecordUploadTest, CoalescingBoundsTheRunCount) {
+    constexpr std::size_t live = 1 << 20;
+    IRSystem::detail::PendingRanges ranges;
+    for (std::size_t slot = 0; slot < live; slot += 17) {
+        ranges.emplace_back(slot, 1);
+    }
+    IRSystem::detail::coalesceUploadRuns(ranges, live);
+    EXPECT_LE(ranges.size(), IRSystem::detail::kMaxPoolUploadRuns + 1);
+    std::size_t covered = 0;
+    for (const auto &[start, count] : ranges) {
+        covered += count;
+    }
+    EXPECT_LE(covered, live);
+}
+
+TEST_F(RecordUploadTest, SaturationUploadsTheWholePrefix) {
+    IRComponents::C_VoxelPool pool = makeUploadPool();
+    UploadBuffers buffers;
+    while (pool.getPendingRecordRanges().size() <
+           IRComponents::C_VoxelPool::kMaxPendingUploadRanges) {
+        pool.queueRecordRange(2, 1);
+        pool.queueRecordRange(0, 1);
+    }
+    EXPECT_EQ(
+        flushRecords(pool, buffers.records_, true),
+        kUploadSlots * sizeof(IRComponents::C_Voxel)
+    );
+    const auto readback = buffers.readRecords();
+    for (std::size_t i = 0; i < kUploadSlots; ++i) {
+        EXPECT_TRUE(sameVoxel(readback[i], pool.getColors()[i])) << "slot " << i;
+    }
+}
+
+TEST_F(RecordUploadTest, CanvasSwitchUploadsTheWholePrefix) {
+    IRComponents::C_VoxelPool first = makeUploadPool();
+    IRComponents::C_VoxelPool second = makeUploadPool();
+    for (std::size_t i = 0; i < kUploadSlots; ++i) {
+        second.getColors()[i].color_ = IRMath::Color{9, 9, static_cast<std::uint8_t>(i), 255};
+    }
+    second.clearActiveMaskRange(0, kUploadSlots);
+    second.clearPendingRecordUploads();
+    UploadBuffers buffers;
+    auto system = std::make_unique<IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>>();
+    system->voxelColorBuf_ = &buffers.records_;
+    system->voxelActiveMaskBuf_ = &buffers.mask_;
+    constexpr IREntity::EntityId kFirst = 101;
+    constexpr IREntity::EntityId kSecond = 102;
+    const std::size_t prefixBytes = kUploadSlots * sizeof(IRComponents::C_Voxel);
+
+    system->uploadPoolRecords(first, kFirst, kUploadSlots);
+    EXPECT_EQ(system->frameRecordUploadBytes_, prefixBytes) << "the first upload is whole";
+    system->uploadPoolRecords(first, kFirst, kUploadSlots);
+    EXPECT_EQ(system->frameRecordUploadBytes_, prefixBytes) << "nothing queued, nothing sent";
+
+    system->uploadPoolRecords(second, kSecond, kUploadSlots);
+    EXPECT_EQ(system->frameRecordUploadBytes_, 2 * prefixBytes);
+    system->uploadPoolRecords(first, kFirst, kUploadSlots);
+    EXPECT_EQ(system->frameRecordUploadBytes_, 3 * prefixBytes)
+        << "the buffer held another pool, so the queue-empty pool re-uploads whole";
+    const auto records = buffers.readRecords();
+    const auto mask = buffers.readMask();
+    for (std::size_t i = 0; i < kUploadSlots; ++i) {
+        EXPECT_TRUE(sameVoxel(records[i], first.getColors()[i])) << "slot " << i;
+    }
+    EXPECT_EQ(mask, first.getActiveMask());
+}
+
+#ifndef IR_RELEASE
+TEST_F(RecordUploadTest, AnUnqueuedRecordWriteFailsTheAuditBySlot) {
+    IRComponents::C_VoxelPool pool = makeUploadPool();
+    UploadBuffers buffers;
+    std::vector<IRComponents::C_Voxel> uploaded;
+    flushRecords(pool, buffers.records_, false, &uploaded, true);
+    ASSERT_EQ(uploaded.size(), kUploadSlots);
+
+    pool.getColors()[17].color_ = IRMath::Color{250, 0, 0, 255};
+    pool.markRecordsChanged(30, 1);
+    IRSystem::detail::PendingRanges queued = pool.getPendingRecordRanges();
+    IRSystem::detail::coalesceRanges(queued, kUploadSlots, 0);
+    EXPECT_EQ(
+        IRSystem::detail::firstUnqueuedChange<IRComponents::C_Voxel>(
+            pool.getColors(),
+            uploaded,
+            queued
+        ),
+        std::optional<std::size_t>{17}
+    );
+    EXPECT_THROW(flushRecords(pool, buffers.records_, true, &uploaded, true), std::runtime_error);
+
+    pool.markRecordsChanged(17, 1);
+    EXPECT_NO_THROW(flushRecords(pool, buffers.records_, true, &uploaded, true));
+}
+
+TEST_F(RecordUploadTest, TheAuditSeesAnUnqueuedWriteInsideAMergedGap) {
+    constexpr std::size_t slots = 4096;
+    ASSERT_GT(slots / IRSystem::detail::kMaxPoolUploadRuns, 10u) << "the gap below must merge";
+    IRComponents::C_VoxelPool pool(IRMath::ivec3(slots, 1, 1));
+    pool.allocateVoxels(slots);
+    IRRender::Buffer records(
+        nullptr,
+        slots * sizeof(IRComponents::C_Voxel),
+        IRRender::BUFFER_STORAGE_DYNAMIC
+    );
+    std::vector<IRRender::BufferUploadRange> scratch;
+    std::vector<IRComponents::C_Voxel> uploaded;
+    const auto flush = [&](bool holdsPool) {
+        return IRSystem::flushPendingPoolUploads(
+            pool.getPendingRecordRanges(),
+            pool.getColors(),
+            slots,
+            IRSystem::PoolUploadTarget{&records, holdsPool},
+            scratch,
+            &uploaded,
+            true,
+            "records"
+        );
+    };
+    flush(false);
+
+    pool.markRecordsChanged(100, 1);
+    pool.markRecordsChanged(110, 1);
+    pool.getColors()[105].color_ = IRMath::Color{1, 1, 1, 255};
+    EXPECT_THROW(flush(true), std::runtime_error);
+}
+
+TEST_F(RecordUploadTest, StageOneAuditCatchesARawWriteThroughGetColors) {
+    IRComponents::C_VoxelPool pool = makeUploadPool();
+    UploadBuffers buffers;
+    auto system = std::make_unique<IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>>();
+    system->voxelColorBuf_ = &buffers.records_;
+    system->voxelActiveMaskBuf_ = &buffers.mask_;
+    system->uploadPoolRecords(pool, 7, kUploadSlots);
+
+    pool.getColors()[5].flags_ ^= 0x1u;
+    EXPECT_THROW(system->uploadPoolRecords(pool, 7, kUploadSlots), std::runtime_error);
+}
+#endif
+
 } // namespace
 #endif
 

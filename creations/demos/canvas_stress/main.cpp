@@ -923,7 +923,8 @@ EntityId spawnDetachedReVoxelizeSolid(
                 reVoxelizeVerifyColor(voxelSet.positions_[i].pos_, voxelSet.size_);
         }
         // RGBA written through the raw pool span (no alpha change) — the active
-        // mask is unaffected, and STAGE_1 re-uploads the colors each frame.
+        // mask is unaffected; the notification queues the record upload.
+        voxelSet.markPoolRecordsChanged();
     }
 
     return IREntity::createEntity(

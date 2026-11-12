@@ -515,6 +515,18 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
         w.overflowCap_,
         w.overflowSamples_
     );
+    for (const auto &[label, uploads] :
+         {std::pair{"record", &w.recordUploads_}, std::pair{"mask", &w.maskUploads_}}) {
+        std::fprintf(
+            f,
+            "Voxel %s upload bytes: first=%llu laterMean=%.1f laterMax=%llu frames=%u\n",
+            label,
+            static_cast<unsigned long long>(uploads->firstFrameBytes_),
+            uploads->laterMeanBytes_,
+            static_cast<unsigned long long>(uploads->laterMaxBytes_),
+            uploads->frames_
+        );
+    }
     std::fprintf(f, "\n");
 
     if (report.frameTimesMs_.size() <= kProfileSeriesMaxFrames) {
