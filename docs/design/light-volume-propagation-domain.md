@@ -77,7 +77,9 @@ frame refreshes at most 64, oldest first. A cold or resized cache first becomes
 per-chunk debt, and each refresh clears only the world-cache pending bit. The
 no-light path touches neither cache. This moves refresh work ahead of stage 1
 on continuous-yaw and spatial-view frames while bounding added work at a
-cardinal pose.
+cardinal pose. A frame's class follows stage 1's branch on that frame, so an
+exact-cardinal frame reached during rotation remains budgeted and admits its
+unpaid chunks stale.
 
 ## Cost model
 

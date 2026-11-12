@@ -430,15 +430,17 @@ TEST_F(LightVolumeBoundarySeedTest, NoEligibleLocalLightProducesNoDomain) {
 
 TEST_F(LightVolumeBoundarySeedTest, ChunkWalkMatchesWithCurrentStaleAndMixedWorldBounds) {
     constexpr int kChunk = IRRender::kVoxelChunkSize;
-    C_VoxelPool pool(ivec3(kChunk * 3, 1, 1));
-    pool.allocateVoxels(kChunk * 3);
+    constexpr int kInitialChunks = 3;
+    constexpr int kCapacityChunks = 4;
+    C_VoxelPool pool(ivec3(kChunk * kCapacityChunks, 1, 1));
+    pool.allocateVoxels(kChunk * kInitialChunks);
     const std::array<vec3, 3> positions{vec3(0), vec3(50), vec3(1, 0, 0)};
     for (std::size_t chunk = 0; chunk < positions.size(); ++chunk) {
         const std::size_t slot = chunk * kChunk;
         pool.getPositionGlobals()[slot].pos_ = positions[chunk];
         pool.getColors()[slot].color_ = Color{255, 255, 255, 255};
     }
-    pool.resyncActiveMaskFromColors(0, kChunk * 3);
+    pool.resyncActiveMaskFromColors(0, kChunk * kInitialChunks);
 
     IRSystem::detail::LightOcclusionDomain domain;
     domain.populated_ = true;
@@ -459,22 +461,40 @@ TEST_F(LightVolumeBoundarySeedTest, ChunkWalkMatchesWithCurrentStaleAndMixedWorl
             visitTiming
         );
     };
+    const auto expectAllCurrent = [&](int chunkCount) {
+        for (int chunk = 0; chunk < chunkCount; ++chunk) {
+            EXPECT_TRUE(pool.isChunkWorldBoundsCurrent(static_cast<std::size_t>(chunk)));
+        }
+    };
 
     const auto current = run(0, true);
     EXPECT_EQ(current.staleVisited_, 0u);
     EXPECT_EQ(current.visited_, 2u);
+    expectAllCurrent(kInitialChunks);
     const std::vector<std::uint32_t> expected = m_voxelBits;
 
-    pool.markCullBoundsDirty(0, kChunk * 3);
+    pool.markCullBoundsDirty(0, kChunk * kInitialChunks);
     const auto stale = run(0, false);
     EXPECT_EQ(stale.staleVisited_, 3u);
     EXPECT_EQ(m_voxelBits, expected);
 
-    run(0, true);
+    const auto refreshed = run(0, true);
+    EXPECT_EQ(refreshed.staleVisited_, 0u);
+    expectAllCurrent(kInitialChunks);
+
     pool.markCullBoundsDirty(kChunk, kChunk);
     const auto mixed = run(0, false);
     EXPECT_EQ(mixed.staleVisited_, 1u);
     EXPECT_EQ(m_voxelBits, expected);
+
+    const auto refreshedOne = run(0, true);
+    EXPECT_EQ(refreshedOne.staleVisited_, 0u);
+    expectAllCurrent(kInitialChunks);
+
+    pool.allocateVoxels(kChunk);
+    const auto refreshedAfterGrowth = run(0, true);
+    EXPECT_EQ(refreshedAfterGrowth.staleVisited_, 0u);
+    expectAllCurrent(kCapacityChunks);
 }
 
 TEST_F(LightVolumeBoundarySeedTest, StaleChunkRewrittenIntoDomainRasterizesWithZeroBudget) {
