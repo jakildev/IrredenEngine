@@ -327,12 +327,20 @@ struct GuiTestShot {
 /// type-erased callback the creation supplies (typically forwarding to
 /// @c IRPrefab::GuiTest::onFrame). @c nullptr keeps a pure-capture run — every
 /// existing GuiTest caller is unaffected.
+///
+/// @c capturePoseWriteFrame_ adds one screenshot per shot, of the frame on
+/// which the harness applies the shot's camera state, ahead of the settled
+/// capture. A cycler spliced ahead of the composite writes the pose between
+/// the voxel stage and the composite, so that frame shows how the renderer
+/// handles a late camera write. Off by default: the extra files shift every
+/// later screenshot's number.
 struct GuiTestConfig {
     int warmupFrames_ = 10;
     int settleFrames_ = 3;
     const GuiTestShot *shots_ = nullptr;
     int numShots_ = 0;
     void (*onAssertFrame_)(int shotIndex, bool isCaptureFrame) = nullptr;
+    bool capturePoseWriteFrame_ = false;
 };
 
 /// Create a system that fires scripted input events on scheduled frames,
