@@ -1,0 +1,171 @@
+Static-resident design probe: component sizes and archetype-move cost
+======================================================================
+
+Evidence for docs/design/static-residents.md. A throwaway gtest, not part of
+the tree: its source is reproduced at the end of this file.
+
+Conditions
+----------
+- Tree:    master 369cb6b06 plus the probe file below (uncommitted)
+- Build:   Release (`fleet-build --release --target IrredenEngineTest`)
+- Command: `fleet-run --release IrredenEngineTest --gtest_filter='StaticProbe.*'`
+- Host:    Apple M4 Max, 14 cores, macOS 26.5.2; headless, no GPU device
+- Date:    2026-11-12, three consecutive runs
+- Load:    1-minute load average 2.26, 2.62 and 2.81 at the start of the runs
+- Scene:   1,000,000 entities, each `C_LocalTransform`, `C_WorldTransform`
+           (attached by `createEntity`), a 1x1x1 `C_VoxelSetNew` resident in a
+           128^3 `C_VoxelPool`, `C_Modifiers` and `C_FogRevealed`: the
+           component set of a frozen cell on the million control
+- Move:    add, then remove, one empty tag component on every entity through
+           `setComponentDeferred` / `removeComponentDeferred` and one
+           `flushStructuralChanges()`; `us_per_entity` is (queue + flush) / n
+
+What it shows
+-------------
+- `sizeof`: `C_VoxelSetNew` 200, `C_Modifiers` 72, `C_LocalTransform` 44,
+  `C_WorldTransform` 40, `C_FogRevealed` 12, `C_Voxel` 12, `EntityId` 8.
+- Adding a tag (one archetype move) costs 0.20 to 0.28 us per entity; the
+  first round of each run is the slowest (the destination node grows).
+- Removing it costs 0.06 to 0.07 us per entity.
+- The per-entity cost is the same for 1,000 and 10,000 entities as for a
+  million, so a per-round budget scales linearly.
+
+Run 1
+-----
+load averages: 2.26 2.61 4.08
+PROBE sizeof C_VoxelSetNew=200 C_Modifiers=72 C_LocalTransform=44 C_WorldTransform=40 C_FogRevealed=12 C_Voxel=12 EntityId=8
+PROBE create n=1000000 total_ms=240.3 us_per_entity=0.240
+PROBE round=0 add: queue_ms=10.0 flush_ms=263.0 us_per_entity=0.273 | remove: queue_ms=4.0 flush_ms=64.2 us_per_entity=0.068
+PROBE round=1 add: queue_ms=8.3 flush_ms=208.5 us_per_entity=0.217 | remove: queue_ms=3.4 flush_ms=57.4 us_per_entity=0.061
+PROBE round=2 add: queue_ms=7.6 flush_ms=191.8 us_per_entity=0.199 | remove: queue_ms=2.7 flush_ms=54.7 us_per_entity=0.057
+PROBE batch=1000 add_ms=0.214 (0.214 us/entity) remove_ms=0.062 (0.062 us/entity)
+PROBE batch=10000 add_ms=2.036 (0.204 us/entity) remove_ms=0.591 (0.059 us/entity)
+
+Runs 2 and 3
+------------
+load averages: 2.62 2.64 3.83
+PROBE sizeof C_VoxelSetNew=200 C_Modifiers=72 C_LocalTransform=44 C_WorldTransform=40 C_FogRevealed=12 C_Voxel=12 EntityId=8
+PROBE create n=1000000 total_ms=256.7 us_per_entity=0.257
+PROBE round=0 add: queue_ms=10.8 flush_ms=255.5 us_per_entity=0.266 | remove: queue_ms=4.4 flush_ms=67.8 us_per_entity=0.072
+PROBE round=1 add: queue_ms=8.7 flush_ms=205.5 us_per_entity=0.214 | remove: queue_ms=3.1 flush_ms=57.4 us_per_entity=0.061
+PROBE round=2 add: queue_ms=7.7 flush_ms=199.7 us_per_entity=0.207 | remove: queue_ms=2.8 flush_ms=57.2 us_per_entity=0.060
+PROBE batch=1000 add_ms=0.216 (0.216 us/entity) remove_ms=0.064 (0.064 us/entity)
+PROBE batch=10000 add_ms=2.149 (0.215 us/entity) remove_ms=0.595 (0.059 us/entity)
+load averages: 2.81 2.68 3.84
+PROBE sizeof C_VoxelSetNew=200 C_Modifiers=72 C_LocalTransform=44 C_WorldTransform=40 C_FogRevealed=12 C_Voxel=12 EntityId=8
+PROBE create n=1000000 total_ms=255.2 us_per_entity=0.255
+PROBE round=0 add: queue_ms=10.4 flush_ms=264.2 us_per_entity=0.275 | remove: queue_ms=4.3 flush_ms=66.0 us_per_entity=0.070
+PROBE round=1 add: queue_ms=8.3 flush_ms=205.6 us_per_entity=0.214 | remove: queue_ms=3.3 flush_ms=57.8 us_per_entity=0.061
+PROBE round=2 add: queue_ms=8.3 flush_ms=197.2 us_per_entity=0.206 | remove: queue_ms=2.8 flush_ms=55.9 us_per_entity=0.059
+PROBE batch=1000 add_ms=0.222 (0.222 us/entity) remove_ms=0.070 (0.070 us/entity)
+PROBE batch=10000 add_ms=2.176 (0.218 us/entity) remove_ms=0.623 (0.062 us/entity)
+
+Probe source (test/ecs/zz_static_probe_test.cpp, not committed)
+----------------------------------------------------------------
+// Scratch probe for the static-resident design document. Not committed.
+#include <gtest/gtest.h>
+
+#include <irreden/ir_entity.hpp>
+#include <irreden/ir_math.hpp>
+#include <irreden/ir_system.hpp>
+
+#include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_modifiers.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/render/active_canvas.hpp>
+#include <irreden/render/components/component_fog_revealed.hpp>
+#include <irreden/voxel/components/component_voxel_pool.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
+
+#include <chrono>
+#include <cstdio>
+#include <vector>
+
+namespace {
+
+struct C_ProbeStaticTag {};
+
+using namespace IRComponents;
+using Clock = std::chrono::steady_clock;
+
+double msSince(Clock::time_point t0) {
+    return std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+}
+
+TEST(StaticProbe, SizesAndStructuralMoveCost) {
+    std::printf("PROBE sizeof C_VoxelSetNew=%zu C_Modifiers=%zu C_LocalTransform=%zu "
+                "C_WorldTransform=%zu C_FogRevealed=%zu C_Voxel=%zu EntityId=%zu\n",
+                sizeof(C_VoxelSetNew), sizeof(C_Modifiers), sizeof(C_LocalTransform),
+                sizeof(C_WorldTransform), sizeof(C_FogRevealed), sizeof(C_Voxel),
+                sizeof(IREntity::EntityId));
+
+    IREntity::EntityManager entityManager{};
+    IRSystem::SystemManager systemManager{};
+    const IREntity::EntityId canvas = IREntity::createEntity(C_VoxelPool{IRMath::ivec3(128, 128, 128)});
+    IRRender::setHeadlessActiveCanvasEntity(canvas);
+
+    constexpr int kCount = 1000000;
+    std::vector<IREntity::EntityId> ids;
+    ids.reserve(kCount);
+    auto t0 = Clock::now();
+    for (int i = 0; i < kCount; ++i) {
+        ids.push_back(IREntity::createEntity(
+            C_LocalTransform{IRMath::vec3(static_cast<float>(i % 100), static_cast<float>((i / 100) % 100),
+                                          static_cast<float>(i / 10000))},
+            C_VoxelSetNew{IRMath::ivec3(1, 1, 1), IRMath::Color{200, 120, 60, 255}, false, canvas},
+            C_Modifiers{},
+            C_FogRevealed{}
+        ));
+    }
+    IREntity::flushStructuralChanges();
+    const double createMs = msSince(t0);
+    std::printf("PROBE create n=%d total_ms=%.1f us_per_entity=%.3f\n", kCount, createMs,
+                createMs * 1000.0 / kCount);
+
+    for (int round = 0; round < 3; ++round) {
+        t0 = Clock::now();
+        for (IREntity::EntityId id : ids) {
+            IREntity::setComponentDeferred(id, C_ProbeStaticTag{});
+        }
+        const double queueAddMs = msSince(t0);
+        t0 = Clock::now();
+        IREntity::flushStructuralChanges();
+        const double flushAddMs = msSince(t0);
+
+        t0 = Clock::now();
+        for (IREntity::EntityId id : ids) {
+            IREntity::removeComponentDeferred<C_ProbeStaticTag>(id);
+        }
+        const double queueRemoveMs = msSince(t0);
+        t0 = Clock::now();
+        IREntity::flushStructuralChanges();
+        const double flushRemoveMs = msSince(t0);
+
+        std::printf("PROBE round=%d add: queue_ms=%.1f flush_ms=%.1f us_per_entity=%.3f | "
+                    "remove: queue_ms=%.1f flush_ms=%.1f us_per_entity=%.3f\n",
+                    round, queueAddMs, flushAddMs, (queueAddMs + flushAddMs) * 1000.0 / kCount,
+                    queueRemoveMs, flushRemoveMs, (queueRemoveMs + flushRemoveMs) * 1000.0 / kCount);
+    }
+
+    // A small batch, the size a per-frame transition budget would move.
+    for (int batch : {1000, 10000}) {
+        t0 = Clock::now();
+        for (int i = 0; i < batch; ++i) {
+            IREntity::setComponentDeferred(ids[static_cast<std::size_t>(i)], C_ProbeStaticTag{});
+        }
+        IREntity::flushStructuralChanges();
+        const double addMs = msSince(t0);
+        t0 = Clock::now();
+        for (int i = 0; i < batch; ++i) {
+            IREntity::removeComponentDeferred<C_ProbeStaticTag>(ids[static_cast<std::size_t>(i)]);
+        }
+        IREntity::flushStructuralChanges();
+        const double removeMs = msSince(t0);
+        std::printf("PROBE batch=%d add_ms=%.3f (%.3f us/entity) remove_ms=%.3f (%.3f us/entity)\n",
+                    batch, addMs, addMs * 1000.0 / batch, removeMs, removeMs * 1000.0 / batch);
+    }
+    IRRender::setHeadlessActiveCanvasEntity(IREntity::kNullEntity);
+    SUCCEED();
+}
+
+} // namespace
