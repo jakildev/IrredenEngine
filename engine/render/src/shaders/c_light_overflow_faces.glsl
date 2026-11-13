@@ -2,10 +2,10 @@
 
 // Overflow-face lighting.
 //
-// The per-axis stage-1 append writes every exposed face that loses its
-// cardinal-keyed store cell into a bounded overflow list. The framebuffer
-// scatter draws each entry with its
-// stored colorPacked. This compute pass, dispatched inside LIGHTING_TO_TRIXEL
+// The per-axis stage-1 append writes each exposed face that loses its
+// cardinal-keyed store cell, and that the occluder prepass does not prove
+// hidden, into a bounded overflow list. The framebuffer scatter draws each
+// entry with its stored colorPacked. This compute pass, dispatched inside LIGHTING_TO_TRIXEL
 // AFTER the per-axis CELL lighting (so the baked sun-shadow map at slot 28 and
 // the 128^3 light volume are already bound), relights each overflow entry at its
 // recovered WORLD position — sun-shadow cascade + light-volume + Lambert,

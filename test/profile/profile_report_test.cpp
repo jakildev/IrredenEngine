@@ -149,6 +149,15 @@ TEST(ProfileReportWitness, WitnessSectionIsWrittenEvenWhenNothingWasSampled) {
     report.witness_.maxOverflowEntries_ = 630842;
     report.witness_.maxOverflowDropped_ = 3;
     report.witness_.overflowCap_ = 1048576;
+    report.witness_.rejectionCandidates_ = 2364165;
+    report.witness_.rejectionUnsampled_ = 668580;
+    report.witness_.rejectionHidden_ = 1643866;
+    report.witness_.rejectionSurviving_ = 51719;
+    report.witness_.censusSamples_ = 300;
+    report.witness_.censusRecords_ = 51719;
+    report.witness_.censusOwners_ = 1483;
+    report.witness_.censusInterior_ = 1481;
+    report.witness_.censusUnsampled_ = 5118;
     const std::string text = writeAndRead(report);
     EXPECT_NE(
         text.find("Camera yaw: first=-135.000deg last=-135.000deg travel=0.000deg samples=8\n"),
@@ -160,6 +169,20 @@ TEST(ProfileReportWitness, WitnessSectionIsWrittenEvenWhenNothingWasSampled) {
         << text;
     EXPECT_NE(
         text.find("Per-axis overflow: maxEntries=630842 maxDropped=3 cap=1048576 samples=7\n"),
+        std::string::npos
+    ) << text;
+    EXPECT_NE(
+        text.find(
+            "Per-axis overflow rejection: candidates=2364165 unsampled=668580 hidden=1643866 "
+            "surviving=51719\n"
+        ),
+        std::string::npos
+    ) << text;
+    EXPECT_NE(
+        text.find(
+            "Per-axis overflow census: records=51719 owners=1483 interior=1481 unsampled=5118 "
+            "samples=300\n"
+        ),
         std::string::npos
     ) << text;
 

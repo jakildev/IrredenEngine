@@ -16,10 +16,14 @@
 #include <irreden/render/camera.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/components/component_trixel_framebuffer.hpp>
+#include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 namespace IRPrefab::PerAxisCanvas {
 
@@ -90,6 +94,152 @@ inline IRMath::ivec4 storeFrame(IRMath::ivec2 size) {
         IRMath::trixelOriginOffsetZ1(size) + anchor,
         static_cast<int>(cardinal),
         0
+    );
+}
+
+// Framebuffer offset (Y-up) the per-axis scatter adds for the camera's position
+// inside its anchor cell; the scatter's anchor has already placed
+// `floor(cameraIso)` whole cells.
+//
+// Under either policy it is the whole-pixel offset detached canvases place
+// with (plus the carried phase when @p zoomFrame is the frame's continuous
+// sample; null means the snapped policy), so the upscale residual that
+// `FRAMEBUFFER_TO_SCREEN` adds on top is the remainder of THIS offset. An
+// unrounded offset under that residual counts the sub-pixel fraction twice,
+// and an edge steps back a screen pixel each time the two round at different
+// camera positions.
+//
+// @p framebufferPxPerCell is read under the snapped policy only and must be
+// the exact `IRMath::cameraZoomPitch` of the camera zoom.
+inline IRMath::vec2 scatterCameraOffset(
+    const IRMath::CameraRasterPhase *zoomFrame,
+    const IRMath::vec2 &cameraIso,
+    const IRMath::vec2 &framebufferPxPerCell
+) {
+    if (zoomFrame != nullptr) {
+        return IRMath::vec2(IRMath::cameraRasterDetachedOffset(*zoomFrame));
+    }
+    return IRMath::cameraSnappedDetachedOffset(cameraIso, framebufferPxPerCell);
+}
+
+// Where the scatter places the faces of a store of @p storeSize cells in a
+// framebuffer of @p framebufferResolution pixels. @p mainCanvasSize is the
+// main canvas's logical size, @p canvasZoomLevel its display zoom over its
+// raster density, and @p zoomFrame the frame's continuous-zoom sample (null
+// under the snapped policy). Reads the camera pose, so it is the frame's one
+// placement only while the camera is not written between its callers.
+inline IRComponents::PerAxisScatterPlacement scatterPlacement(
+    IRMath::ivec2 storeSize,
+    IRMath::ivec2 mainCanvasSize,
+    IRMath::vec2 framebufferResolution,
+    IRMath::vec2 canvasZoomLevel,
+    const IRMath::CameraRasterPhase *zoomFrame
+) {
+    using namespace IRMath;
+    IRComponents::PerAxisScatterPlacement placement;
+    // The store holds the face lattice at base (world-unit) resolution, so the
+    // scatter's screen scale is the full camera zoom: multiply the effective
+    // subdivisions canvasZoomLevel divided out back in, then rescale
+    // component-wise for the larger per-axis texture extent.
+    const int effSub = IRMath::max(IRRender::getVoxelRenderEffectiveSubdivisions(), 1);
+    const vec2 zoomEff =
+        canvasZoomLevel * static_cast<float>(effSub) * vec2(storeSize) / vec2(mainCanvasSize);
+
+    placement.perAxisStoreFrame_ = storeFrame(storeSize);
+    const float visualYaw = IRPrefab::Camera::getYaw();
+    const auto cardinalIndex =
+        IRMath::rasterYawCardinalIndex(IRPrefab::Camera::computeYawSplit(visualYaw).first);
+    const auto visibleFaces =
+        IRRender::isSpatialViewEnabled()
+            ? IRMath::visibleTriplet(IRMath::quatInverse(IRRender::getViewRotation()))
+            : IRMath::visibleFaceTripletCardinal(cardinalIndex);
+    placement.cameraViewRotation_ =
+        IRRender::isSpatialViewEnabled() ? IRRender::getViewRotation() : vec4(0.0f);
+    // Whole-iso screen anchor of the recovered faces: the store is
+    // base-resolution, so it is `floor(cameraIso)`, the cardinal path's
+    // anchor, never scaled by the subdivision density.
+    const vec2 cameraIso = IRRender::getEffectiveCameraIso();
+    placement.perAxisBase_ =
+        IRMath::trixelOriginOffsetZ1(storeSize) + ivec2(IRMath::floor(cameraIso));
+
+    // Sub-cell camera pan. `perAxisBase_` places content in whole store cells
+    // and the model scale makes one cell span the zoom pitch in framebuffer
+    // pixels; the camera's offset inside its cell lands in whole framebuffer
+    // pixels here and `FRAMEBUFFER_TO_SCREEN` adds the remainder.
+    //
+    // The pitch is the exact one every snapped stage floors against, never
+    // `framebufferResolution * zoomEff / storeSize`: that round trip through
+    // the store extent can land one ulp under the whole number, which costs
+    // the floor a whole pixel.
+    const vec2 cameraOffsetPx = scatterCameraOffset(
+        zoomFrame,
+        cameraIso,
+        vec2(IRMath::cameraZoomPitch(IRRender::getCameraZoom()))
+    );
+    mat4 model = translate(
+        mat4(1.0f),
+        vec3(
+            framebufferResolution.x * 0.5f + cameraOffsetPx.x,
+            framebufferResolution.y * 0.5f + cameraOffsetPx.y,
+            0.0f
+        )
+    );
+    model = scale(
+        model,
+        vec3(framebufferResolution.x * zoomEff.x, framebufferResolution.y * zoomEff.y, 1.0f)
+    );
+    placement.mpMatrix_ =
+        ortho(0.0f, framebufferResolution.x, 0.0f, framebufferResolution.y, -1.0f, 100.0f) * model;
+    placement.visualYaw_ = visualYaw;
+    placement.visibleFaceIds_ = ivec4(
+        static_cast<int>(visibleFaces[0]),
+        static_cast<int>(visibleFaces[1]),
+        static_cast<int>(visibleFaces[2]),
+        0
+    );
+    // The store is base-resolution but the SDF floor and the cardinal gather
+    // encode depth subdivided, so the scatter lifts its depth by the effective
+    // subdivisions to co-sort with them.
+    placement.effectiveSubdivisions_ = static_cast<float>(effSub);
+    placement.framebufferResolution_ = framebufferResolution;
+    return placement;
+}
+
+// The scatter placement of the main canvas's store, derived ahead of
+// TRIXEL_TO_FRAMEBUFFER from the state that system reads when it draws: the
+// main canvas's render behaviour and zoom, the main framebuffer's extent and
+// the zoom sample it is about to publish. KEEP IN SYNC with that system's
+// per-canvas tick: a difference between the two reads as a camera write
+// between the systems and stands the overflow rejection down.
+inline IRComponents::PerAxisScatterPlacement mainCanvasScatterPlacement(IRMath::ivec2 storeSize) {
+    using namespace IRMath;
+    const IREntity::EntityId mainCanvas = IRRender::getCanvas("main");
+    auto behaviorOptional =
+        IREntity::getComponentOptional<IRComponents::C_TrixelCanvasRenderBehavior>(mainCanvas);
+    const IRComponents::C_TrixelCanvasRenderBehavior behavior =
+        behaviorOptional.has_value() ? (*behaviorOptional.value())
+                                     : IRComponents::C_TrixelCanvasRenderBehavior{};
+    auto zoomLevel = IREntity::getComponentOptional<IRComponents::C_ZoomLevel>(mainCanvas);
+    const vec2 baseCanvasZoom =
+        behavior.useCameraZoom_ ? IRRender::getCameraZoom()
+                                : (zoomLevel.has_value() ? (*zoomLevel.value()).zoom_ : vec2(1.0f));
+    const int canvasDensity =
+        behavior.applyRenderSubdivisions_ &&
+                IRRender::getSubdivisionMode() != IRRender::SubdivisionMode::NONE
+            ? IRRender::getVoxelRenderEffectiveSubdivisions()
+            : 1;
+    const auto &framebuffer =
+        IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>("mainFramebuffer");
+    const std::optional<IRMath::CameraRasterPhase> zoomFrame = IRPrefab::Camera::upcomingZoomFrame(
+        IRRender::getEffectiveCameraIso(),
+        IRRender::getCameraZoom()
+    );
+    return scatterPlacement(
+        storeSize,
+        ivec2(IRRender::getMainCanvasSizeTrixels()),
+        vec2(framebuffer.getResolutionPlusBuffer()),
+        baseCanvasZoom / vec2(canvasDensity),
+        zoomFrame.has_value() ? &zoomFrame.value() : nullptr
     );
 }
 

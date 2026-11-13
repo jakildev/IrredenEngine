@@ -556,6 +556,23 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
     );
     std::fprintf(
         f,
+        "Per-axis overflow rejection: candidates=%u unsampled=%u hidden=%u surviving=%u\n",
+        w.rejectionCandidates_,
+        w.rejectionUnsampled_,
+        w.rejectionHidden_,
+        w.rejectionSurviving_
+    );
+    std::fprintf(
+        f,
+        "Per-axis overflow census: records=%u owners=%u interior=%u unsampled=%u samples=%u\n",
+        w.censusRecords_,
+        w.censusOwners_,
+        w.censusInterior_,
+        w.censusUnsampled_,
+        w.censusSamples_
+    );
+    std::fprintf(
+        f,
         "Per-axis overflow: maxEntries=%u maxDropped=%u cap=%u samples=%u\n",
         w.maxOverflowEntries_,
         w.maxOverflowDropped_,

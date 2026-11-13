@@ -121,23 +121,188 @@ an analytic margin discard. The older conservative-coverage section below is
 historical and superseded for this path.
 
 The cardinal store retains one depth winner per axis and un-yawed iso cell.
-At non-cardinal yaw, resolve mode 3 appends **every exposed face that loses its
-settled cardinal store cell**, subject to the bounded buffer. A yawed
-face-origin depth mask cannot safely reject a loser: the mask samples origins,
-not coverage and depth over the candidate's finite footprint. The framebuffer
-resolves the complete candidate set by depth. The scratch layout still
-reserves the former mask region so its offsets and binding ABI remain stable;
-the region is not an occlusion test. See the independent
+At non-cardinal yaw, the overflow append takes every exposed face that loses
+its settled cardinal store cell as a candidate, and keeps it unless the
+occluder prepass proves that no sample of its finite footprint can pass the
+framebuffer depth test (§"Overflow rejection against the cell-path depth").
+The framebuffer resolves the kept set by depth. A yawed face-origin depth mask
+cannot safely reject a loser: the mask samples origins, not coverage and depth
+over the candidate's finite footprint. The scratch layout still reserves the
+former mask region so its offsets and binding ABI remain stable; the region is
+not an occlusion test. See the independent
 [six-face mask reproduction](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/scatter-silhouette-edges/overflow-mask-analysis.md)
 and its [source-equation checker](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/scatter-silhouette-edges/overflow-mask-analysis.py).
 
-The rotating-frame sequence is store ×3 (mode 0), overflow append ×3
-(mode 3), then per-axis election and stage 2 ×3, with the required barriers.
-At cardinal yaw the per-axis set is parked and the original gather path runs.
-The overflow capacity is at least three records per voxel, rounded to a power
-of two: mode 3 emits at most one record per voxel and axis. Cap drops remain
-reported; the larger all-loser list requires its own current-frame cost
-measurement rather than extrapolation from masked-lane numbers.
+The rotating-frame sequence is store ×3 (mode 0), per-axis election and
+stage 2 ×3, the occupied-cell compaction, the occluder prepass and its
+pyramid, the overflow append ×3, then the canonical sort, with the required
+barriers. At cardinal yaw the per-axis set is parked and the original gather
+path runs. The overflow capacity is at least three records per voxel, rounded
+to a power of two: the append emits at most one record per voxel and axis, so
+the lane holds every candidate on a frame that rejects none. Cap drops remain
+reported, and a rejected face is never counted as one.
+
+### Overflow rejection against the cell-path depth
+
+Almost every overflow candidate is hidden. On the million control (100³
+single-voxel entities, zoom 4, 1284 by 722 framebuffer) 2,364,165 faces lose
+their store cell at 45° and about 1,500 of them own a framebuffer pixel
+([evidence](../perf/overflow-lane-rejection.md)). The append removes the ones
+it can prove hidden before the sort, the relight, the fog pass and the draw
+size their work from the lane.
+
+**What is tested, against which depth.** The faces that won their store cells
+are drawn by the composite on every rotating frame, so their depth is a valid
+occluder for that frame. After the stores settle and the occupied cells are
+listed, `VOXEL_TO_TRIXEL_STAGE_1` draws those faces into the main
+framebuffer's depth through the scatter program (`buildOverflowOccluders`).
+`c_per_axis_occluder_reduce` reduces that depth to a pyramid: the farthest
+depth over each block of 2, 4, 8, 16 and 32 pixels, as a code on the 2^-24
+depth lattice rounded toward the far plane. The append
+(`c_voxel_to_trixel_stage_1_overflow_append`, the `IR_OVERFLOW_APPEND`
+variant of the stage-1 body) projects each candidate's four corners the way
+the scatter vertex stage does (`ir_per_axis_face_footprint`), takes the
+texel rectangle that holds every pixel centre the quad could cover, widened
+by an eighth of a pixel, and reads the pyramid over it
+(`ir_per_axis_occlusion`). The candidate is rejected in two cases:
+
+- **No sample.** The rectangle, clamped to the framebuffer, is empty: the face
+  is off screen, or thinner than the gap between pixel centres.
+- **Hidden.** Every pyramid texel over the rectangle is nearer than the
+  candidate's nearest corner by more than one tie band.
+
+A coarse level settles a face in a covered region with four texel reads. A
+face whose coarse blocks hold a far texel is re-read at the finest level
+that fits 48 reads, because a coarse block reaches past the footprint.
+
+**Why a rejected face cannot own a pixel.** A lane fragment's depth is the
+band floor of its interpolated depth plus two tie bands, plus a non-negative
+tie code and edge yield, so it is at least one band beyond the face's nearest
+corner. The composite's depth at a pixel is never farther than the prepass
+depth there, because every prepass face is drawn again at the same position
+and nothing is removed. A rejected face is therefore at least two bands behind
+the composite at every pixel centre it could cover, and the strict depth test
+discards all of its fragments. Two bands is the margin against the three
+places the test and the raster can disagree: the footprint is recomputed in a
+compute kernel (float rounding of a few depth codes, where a band is 32), the
+prepass and the composite may run different fragment programs (at most one
+band where the floor falls on a boundary), and the depth is read back from a
+24-bit attachment (half a code). No rejection is by distance from the camera:
+a face in front of a hole in the occluders is kept however far away it is.
+
+**Ties.** A candidate level with its occluder is a contender, not hidden: the
+test needs the candidate's nearest corner beyond the occluder by more than a
+band, and it never looks at the 16-step tie code. Survivors are sorted and
+drawn exactly as before, so every equal-depth tie resolves as it did.
+
+**No history.** The occluders are this frame's store winners, drawn at this
+frame's pose, and the pyramid is rebuilt from them every rotating frame.
+Nothing from an earlier frame enters the test, so the first rotating frame
+after an allocation, an unpark or a camera jump is tested like any other.
+
+**The placement is derived once.** The test is sound only if it projects a
+face where the composite will draw it, to the sub-pixel. The scatter's
+placement (`PerAxisScatterPlacement`: the model-projection matrix, the screen
+anchor, the store frame, the yaw, the visible triplet, the view rotation and
+the depth scale) is computed by `IRPrefab::PerAxisCanvas::scatterPlacement`.
+`VOXEL_TO_TRIXEL_STAGE_1::beginTick` derives it for the main canvas, with the
+continuous-zoom sample `TRIXEL_TO_FRAMEBUFFER` is about to publish
+(`IRPrefab::Camera::upcomingZoomFrame`), and stores it on the component.
+`TRIXEL_TO_FRAMEBUFFER` derives it again from the camera as it stands then.
+
+**The ordering contract.** The invariant is: a rejected lane face cannot pass
+the final depth test anywhere in its finite projected footprint at the
+placement actually used to draw it, and the prepass occluders are present at
+that same placement through the composite. The placement covers the store
+frame, the view rotation and visible triplet, the effective camera and pivot
+translation, the zoom and raster phase, the subdivision scale and the
+framebuffer extent. So camera controls finish before
+`VOXEL_TO_TRIXEL_STAGE_1`, and before `VOXEL_PICKING` when it is registered,
+and none of that state changes between the voxel stage and the composite.
+Under that contract the two derivations are equal and the image is the one
+the full lane draws, on every frame. A cycler at the pipeline's tail that
+changes the pose after presentation prepares the next frame and is within the
+contract. `TRIXEL_TO_FRAMEBUFFER::beginTick` stays the only system that
+publishes and advances the continuous-zoom sample; `upcomingZoomFrame` is a
+preview that advances nothing.
+
+**Fixtures that write the pose late.** `IRShapeDebug`'s `--gui-test`,
+`--continuous-zoom-gui-test` and `--rotation-pick-test gui` splice the GUI-test
+cycler ahead of the composite, because the hover readback has to precede
+`TRIXEL_TO_FRAMEBUFFER`'s reset of it, so each shot's pose is written between
+the two systems. Those modes call
+`IRPrefab::PerAxisCanvas::setOverflowRejectionEnabled(false)` once the voxel
+system exists and before the first render pass, and keep the full lane for the
+whole run; the frame a pose lands on then draws as it would without rejection.
+The setter returns false and changes nothing before the system is created, and
+the demo asserts on that. The `sweep`, `tie` and `cube` picking modes write
+the pose ahead of the voxel stage and keep rejection. A pipeline that writes
+the camera in that slot on purpose opts out the same way.
+
+**Recovery from an unexpected late write.** If the camera is written between
+the two systems anyway, the composite finds its placement differs from stage
+1's, and two things follow:
+
+- On that frame, if the append rejected, the composite draws the scatter at
+  stage 1's placement, the one the faces were tested at and the store was
+  keyed in. That keeps the rejection proof. It does not reproduce the image
+  the full lane would draw, and the other passes may already show the new
+  pose.
+- The append keeps every candidate for the next `kRejectionStandDownFrames`
+  rotating frames, and the composite draws at its own placement. Each further
+  mismatch refills the count, and a mismatch after it has run out latches
+  again.
+
+This recovers from a broken ordering contract; it is not a supported way to
+drive camera animation. `IRShapeDebug --late-camera-write-test` writes the yaw
+in that slot on scheduled frames and checks the latch, a refill inside the
+window and a second latch after it expires.
+
+**When the append keeps every candidate.** Rejection stands down, and the
+lane is the full cardinal-loser set, when any of these holds:
+
+- The composite saw the camera written after the voxel stage within the last
+  `kRejectionStandDownFrames` rotating frames (above).
+- `TRIXEL_TO_FRAMEBUFFER` is not registered. The prepass borrows its scatter
+  program, quad, frame-data buffer and framebuffer.
+- A glitch subject exists and `TRIXEL_GLITCH` is registered. The occluders
+  are valid only while the composite still draws each of them. A store cell
+  is drawn when its colour alpha is at least 0.1. Lighting and fog rewrite a
+  cell's colour and keep its alpha; the glitch pass can blank a cell. **A new
+  pass that rewrites a per-axis store's colour after stage 1 must keep each
+  listed cell's alpha on the same side of that threshold, or join this
+  list.** No pass writes a store's distance after stage 2, so a listed face
+  cannot move.
+- Rejection is switched off: `IR_PERAXIS_OVERFLOW_REJECT_DISABLE` in the
+  environment, or `IRPrefab::PerAxisCanvas::setOverflowRejectionEnabled(false)`.
+  The first is for A/B triage. The second is for a fixture that writes the
+  pose late (above), and for one whose subject reaches the lane's relight or
+  fog pass only as hidden faces (`IRFogDemo --explored-decay`).
+
+**Counters.** The control block counts the two rejection classes beside the
+drops (words 6 and 7; word 5 is the drop count). The run witness reports, for
+the frame with the most candidates,
+`Per-axis overflow rejection: candidates=… unsampled=… hidden=… surviving=…`,
+and `maxEntries` on the line above it is the surviving count the lane held.
+`IR_PERAXIS_OVERFLOW_CENSUS=1` adds a diagnostic pass after the scatter draw
+(`c_per_axis_overflow_census`) that counts the lane records owning a pixel of
+the finished composite; it waits for the GPU every frame, so a census run's
+timings are not a measurement.
+
+**What the prepass costs.** One render pass over the store winners, one
+compute dispatch for the pyramid, and the test inside the append. A scene
+whose lane is empty pays the first two for nothing. The sort's encoded stages
+are still bounded by three records per admitted voxel; its GPU-authored grids
+are sized from the surviving count, so the stages past it are empty
+dispatches.
+
+**Validation.** `scripts/tests/test_render_overflow_occlusion.py` runs the
+production pyramid and test from both backends against a brute-force
+reference, and `scripts/tests/test_render_overflow_append.py` pins how the
+verdict routes a candidate. The image gates are byte identity between a run
+with rejection and a run with the kill switch, at the nine-yaw
+`IRCanvasStress` set and on frozen-wave `IRPerfGrid` frames mid-sweep and
+after a yaw jump, paired with the witness's rejected count as the fire gate.
 
 ### Store reset over the occupied-cell list
 
@@ -338,7 +503,9 @@ and overflow entries ride `kBufferIndex_PerAxisResolveScratch`. The control
 block follows the winner region's 256-byte alignment padding directly; no
 view-mask storage is allocated. `PerAxisCanvasStore::scratchLayoutFor` owns
 the offsets, and `overflowScratchLayout()` publishes them to store, sort,
-lighting and fog consumers. The uniform's reserved `.x` word stays zero.
+lighting and fog consumers. The uniform's `.x` word is non-zero only for the
+append dispatches of a frame whose occluder pyramid is bound; every other
+consumer uploads zero there.
 The binding keeps the
 same transient per-axis-window reuse #2255's winner-id scratch already
 established (dead during the store window). C2's relight reuses every
@@ -460,7 +627,7 @@ pairs outside the immediate lattice-neighbor proof. Current scatter uses exact
 finite footprints; same-class depth collisions remain. See
 [the frozen-scene diagnosis](frozen-scatter-flicker.md).
 
-The mode-3 append assigns entry indices with `atomicAdd`, and **entry index IS
+The overflow append assigns entry indices with `atomicAdd`, and **entry index IS
 draw order** in the scatter's overflow branch (`v_peraxis_scatter.glsl` indexes
 by `gl_InstanceID * 4u`). Two entries whose `(cardPix, voxelDistance)` key ties
 therefore resolved their depth contest by run-variant arrival order — measured

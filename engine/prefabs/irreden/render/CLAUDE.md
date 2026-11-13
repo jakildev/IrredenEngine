@@ -47,7 +47,7 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
 | `UPDATE_VOXEL_POSITIONS_GPU` | before `VOXEL_TO_TRIXEL_STAGE_1` |
 | `VOXEL_PICKING` | RENDER, after the camera systems, before `VOXEL_TO_TRIXEL_STAGE_1` |
 | `GIZMO_HOVER` → `GIZMO_DRAG` | INPUT, after `INPUT_KEY_MOUSE` |
-| `CAMERA_MOUSE_ROTATE` and the other camera controls | RENDER, before `SHAPES_TO_TRIXEL`, in singleton groups (`MainThread`) |
+| `CAMERA_MOUSE_ROTATE` and the other camera controls | RENDER, before `VOXEL_PICKING` / `VOXEL_TO_TRIXEL_STAGE_1`, in singleton groups (`MainThread`); nothing writes the camera again before the composite. A pose writer spliced ahead of the composite (a GUI-test cycler) calls `setOverflowRejectionEnabled(false)` ([contract](../../../../docs/design/per-axis-trixel-canvas-rotation.md#overflow-rejection-against-the-cell-path-depth)) |
 | `SHAPES_TO_TRIXEL` | RENDER, after `VOXEL_TO_TRIXEL_STAGE_1` when an entity canvas mixes voxels and shapes; the shape rasters in the owner's model frame at the canvas's rendered density, on its half-cell lattice ([contract](../../../../docs/design/mixed-private-canvas-lifecycle.md)) |
 | `HITBOX_MOUSE_TEST_GUI` → `WIDGET_INPUT` → `WIDGET_APPLY_*` → `CAMERA_SCROLL_ZOOM` | INPUT; `WIDGET_LUA_DISPATCH` immediately after `WIDGET_INPUT`; the zoom drops the wheel while `C_GuiHoverState` names a hovered widget |
 | `TEXT_TO_TRIXEL` → `LAYOUT_COMPUTE` → `WIDGET_RENDER_*` | RENDER, before `TRIXEL_TO_FRAMEBUFFER`; `WIDGET_RENDER_HINTS` follows ordinary renderers and `WIDGET_RENDER_DROPDOWN` stays last |
@@ -163,7 +163,7 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   focus-visible Tab traversal yields to a command on that press; per-kind keys are slider arrows/Home/End/Delete/Backspace, Space for toggles/dropdowns, and Enter for presses/dropdown selection. Widget hotkeys can focus every kind, and held Alt shows their badges plus the focused widget's ring; `bindAction` makes a control an action's (keyless hotkey, badge = resolved chord, `WIDGET_SYNC_ACTION_HINTS`) and `actions_window.hpp` is the searchable Actions window over free GUI space;
   `C_WidgetScroll` is track + thumb only — the owner positions content from `scrollPos_`.
 - [GUI assertions](gui_test_assertions.hpp) distinguish GPU owner-buffer hover from CPU voxel picks.
-  Splice the GUI-test cycler before `TRIXEL_TO_FRAMEBUFFER`, whose `beginTick` resets that buffer.
+  Splice the GUI-test cycler before `TRIXEL_TO_FRAMEBUFFER`, whose `beginTick` resets that buffer, and opt it out of overflow rejection (camera row above).
   Lua handlers fire in `WIDGET_LUA_DISPATCH::endTick`:
   [`engine/script/CLAUDE.md`](../../../script/CLAUDE.md#engine-service-bindings).
 

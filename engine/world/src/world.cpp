@@ -663,6 +663,15 @@ void World::buildAndWriteProfileReport() {
     report.witness_.zoomMax_ = witness.zoomMax_;
     report.witness_.poseSamples_ = witness.poseSamples_;
     report.witness_.explicitPivotSamples_ = witness.explicitPivotSamples_;
+    report.witness_.rejectionCandidates_ = witness.rejectionCandidates_;
+    report.witness_.rejectionUnsampled_ = witness.rejectionUnsampled_;
+    report.witness_.rejectionHidden_ = witness.rejectionHidden_;
+    report.witness_.rejectionSurviving_ = witness.rejectionSurviving_;
+    report.witness_.censusSamples_ = witness.censusSamples_;
+    report.witness_.censusRecords_ = witness.censusRecords_;
+    report.witness_.censusOwners_ = witness.censusOwners_;
+    report.witness_.censusInterior_ = witness.censusInterior_;
+    report.witness_.censusUnsampled_ = witness.censusUnsampled_;
     report.witness_.overflowSamples_ = witness.overflowSamples_;
     report.witness_.maxOverflowEntries_ = witness.maxOverflowEntries_;
     report.witness_.maxOverflowDropped_ = witness.maxOverflowDropped_;

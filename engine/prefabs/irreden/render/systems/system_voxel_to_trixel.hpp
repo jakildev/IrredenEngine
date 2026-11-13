@@ -31,6 +31,7 @@
 #include <irreden/render/voxel_frame_data.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
+#include <irreden/render/components/component_glitch_subject.hpp>
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/fog_line_of_sight.hpp>
@@ -539,8 +540,31 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // the off-screen shadow feeders (struct 1), so the visible stage-1 program
     // carries none of the feeder branches (no runtime predication tax).
     ShaderProgram *stage1FeederProgram_ = nullptr;
+    // The per-axis overflow append: the IR_OVERFLOW_APPEND 1 specialization of
+    // stage 1, which keeps a cardinal-store loser unless the occluder pyramid
+    // proves its footprint hidden.
+    ShaderProgram *overflowAppendProgram_ = nullptr;
+    // Reduces the occluder prepass's depth to the pyramid the append reads.
+    ShaderProgram *occluderReduceProgram_ = nullptr;
+    // TRIXEL_TO_FRAMEBUFFER's scatter program, quad and frame-data buffer, and
+    // the main framebuffer: the occluder prepass draws the cell-path faces with
+    // exactly what the composite will draw them with. Resolved in beginTick on
+    // a frame that can reject; null when that system is not registered.
+    ShaderProgram *scatterProgram_ = nullptr;
+    VAO *quadVao_ = nullptr;
+    Buffer *scatterFrameBuf_ = nullptr;
+    C_TrixelCanvasFramebuffer *mainFramebuffer_ = nullptr;
+    // Set, the append keeps every cardinal-store loser in the lane and runs
+    // no occluder test. IR_PERAXIS_OVERFLOW_REJECT_DISABLE in the environment
+    // sets it at construction;
+    // IRPrefab::PerAxisCanvas::setOverflowRejectionEnabled writes it later.
+    bool overflowRejectionDisabled_ = std::getenv("IR_PERAXIS_OVERFLOW_REJECT_DISABLE") != nullptr;
+    // Whether this frame's append tests against an occluder prepass. Resolved
+    // in beginTick.
+    bool overflowRejectionReady_ = false;
+    bool overflowRejectionVerdictLogged_ = false;
     // Canonical-orders the overflow entry list between
-    // the mode-3 append and the overflow indirect draw (rotating frames only).
+    // the overflow append and the overflow indirect draw (rotating frames only).
     ShaderProgram *overflowSortProgram_ = nullptr;
     ShaderProgram *stage2Program_ = nullptr;
     // Equal-depth elections serve displaced-cell pools and projected source-face
@@ -989,10 +1013,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // frame data on exit so downstream stages (AO, lighting, fog) are
     // unaffected.
     // overflow-lane ctrl-block bookkeeping. The block is {indexCount,
-    // instanceCount, firstIndex, baseVertex, baseInstance, droppedCount, pad,
-    // pad}; mode 3 atomically appends instanceCount / droppedCount, and the
-    // component's constant seed restores everything else each rotating frame
-    // through a GPU-side copy, behind the previous frame's atomics.
+    // instanceCount, firstIndex, baseVertex, baseInstance, droppedCount,
+    // unsampledCount, hiddenCount}; the append atomically advances
+    // instanceCount and the three counters, and the component's constant seed
+    // restores everything each rotating frame through a GPU-side copy, behind
+    // the previous frame's atomics.
     void resetOverflowCtrl(const C_PerAxisTrixelCanvases &axes) {
         IRRender::resetBufferFromSeed(
             axes.overflowCtrlSeed_.second,
@@ -1022,8 +1047,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     .second->getSubData(0, sizeof(sample), sample.data());
                 renderRunWitness().recordOverflow(
                     sample[1],
-                    sample[5],
+                    sample[C_PerAxisTrixelCanvases::kOverflowCtrlDroppedWord],
                     static_cast<std::uint32_t>(axes.overflowCap_)
+                );
+                renderRunWitness().recordOverflowRejection(
+                    sample[1],
+                    sample[C_PerAxisTrixelCanvases::kOverflowCtrlDroppedWord],
+                    sample[C_PerAxisTrixelCanvases::kOverflowCtrlUnsampledWord],
+                    sample[C_PerAxisTrixelCanvases::kOverflowCtrlHiddenWord]
                 );
                 if (producer.frame_ >= newestFrame) {
                     newestFrame = producer.frame_;
@@ -1035,7 +1066,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             return;
         }
         axes.settledOverflowCount_ = ctrl[1];
-        const std::uint32_t dropped = ctrl[5];
+        const std::uint32_t dropped = ctrl[C_PerAxisTrixelCanvases::kOverflowCtrlDroppedWord];
         if (dropped > 0 && dropped != lastOverflowDropWarned_) {
             IRE_LOG_WARN(
                 "Per-axis overflow list dropped {} entries last "
@@ -1264,10 +1295,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         };
 
         // Dispatch order per rotating frame: cardinal stores (mode 0) ×3 →
-        // barrier → overflow append (mode 3) ×3 → barrier → overflow canonical
-        // sort → barrier → per axis {election (mode 1) → stage 2}. Mode 3 reads
-        // each axis's settled distance store; election stays last because its
-        // per-axis winner-region refill reuses the shared scratch.
+        // barrier → per axis {election (mode 1) → stage 2} → occupied-cell
+        // compaction → occluder prepass and pyramid → overflow append ×3 →
+        // barrier → overflow canonical sort. The append reads each axis's
+        // settled distance store and, through the pyramid, the depth of the
+        // faces that won their cells, so it follows the pass that lists them.
         //
         // Store pass — clears + cardinal stores (mode 0).
         // Each dispatch group owns a GPU row so the rotating burst is
@@ -1317,19 +1349,98 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     indirectOffsetBytes
                 );
             }
-            // All three distance stores settled — read below by the mode-3
-            // cardinal-winner test, the elections, and stage 2's depth re-test.
+            // All three distance stores settled — read below by the elections,
+            // stage 2's depth re-test and the append's cardinal-winner test.
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-            // Order the control reset and prefix fill on binding 28 before
-            // mode-3 atomics read and increment the current-frame counter.
+            // Order the control reset and prefix fill on binding 28 before the
+            // elections and the append's atomics on the current-frame counters.
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         }
 
         {
+            GpuSubStageScope finalizeScope("voxelPerAxisFinalize");
+            IR_PROFILE_SCOPE("vs1_pa_finalize");
+            // Winner election (mode 1) + stage 2, per axis. The
+            // winner scratch (region 0) is serially reused across axes: refill to
+            // the no-winner sentinel, elect this axis's winners, then let stage 2's
+            // guard admit exactly one tied face per cell.
+            for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+                auto &tex = axes.axes_[axis];
+                Texture2D *colors = tex.colors_.second;
+                Texture2D *distances = tex.distances_.second;
+                Texture2D *entityIds = tex.entityIds_.second;
+
+                // reset the winner scratch to the no-winner sentinel
+                // (0xFFFFFFFF — a repeating byte, so both backends fill GPU-side)
+                // before this axis's winner-resolve dispatch below.
+                IRRender::device()->fillBuffer(axes.winnerIds_.second, winnerScratchBytes, 0xFFu);
+
+                stage1Program_->use();
+                uploadAxisFrameData(axis, 1);
+                const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
+                fogTex->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
+                fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
+                distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+                IRRender::device()->dispatchComputeIndirect(
+                    perAxisIndirectArgsBuf_,
+                    indirectOffsetBytes
+                );
+                // The winner SSBO writes must land before stage 2's guard reads.
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+                frameData_.resolveMode_ = 0;
+                frameDataBuf_->subData(
+                    offsetof(FrameDataVoxelToCanvas, resolveMode_),
+                    sizeof(int),
+                    &frameData_.resolveMode_
+                );
+
+                stage2Program_->use();
+                colors->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                distances->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
+                entityIds->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
+                // STAGE_2 re-evaluates STAGE_1's cut-face predicate so its
+                // colour tap lands on the same faces. Slot 0 is the colour output here,
+                // so the fog grid binds on slot 3 (slots 1/2 = distance + entity-id).
+                // Same real-grid-or-placeholder choice as STAGE_1 above.
+                fogTex->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
+                fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
+                IRRender::device()->dispatchComputeIndirect(
+                    perAxisIndirectArgsBuf_,
+                    indirectOffsetBytes
+                );
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            }
+        }
+
+        // Compact each axis's occupied cells: the occluder prepass, the
+        // downstream per-axis compute stages (AO / sun-shadow / lighting /
+        // resolve) and the framebuffer scatter dispatch and draw over only
+        // those. Stage 2's distance-canvas writes are already barrier'd.
+        compactPerAxisCells(axes);
+
+        {
             GpuSubStageScope overflowScope("voxelPerAxisOverflow");
             IR_PROFILE_SCOPE("vs1_pa_overflow");
-            // Overflow append (mode 3): exposed faces that lost their cardinal
-            // store cell append scatter entries for finite-quad rasterization.
+            // The cell-path faces are in the final image, so their depth is a
+            // valid occluder for every overflow face this frame.
+            if (overflowRejectionReady_) {
+                buildOverflowOccluders(axes);
+            }
+            frameData_.overflowScratchLayout_.x = overflowRejectionReady_ ? 1 : 0;
+            // Overflow append: exposed faces that lost their cardinal store
+            // cell append scatter entries for finite-quad rasterization, unless
+            // the occluder pyramid proves their footprint hidden.
+            overflowAppendProgram_->use();
+            // The append kernel declares the scatter frame data on slot 3 and
+            // the pyramid on texture slot 2 whether or not it tests. The
+            // composite owns slot 3 and binds it once, so only a pipeline
+            // without that system needs a stand-in there.
+            if (scatterFrameBuf_ == nullptr) {
+                frameDataBuf_->bindBase(
+                    BufferTarget::UNIFORM,
+                    kBufferIndex_FrameDataUniformIsoTriangles
+                );
+            }
             for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
                 uploadAxisFrameData(axis, 3);
                 const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
@@ -1340,11 +1451,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     TextureAccess::READ_ONLY,
                     TextureFormat::R32I
                 );
+                axes.occluderPyramid_.second->bind(2);
                 IRRender::device()->dispatchComputeIndirect(
                     perAxisIndirectArgsBuf_,
                     indirectOffsetBytes
                 );
             }
+            frameData_.overflowScratchLayout_.x = 0;
             // GPU-authored commands size work from the current list. The CPU opens
             // enough merge stages for every face the admitted voxel slots can emit.
             std::uint32_t sortDispatches = 0;
@@ -1406,62 +1519,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 0,
                 kOverflowCtrlBytes
             );
-        }
-
-        {
-            GpuSubStageScope finalizeScope("voxelPerAxisFinalize");
-            IR_PROFILE_SCOPE("vs1_pa_finalize");
-            // Winner election (mode 1) + stage 2, per axis. The
-            // winner scratch (region 0) is serially reused across axes: refill to
-            // the no-winner sentinel, elect this axis's winners, then let stage 2's
-            // guard admit exactly one tied face per cell. Append dispatches
-            // use the control and entry regions, leaving winner ids untouched.
-            for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
-                auto &tex = axes.axes_[axis];
-                Texture2D *colors = tex.colors_.second;
-                Texture2D *distances = tex.distances_.second;
-                Texture2D *entityIds = tex.entityIds_.second;
-
-                // reset the winner scratch to the no-winner sentinel
-                // (0xFFFFFFFF — a repeating byte, so both backends fill GPU-side)
-                // before this axis's winner-resolve dispatch below.
-                IRRender::device()->fillBuffer(axes.winnerIds_.second, winnerScratchBytes, 0xFFu);
-
-                stage1Program_->use();
-                uploadAxisFrameData(axis, 1);
-                const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
-                fogTex->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
-                fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
-                distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
-                IRRender::device()->dispatchComputeIndirect(
-                    perAxisIndirectArgsBuf_,
-                    indirectOffsetBytes
-                );
-                // The winner SSBO writes must land before stage 2's guard reads.
-                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-                frameData_.resolveMode_ = 0;
-                frameDataBuf_->subData(
-                    offsetof(FrameDataVoxelToCanvas, resolveMode_),
-                    sizeof(int),
-                    &frameData_.resolveMode_
-                );
-
-                stage2Program_->use();
-                colors->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-                distances->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
-                entityIds->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
-                // STAGE_2 re-evaluates STAGE_1's cut-face predicate so its
-                // colour tap lands on the same faces. Slot 0 is the colour output here,
-                // so the fog grid binds on slot 3 (slots 1/2 = distance + entity-id).
-                // Same real-grid-or-placeholder choice as STAGE_1 above.
-                fogTex->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
-                fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
-                IRRender::device()->dispatchComputeIndirect(
-                    perAxisIndirectArgsBuf_,
-                    indirectOffsetBytes
-                );
-                IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-            }
+            // The compaction's finalize ran before the append; the overflow
+            // relight and fog dispatch from the settled count.
+            finalizePerAxisDispatchArgs(axes);
         }
 
         // Restore the full compact buffers to 25/26 so the next canvas's compact +
@@ -1556,40 +1616,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
         // Make each axis's occupied count (instanceCount) visible to the finalize.
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-
-        // derive the per-axis compute-indirect dispatch dims from the final
-        // occupied counts (a cheap 3-thread pass — one axis per workgroup over the
-        // whole indirect buffer). Split out of the compaction so its full-grid scan
-        // stays barrier-free.
-        cellFinalizeProgram_->use();
-        cellIndirect->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisCellIndirect);
-        // The settled overflow count shares the finalize's storage barrier.
-        axes.winnerIds_.second->bindRange(
-            BufferTarget::SHADER_STORAGE,
-            kBufferIndex_PerAxisResolveScratch,
-            axes.ctrlOffsetBytes(),
-            static_cast<std::size_t>(axes.entriesBaseUints_ - axes.ctrlBaseUints_) *
-
-                sizeof(std::uint32_t)
-        );
-        IRRender::device()->dispatchCompute(C_PerAxisTrixelCanvases::kAxisCount, 1, 1);
-
-        // The compacted list feeds the following COMPUTE dispatches
-        // (SHADER_STORAGE); every indirect dispatch and draw over the cells reads
-        // its arguments from the copy published here (BUFFER_UPDATE, then COMMAND).
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-        IRRender::publishIndirectArgs(
-            cellIndirect,
-            0,
-            axes.cellIndirectArgs_.second,
-            0,
-            cellIndirectBytes
-        );
-
-        axes.winnerIds_.second->bindBase(
-            BufferTarget::SHADER_STORAGE,
-            kBufferIndex_PerAxisResolveScratch
-        );
+        finalizePerAxisDispatchArgs(axes);
 
         // Restore 25/26 to the voxel single-canvas compaction buffers (STAGE_1's
         // next-frame compact relies on those sticky binds). Downstream per-axis
@@ -1597,6 +1624,172 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         compactedBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_CompactedVoxelIndices);
         indirectBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_IndirectDispatchParams);
         axes.storeCellsListed_ = true;
+    }
+
+    // Derive every per-axis compute-indirect grid from the counts as they
+    // stand — each axis's occupied cells and the overflow lane's settled
+    // entries — and publish the copy the indirect dispatches and draws read.
+    // A cheap 3-thread pass (one axis per workgroup over the whole indirect
+    // buffer), kept out of the compaction so its full-grid scan stays
+    // barrier-free. Runs after the compaction and again once the lane has
+    // settled; leaves slot 26 on the cell indirect buffer for the caller to
+    // restore.
+    void finalizePerAxisDispatchArgs(C_PerAxisTrixelCanvases &axes) {
+        Buffer *cellIndirect = axes.cellIndirect_.second;
+        cellFinalizeProgram_->use();
+        cellIndirect->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisCellIndirect);
+        axes.winnerIds_.second->bindRange(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_PerAxisResolveScratch,
+            axes.ctrlOffsetBytes(),
+            static_cast<std::size_t>(axes.entriesBaseUints_ - axes.ctrlBaseUints_) *
+                sizeof(std::uint32_t)
+        );
+        IRRender::device()->dispatchCompute(C_PerAxisTrixelCanvases::kAxisCount, 1, 1);
+
+        // The grids feed the following COMPUTE dispatches (SHADER_STORAGE);
+        // every indirect dispatch and draw reads its arguments from the copy
+        // published here (BUFFER_UPDATE, then COMMAND).
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        IRRender::publishIndirectArgs(
+            cellIndirect,
+            0,
+            axes.cellIndirectArgs_.second,
+            0,
+            static_cast<std::size_t>(C_PerAxisTrixelCanvases::kAxisCount) *
+                kPerAxisCellIndirectStrideBytes
+        );
+        axes.winnerIds_.second->bindBase(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_PerAxisResolveScratch
+        );
+    }
+
+    // Decide whether this frame's overflow append rejects against an occluder
+    // prepass, and derive the scatter placement it tests at. It can when the
+    // composite that draws the lane is registered: the prepass borrows its
+    // program, quad, frame-data buffer and framebuffer. The pyramid is sized
+    // either way, since the append kernel declares it.
+    void resolveOverflowRejection() {
+        overflowRejectionReady_ = false;
+        mainFramebuffer_ = nullptr;
+        if (perAxisCanvases_ == nullptr) {
+            return;
+        }
+        C_PerAxisTrixelCanvases &axes = *perAxisCanvases_;
+        axes.scatterPlacementDerived_ = false;
+        axes.scatterPlacementTested_ = false;
+        if (!axes.isAllocated()) {
+            return;
+        }
+        if (findSystem(TRIXEL_TO_FRAMEBUFFER) == kNullSystemId) {
+            axes.ensureOccluderPyramid(ivec2(1, 1));
+            return;
+        }
+        if (scatterProgram_ == nullptr) {
+            scatterProgram_ = IRRender::getNamedResource<ShaderProgram>("PerAxisScatterProgram");
+            quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
+            scatterFrameBuf_ = IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
+        }
+        mainFramebuffer_ = &IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+        axes.scatterPlacement_ = IRPrefab::PerAxisCanvas::mainCanvasScatterPlacement(axes.size_);
+        axes.scatterPlacementDerived_ = true;
+        axes.ensureOccluderPyramid(ivec2(axes.scatterPlacement_.framebufferResolution_));
+
+        // The occluders are the faces that hold a store cell at this point;
+        // the test is sound only if the composite still draws each of them.
+        // Lighting and fog rewrite a cell's colour and keep its alpha, so they
+        // do. The glitch pass can blank a cell, so a frame with a glitch
+        // subject keeps every cardinal loser.
+        const bool storeCellsMayBlank = findSystem(TRIXEL_GLITCH) != kNullSystemId &&
+                                        IREntity::countComponents<C_GlitchSubject>() > 0;
+        if (overflowRejectionDisabled_ || storeCellsMayBlank) {
+            logFirstRejectionVerdict(
+                overflowRejectionDisabled_ ? "off (disabled)" : "off (glitch subject)"
+            );
+            return;
+        }
+        // The composite found the camera written after this system on a recent
+        // frame: a face tested at this placement could be drawn at another.
+        if (axes.rejectionStandDownFrames_ > 0) {
+            --axes.rejectionStandDownFrames_;
+            logFirstRejectionVerdict("off (stand-down)");
+            return;
+        }
+        axes.scatterPlacementTested_ = true;
+        overflowRejectionReady_ = true;
+        logFirstRejectionVerdict("on");
+    }
+
+    // One line per run, on the first frame that could have rejected: a
+    // fixture that opts out shows here that the opt-out preceded every
+    // rejection pass.
+    void logFirstRejectionVerdict(const char *verdict) {
+        if (overflowRejectionVerdictLogged_) {
+            return;
+        }
+        overflowRejectionVerdictLogged_ = true;
+        IRE_LOG_INFO("Per-axis overflow rejection on the first rotating frame: {}", verdict);
+    }
+
+    // Draw the faces that won their store cells into the main framebuffer's
+    // depth, through the scatter program at the placement the composite will
+    // use, and reduce that depth to the occluder pyramid the append tests
+    // against. Every one of those faces is drawn again by the composite, at the
+    // same position, so the prepass depth at a pixel is never nearer than the
+    // composite's. TRIXEL_TO_FRAMEBUFFER clears the framebuffer before it draws,
+    // so nothing of the prepass reaches the image, and re-uploads its
+    // frame-data buffer before every draw, so the placement written into it
+    // here does not outlive the prepass. Borrows slot 25 and texture slots 0
+    // to 2, which the append rebinds.
+    void buildOverflowOccluders(C_PerAxisTrixelCanvases &axes) {
+        const IRComponents::PerAxisScatterPlacement &placement = axes.scatterPlacement_;
+        FrameDataTrixelToFramebuffer frame{};
+        placement.applyTo(frame);
+        frame.scatterFbResolution_ = vec4(placement.framebufferResolution_, 0.0f, 0.0f);
+        scatterFrameBuf_->subData(0, sizeof(frame), &frame);
+
+        mainFramebuffer_->bindFramebuffer();
+        mainFramebuffer_->clear();
+        quadVao_->bind();
+        scatterProgram_->use();
+        IRRender::device()->setPolygonMode(PolygonMode::FILL);
+        Buffer *cellCompacted = axes.cellCompacted_.second;
+        const int regionStride = axes.cellRegionStride_;
+        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+            const C_PerAxisTrixelCanvases::AxisTextures &tex = axes.axes_[axis];
+            tex.colors_.second->bind(0);
+            tex.distances_.second->bind(1);
+            tex.entityIds_.second->bind(2);
+            cellCompacted->bindRange(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisCellCompacted,
+                static_cast<std::ptrdiff_t>(axis) * regionStride *
+                    static_cast<int>(sizeof(std::uint32_t)),
+                static_cast<size_t>(regionStride) * sizeof(std::uint32_t)
+            );
+            IRRender::device()->drawElementsInstancedIndirect(
+                DrawMode::TRIANGLES,
+                IndexType::UNSIGNED_SHORT,
+                axes.cellIndirectArgs_.second,
+                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes
+            );
+        }
+        mainFramebuffer_->framebuffer_.second->unbind();
+        IRRender::device()->memoryBarrier(BarrierType::ALL);
+
+        occluderReduceProgram_->use();
+        mainFramebuffer_->getTextureDepth().bind(0);
+        axes.occluderPyramid_.second
+            ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
+        const ivec2 targetSize = axes.occluderTargetSize_;
+        constexpr int kReduceBlock = 1 << C_PerAxisTrixelCanvases::kOccluderLevels;
+        IRRender::device()->dispatchCompute(
+            IRMath::divCeil(targetSize.x, kReduceBlock),
+            IRMath::divCeil(targetSize.y, kReduceBlock),
+            1
+        );
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
     }
 
     // Chunk-occlusion HZB pre-pass. Runs after the frustum
@@ -2737,12 +2930,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 admittedChunkCount,
                 static_cast<std::uint32_t>(effectiveVoxelCount)
             );
-            // Compact each per-axis canvas's occupied cells now (the axis
-            // distance canvases were just fully written above), so the downstream
-            // per-axis compute stages (AO / sun-shadow / lighting / resolve) and
-            // the framebuffer scatter can dispatch/draw over only occupied cells.
-            // The distance-canvas writes are barrier'd inside dispatchPerAxisCanvases.
-            compactPerAxisCells(*perAxisCanvases_);
         }
     }
 
@@ -2816,6 +3003,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 perAxisCanvases_ = perAxis.value();
             }
         }
+        resolveOverflowRejection();
 
         // Resolve the MAIN canvas's fog once per frame for a world-placed detached
         // re-voxelize canvas to cross-section against. Gather it each frame
@@ -2926,6 +3114,20 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::createNamedResource<ShaderProgram>(
             "PerAxisCellClearProgram",
             std::vector{ShaderStage{IRRender::kFileCompPerAxisCellClear, ShaderType::COMPUTE}}
+        );
+        // The per-axis overflow append: the IR_OVERFLOW_APPEND 1 specialization
+        // of the shared stage-1 body, so the store kernel carries neither the
+        // append nor its occluder test.
+        IRRender::createNamedResource<ShaderProgram>(
+            "SingleVoxelOverflowAppend",
+            std::vector{ShaderStage{
+                IRRender::kFileCompVoxelToTrixelStage1OverflowAppend,
+                ShaderType::COMPUTE
+            }}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "PerAxisOccluderReduceProgram",
+            std::vector{ShaderStage{IRRender::kFileCompPerAxisOccluderReduce, ShaderType::COMPUTE}}
         );
         // overflow-entry canonical sort — dispatched after the mode-3
         // append so the overflow draw's entry order is a pure function of the
@@ -3173,6 +3375,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->cellFinalizeProgram_ =
             IRRender::getNamedResource<ShaderProgram>("PerAxisCellFinalizeProgram");
         p->cellClearProgram_ = IRRender::getNamedResource<ShaderProgram>("PerAxisCellClearProgram");
+        p->overflowAppendProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("SingleVoxelOverflowAppend");
+        p->occluderReduceProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("PerAxisOccluderReduceProgram");
         p->stage1Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1");
         p->stage1FeederProgram_ =
             IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1Feeder");
@@ -3302,5 +3508,26 @@ inline bool feederClassifyRingNonEmpty() {
 }
 
 } // namespace IRPrefab::SunShadow
+
+namespace IRPrefab::PerAxisCanvas {
+
+// Whether the overflow append rejects the faces the occluder prepass proves
+// hidden; on unless IR_PERAXIS_OVERFLOW_REJECT_DISABLE was set at start-up.
+// Off, the lane holds every exposed cardinal-store loser. For a pipeline that
+// writes the camera between this system and TRIXEL_TO_FRAMEBUFFER, for a
+// fixture whose subject reaches the lane's relight or fog pass only as hidden
+// faces, and for A/B triage. Returns false, changing nothing, when VOXEL_TO_TRIXEL_STAGE_1
+// has not been created yet: a caller that must hold the setting from the first
+// rotating frame calls it after the system exists and checks the result.
+inline bool setOverflowRejectionEnabled(bool enabled) {
+    auto *p = IRPrefab::SunShadow::detail::voxelToTrixelStage1();
+    if (p == nullptr) {
+        return false;
+    }
+    p->overflowRejectionDisabled_ = !enabled;
+    return true;
+}
+
+} // namespace IRPrefab::PerAxisCanvas
 
 #endif /* SYSTEM_VOXEL_TO_TRIXEL_H */

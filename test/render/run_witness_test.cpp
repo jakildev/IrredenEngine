@@ -98,6 +98,33 @@ TEST(RenderRunWitness, OverflowKeepsTheWorstFrameNotTheLast) {
     EXPECT_EQ(witness.overflowCap_, 1024u);
 }
 
+TEST(RenderRunWitness, RejectionKeepsTheFrameWithTheMostCandidates) {
+    RenderRunWitness witness;
+    // entries, dropped, unsampled, hidden
+    witness.recordOverflowRejection(10u, 0u, 20u, 70u);
+    witness.recordOverflowRejection(40u, 5u, 300u, 655u);
+    witness.recordOverflowRejection(900u, 0u, 0u, 0u);
+    EXPECT_EQ(witness.rejectionCandidates_, 1000u);
+    EXPECT_EQ(witness.rejectionUnsampled_, 300u);
+    EXPECT_EQ(witness.rejectionHidden_, 655u);
+    // A dropped entry is a candidate that was neither rejected nor kept.
+    EXPECT_EQ(witness.rejectionSurviving_, 40u);
+}
+
+TEST(RenderRunWitness, CensusKeepsTheFrameWithTheMostOwners) {
+    RenderRunWitness witness;
+    EXPECT_EQ(witness.censusSamples_, 0u);
+    // records, owners, interior, unsampled
+    witness.recordOverflowCensus(500u, 0u, 0u, 9u);
+    witness.recordOverflowCensus(400u, 30u, 28u, 7u);
+    witness.recordOverflowCensus(450u, 12u, 12u, 8u);
+    EXPECT_EQ(witness.censusSamples_, 3u);
+    EXPECT_EQ(witness.censusRecords_, 400u);
+    EXPECT_EQ(witness.censusOwners_, 30u);
+    EXPECT_EQ(witness.censusInterior_, 28u);
+    EXPECT_EQ(witness.censusUnsampled_, 7u);
+}
+
 TEST(RenderRunWitness, ResetForgetsThePreviousRun) {
     RenderRunWitness witness;
     witness.recordPose(1.0f, 2.0f, true);

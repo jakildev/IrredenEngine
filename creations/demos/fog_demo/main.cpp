@@ -4263,6 +4263,13 @@ int main(int argc, char **argv) {
     if (g_channelProbe || g_worldPan || g_exploredDecay) {
         IRPrefab::PerAxisSurfaceLighting::setEnabled(false);
     }
+    // The explored-decay fixture's hidden box reaches the overflow lane only
+    // as faces the rotated view cannot see, and its probe requires the lane's
+    // fog pass to have entries to paint, so this mode keeps every cardinal
+    // loser.
+    if (g_exploredDecay) {
+        IRPrefab::PerAxisCanvas::setOverflowRejectionEnabled(false);
+    }
     initCommands();
     initEntities();
     IREngine::gameLoop();

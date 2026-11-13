@@ -552,6 +552,41 @@ bool g_continuousZoomGuiTest = false;
 enum class RotationPickMode { OFF, GUI, SWEEP, TIE, CUBE };
 RotationPickMode g_rotationPickMode = RotationPickMode::OFF;
 bool g_rotationPickPassed = false;
+// --capture-pose-write-frame: the GUI-test cyclers also capture the frame each
+// shot's pose is written on (IRVideo::GuiTestConfig::capturePoseWriteFrame_).
+bool g_capturePoseWriteFrame = false;
+// --late-camera-write-test: the overflow rejection's recovery from a camera
+// write between VOXEL_TO_TRIXEL_STAGE_1 and the composite; the fixture is
+// writeLateCamera / probeLateCamera.
+bool g_lateCameraWriteTest = false;
+namespace LateCameraWrite {
+constexpr int kFirstWriteFrame = 40;
+// From kFirstWriteFrame: a write on a rejecting frame, one inside its
+// stand-down window, and one after the refilled window has expired.
+constexpr std::array<int, 3> kWriteOffsets = {0, 4, 16};
+constexpr int kStandDown = IRComponents::C_PerAxisTrixelCanvases::kRejectionStandDownFrames;
+static_assert(kWriteOffsets[1] > kWriteOffsets[0] && kWriteOffsets[1] < kStandDown);
+static_assert(kWriteOffsets[2] > kWriteOffsets[1] + kStandDown);
+constexpr int kCheckFromFrame = kFirstWriteFrame - 8;
+constexpr int kLastFrame = kFirstWriteFrame + kWriteOffsets[2] + kStandDown + 2;
+constexpr float kBaseYaw = 0.5f;
+constexpr float kYawStep = 0.05f;
+
+struct State {
+    int frame_ = 0;
+    int writes_ = 0;
+    bool wroteThisFrame_ = false;
+    int expectedStandDown_ = 0;
+    int failures_ = 0;
+    bool latched_ = false;
+    bool refilled_ = false;
+    bool relatched_ = false;
+};
+} // namespace LateCameraWrite
+
+LateCameraWrite::State g_lateCameraWrite;
+bool lateCameraWritePassed();
+
 // The cull-eviction fixture replaces both the scene and capture table;
 // keep it flag-gated so the standing render references retain their scene.
 bool g_cullEvictTest = false;
@@ -1705,6 +1740,16 @@ void registerCliArgs() {
         {"off", "gui", "sweep", "tie", "cube"},
         "off"
     );
+    args.flag(
+        "--capture-pose-write-frame",
+        "With --gui-test, --continuous-zoom-gui-test or --rotation-pick-test gui, also capture "
+        "the frame each shot's pose is written on"
+    );
+    args.flag(
+        "--late-camera-write-test",
+        "Write the camera between the voxel stage and the composite on scheduled frames and "
+        "check the overflow rejection's latch and stand-down; exits 2 on failure"
+    );
     args.string("--debug-overlay", "Debug overlay mode (e.g. none, depth, normals)", "none");
     args.number("--yaw", "Initial camera Z-yaw in radians", 0.0f);
     args.flag(
@@ -1850,6 +1895,8 @@ void readCliArgs() {
     g_viewportLodSwap = g_viewportPortrait && args.getFlag("--viewport-lod-swap");
     g_cursorPivotIndicator = args.getFlag("--cursor-pivot-indicator");
     g_continuousZoomGuiTest = args.getFlag("--continuous-zoom-gui-test");
+    g_capturePoseWriteFrame = args.getFlag("--capture-pose-write-frame");
+    g_lateCameraWriteTest = args.getFlag("--late-camera-write-test");
     const auto rotationPickMode = args.getEnum("--rotation-pick-test");
     if (rotationPickMode == "gui")
         g_rotationPickMode = RotationPickMode::GUI;
@@ -2171,7 +2218,12 @@ int main(int argc, char **argv) {
             "shadow-feeder coupling"
         );
     }
+    if (g_lateCameraWriteTest && !g_initialYawSet) {
+        IRPrefab::Camera::setYaw(LateCameraWrite::kBaseYaw);
+    }
     IREngine::gameLoop();
+    if (g_lateCameraWriteTest)
+        return lateCameraWritePassed() ? 0 : 2;
     if (g_rotationPickMode != RotationPickMode::OFF && g_rotationPickMode != RotationPickMode::GUI)
         return g_rotationPickPassed ? 0 : 2;
     return g_shapeSampleProbe && (!g_shapeSampleProbeAttempted || !g_shapeSampleProbePassed) ? 2
@@ -2757,6 +2809,107 @@ void buildRotationPickSamples() {
         }
     }
     IRPrefab::Camera::setYaw(0.0f);
+}
+
+// ---------------------------------------------------------------------------
+// Late camera write recovery (--late-camera-write-test)
+// ---------------------------------------------------------------------------
+// The ordering contract puts every camera write ahead of
+// VOXEL_TO_TRIXEL_STAGE_1. This fixture breaks it on purpose: a system spliced
+// ahead of TRIXEL_TO_FRAMEBUFFER moves the yaw on scheduled frames, and a probe
+// after the composite checks the overflow rejection's recovery every frame. A
+// frame that rejected is drawn at the placement its faces were tested at, the
+// next kRejectionStandDownFrames frames keep the full lane, a write inside that
+// window refills it, and a write after it expires latches again. Images are
+// not graded.
+void writeLateCamera() {
+    using namespace LateCameraWrite;
+    State &s = g_lateCameraWrite;
+    ++s.frame_;
+    const int offset = s.frame_ - kFirstWriteFrame;
+    s.wroteThisFrame_ =
+        std::find(kWriteOffsets.begin(), kWriteOffsets.end(), offset) != kWriteOffsets.end();
+    if (s.wroteThisFrame_) {
+        ++s.writes_;
+        IRPrefab::Camera::setYaw(kBaseYaw + kYawStep * static_cast<float>(s.writes_));
+    }
+}
+
+void probeLateCamera() {
+    using namespace LateCameraWrite;
+    State &s = g_lateCameraWrite;
+    if (s.frame_ < kCheckFromFrame) {
+        return;
+    }
+    auto perAxis = IREntity::getComponentOptional<IRComponents::C_PerAxisTrixelCanvases>(
+        IRRender::getCanvas("main")
+    );
+    if (!perAxis.has_value() || !(*perAxis.value()).isAllocated()) {
+        IR_LOG_ERROR("LateCameraWrite frame {}: the per-axis set is not live", s.frame_);
+        ++s.failures_;
+        IRWindow::closeWindow();
+        return;
+    }
+    const IRComponents::C_PerAxisTrixelCanvases &axes = *perAxis.value();
+    // Stage 1 either rejected or spent one stand-down frame; the composite
+    // then refilled the window if this frame's pose was written after stage 1.
+    const bool expectTested = s.expectedStandDown_ == 0;
+    if (!expectTested) {
+        --s.expectedStandDown_;
+    }
+    if (s.wroteThisFrame_) {
+        s.expectedStandDown_ = kStandDown;
+        if (!expectTested) {
+            s.refilled_ = true;
+        } else if (s.writes_ == 1) {
+            s.latched_ = true;
+        } else {
+            s.relatched_ = true;
+        }
+    }
+    const bool ok = axes.scatterPlacementTested_ == expectTested &&
+                    axes.rejectionStandDownFrames_ == s.expectedStandDown_;
+    IR_LOG_INFO(
+        "LateCameraWrite frame {}: write={} drawnAtTestedPlacement={} standDown={} "
+        "(expected {} / {}) {}",
+        s.frame_,
+        s.wroteThisFrame_,
+        axes.scatterPlacementTested_,
+        axes.rejectionStandDownFrames_,
+        expectTested,
+        s.expectedStandDown_,
+        ok ? "ok" : "MISMATCH"
+    );
+    if (!ok) {
+        ++s.failures_;
+    }
+    if (s.frame_ >= kLastFrame) {
+        IR_LOG_INFO(
+            "LateCameraWrite: failures={} latched={} refilled={} relatched={} writes={}",
+            s.failures_,
+            s.latched_,
+            s.refilled_,
+            s.relatched_,
+            s.writes_
+        );
+        IRWindow::closeWindow();
+    }
+}
+
+bool lateCameraWritePassed() {
+    const LateCameraWrite::State &s = g_lateCameraWrite;
+    return s.failures_ == 0 && s.latched_ && s.refilled_ && s.relatched_ &&
+           s.frame_ >= LateCameraWrite::kLastFrame;
+}
+
+// The GUI-test cyclers spliced ahead of TRIXEL_TO_FRAMEBUFFER write each shot's
+// pose between VOXEL_TO_TRIXEL_STAGE_1 and the composite, outside the camera
+// ordering contract, so those modes keep the full overflow lane for the whole
+// run. The voxel system must exist already: the setter changes nothing before.
+void keepFullOverflowLaneForGuiCycler() {
+    [[maybe_unused]] const bool applied =
+        IRPrefab::PerAxisCanvas::setOverflowRejectionEnabled(false);
+    IR_ASSERT(applied, "VOXEL_TO_TRIXEL_STAGE_1 must be created before the GUI-test opt-out");
 }
 
 void onRotationPickGuiFrame(int index, bool capture) {
@@ -4426,10 +4579,12 @@ void initSystems() {
         cfg.shots_ = g_rotationPick.shots_.data();
         cfg.numShots_ = static_cast<int>(g_rotationPick.shots_.size());
         cfg.onAssertFrame_ = &onRotationPickGuiFrame;
+        cfg.capturePoseWriteFrame_ = g_capturePoseWriteFrame;
         renderPipeline.insert(
             std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId),
             IRVideo::createGuiTestSystem(cfg)
         );
+        keepFullOverflowLaneForGuiCycler();
     } else if (g_autoWarmupFrames > 0 && g_cullEvictTest) {
         IRVideo::GuiTestConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
@@ -4448,6 +4603,7 @@ void initSystems() {
         cfg.shots_ = kHelpOverlayGuiShots;
         cfg.numShots_ = kNumHelpOverlayGuiShots;
         cfg.onAssertFrame_ = &onHelpOverlayAssertFrame;
+        cfg.capturePoseWriteFrame_ = g_capturePoseWriteFrame;
         // Ahead of the composite, not at the tail: TRIXEL_TO_FRAMEBUFFER's
         // beginTick resets HoveredEntityIdBuffer for the frame it is about to
         // draw, so a HOVERED_ENTITY_ID read after it sees the reset, never the
@@ -4457,6 +4613,7 @@ void initSystems() {
             std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId),
             IRVideo::createGuiTestSystem(cfg)
         );
+        keepFullOverflowLaneForGuiCycler();
         // At the tail, past every pass that draws to the screen target.
         renderPipeline.push_back(
             IRSystem::createSystem<C_VoxelSetNew>(
@@ -4472,12 +4629,14 @@ void initSystems() {
         cfg.shots_ = kContinuousZoomGuiShots;
         cfg.numShots_ = kNumContinuousZoomGuiShots;
         cfg.onAssertFrame_ = &onContinuousZoomGuiAssertFrame;
+        cfg.capturePoseWriteFrame_ = g_capturePoseWriteFrame;
         // Ahead of the composite for the same reason as --gui-test: the hover
         // readback has to be taken before TRIXEL_TO_FRAMEBUFFER resets it.
         renderPipeline.insert(
             std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId),
             IRVideo::createGuiTestSystem(cfg)
         );
+        keepFullOverflowLaneForGuiCycler();
     } else if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
@@ -4972,6 +5131,26 @@ void initSystems() {
         }
     }
     IRVideo::appendAutoRecordIfRequested(renderPipeline, g_autoRecordFrames);
+    if (g_lateCameraWriteTest) {
+        const auto composite =
+            std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId);
+        renderPipeline.insert(
+            composite,
+            IRSystem::createSystem<C_VoxelSetNew>(
+                "LateCameraWrite",
+                [](C_VoxelSetNew &) {},
+                &writeLateCamera
+            )
+        );
+        renderPipeline.insert(
+            std::next(composite),
+            IRSystem::createSystem<C_VoxelSetNew>(
+                "LateCameraWriteProbe",
+                [](C_VoxelSetNew &) {},
+                &probeLateCamera
+            )
+        );
+    }
 
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }
