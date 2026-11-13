@@ -1423,11 +1423,19 @@ All four are `IRPerfGrid` modes; #5009 adds the flags.
   mutator route costs an entity that is not static.
 
 Each fixture asserts, when its profile window or its first capture begins,
-that no entity is settling and that its script has finished. The profile
+that its script has finished, that settlement has finished (no entity is
+settling), and that the cache debt its gates read has been paid: no position
+range is queued, neither cull cache has a pending chunk, and the light
+occlusion grid has no stale world box left to refresh. Each condition is read
+from the cache that owns it. `settling == 0` does not prove the cache half,
+since settlement can finish while that debt is still being paid. The profile
 report prints the `Static residents` witnesses: `static`, `settling`,
 `settled`, `promoted`, `thawed`, `resettled`, `restarted`, `held`,
-`held_by_global`, `refused`, `promotion_ms_max`, `drain_ms_max`, position bytes uploaded per frame, and cull-bound slots
-rebuilt per frame.
+`held_by_global`, `refused`, `promotion_ms_max`, `drain_ms_max` and position
+bytes submitted for upload per frame. Next to them it prints the cull
+witnesses gate 3 reads, per frame: position and alpha write notifications
+counted at the producer, total cull-bound slots rebuilt, and slots rebuilt
+by a camera or full rebuild.
 
 ### Gates
 
@@ -1463,15 +1471,46 @@ at most 10% of base. Noise bound: the base arm's round range for the sum in
 the same session.
 
 **Gate 3, nothing re-uploaded.** Million control, one run, any build type.
-In every frame of the profile window, position bytes uploaded are zero and
-cull-bound slots rebuilt are zero. Mostly-static million: position bytes
-uploaded per frame are at most 16 times the moving cells' voxels
-(160,000) and above zero.
+After settlement and cache warm-up, every sampled frame submits zero
+position-upload bytes and receives zero position/alpha write-invalidation
+notifications for the resident population. Write-driven cull rebuild work
+is zero. Camera/projection-only rebuild work is reported separately and is
+not required to be zero by this gate. A frame containing both causes must
+retain its write evidence.
+
+The write witness counts notifications where they are produced: each
+`C_VoxelPool::markCullBoundsDirty(start, count)` call, before the per-chunk
+pending bit deduplicates it, before a queue saturates, and before either
+cull cache consumes it. One count per range is enough. There is no
+per-voxel telemetry and no scan of settled entities. The total rebuild
+count and the camera / full-rebuild count both stay visible beside it. If
+the report splits rebuilt slots by cause, the causes can overlap: a full
+cardinal rebuild drops the same frame's pending write chunks after it has
+covered them. No reading infers that no write happened by subtracting one
+count from another.
+
+Positive controls, unit tests, any build type:
+
+- a notified position write gives a nonzero write witness;
+- an alpha-only write gives a nonzero write witness;
+- both hold on a frame that also takes the full cardinal rebuild;
+- a camera-only change keeps the write witness at zero while total rebuild
+  work is nonzero.
+
+Mostly-static million, over gate 8's population: position bytes submitted
+for upload per frame are above zero and at most 16 times the moving cells'
+voxels (160,000). A count of ranges queued before the pending-range cap may
+be reported as supporting evidence. It does not replace submitted bytes.
+
 Reason for the replacement: settling takes a round, and the light occlusion
 grid refreshes stale world boxes for about 62 frames on this control
 (read from #4992's plan correction: 3,907 chunks at 64 per frame), so
-"after the first frame" is the wrong boundary. The fixture's
-warm-up covers both, and its start assert proves it.
+"after the first frame" is the wrong boundary. The fixture's warm-up covers
+both, and its start assert proves each one separately (§ "Fixtures"). The
+default's cull half also counted work no resident causes: a cardinal-index
+change or a continuous-yaw frame makes the next cardinal call rebuild the
+whole cache (`C_VoxelPool::rebuildChunkBounds`). The gate holds write-driven
+work at zero and reports the camera's.
 
 **Gate 4, motion control.** Unit tests in `test/ecs/`, any build type. An
 entity and an always-dynamic twin are compared after every step of: created
