@@ -11,6 +11,15 @@ fills them. Future bake work must not re-derive it — in particular it must
 not re-attempt a density-ratio or per-pixel-neighbour derivation, both of
 which are refuted here with measurements.
 
+The finite voxel-face bake admits source slots through its own chunk mask built
+from the sun-swept shadow-feeder viewport. This differs from the voxel raster's
+visible-only viewport while finite face casting is active: the raster need not
+deposit off-screen depth, but the face bake still needs off-screen casters whose
+shadow reaches a visible receiver. The optional occlusion pre-pass must not
+narrow the bake mask because an occluded voxel can still cast. Detached and
+revoxelized canvas domains keep their all-visible mask because their destination
+slots do not share the world pool's chunk bounds.
+
 ## The defect
 
 At a near-overhead sun, a cast shadow on the floor breaks into a **point

@@ -1,5 +1,6 @@
 #version 450 core
 
+#include "ir_constants.glsl"
 // Rasterizes the exposed sun-facing faces of the cells a canvas rasterizes
 // (bindings 5/6/8: the same positions, colors and active mask stage 1 reads)
 // into the sun depth map. A revoxelized canvas therefore casts its resampled
@@ -17,6 +18,7 @@ struct VoxelSunSample {
     uint reserved;
 };
 layout(std430, binding = 8) readonly buffer VoxelActiveMask { uint activeMask[]; };
+layout(std430, binding = 24) readonly buffer ChunkVisibility { uint chunkVisible[]; };
 layout(std430, binding = 5) readonly buffer PositionBuffer { vec4 positions[]; };
 layout(std430, binding = 6) readonly buffer ColorBuffer { VoxelSunSample voxels[]; };
 layout(std430, binding = 28) restrict buffer SunShadowDepthMap { uint sunDepthBuf[]; };
@@ -74,6 +76,7 @@ void main() {
     const uint index = (gl_WorkGroupID.y * uint(dispatch.y) + gl_WorkGroupID.x) * 64u + gl_LocalInvocationID.x;
 
     if (index >= uint(dispatch.x)) return;
+    if (chunkVisible[index / uint(VOXEL_CHUNK_SIZE)] == 0u) return;
     if ((voxels[index].colorPacked >> 24u) == 0u) return;
     if ((activeMask[index >> 5u] & (1u << (index & 31u))) == 0u) return;
     const uint flags = (voxels[index].materialFlagBone >> 8u) & 0xFFu;

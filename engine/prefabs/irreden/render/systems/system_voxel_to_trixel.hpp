@@ -596,6 +596,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // The canvas whose pool ids voxelEntityIdBuf_ last received.
     IREntity::EntityId voxelEntityIdBufCanvas_ = IREntity::kNullEntity;
     Buffer *chunkVisBuf_ = nullptr;
+    // Sun-swept caster mask retained while the optional occlusion pre-pass
+    // mutates ChunkVisibilityBuffer in place for raster compaction.
+    Buffer *sunFaceChunkVisBuf_ = nullptr;
     Buffer *indirectBuf_ = nullptr;
     // Copy of indirectBuf_ that no program binds: NVIDIA GL drains the queue
     // on the CPU before an indirect dispatch whose argument buffer a shader
@@ -615,6 +618,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     struct CullStatsProducer {
         bool perAxis_ = false;
         std::uint32_t poolSlots_ = 0;
+        std::uint32_t sunFaceAdmitted_ = 0;
     };
     IRRender::detail::GpuReadbackRing<CullStatsProducer, kMaxCullStatsSlots> cullStatsRing_{};
     std::vector<Buffer *> cullStatsBuffers_;
@@ -672,6 +676,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     FrameDataVoxelToCanvas frameData_{};
     // Resolved once per frame in beginTick; read by the per-entity tick.
     IRPrefab::SunShadow::ShadowFeederParams shadowFeederParams_{};
+    IRPrefab::SunShadow::ShadowFeederParams sunFaceFeederParams_{};
     // gate instrument — a TEST-ONLY iso-texel pad on
     // frameData_.visibleIsoBounds_ and nothing else. Widening it (positive)
     // promotes off-screen shadow feeders in the [visible+kGpuMargin,
@@ -783,6 +788,24 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // visible (the model-space re-voxelize canvas shows the whole solid).
     std::vector<std::uint32_t> activeMaskClearScratch_;
     std::vector<std::uint32_t> allVisibleChunkScratch_;
+
+    std::uint32_t uploadSunFaceChunkMask(
+        const std::uint32_t *mask,
+        std::size_t chunkWords,
+        std::uint32_t admittedChunkCount,
+        int effectiveVoxelCount
+    ) {
+        if (voxelFaceBaker_ == nullptr) {
+            return 0;
+        }
+        sunFaceChunkVisBuf_->subData(0, chunkWords * sizeof(std::uint32_t), mask);
+        std::uint32_t admittedVoxelCount = admittedChunkCount * IRRender::kVoxelChunkSize;
+        const int tailSlots = effectiveVoxelCount % IRRender::kVoxelChunkSize;
+        if (tailSlots != 0 && mask[chunkWords - 1] != 0u) {
+            admittedVoxelCount -= IRRender::kVoxelChunkSize - static_cast<std::uint32_t>(tailSlots);
+        }
+        return admittedVoxelCount;
+    }
     C_DetachedRevoxelizeBuffer *lookupDetachedRevoxelizeBuffer(IREntity::EntityId entity) const {
         for (const auto &[id, buffer] : detachedRevoxelizeBuffers_) {
             if (id == entity) {
@@ -1769,7 +1792,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         gpuStageTiming().totalVoxelCount_ = producer.poolSlots_;
         gpuStageTiming().axisEntryCount_ = axisEntries;
         gpuStageTiming().feederVoxelCount_ = feeder;
-        voxelCullAccumulator().record(visible, producer.poolSlots_, feeder, axisEntries);
+        gpuStageTiming().sunFaceAdmittedVoxelCount_ = producer.sunFaceAdmitted_;
+        voxelCullAccumulator()
+            .record(visible, producer.poolSlots_, feeder, axisEntries, producer.sunFaceAdmitted_);
     }
 
     void tick(
@@ -1990,11 +2015,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             previousEffectiveSubdivisions_ = effectiveSub;
         }
 
-        // Shadow-feeder params are resolved once per frame in beginTick
-        // (frameShadowFeederParams), so no C_LightSource archetype scan runs
-        // per entity; shadowFeederCullViewport reuses them at both margins.
+        // Both raster and finite-face shadow-feeder params are resolved once
+        // per frame in beginTick, so no C_LightSource archetype scan runs per
+        // entity; shadowFeederCullViewport reuses them at both margins.
         const IsoBounds2D chunkVp =
             IRPrefab::SunShadow::shadowFeederCullViewport(kCullChunkMargin, shadowFeederParams_);
+        const IsoBounds2D sunFaceChunkVp =
+            IRPrefab::SunShadow::shadowFeederCullViewport(kCullChunkMargin, sunFaceFeederParams_);
         const CardinalIndex chunkCardinal = IRMath::rasterYawCardinalIndex(frameData_.rasterYaw_);
         // Smooth camera Z-yaw: while rotating (residual yaw != 0,
         // i.e. the per-axis canvases are active), project the chunk-visibility
@@ -2007,6 +2034,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // while this path still reads them.
         const bool rotating = IRRender::isSpatialViewEnabled() || frameData_.residualYaw_ != 0.0f;
         std::uint32_t admittedChunkCount = 0;
+        std::uint32_t sunFaceAdmittedCount = 0;
         if (revoxInverse || canvasLocalRotation.isDetached()) {
             // Model-space canvas domain: EVERY detached canvas (forward-scatter
             // and re-voxelize alike, at any rotation) rasters its pool in its
@@ -2027,6 +2055,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 static_cast<std::size_t>(chunkWords) * sizeof(std::uint32_t),
                 allVisibleChunkScratch_.data()
             );
+            sunFaceAdmittedCount = uploadSunFaceChunkMask(
+                allVisibleChunkScratch_.data(),
+                static_cast<std::size_t>(chunkWords),
+                admittedChunkCount,
+                effectiveVoxelCount
+            );
         } else {
             const bool spatial = IRRender::isSpatialViewEnabled();
             const auto view = spatial
@@ -2042,6 +2076,24 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 admittedChunkCount
             );
             chunkVisBuf_->subData(0, uploadMask.size() * sizeof(std::uint32_t), uploadMask.data());
+            if (voxelFaceBaker_ != nullptr) {
+                std::uint32_t sunFaceAdmittedChunkCount = 0;
+                const auto &sunFaceMask = buildChunkVisibilityMask(
+                    voxelPool,
+                    sunFaceChunkVp,
+                    chunkCardinal,
+                    rotating,
+                    frameData_.visualYaw_,
+                    spatial ? &view : nullptr,
+                    sunFaceAdmittedChunkCount
+                );
+                sunFaceAdmittedCount = uploadSunFaceChunkMask(
+                    sunFaceMask.data(),
+                    sunFaceMask.size(),
+                    sunFaceAdmittedChunkCount,
+                    effectiveVoxelCount
+                );
+            }
         }
 
         constexpr int kGpuMargin = 4;
@@ -2294,12 +2346,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 IRRender::GpuSubStageScope gpuScope("voxelSunFaces");
                 voxelFaceBaker_->bakeVoxelFaces(
                     effectiveVoxelCount,
+                    *sunFaceChunkVisBuf_,
                     renderMode == 0 ? 1 : effectiveSub,
                     canvasLocalRotation,
                     triangleCanvasTextures.renderedCellOffset_,
                     skipSingleCanvasVoxels
                 );
             }
+            chunkVisBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ChunkVisibility);
             winnerPlaceholderBuf_->bindBase(
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_PerAxisResolveScratch
@@ -2421,7 +2475,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         if (gpuStageTiming().enabled_) {
             const int slot = cullStatsRing_.write(
                 IRRender::device()->submissionSerial(),
-                {perAxisSplit, static_cast<std::uint32_t>(effectiveVoxelCount)}
+                {perAxisSplit,
+                 static_cast<std::uint32_t>(effectiveVoxelCount),
+                 sunFaceAdmittedCount}
             );
             if (slot == static_cast<int>(cullStatsBuffers_.size())) {
                 cullStatsBuffers_.push_back(
@@ -2719,8 +2775,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // Resolve sun direction once per frame so the per-entity tick
         // reads the cached value instead of scanning C_LightSource
         // once per voxel-pool-canvas pair.
-        shadowFeederParams_ =
-            IRPrefab::SunShadow::voxelRasterFeederParams(voxelFaceBaker_ != nullptr);
+        sunFaceFeederParams_ = IRPrefab::SunShadow::frameShadowFeederParams();
+        shadowFeederParams_ = voxelFaceBaker_ != nullptr ? IRPrefab::SunShadow::ShadowFeederParams{}
+                                                         : sunFaceFeederParams_;
         // Re-accumulated across this frame's canvases by the per-canvas tick.
         frameShadowFeederRingNonEmpty_ = false;
 
@@ -2973,6 +3030,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             kBufferIndex_ChunkVisibility
         );
         IRRender::createNamedResource<Buffer>(
+            "SunFaceChunkVisibilityBuffer",
+            nullptr,
+            maxVoxelPoolChunks * sizeof(std::uint32_t),
+            BUFFER_STORAGE_DYNAMIC
+        );
+        IRRender::createNamedResource<Buffer>(
             "CompactedVoxelIndices",
             nullptr,
             maxSingleVoxels * sizeof(std::uint32_t),
@@ -3132,6 +3195,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->voxelActiveMaskBuf_ = IRRender::getNamedResource<Buffer>("VoxelActiveMaskBuffer");
         p->voxelEntityIdBuf_ = IRRender::getNamedResource<Buffer>("VoxelEntityIdBuffer");
         p->chunkVisBuf_ = IRRender::getNamedResource<Buffer>("ChunkVisibilityBuffer");
+        p->sunFaceChunkVisBuf_ = IRRender::getNamedResource<Buffer>("SunFaceChunkVisibilityBuffer");
         p->indirectBuf_ = IRRender::getNamedResource<Buffer>("IndirectDispatchParams");
         p->indirectArgsBuf_ = IRRender::getNamedResource<Buffer>("IndirectDispatchArgs");
         p->cullStatsBuffers_.reserve(kMaxCullStatsSlots);
