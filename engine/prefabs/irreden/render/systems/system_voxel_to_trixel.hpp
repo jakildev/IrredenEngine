@@ -407,6 +407,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // Whether this frame's append tests against an occluder prepass. Resolved
     // in beginTick.
     bool overflowRejectionReady_ = false;
+    bool overflowRejectionVerdictLogged_ = false;
     // Canonical-orders the overflow entry list between
     // the overflow append and the overflow indirect draw (rotating frames only).
     ShaderProgram *overflowSortProgram_ = nullptr;
@@ -1496,16 +1497,32 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         const bool storeCellsMayBlank = findSystem(TRIXEL_GLITCH) != kNullSystemId &&
                                         IREntity::countComponents<C_GlitchSubject>() > 0;
         if (overflowRejectionDisabled_ || storeCellsMayBlank) {
+            logFirstRejectionVerdict(
+                overflowRejectionDisabled_ ? "off (disabled)" : "off (glitch subject)"
+            );
             return;
         }
         // The composite found the camera written after this system on a recent
         // frame: a face tested at this placement could be drawn at another.
         if (axes.rejectionStandDownFrames_ > 0) {
             --axes.rejectionStandDownFrames_;
+            logFirstRejectionVerdict("off (stand-down)");
             return;
         }
         axes.scatterPlacementTested_ = true;
         overflowRejectionReady_ = true;
+        logFirstRejectionVerdict("on");
+    }
+
+    // One line per run, on the first frame that could have rejected: a
+    // fixture that opts out shows here that the opt-out preceded every
+    // rejection pass.
+    void logFirstRejectionVerdict(const char *verdict) {
+        if (overflowRejectionVerdictLogged_) {
+            return;
+        }
+        overflowRejectionVerdictLogged_ = true;
+        IRE_LOG_INFO("Per-axis overflow rejection on the first rotating frame: {}", verdict);
     }
 
     // Draw the faces that won their store cells into the main framebuffer's
@@ -3294,13 +3311,19 @@ namespace IRPrefab::PerAxisCanvas {
 
 // Whether the overflow append rejects the faces the occluder prepass proves
 // hidden; on unless IR_PERAXIS_OVERFLOW_REJECT_DISABLE was set at start-up.
-// Off, the lane holds every exposed cardinal-store loser. For a fixture whose
-// subject reaches the lane's relight or fog pass only as hidden faces, and for
-// A/B triage. Call after the system has been created.
-inline void setOverflowRejectionEnabled(bool enabled) {
-    if (auto *p = IRPrefab::SunShadow::detail::voxelToTrixelStage1()) {
-        p->overflowRejectionDisabled_ = !enabled;
+// Off, the lane holds every exposed cardinal-store loser. For a pipeline that
+// writes the camera between this system and TRIXEL_TO_FRAMEBUFFER, for a
+// fixture whose subject reaches the lane's relight or fog pass only as hidden
+// faces, and for A/B triage. Returns false, changing nothing, when VOXEL_TO_TRIXEL_STAGE_1
+// has not been created yet: a caller that must hold the setting from the first
+// rotating frame calls it after the system exists and checks the result.
+inline bool setOverflowRejectionEnabled(bool enabled) {
+    auto *p = IRPrefab::SunShadow::detail::voxelToTrixelStage1();
+    if (p == nullptr) {
+        return false;
     }
+    p->overflowRejectionDisabled_ = !enabled;
+    return true;
 }
 
 } // namespace IRPrefab::PerAxisCanvas

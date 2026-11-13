@@ -209,31 +209,60 @@ the depth scale) is computed by `IRPrefab::PerAxisCanvas::scatterPlacement`.
 continuous-zoom sample `TRIXEL_TO_FRAMEBUFFER` is about to publish
 (`IRPrefab::Camera::upcomingZoomFrame`), and stores it on the component.
 `TRIXEL_TO_FRAMEBUFFER` derives it again from the camera as it stands then.
-With the camera systems ahead of the voxel stage, where the ordering contract
-puts them, the two are equal.
 
-**A camera write between the two systems.** A system spliced between the
-voxel stage and the composite can move the camera (the GUI-test cycler sets
-each shot's pose there). The composite then finds its placement differs from
-stage 1's, and two things follow:
+**The ordering contract.** The invariant is: a rejected lane face cannot pass
+the final depth test anywhere in its finite projected footprint at the
+placement actually used to draw it, and the prepass occluders are present at
+that same placement through the composite. The placement covers the store
+frame, the view rotation and visible triplet, the effective camera and pivot
+translation, the zoom and raster phase, the subdivision scale and the
+framebuffer extent. So camera controls finish before
+`VOXEL_TO_TRIXEL_STAGE_1`, and before `VOXEL_PICKING` when it is registered,
+and none of that state changes between the voxel stage and the composite.
+Under that contract the two derivations are equal and the image is the one
+the full lane draws, on every frame. A cycler at the pipeline's tail that
+changes the pose after presentation prepares the next frame and is within the
+contract. `TRIXEL_TO_FRAMEBUFFER::beginTick` stays the only system that
+publishes and advances the continuous-zoom sample; `upcomingZoomFrame` is a
+preview that advances nothing.
+
+**Fixtures that write the pose late.** `IRShapeDebug`'s `--gui-test`,
+`--continuous-zoom-gui-test` and `--rotation-pick-test gui` splice the GUI-test
+cycler ahead of the composite, because the hover readback has to precede
+`TRIXEL_TO_FRAMEBUFFER`'s reset of it, so each shot's pose is written between
+the two systems. Those modes call
+`IRPrefab::PerAxisCanvas::setOverflowRejectionEnabled(false)` once the voxel
+system exists and before the first render pass, and keep the full lane for the
+whole run; the frame a pose lands on then draws as it would without rejection.
+The setter returns false and changes nothing before the system is created, and
+the demo asserts on that. The `sweep`, `tie` and `cube` picking modes write
+the pose ahead of the voxel stage and keep rejection. A pipeline that writes
+the camera in that slot on purpose opts out the same way.
+
+**Recovery from an unexpected late write.** If the camera is written between
+the two systems anyway, the composite finds its placement differs from stage
+1's, and two things follow:
 
 - On that frame, if the append rejected, the composite draws the scatter at
   stage 1's placement, the one the faces were tested at and the store was
-  keyed in. The voxel content shows the pose it was built for, one frame
-  behind the camera, with every visible face present.
-- The append keeps every candidate for the next
-  `kRejectionStandDownFrames` rotating frames, and the composite draws at its
-  own placement as it did before this mechanism existed. Each further
-  mismatch refills the count, so a pipeline that writes the camera there on
-  every frame never rejects and never lags; one that does it once resumes
-  rejecting a few frames later.
+  keyed in. That keeps the rejection proof. It does not reproduce the image
+  the full lane would draw, and the other passes may already show the new
+  pose.
+- The append keeps every candidate for the next `kRejectionStandDownFrames`
+  rotating frames, and the composite draws at its own placement. Each further
+  mismatch refills the count, and a mismatch after it has run out latches
+  again.
+
+This recovers from a broken ordering contract; it is not a supported way to
+drive camera animation. `IRShapeDebug --late-camera-write-test` writes the yaw
+in that slot on scheduled frames and checks the latch, a refill inside the
+window and a second latch after it expires.
 
 **When the append keeps every candidate.** Rejection stands down, and the
 lane is the full cardinal-loser set, when any of these holds:
 
 - The composite saw the camera written after the voxel stage within the last
   `kRejectionStandDownFrames` rotating frames (above).
-
 - `TRIXEL_TO_FRAMEBUFFER` is not registered. The prepass borrows its scatter
   program, quad, frame-data buffer and framebuffer.
 - A glitch subject exists and `TRIXEL_GLITCH` is registered. The occluders
@@ -246,9 +275,9 @@ lane is the full cardinal-loser set, when any of these holds:
   cannot move.
 - Rejection is switched off: `IR_PERAXIS_OVERFLOW_REJECT_DISABLE` in the
   environment, or `IRPrefab::PerAxisCanvas::setOverflowRejectionEnabled(false)`.
-  The first is for A/B triage. The second is for a fixture whose subject
-  reaches the lane's relight or fog pass only as hidden faces
-  (`IRFogDemo --explored-decay` uses it).
+  The first is for A/B triage. The second is for a fixture that writes the
+  pose late (above), and for one whose subject reaches the lane's relight or
+  fog pass only as hidden faces (`IRFogDemo --explored-decay`).
 
 **Counters.** The control block counts the two rejection classes beside the
 drops (words 6 and 7; word 5 is the drop count). The run witness reports, for
