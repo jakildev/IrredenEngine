@@ -78,6 +78,14 @@ inline ShadowFeederParams frameShadowFeederParams() {
     return {sun, kSunShadowMaxDistance, viewSun, spatial};
 }
 
+// The feeder sweep the voxel raster widens its cull bounds by. Under finite
+// face casting the sun bake reads pool faces and never the canvas depth an
+// off-screen feeder deposits, so the raster admits no feeder ring at all; the
+// shape raster and the GRID rebuild keep their own sweep.
+inline ShadowFeederParams voxelRasterFeederParams(bool finiteFaceCasting) {
+    return finiteFaceCasting ? ShadowFeederParams{} : frameShadowFeederParams();
+}
+
 // The shared frozen-or-live cull viewport at @p margin, widened to the
 // shadow-feeder AABB so off-screen casters within shadow range still feed the
 // sun-depth bake (see IRMath::shadowFeederIsoBounds). Pass the once-per-frame

@@ -41,8 +41,9 @@ Rule 3 is not redundant with rule 1.  ``isShadowFeederIso`` tests only against
 asymmetric: the shrink arm manufactures feeders out of on-screen winners and
 fires even when the sun-feeder ring is empty, while the widen arm can only
 change a pixel if there were feeders in the band **to promote**.  With sun
-shadows off (``--no-sun-shadows``, or a scene with no directional light)
-``shadowFeederCullViewport`` returns ``visible`` unchanged, every survivor is
+shadows off (``--no-sun-shadows``, or a scene with no directional light), or
+under finite face casting (which the run turns off with
+``--legacy-depth-shadows``), the voxel raster's feeder sweep is empty, every survivor is
 inside ``visibleIsoBounds``, and the adequacy arm reads 0 *tautologically*
 while the liveness arm still fires.  The engine publishes the witness through
 ``IRPrefab::SunShadow::feederClassifyRingNonEmpty()``; ``perf_grid`` logs it per
@@ -287,6 +288,10 @@ def _run_arm(
         # zoom4_pan is byte-identical with or without this flag; it is kept only
         # to match the published recipe's numbers.
         "--occlusion-cull",
+        # Only a canvas-depth bake reads feeders: under finite face casting
+        # (the default) the voxel raster admits no feeder ring, so the
+        # adequacy arm would be vacuous.
+        "--legacy-depth-shadows",
         "--feeder-classify-pad", str(pad),
         "--auto-screenshot", str(warmup),
     ]

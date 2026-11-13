@@ -243,6 +243,17 @@ and sub-pixel iso detail collapses in sun space (Q1).
 right reviewer-side check that nothing visually regresses; a missing
 crop means a shadow-correctness regression got past the smoke pass.
 
+The invariant binds only while the bake casts from canvas depth. Under
+finite face casting, the default, `BAKE_SUN_SHADOW_MAP` returns before its
+canvas-depth pass and reads pool faces instead, so the voxel raster
+admits no feeder ring at all (`IRPrefab::SunShadow::voxelRasterFeederParams`):
+its chunk mask and GPU cull bounds stay at the visible viewport, the compact
+classifies no feeder, and `RESOLVE_PER_AXIS_SCREEN_DEPTH` skips its scatter.
+A registered particle producer or `--legacy-depth-shadows` puts the bake
+back on canvas depth and the feeder path back in force, which is why
+`scripts/feeder-margin-verify.py` runs with `--legacy-depth-shadows`.
+`SHAPES_TO_TRIXEL` and `REBUILD_GRID_VOXELS` keep their own sweep.
+
 ---
 
 ## Implementation order (multi-PR series)

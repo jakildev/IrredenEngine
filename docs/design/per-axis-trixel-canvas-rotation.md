@@ -139,6 +139,39 @@ of two: mode 3 emits at most one record per voxel and axis. Cap drops remain
 reported; the larger all-loser list requires its own current-frame cost
 measurement rather than extrapolation from masked-lane numbers.
 
+### Store reset over the occupied-cell list
+
+A rotating frame resets the three stores (colour, distance, entity id) before
+the store taps run. The first rotating frame of a fresh or unparked set clears
+them whole; every later one runs `c_per_axis_cell_clear` indirectly over the
+previous frame's occupied-cell list, writing the empty state only at the
+listed cells. `C_PerAxisTrixelCanvases::storeCellsListed_` records which case
+applies: `compactPerAxisCells` sets it, allocation and `unpark()` drop it.
+
+The reset is exact because every store write since the last reset sits at a
+listed cell. The list is every texel whose distance left the empty sentinel.
+Stage 2 writes colour and id only where its depth re-test matches the settled
+distance, and the relight, the per-axis fog pass and the glitch writeback
+write only at listed cells or where the id is non-zero. Nothing writes a store
+between the compaction and the next frame's reset except those passes.
+
+On Metal the distance taps land in the R32I image-atomic scratch and stage 2
+copies each winner into the texture, so the scratch must be reset at the same
+cells. The cell list is built from the texture, so it covers the scratch only
+when every cell whose scratch word left the sentinel also gets a texture
+write. It does: the winner election and stage 2 walk the same per-axis list
+with the same face selection, so the elected face writes the texture at every
+cell the store taps touched. The one stage-2 early-out the store pass lacks,
+an alpha-0 voxel, cannot occur in the list, because the compaction admits only
+voxels whose active-mask bit is set, and the pool derives that bit from
+colour alpha != 0.
+
+At the 1280 by 720 store size a whole clear copies about 105 MB through 15
+blit encoders per rotating frame; the sparse reset touches only the occupied
+cells. The dense case (most cells occupied) costs one more compute dispatch
+per axis than a blit and is held to the no-regression rule of the
+[GPU stage timing cost model](gpu-stage-timing-cost-model.md).
+
 The two-set model, lighting and ordering below still explain the lane. Its
 former view-mask admission rule, origin-mask measurements, and conservative
 margin contract document previous implementations. They are **superseded**,

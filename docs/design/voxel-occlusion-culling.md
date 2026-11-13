@@ -161,6 +161,15 @@ lost savings.
   the cull for one frame** after any discontinuous camera move
   (`C_RenderCamera` already tracks per-frame iso position; a delta threshold
   gates it).
+- The chain is built only on frames with the cull enabled
+  (`IRPrefab::OcclusionCull::buildsDistanceHiZ`, read by `COMPUTE_DISTANCE_HIZ`
+  in `beginTick`): the cull is its only reader, and with the cull off (the
+  default) the per-level dispatches would be pure overhead. A cull-off frame
+  therefore leaves the chain from before the gap in place, so the frame after a
+  re-enable is stale too and culls nothing. `IRPrefab::OcclusionCull::LagSource`
+  (`occlusion_lag_source.hpp`) owns every staleness trigger — the camera-iso
+  cut threshold, a zoom, density or backing change, and the gap — and
+  `test/render/occlusion_lag_source_test.cpp` pins each one.
 
 ---
 

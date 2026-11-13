@@ -202,6 +202,12 @@ struct PerAxisCanvasStore {
     // counters), copied in at the top of each rotating frame.
     std::pair<ResourceId, Buffer *> cellIndirectReset_{0, nullptr};
     int cellRegionStride_ = 0; // uints per axis region (>= axis cells, 64-aligned)
+    // True once a compaction has run over this set's settled stores and no
+    // store has been cleared since: the cell list then names every texel any
+    // pass wrote, so the next rotating frame resets the stores at those cells
+    // only (c_per_axis_cell_clear) instead of clearing them whole. False on a
+    // fresh allocation and after an unpark, whose first frame clears whole.
+    bool storeCellsListed_ = false;
 
     // TRIXEL_GLITCH marks only the store tiles reached by an active subject,
     // resolves those tiles through a shared-memory halo, then writes them back.
@@ -590,6 +596,7 @@ struct PerAxisCanvasStore {
         IRRender::destroyResource<Buffer>(cellIndirectReset_.first);
         cellIndirectReset_ = {0, nullptr};
         cellRegionStride_ = 0;
+        storeCellsListed_ = false;
         if (glitchTileFlags_.second != nullptr) {
             IRRender::destroyResource<Buffer>(glitchTileFlags_.first);
             IRRender::destroyResource<Buffer>(glitchTileList_.first);
@@ -667,6 +674,7 @@ struct C_PerAxisTrixelCanvases : PerAxisCanvasStore {
         IR_ASSERT(!isAllocated() && hasParked(), "unpark needs a parked set and no live one");
         std::swap(static_cast<PerAxisCanvasStore &>(*this), parked_);
         parkedFrames_ = 0;
+        storeCellsListed_ = false;
     }
 
     // Free the parked set with its wait, whether the window closed or the

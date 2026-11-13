@@ -14,7 +14,9 @@
 // Pipeline order: after the geometry + per-axis raster stages (the per-axis
 // distance textures must be populated) and before BAKE_SUN_SHADOW_MAP (which
 // reads the resolve texture). No-ops at a cardinal — the per-axis canvases are
-// only allocated at non-zero residual yaw.
+// only allocated at non-zero residual yaw — and on frames whose bake does not
+// read canvas depth (no bake registered, or finite face casting), since the
+// resolve texture has no other reader.
 //
 // Two compute passes (both backends, no texture atomics — Metal lacks portable
 // image-atomic syntax):
@@ -31,6 +33,7 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
+#include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
@@ -66,6 +69,9 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
     // beginTick. Null unless the per-axis canvases are allocated (rotating).
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
+    // Whether this frame's BAKE_SUN_SHADOW_MAP casts from canvas depth, the
+    // resolve texture's only reader. Resolved in beginTick.
+    bool bakeReadsCanvasDepth_ = false;
 
     // Lazily-resolved voxel-compaction buffers, restored onto
     // slots 25/26 after the scatter pass borrows them for its own per-axis
@@ -112,8 +118,8 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
         if (!behavior.useCameraPositionIso_) {
             return;
         }
-        if (entity != perAxisCanvasEntity_ || perAxisCanvases_ == nullptr ||
-            !perAxisCanvases_->isAllocated()) {
+        if (!bakeReadsCanvasDepth_ || entity != perAxisCanvasEntity_ ||
+            perAxisCanvases_ == nullptr || !perAxisCanvases_->isAllocated()) {
             return;
         }
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
@@ -176,6 +182,10 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
     }
 
     void beginTick() {
+        const SystemId bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
+        bakeReadsCanvasDepth_ =
+            bakeSystem != kNullSystemId &&
+            !getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(bakeSystem)->beginVoxelFaceCoverage();
         perAxisCanvasEntity_ = IRRender::getCanvas("main");
         perAxisCanvases_ = nullptr;
         if (perAxisCanvasEntity_ != IREntity::kNullEntity) {
