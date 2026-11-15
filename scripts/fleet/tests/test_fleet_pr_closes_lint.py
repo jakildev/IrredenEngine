@@ -33,6 +33,10 @@ class LintCase(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.dir = Path(self.temp.name)
         self.env = os.environ.copy()
+        repo_map = self.dir / "repos.json"
+        repo_map.write_text(json.dumps({"engine": "jakildev/IrredenEngine",
+                                        "other": "secret/FakeRepo"}))
+        self.env["FLEET_PUBLIC_TEXT_REPO_MAP"] = str(repo_map)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -169,6 +173,14 @@ class DeclaredSet(LintCase):
 
 
 class CrossRepo(LintCase):
+    def test_public_text_in_title_or_body_fails_with_class_and_line(self):
+        for title, body in (("secret/FakeRepo change", ""),
+                            ("safe", "summary\nother PR #7\n")):
+            with self.subTest(title=title):
+                result = self.explicit(["clean"], body, title)
+                self.assertExit(result, 1)
+                self.assertIn("PUBLIC-TEXT", result.stdout)
+
     def test_foreign_ref_is_reported_with_its_slug(self):
         result = self.explicit(["chore: x\n\ncloses someone/Other#5"])
         self.assertExit(result, 1)

@@ -9,6 +9,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fleet_public_text  # noqa: E402
+
 REPO_SLUGS = {
     "engine": "jakildev/IrredenEngine",
     "game": "jakildev/irreden",
@@ -412,6 +415,13 @@ def main():
 
     try:
         body = read_body(args.body_file)
+        public_findings = fleet_public_text.find_public_text(
+            body, repo, git_root=Path.cwd())
+        if public_findings:
+            for finding in public_findings:
+                print(f"PUBLIC-TEXT {fleet_public_text.format_finding(finding)}")
+                print(f"  {finding.text}", file=sys.stderr)
+            return 1
         closings = closing_issues(body)
         issue_record = None
         if not args.issue_json:

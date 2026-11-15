@@ -90,6 +90,17 @@ class FleetPrBodyLintTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("required=6, present=6", result.stdout)
 
+    def test_public_text_finding_fails_before_publication(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repo_map = Path(temp) / "repos.json"
+            repo_map.write_text(json.dumps({"engine": "jakildev/IrredenEngine",
+                                            "other": "secret/FakeRepo"}))
+            env = os.environ.copy()
+            env["FLEET_PUBLIC_TEXT_REPO_MAP"] = str(repo_map)
+            result = self.run_lint(evidence_body(extra="other#77"), env=env)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("PUBLIC-TEXT foreign-repository-key line", result.stdout)
+
     def test_row_count_positive_fire_and_source_diagnostics(self):
         # Derived from fixture B: retain historical evidence rows 1, 3, and 4.
         result = self.run_lint(evidence_body(rows=3))

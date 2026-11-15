@@ -51,6 +51,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import fleet_github  # noqa: E402
+import fleet_public_text  # noqa: E402
 import fleet_task_class  # noqa: E402
 from fleet_blocked_by import blocker_refs, has_blocked_by_field  # noqa: E402
 from fleet_issue_fields import (  # noqa: E402
@@ -314,6 +315,13 @@ def cmd_set_field(args):
         return 0
 
     comment = record_comment(field, old_values, values, reason)
+    findings = fleet_public_text.find_public_text(
+        comment, slug, git_root=os.environ.get("FLEET_ENGINE_ROOT") or os.getcwd())
+    if findings:
+        detail = ", ".join(fleet_public_text.format_finding(f) for f in findings)
+        for finding in findings:
+            warn(f"set-field public text: {finding.text}")
+        return refuse(f"public text contains {detail}; restate --reason in engine terms")
     if args.dry_run:
         for value in old_values or ["(absent)"]:
             print(f"- **{field}:** {value}")

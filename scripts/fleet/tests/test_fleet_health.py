@@ -218,6 +218,16 @@ class Env(unittest.TestCase):
         with pinned_clock(instant):
             return self.run_report(*args)
 
+    def test_public_text_term_file_is_informational(self):
+        rc, report = self.run_report()
+        self.assertFalse(report["public_text_terms"]["configured"])
+        self.assertFalse(any("public text" in warning for warning in report["warnings"]))
+        text = fleet_health.render_text(report)
+        self.assertIn("public text terms not configured", text)
+        (self.root / "public-text-terms").write_text("fixture\n")
+        _rc, configured = self.run_report()
+        self.assertTrue(configured["public_text_terms"]["configured"])
+
 
 class Dispatches(Env):
     def test_window_defaults_to_the_dispatcher_boot(self):

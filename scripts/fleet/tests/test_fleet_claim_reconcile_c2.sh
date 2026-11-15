@@ -86,6 +86,7 @@ STUB_DIR="$TMPROOT/bin"
 mkdir -p "$STUB_DIR"
 export CREATE_LOG="$TMPROOT/create.log"; : > "$CREATE_LOG"
 export EDIT_LOG="$TMPROOT/edit.log"; : > "$EDIT_LOG"
+export BODY_LOG="$TMPROOT/body.log"; : > "$BODY_LOG"
 export CLOSE_LOG="$TMPROOT/close.log"; : > "$CLOSE_LOG"
 export API_LOG="$TMPROOT/api.log"; : > "$API_LOG"
 export ISSUE_LIST_LOG="$TMPROOT/issue-list.log"; : > "$ISSUE_LIST_LOG"
@@ -114,6 +115,13 @@ case "$1" in
                 exit 0 ;;
             create)
                 printf '%s\n' "$*" >> "$CREATE_LOG"
+                body_file=""
+                prev=""
+                for arg in "$@"; do
+                    [[ "$prev" == "--body-file" ]] && body_file="$arg"
+                    prev="$arg"
+                done
+                [[ -n "$body_file" ]] && cat "$body_file" > "$BODY_LOG"
                 n=$(cat "$TRACKER_NEXT")
                 echo "$((n + 1))" > "$TRACKER_NEXT"
                 { echo "$n"; cat "$TRACKER_LIST"; } > "$TRACKER_LIST.tmp"
@@ -122,6 +130,13 @@ case "$1" in
                 exit 0 ;;
             edit)
                 printf '%s\n' "$*" >> "$EDIT_LOG"
+                body_file=""
+                prev=""
+                for arg in "$@"; do
+                    [[ "$prev" == "--body-file" ]] && body_file="$arg"
+                    prev="$arg"
+                done
+                [[ -n "$body_file" ]] && cat "$body_file" > "$BODY_LOG"
                 exit 0 ;;
             close)
                 printf '%s\n' "$*" >> "$CLOSE_LOG"
@@ -227,11 +242,24 @@ c=$(persist_count); [[ "$c" == "2" ]] && ok "apply tick 2 → count 2" || bad "t
 if [[ ! -s "$CREATE_LOG" ]]; then ok "tick 2 still below threshold, no tracker"; else bad "tick 2 filed a tracker early"; fi
 
 echo "=== Phase 3: threshold tick files exactly one tracker ==="
+python3 - "$PERSIST" <<'PY'
+import json, sys
+p = sys.argv[1]
+s = json.load(open(p))
+s["R6:secret/FakeRepo:issue:45"] = {
+    "count": 3, "first_seen": 1, "last_seen": 1, "missing": 0, "rule": "R6",
+    "repo": "secret/FakeRepo", "target_kind": "issue", "target": 45,
+    "action": "private fixture detail"}
+json.dump(s, open(p, "w"))
+PY
 run_reconcile --apply
 c=$(persist_count); [[ "$c" == "3" ]] && ok "apply tick 3 → count 3 (== threshold)" || bad "tick 3 count=$c (want 3)"
 create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
 [[ "$create_n" == "1" ]] && ok "tick 3 filed exactly one fleet:state-drift tracker" || bad "tick 3 create count=$create_n (want 1)"
 if grep -q 'fleet:state-drift' "$CREATE_LOG"; then ok "tracker created with fleet:state-drift label"; else bad "create missing fleet:state-drift label"; fi
+if grep -q 'jakildev/IrredenEngine.*issue #700' "$BODY_LOG"; then ok "tracker keeps the public-repo row"; else bad "tracker lost the public-repo row"; fi
+if grep -q 'Findings in other repositories: 1' "$BODY_LOG"; then ok "tracker counts findings in other repositories"; else bad "tracker lacks the other-repository count"; fi
+if grep -qE 'secret/FakeRepo|issue #45|private fixture detail' "$BODY_LOG"; then bad "tracker leaked other-repository detail"; else ok "tracker omits other-repository slug, number, and detail"; fi
 
 echo "=== Phase 4: subsequent tick refreshes in place (dedup, no 2nd issue) ==="
 run_reconcile --apply
@@ -239,6 +267,13 @@ create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
 [[ "$create_n" == "1" ]] && ok "tick 4 did NOT file a second tracker (still 1 create)" || bad "tick 4 create count=$create_n (want 1)"
 edit_n=$(wc -l < "$EDIT_LOG" | tr -d ' ')
 [[ "$edit_n" -ge "1" ]] && ok "tick 4 refreshed the existing tracker via issue edit" || bad "tick 4 did not edit the tracker"
+python3 - "$PERSIST" <<'PY'
+import json, sys
+p = sys.argv[1]
+s = json.load(open(p))
+s.pop("R6:secret/FakeRepo:issue:45", None)
+json.dump(s, open(p, "w"))
+PY
 
 echo "=== Phase 4b: a source fetch failing past the threshold neither decays the key nor closes the tracker ==="
 # Every failed fetch reads as an empty surface, so the fixture's R6 finding vanishes

@@ -32,6 +32,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import fleet_github  # noqa: E402
+import fleet_public_text  # noqa: E402
 from fleet_branch_match import (  # noqa: E402
     body_would_close_refs,
     declared_closing_refs,
@@ -250,6 +251,14 @@ def main(argv=None):
         print("fleet-pr-closes-lint: zero commits scanned; refusing to pass",
               file=sys.stderr)
         return 2
+
+    public_findings = fleet_public_text.find_public_text(
+        title + "\n" + body, pr_slug, git_root=os.getcwd())
+    if public_findings:
+        for finding in public_findings:
+            print(f"PUBLIC-TEXT {fleet_public_text.format_finding(finding)}")
+            print(f"  {finding.text}", file=sys.stderr)
+        return 1
 
     hits, declared, undeclared, stale = lint(title, commits, body, pr_slug, oracle)
     would = sorted({k for k, _, _ in hits})

@@ -152,6 +152,11 @@ class SetFieldCase(unittest.TestCase):
             "FLEET_ROLE": "worker", "FLEET_ROLE_MODEL": "opus",
             "FLEET_TEST_HOST": "linux", "FLEET_ASSIGNED_WORKTREE": "/fixture/pool-9",
         })
+        repo_map = self.dir / "repos.json"
+        repo_map.write_text(json.dumps({"engine": SLUG, "game": GAME_SLUG,
+                                        "other": "secret/FakeRepo"}),
+                            encoding="utf-8")
+        self.env["FLEET_PUBLIC_TEXT_REPO_MAP"] = str(repo_map)
         self.set_issue(LF_BODY)
 
     def tearDown(self):
@@ -232,10 +237,10 @@ class BlockedByWrites(SetFieldCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.body(), LF_BODY)
 
-    def test_cross_repo_reference_is_written_as_given(self):
+    def test_cross_repo_reference_is_refused_on_the_public_repo(self):
         result = self.run_tool("--blocked-by", f"irreden#{BLOCKER_A}", "--reason", "r")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(blocker_refs(self.body(), SLUG), [(GAME_SLUG, str(BLOCKER_A))])
+        self.assert_refused(result)
+        self.assertEqual(self.body(), LF_BODY)
 
     def test_absent_line_is_inserted_in_the_header(self):
         self.set_issue(LF_BODY.replace("**Blocked by:** (none)\n", ""))
@@ -266,6 +271,11 @@ class HostWrites(SetFieldCase):
 
 
 class Refusals(SetFieldCase):
+    def test_private_reason_writes_nothing(self):
+        result = self.run_tool("--host", "macos", "--reason", "see secret/FakeRepo")
+        self.assert_refused(result)
+        self.assertIn("foreign-repository line 3", result.stderr)
+
     def test_unresolved_reference(self):
         self.assert_refused(self.run_tool("--blocked-by", f"#{MISSING}", "--reason", "r"))
 
