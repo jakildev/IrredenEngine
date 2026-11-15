@@ -187,6 +187,11 @@ def queue_section(repo_key, repo_state, host, runtime_env=None):
         elif closeout:
             row.update(closeout)
             buckets["ghost"].append(row)
+        elif fleet_task_class._task_blocked(task):
+            row["blocked_by"] = task.get("blocked_by")
+            if task.get("blocked_by_unresolvable"):
+                row["blocked_by_unresolvable"] = task["blocked_by_unresolvable"]
+            buckets["blocked"].append(row)
         elif fleet_task_class._declined("task", classified, "worker", env=runtime_env):
             metadata = fleet_task_class._decline_metadata("task", classified, "worker")
             reason = metadata["reason"].removeprefix("declined this iteration: ")[:80]
@@ -195,11 +200,6 @@ def queue_section(repo_key, repo_state, host, runtime_env=None):
                         "role": metadata["role"] or "-",
                         "runtime": metadata["runtime"] or "-", "reason": reason})
             buckets["declined"].append(row)
-        elif fleet_task_class._task_blocked(task):
-            row["blocked_by"] = task.get("blocked_by")
-            if task.get("blocked_by_unresolvable"):
-                row["blocked_by_unresolvable"] = task["blocked_by_unresolvable"]
-            buckets["blocked"].append(row)
         elif fleet_task_class._host_incompatible(task, host):
             row["needs"] = fleet_task_class._required_host(task) or "gl-host"
             buckets["pinned_away"].append(row)
