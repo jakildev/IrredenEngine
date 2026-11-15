@@ -1,11 +1,11 @@
 """Tests for the scout's master-CI watch: one standing alert per red workflow.
 
 `gh run list --limit 1` returns the NEWEST master run, which is in flight for
-the first minutes after every push, so only `failure` raises the alert and only
-`success` clears it; every other conclusion leaves it as it was. A read that
-could not decide (non-zero exit, bad JSON, no workflows) is never a green: it
-writes nothing, clears nothing, and leaves the deadline marker unwritten so the
-next tick retries and `_spawn_failed` escalates a persistent miss.
+the first minutes after every push, so only `failure` raises the alert and a
+`success` without skipped jobs clears it; every other conclusion leaves it as
+it was. A read that could not decide (non-zero exit, bad JSON, no workflows) is
+never a green: it writes nothing, clears nothing, and leaves the deadline marker
+unwritten so the next tick retries and `_spawn_failed` escalates a persistent miss.
 
 The tick harness and the `fleet_github.run` seam are shared with
 test_scout_degraded_fetch; every mocked miss raises rather than reaching `gh`.
@@ -22,10 +22,11 @@ from test_scout_degraded_fetch import _mod, _ScoutTickHarness
 SHA = "0123456789abcdef0123456789abcdef01234567"
 URL = "https://example.invalid/runs/7"
 CREATED = "2026-10-15T05:37:00Z"
+RUN_ID = 7
 
 
 def _run_json(conclusion, sha=SHA):
-    return json.dumps([{"conclusion": conclusion, "headSha": sha,
+    return json.dumps([{"conclusion": conclusion, "databaseId": RUN_ID, "headSha": sha,
                         "createdAt": CREATED, "url": URL}])
 
 
@@ -42,6 +43,8 @@ class _FakeGh:
 
     def __call__(self, args, **kwargs):
         self.calls.append(list(args))
+        if args[0] == "api":
+            return self.replies.get("jobs", _done("[{\"jobs\": []}]"))
         workflow = args[args.index("--workflow") + 1]
         reply = self.replies[workflow]
         if isinstance(reply, Exception):
@@ -60,7 +63,8 @@ class _MasterCiCase(_ScoutTickHarness, unittest.TestCase):
     def tick(self, replies, workflows=None, served=False):
         gh = _FakeGh(replies)
         self._tick(self.tmp.name, [], degraded=False, spawns=[], logs=self.logs,
-                   served=served, master_ci=(gh, workflows or sorted(replies)))
+                   served=served, master_ci=(gh, workflows or sorted(
+                       workflow for workflow in replies if workflow != "jobs")))
         return gh
 
     def alert_path(self, workflow):
@@ -92,7 +96,7 @@ class TestAlertLifecycle(_MasterCiCase):
         self.assertEqual(gh.calls, [[
             "run", "list", "--repo", "jakildev/IrredenEngine", "--branch", "master",
             "--workflow", "ci.yml", "--limit", "1",
-            "--json", "conclusion,headSha,createdAt,url"]])
+            "--json", "conclusion,databaseId,headSha,createdAt,url"]])
 
     def test_red_then_green_clears_the_alert(self):
         self.tick({"ci.yml": _done(_run_json("failure"))})
@@ -127,6 +131,19 @@ class TestAlertLifecycle(_MasterCiCase):
         self.assertFalse(self.alert_path("a.yml").exists())
         self.assertTrue(self.alert_path("b.yml").exists())
 
+    def test_a_successful_run_with_a_skipped_job_leaves_alerts_unchanged(self):
+        self.tick({"ci.yml": _done(_run_json("failure"))})
+        before = self.alert_path("ci.yml").read_text()
+        self.age_marker()
+        self.tick({"ci.yml": _done(_run_json("success")),
+                   "jobs": _done('[{"jobs": [{"conclusion": "skipped"}]}]')})
+        self.assertEqual(self.alert_path("ci.yml").read_text(), before)
+
+    def test_a_successful_run_with_a_skipped_job_writes_no_alert(self):
+        self.tick({"ci.yml": _done(_run_json("success")),
+                   "jobs": _done('[{"jobs": [{"conclusion": "skipped"}]}]')})
+        self.assertFalse(self.alert_path("ci.yml").exists())
+
 
 class TestFetchMiss(_MasterCiCase):
 
@@ -153,6 +170,16 @@ class TestFetchMiss(_MasterCiCase):
                 self.age_marker()
                 self.tick({"ci.yml": reply})
                 self.assertEqual(self.alert_path("ci.yml").read_text(), before)
+
+    def test_a_jobs_miss_leaves_alerts_and_the_deadline_marker_unchanged(self):
+        self.tick({"ci.yml": _done(_run_json("failure"))})
+        before = self.alert_path("ci.yml").read_text()
+        self.age_marker()
+        self.marker().unlink()
+        self.tick({"ci.yml": _done(_run_json("success")),
+                   "jobs": _done("", returncode=1, stderr="HTTP 403")})
+        self.assertEqual(self.alert_path("ci.yml").read_text(), before)
+        self.assertFalse(self.marker().exists())
 
     def test_a_persistent_miss_escalates_to_the_spawn_alert_and_a_read_clears_it(self):
         miss = {"ci.yml": _done("", returncode=1, stderr="HTTP 403")}

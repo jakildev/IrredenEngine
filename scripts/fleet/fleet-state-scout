@@ -5461,7 +5461,7 @@ def _master_ci_latest_run(workflow: str) -> dict | None:
     """
     args = ["run", "list", "--repo", REPO_SWEEP_SLUGS["engine"], "--branch", "master",
             "--workflow", workflow, "--limit", "1",
-            "--json", "conclusion,headSha,createdAt,url"]
+            "--json", "conclusion,databaseId,headSha,createdAt,url"]
     try:
         proc = fleet_github.run(args, capture_output=True, text=True,
                                 timeout=GH_TIMEOUT_SECONDS)
@@ -5477,6 +5477,33 @@ def _master_ci_latest_run(workflow: str) -> dict | None:
     if not isinstance(runs, list) or any(not isinstance(r, dict) for r in runs):
         raise _MasterCiMiss("bad-json", f"{workflow}: unexpected shape")
     return runs[0] if runs else None
+
+
+def _master_ci_run_has_skipped_job(workflow: str, run: dict) -> bool:
+    """Return whether `run` has a skipped job, failing closed on an unreadable list."""
+    run_id = run.get("databaseId")
+    if not isinstance(run_id, int):
+        raise _MasterCiMiss("bad-json", f"{workflow}: missing run databaseId")
+    endpoint = (f"repos/{REPO_SWEEP_SLUGS['engine']}/actions/runs/{run_id}/jobs?per_page=100")
+    try:
+        proc = fleet_github.run(["api", "--paginate", "--slurp", endpoint],
+                                capture_output=True, text=True,
+                                timeout=GH_TIMEOUT_SECONDS)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise _MasterCiMiss("gh-unreachable", f"{workflow}: {type(e).__name__}: {e}")
+    if proc.returncode != 0:
+        raise _MasterCiMiss("gh-failed", f"{workflow}: jobs exit {proc.returncode}: "
+                             f"{(proc.stderr or '').strip()[:200]}")
+    try:
+        pages = json.loads(proc.stdout)
+    except ValueError as e:
+        raise _MasterCiMiss("bad-json", f"{workflow}: jobs: {e}")
+    if not isinstance(pages, list) or any(
+            not isinstance(page, dict) or not isinstance(page.get("jobs"), list)
+            for page in pages):
+        raise _MasterCiMiss("bad-json", f"{workflow}: unexpected jobs shape")
+    return any(job.get("conclusion") == "skipped"
+               for page in pages for job in page["jobs"] if isinstance(job, dict))
 
 
 def _master_ci_mark_red(workflow: str, run: dict) -> None:
@@ -5541,13 +5568,14 @@ def run_master_ci_lane() -> None:
 
     Authoritative poller only (the caller gates it), so the alert lives in that
     host's alerts dir: a clean `fleet-health` on a follower host does not mean
-    master is green. A `failure` writes the alert, a `success` clears it, and
-    everything else (queued or in-progress runs report an empty conclusion,
-    plus cancelled/skipped/neutral) leaves it as it was. A workflow with no
-    master run (pull_request-only triggers) is a quiet skip. A real read miss
-    is fail-closed: nothing written, nothing cleared, the deadline marker left
-    unwritten so the next tick retries, and `_spawn_failed` escalates a
-    persistent miss. The first miss breaks the pass: the retry re-runs the set.
+    master is green. A `failure` writes the alert, and a `success` with no
+    skipped jobs clears it. Everything else (queued or in-progress runs report
+    an empty conclusion, plus cancelled/skipped/neutral) leaves it as it was.
+    A workflow with no master run (pull_request-only triggers) is a quiet skip.
+    A real read miss is fail-closed: nothing written, nothing cleared, the
+    deadline marker left unwritten so the next tick retries, and `_spawn_failed`
+    escalates a persistent miss. The first miss breaks the pass: the retry
+    re-runs the set.
     """
     if not _master_ci_due():
         return
@@ -5565,7 +5593,7 @@ def run_master_ci_lane() -> None:
                 continue
             if conclusion == "failure":
                 _master_ci_mark_red(workflow, run)
-            else:
+            elif not _master_ci_run_has_skipped_job(workflow, run):
                 _master_ci_mark_green(workflow)
     except _MasterCiMiss as miss:
         _spawn_failed("master-ci", miss.kind,
