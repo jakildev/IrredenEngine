@@ -12,12 +12,20 @@ SPEC = importlib.util.spec_from_file_location(
 ORACLE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ORACLE)
 
+SOURCE_HEXAGON = [(40, 40), (56, 32), (72, 40), (72, 56), (56, 64), (40, 56)]
+TOP_FACE = [(40, 40), (56, 32), (72, 40), (56, 48)]
+
+
+def paint_normals(image, side_color):
+    draw = ImageDraw.Draw(image)
+    draw.polygon(SOURCE_HEXAGON, fill=side_color)
+    draw.polygon(TOP_FACE, fill=ORACLE.NORMALS[45])
+
 
 def fixture():
     size = (112, 96)
     source_mask = Image.new("L", size)
-    ImageDraw.Draw(source_mask).polygon(
-        [(40, 40), (56, 32), (72, 40), (72, 56), (56, 64), (40, 56)], fill=255)
+    ImageDraw.Draw(source_mask).polygon(SOURCE_HEXAGON, fill=255)
     baseline = Image.new("RGB", size)
     baseline.paste(ORACLE.SOURCE, mask=source_mask)
     ImageDraw.Draw(baseline).rectangle((4, 4, 10, 10), fill=ORACLE.PAINT)
@@ -26,7 +34,7 @@ def fixture():
     for point in ((38, 56), (74, 56), (56, 66)):
         draw.point(point, fill=(80, 100, 120))
     normals = baseline.copy()
-    normals.paste(ORACLE.NORMALS[0], mask=source_mask)
+    paint_normals(normals, ORACLE.NORMALS[0])
     hover = baseline.copy()
     ImageDraw.Draw(hover).rectangle((80, 34, 98, 52), fill=(30, 100, 60))
     commit = baseline.copy()
@@ -42,7 +50,7 @@ def fixture():
     images = dict(zip(ORACLE.PHASES,
                       [baseline, grid, normals, hover, commit, baseline.copy(),
                        occluded, ghost, floor_hover, floor_commit]))
-    sample = {"cursor": [56, 48], "sample": [56, 48], "framebuffer": list(size),
+    sample = {"cursor": [56, 56], "sample": [56, 56], "framebuffer": list(size),
               "window": list(size), "floor_cursor": [56, 56], "game_resolution": list(size)}
     return images, sample
 
@@ -122,7 +130,8 @@ class EditorScreenAlignmentTest(unittest.TestCase):
     def test_matching_dpi_ratio_passes(self):
         images, sample = fixture()
         sample["window"] = [56, 48]
-        sample["cursor"] = [28, 24]
+        sample["cursor"] = [28, 28]
+        sample["sample"] = [56, 56]
         sample["floor_cursor"] = [28, 28]
         result = ORACLE.measure_case(images, 0, sample)
         self.assertTrue(result["pass"], result)
@@ -131,8 +140,8 @@ class EditorScreenAlignmentTest(unittest.TestCase):
         images, sample = fixture()
         images = {phase: image.resize((224, 192), Image.Resampling.NEAREST)
                   for phase, image in images.items()}
-        sample.update(framebuffer=[224, 192], window=[224, 192], cursor=[112, 96],
-                      sample=[112, 96], floor_cursor=[112, 112])
+        sample.update(framebuffer=[224, 192], window=[224, 192], cursor=[112, 112],
+                      sample=[112, 112], floor_cursor=[112, 112])
         result = ORACLE.measure_case(images, 0, sample)
         self.assertTrue(result["pass"], result)
         self.assertEqual(result["framebuffer_per_window_point"], [1, 1])
@@ -153,7 +162,7 @@ class EditorScreenAlignmentTest(unittest.TestCase):
 
     def test_wrong_face_and_wrong_floor_cell_fail(self):
         images, sample = fixture()
-        images["normals"] = images["grid_on"].copy()
+        paint_normals(images["normals"], ORACLE.NORMALS[90])
         images["floor_commit"] = images["commit"].copy()
         result = ORACLE.measure_case(images, 0, sample)
         self.assertIn("raw_cursor_hits_observed_face_interior", result["failures"])
