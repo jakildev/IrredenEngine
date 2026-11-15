@@ -627,6 +627,42 @@ def engine_logged(log_text: str) -> bool:
     return any(marker in log_text for marker in ENGINE_LOG_MARKERS)
 
 
+def device_counter_lines(rows: list[CellReport]) -> list[str]:
+    """Summary tables for the render device counters and the peak GPU allocation.
+
+    A counter appears only when every run reported it; a backend that counts
+    nothing reads as unsupported rather than as a column of zeros.
+    """
+    lines: list[str] = []
+    if any(row.device_counters_supported is False for row in rows):
+        lines.extend(["", "Render device counters: unsupported by this backend."])
+    elif all(row.device_counters_supported for row in rows):
+        names = [name for name in rows[0].device_counters
+                 if all(name in row.device_counters for row in rows)]
+        if names:
+            lines.extend(["",
+                          "| Render device counter | Steady per frame, mean over runs "
+                          "| Run min–max | Max in a frame | Run total, mean |",
+                          "|---|---:|---:|---:|---:|"])
+        for name in names:
+            counters = [row.device_counters[name] for row in rows]
+            steady = [counter.steady_per_frame for counter in counters]
+            lines.append(
+                f"| {name} | {statistics.mean(steady):.3f} "
+                f"| {min(steady):.3f}–{max(steady):.3f} "
+                f"| {max(counter.max_per_frame for counter in counters)} "
+                f"| {statistics.mean(counter.total for counter in counters):.1f} |"
+            )
+    peaks = [row.gpu_process_peak_bytes for row in rows]
+    if all(peak is not None and peak > 0 for peak in peaks):
+        lines.extend(["",
+                      "| GPU process allocation peak | Mean MiB | Run min–max MiB |",
+                      "|---|---:|---:|",
+                      f"| sampled at each frame end | {statistics.mean(peaks) / 2**20:.1f} "
+                      f"| {min(peaks) / 2**20:.1f}–{max(peaks) / 2**20:.1f} |"])
+    return lines
+
+
 def percentile(values: list[float], percent: int) -> float:
     """The report writer's rule: the sorted value at index n * percent / 100."""
     ordered = sorted(values)
@@ -1134,6 +1170,7 @@ def main() -> int:
                      f"| {pose_text(run)} "
                      f"| {run['overflow_max_entries']} / {run['overflow_max_dropped']} "
                      f"({run['overflow_samples']}) |")
+    lines.extend(device_counter_lines(rows))
     (output / "summary.md").write_text("\n".join(lines) + "\n")
     print(output / "summary.md")
     return 0

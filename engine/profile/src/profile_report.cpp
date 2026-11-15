@@ -333,6 +333,32 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
         writeFrameDecomposition(f, report, computePercentiles(report.frameTimesMs_).avg_);
     }
 
+    std::fprintf(f, "--- Render device counters ---\n");
+    std::fprintf(f, "Supported: %u\n", report.deviceCountersSupported_ ? 1u : 0u);
+    const size_t steadyFrames =
+        report.frameTimesMs_.size() - report.frameTimesMs_.size() / kProfileWarmupDivisor;
+    std::fprintf(f, "%-36s %14s %14s %14s\n", "Counter", "Total", "Steady/frame", "Max/frame");
+    for (const auto &counter : report.deviceCounters_) {
+        const double steadyPerFrame =
+            steadyFrames == 0
+                ? 0.0
+                : static_cast<double>(counter.steadyTotal_) / static_cast<double>(steadyFrames);
+        std::fprintf(
+            f,
+            "%-36s %14llu %14.3f %14llu\n",
+            counter.name_.c_str(),
+            static_cast<unsigned long long>(counter.total_),
+            steadyPerFrame,
+            static_cast<unsigned long long>(counter.maxPerFrame_)
+        );
+    }
+    std::fprintf(
+        f,
+        "GPU process allocation: peak=%llu bytes\n",
+        static_cast<unsigned long long>(report.gpuProcessPeakBytes_)
+    );
+    std::fprintf(f, "\n");
+
     // --- GPU stage timing ---
     if (!report.gpuStages_.empty()) {
         std::fprintf(f, "--- GPU stage timing ---\n");

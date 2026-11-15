@@ -8,12 +8,21 @@
 
 namespace IRRender {
 
+// Backings are allocated in whole four-byte words so a buffer's size never
+// makes a word-aligned write unrepresentable as a blit. The logical size, which
+// bounds every write and read, is unchanged.
+namespace {
+std::size_t backingBytes(std::size_t size) {
+    return (size + 3u) & ~std::size_t{3u};
+}
+} // namespace
+
 class MetalBufferImpl final : public BufferImpl {
   public:
     MetalBufferImpl(const void *data, std::size_t size)
         : m_size(size == 0 ? 1 : size) {
         m_buffer = metalDevice()->newBuffer(
-            static_cast<NS::UInteger>(m_size),
+            static_cast<NS::UInteger>(backingBytes(m_size)),
             MTL::ResourceStorageModeShared
         );
         IR_ASSERT(m_buffer != nullptr, "Failed to create Metal buffer");
@@ -61,7 +70,7 @@ class MetalBufferImpl final : public BufferImpl {
 
     void subDataRanges(std::span<const BufferUploadRange> ranges) const override {
         std::size_t writtenBytes = 0;
-        std::size_t alignmentBits = m_size;
+        std::size_t alignmentBits = 0;
         std::size_t previousEnd = 0;
         for (const BufferUploadRange &range : ranges) {
             IR_ASSERT(
@@ -78,7 +87,9 @@ class MetalBufferImpl final : public BufferImpl {
                 "Metal buffer subDataRanges write exceeded buffer size"
             );
             writtenBytes += range.size_;
-            alignmentBits |= static_cast<std::size_t>(range.offset_) | range.size_;
+            if (range.size_ != 0) {
+                alignmentBits |= static_cast<std::size_t>(range.offset_) | range.size_;
+            }
         }
         if (writtenBytes == 0) {
             return;
@@ -90,50 +101,20 @@ class MetalBufferImpl final : public BufferImpl {
             return;
         }
 
-        const bool partialWrite = writtenBytes != m_size;
-        // macOS buffer blits require four-byte offsets and lengths. Preserve the
-        // byte-granular Buffer API by synchronizing only unsupported copy spans.
-        if (partialWrite && (alignmentBits & 3u) != 0) {
-            device()->finish();
-            writeRanges(m_buffer, ranges);
+        if (writtenBytes == m_size) {
+            replaceBacking(ranges);
             return;
         }
 
-        // One orphan for the whole batch: a per-range orphan would allocate
-        // and copy the full buffer once per range.
-        auto *newBuffer = metalDevice()->newBuffer(
-            static_cast<NS::UInteger>(m_size),
-            MTL::ResourceStorageModeShared
-        );
-        IR_ASSERT(newBuffer != nullptr, "Failed to orphan Metal buffer in subDataRanges");
-        writeRanges(newBuffer, ranges);
-
-        if (partialWrite) {
-            // Untouched bytes may be produced by queued GPU writes. CPU memcpy
-            // would read their previous contents before those writes execute.
-            auto *blit = createMetalBlitEncoder();
-            std::size_t gapStart = 0;
-            for (const BufferUploadRange &range : ranges) {
-                const auto rangeStart = static_cast<std::size_t>(range.offset_);
-                if (rangeStart > gapStart) {
-                    blit->copyFromBuffer(
-                        m_buffer,
-                        gapStart,
-                        newBuffer,
-                        gapStart,
-                        rangeStart - gapStart
-                    );
-                }
-                gapStart = rangeStart + range.size_;
-            }
-            if (gapStart < m_size) {
-                blit->copyFromBuffer(m_buffer, gapStart, newBuffer, gapStart, m_size - gapStart);
-            }
-            blit->endEncoding();
-            markMetalBufferEncoded(newBuffer);
+        // macOS buffer blits require four-byte offsets and lengths, and widening
+        // a span to word boundaries would overwrite bytes a queued shader may
+        // own. Waiting is the only correct way to land such a write.
+        if ((alignmentBits & 3u) != 0) {
+            waitAndWriteInPlace(ranges);
+            return;
         }
 
-        adoptBacking(newBuffer);
+        stagePatch(ranges, writtenBytes);
     }
 
     void getSubData(std::ptrdiff_t offset, std::size_t size, void *data) const override {
@@ -169,7 +150,7 @@ class MetalBufferImpl final : public BufferImpl {
     void resize(std::size_t size) override {
         m_size = size == 0 ? 1 : size;
         auto *newBuffer = metalDevice()->newBuffer(
-            static_cast<NS::UInteger>(m_size),
+            static_cast<NS::UInteger>(backingBytes(m_size)),
             MTL::ResourceStorageModeShared
         );
         IR_ASSERT(newBuffer != nullptr, "Failed to resize Metal buffer");
@@ -177,6 +158,76 @@ class MetalBufferImpl final : public BufferImpl {
     }
 
   private:
+    // The batch covers every byte, so nothing in the old backing survives and a
+    // fresh backing needs no GPU copy.
+    void replaceBacking(std::span<const BufferUploadRange> ranges) const {
+        auto *newBuffer = metalDevice()->newBuffer(
+            static_cast<NS::UInteger>(backingBytes(m_size)),
+            MTL::ResourceStorageModeShared
+        );
+        IR_ASSERT(newBuffer != nullptr, "Failed to replace Metal buffer in subDataRanges");
+        writeRanges(newBuffer, ranges);
+        ++metalBufferWriteStats().fullReplacements_;
+        adoptBacking(newBuffer);
+    }
+
+    // The ranges are copied into the existing backing on the GPU timeline, so
+    // encoders created before this call read the old bytes, encoders created
+    // after it read the new ones, and bytes outside the ranges are never
+    // touched. A CPU read sees the new bytes once the submission completes.
+    void stagePatch(std::span<const BufferUploadRange> ranges, std::size_t writtenBytes) const {
+        const MetalStagingBufferSlice staging = reserveMetalStaging(writtenBytes);
+        std::uint8_t *packed = staging.contents();
+        for (const BufferUploadRange &range : ranges) {
+            if (range.size_ != 0) {
+                std::memcpy(packed, range.data_, range.size_);
+                packed += range.size_;
+            }
+        }
+
+        auto *blit = createMetalBlitEncoder();
+        IR_ASSERT(blit != nullptr, "Metal buffer patch needs an open command buffer");
+        NS::UInteger sourceOffset = staging.offset_;
+        for (const BufferUploadRange &range : ranges) {
+            if (range.size_ == 0) {
+                continue;
+            }
+            blit->copyFromBuffer(
+                staging.buffer_,
+                sourceOffset,
+                m_buffer,
+                static_cast<NS::UInteger>(range.offset_),
+                static_cast<NS::UInteger>(range.size_)
+            );
+            sourceOffset += static_cast<NS::UInteger>(range.size_);
+        }
+        blit->endEncoding();
+        // A later CPU write this frame must not land before the queued copy.
+        markMetalBufferEncoded(m_buffer);
+
+        BufferWriteStats &stats = metalBufferWriteStats();
+        ++stats.stagedPatches_;
+        stats.stagedBytes_ += writtenBytes;
+        if (staging.allocatedBytes_ != 0) {
+            ++stats.partialWriteAllocations_;
+            stats.partialWriteAllocatedBytes_ += staging.allocatedBytes_;
+        }
+    }
+
+    void waitAndWriteInPlace(std::span<const BufferUploadRange> ranges) const {
+        ++metalBufferWriteStats().midFrameWaits_;
+        if (!m_reportedMidFrameWait) {
+            m_reportedMidFrameWait = true;
+            IRE_LOG_WARN(
+                "Metal buffer ({} bytes) waited for the GPU: a partial write to a buffer the "
+                "GPU may still read is not word-aligned",
+                m_size
+            );
+        }
+        device()->finish();
+        writeRanges(m_buffer, ranges);
+    }
+
     // Queued encoders keep the old allocation until the GPU has drained it.
     void adoptBacking(MTL::Buffer *newBuffer) const {
         MTL::Buffer *oldBuffer = m_buffer;
@@ -194,12 +245,11 @@ class MetalBufferImpl final : public BufferImpl {
         }
     }
 
-    // mutable: subData is const on the BufferImpl interface but may
-    // orphan the backing buffer (allocate a fresh MTL::Buffer + swap)
-    // when the previous one is already encoded into an in-flight
-    // command encoder. See subData for the in-place vs. orphan decision.
+    // mutable: subData is const on the BufferImpl interface but a full
+    // replacement of a buffer queued work may still read swaps the backing.
     mutable MTL::Buffer *m_buffer = nullptr;
     std::size_t m_size = 0;
+    mutable bool m_reportedMidFrameWait = false;
 };
 
 std::unique_ptr<BufferImpl> createBufferImpl(const void *data, std::size_t size, std::uint32_t) {

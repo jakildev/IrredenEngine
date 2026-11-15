@@ -100,12 +100,17 @@ class World {
     std::vector<uint32_t> m_frameUpdateTicks;
     uint32_t m_frameTotalUpdateTicks = 0;
     uint32_t m_frameMaxUpdateTicksPerFrame = 0;
+    // Per-frame differences of the device's cumulative counters.
+    std::vector<IRRender::BufferWriteStats> m_frameBufferWrites;
+    IRRender::BufferWriteStats m_bufferWritesAtLastFrame;
+    uint64_t m_gpuProcessPeakBytes = 0;
     // adding to world for user should just be attaching things to world ecs
     // entity! I have tried this before btw but wasnt ready
     // EntityHandle m_worldEngine;
     // EntityHandle m_worldGame;
     struct FrameStages;
 
+    void recordDeviceCounters();
     void initEngineSystems();
     void initIROutputSystems();
     void initIRInputSystems();

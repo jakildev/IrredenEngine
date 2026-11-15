@@ -9,13 +9,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from compare_perf_runs import RunWitness
+from compare_perf_runs import CellReport, DeviceCounter, RunWitness
 from repeat_profile import (
     RESIDUAL_YAW_DEADBAND_RAD,
     canvas_profile_frames,
     cmake_build_type,
     cmake_source_dir,
     demo_binary,
+    device_counter_lines,
     directory_digest,
     engine_logged,
     find_demo_pid,
@@ -529,6 +530,35 @@ class EngineLoggedTest(unittest.TestCase):
         self.assertTrue(engine_logged("[EngineLog] [info] Clean shutdown complete.\n"))
         self.assertTrue(engine_logged("[ClientLog] [info] Auto-profile\n"))
         self.assertFalse(engine_logged("ir-run: RESULT=CLEAN exe=IRPerfGrid exit=0\n"))
+
+
+class DeviceCounterSummaryTest(unittest.TestCase):
+    def report(self, supported, staged, peak):
+        row = CellReport(cell_id="run")
+        row.device_counters_supported = supported
+        if supported:
+            row.device_counters = {
+                "bufferStagedPatches": DeviceCounter(int(staged * 300), staged, int(staged) + 2),
+                "bufferMidFrameWaits": DeviceCounter(0, 0.0, 0),
+            }
+        row.gpu_process_peak_bytes = peak
+        return row
+
+    def test_counters_and_peak_are_summarised_across_runs(self):
+        text = "\n".join(device_counter_lines(
+            [self.report(True, 6.0, 2**30), self.report(True, 8.0, 3 * 2**30)]))
+        self.assertIn("| bufferStagedPatches | 7.000 | 6.000–8.000 | 10 | 2100.0 |", text)
+        self.assertIn("| bufferMidFrameWaits | 0.000 | 0.000–0.000 | 0 | 0.0 |", text)
+        self.assertIn("| sampled at each frame end | 2048.0 | 1024.0–3072.0 |", text)
+
+    def test_an_unsupported_backend_is_never_a_row_of_zeros(self):
+        text = "\n".join(device_counter_lines([self.report(False, 0.0, 0)]))
+        self.assertIn("unsupported by this backend", text)
+        self.assertNotIn("bufferStagedPatches", text)
+        self.assertNotIn("allocation peak", text)
+
+    def test_reports_without_the_section_add_nothing(self):
+        self.assertEqual(device_counter_lines([CellReport(cell_id="old")]), [])
 
 
 class PercentileTest(unittest.TestCase):

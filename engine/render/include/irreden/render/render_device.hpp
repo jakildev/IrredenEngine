@@ -18,6 +18,29 @@ struct GpuMemoryStats {
     std::size_t deviceAvailableBytes_ = 0;
 };
 
+// CPU writes through Buffer::subData / subDataRanges, cumulative since the
+// device was created; a reader takes differences between two samples.
+struct BufferWriteStats {
+    // Backing allocations made because a write covered only part of a buffer
+    // the GPU may still read, and the bytes those allocations hold.
+    std::uint64_t partialWriteAllocations_ = 0;
+    std::uint64_t partialWriteAllocatedBytes_ = 0;
+    // Partial writes copied into the buffer on the GPU timeline from staging.
+    std::uint64_t stagedPatches_ = 0;
+    std::uint64_t stagedBytes_ = 0;
+    // Writes covering the whole buffer, served by a fresh backing.
+    std::uint64_t fullReplacements_ = 0;
+    // Writes that waited for the GPU to drain before landing.
+    std::uint64_t midFrameWaits_ = 0;
+};
+
+// Backend counters. `supported_` false means the backend counts none of
+// them, so every zero is unknown rather than measured.
+struct RenderDeviceStats {
+    bool supported_ = false;
+    BufferWriteStats bufferWrites_;
+};
+
 using GpuTimestampHandle = std::uint32_t;
 constexpr GpuTimestampHandle kInvalidGpuTimestampHandle = 0;
 
@@ -54,6 +77,9 @@ class RenderDevice {
         return m_gpuFrameTiming.stats();
     }
     virtual GpuMemoryStats gpuMemoryStats() const {
+        return {};
+    }
+    virtual RenderDeviceStats deviceStats() const {
         return {};
     }
 
