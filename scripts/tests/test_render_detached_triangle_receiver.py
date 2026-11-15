@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 import test_render_cardinal_voxel_receiver as card
-from test_render_per_axis_caster_position import cpp, functions
+from test_render_per_axis_caster_position import caster_position_expression, cpp, functions
 
 COMPILER = shutil.which("c++")
 
@@ -224,9 +224,7 @@ def harness(backend):
         + "\nreturn worldReceivePos;}\n"
     )
     caster = cpp((shaders / f"c_bake_voxel_sun_faces.{backend}").read_text())
-    expression = re.search(
-        r"const bool rigidSource = [^;]+;\s*const vec3 position = [^;]+;", caster
-    )[0]
+    expression = caster_position_expression(caster)
     source += (
         "\nvec3 casterCenter(vec3 p,int density){struct{int w=1;}dispatch;\n"
         "const vec4 positions[]={{p,1}};const int index=0;\n"

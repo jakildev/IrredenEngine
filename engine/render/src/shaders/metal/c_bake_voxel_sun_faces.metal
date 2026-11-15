@@ -18,6 +18,7 @@ struct VoxelSunFaceFrame {
     float4 worldOrigin; // xyz: world translation; w: per-axis raster enabled
     float4 viewToWorld;
     int4 dispatch;
+    int4 admission;
 };
 
 inline void rasterSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3 edgeU, float3 edgeV, float2 origin, float2 texelSize, int cascadeOffset, uint faceMarker) {
@@ -47,6 +48,7 @@ kernel void c_bake_voxel_sun_faces(
     device const uint* activeMask [[buffer(8)]],
     device const float4* positions [[buffer(5)]],
     device const VoxelSunSample* voxels [[buffer(6)]],
+    device uint* admissionScratch [[buffer(26)]],
     constant VoxelSunFaceFrame& faceFrame [[buffer(16)]],
     device atomic_uint* sunDepthBuf [[buffer(28)]],
     constant FrameDataSun& sunFrame [[buffer(29)]],
@@ -55,25 +57,64 @@ kernel void c_bake_voxel_sun_faces(
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId [[thread_position_in_threadgroup]]
 ) {
-    const uint index = (groupId.y * uint(faceFrame.dispatch.y) + groupId.x) * 64u + localId.x;
+    threadgroup uint sharedRecordCounts[64];
+    const uint lane = localId.x;
+    if (faceFrame.admission.x == 1) {
+        if (lane == 0u) {
+            uint total = 0u;
+            for (uint group = 0u; group < uint(faceFrame.admission.y); ++group) {
+                const uint count = admissionScratch[group];
+                admissionScratch[group] = total;
+                total += count;
+            }
+            const uint capacity = atomic_load_explicit(
+                &sunDepthBuf[kSourceFaceCapacityOffset], memory_order_relaxed
+            );
+            const uint base = atomic_fetch_add_explicit(
+                &sunDepthBuf[kSourceFaceHeaderOffset], total, memory_order_relaxed
+            );
+            admissionScratch[uint(faceFrame.admission.y)] = base;
+            admissionScratch[uint(faceFrame.admission.y) + 1u] = total;
+            if (total > 0u && (base >= capacity || total > capacity - base)) {
+                atomic_store_explicit(
+                    &sunDepthBuf[sourceFaceHierarchyNeededIndex(capacity)], 1u,
+                    memory_order_relaxed
+                );
+            }
+        }
+        return;
+    }
 
-    if (index >= uint(faceFrame.dispatch.x)) return;
-    if ((voxels[index].colorPacked >> 24u) == 0u) return;
-    if ((activeMask[index >> 5u] & (1u << (index & 31u))) == 0u) return;
-    const uint flags = (voxels[index].materialFlagBone >> 8u) & 0xFFu;
+    const uint index = (groupId.y * uint(faceFrame.dispatch.y) + groupId.x) * 64u + localId.x;
+    bool activeVoxel = index < uint(faceFrame.dispatch.x);
+    if (activeVoxel) activeVoxel = (voxels[index].colorPacked >> 24u) != 0u;
+    if (activeVoxel) activeVoxel = (activeMask[index >> 5u] & (1u << (index & 31u))) != 0u;
+    const uint flags = activeVoxel ? (voxels[index].materialFlagBone >> 8u) & 0xFFu : 0u;
     const float subdivisions = float(faceFrame.dispatch.z);
     // Basis 2 preserves authored centers and rotates original faces; basis 1
     // carries the camera-aligned cells produced by detached revoxelization.
     const bool rigidSource = faceFrame.dispatch.w == 2;
-    const float3 position = rigidSource ? positions[index].xyz
-        : faceFrame.worldOrigin.w != 0.0 ? perAxisRenderedVoxelCenter(positions[index].xyz)
-        : float3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
-    const float3 worldCenter = rotateByQuat(position, faceFrame.viewToWorld) + faceFrame.worldOrigin.xyz;
-    const bool fogBody = (voxels[index].reserved & (1u << 3u)) != 0u;
-    if (!(fogBody) && sunFrame.fogCeilingEnabled.x != 0 && fogObservers.visionCircleCount > 0 &&
-        !fogFieldCastsSunShadow(worldCenter, false, sunFrame.fogCeilingEnabled.x,
-            fogShadowCell(worldCenter, fogObservers, fogShadowWindow), fogObservers)) return;
-    for (int axis = 0; axis < 3; ++axis) {
+    float3 position = float3(0.0);
+    float3 worldCenter = float3(0.0);
+    bool fogBody = false;
+    if (activeVoxel) {
+        position = rigidSource ? positions[index].xyz
+            : faceFrame.worldOrigin.w != 0.0 ? perAxisRenderedVoxelCenter(positions[index].xyz)
+            : float3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
+        worldCenter = rotateByQuat(position, faceFrame.viewToWorld) + faceFrame.worldOrigin.xyz;
+        fogBody = (voxels[index].reserved & (1u << 3u)) != 0u;
+        if (!(fogBody) && sunFrame.fogCeilingEnabled.x != 0 && fogObservers.visionCircleCount > 0 &&
+            !fogFieldCastsSunShadow(worldCenter, false, sunFrame.fogCeilingEnabled.x,
+                fogShadowCell(worldCenter, fogObservers, fogShadowWindow), fogObservers)) activeVoxel = false;
+    }
+
+    float3 projectedCorners[3];
+    float3 projectedEdgesU[3];
+    float3 projectedEdgesV[3];
+    uint faceMarkers[3];
+    uint faceMask = 0u;
+    uint recordMask = 0u;
+    for (int axis = 0; activeVoxel && axis < 3; ++axis) {
         float3 normal = float3(0.0);
         normal[axis] = 1.0;
         const float3 worldAxis = rotateByQuat(normal, faceFrame.viewToWorld);
@@ -100,8 +141,54 @@ kernel void c_bake_voxel_sun_faces(
         const float3 projected = sunSpaceProject(corner, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
         const float3 projectedU = sunSpaceProject(edgeU, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
         const float3 projectedV = sunSpaceProject(edgeV, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
-        indexSourceSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame);
-        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_0, sunFrame.cascadeTexelSize_0, int(kSourceFaceFallbackOffset), faceMarker);
-        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_1, sunFrame.cascadeTexelSize_1, kCascadeTexelCount + int(kSourceFaceFallbackOffset), faceMarker);
+        projectedCorners[axis] = projected;
+        projectedEdgesU[axis] = projectedU;
+        projectedEdgesV[axis] = projectedV;
+        faceMarkers[axis] = faceMarker;
+        faceMask |= 1u << uint(axis);
+        if (sourceSunFaceNeedsRecord(projected, projectedU, projectedV, sunFrame)) {
+            recordMask |= 1u << uint(axis);
+        }
+    }
+
+    sharedRecordCounts[lane] = popcount(recordMask);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    const uint group = groupId.y * uint(faceFrame.dispatch.y) + groupId.x;
+    if (faceFrame.admission.x == 0) {
+        if (lane == 0u) {
+            uint total = 0u;
+            for (uint item = 0u; item < 64u; ++item) total += sharedRecordCounts[item];
+            admissionScratch[group] = total;
+        }
+        return;
+    }
+
+    if (lane == 0u) {
+        uint prefix = 0u;
+        for (uint item = 0u; item < 64u; ++item) {
+            const uint count = sharedRecordCounts[item];
+            sharedRecordCounts[item] = prefix;
+            prefix += count;
+        }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    uint faceIndex = admissionScratch[uint(faceFrame.admission.y)] +
+        admissionScratch[group] + sharedRecordCounts[lane];
+    for (int axis = 0; axis < 3; ++axis) {
+        const uint bit = 1u << uint(axis);
+        if ((faceMask & bit) == 0u) continue;
+        if ((recordMask & bit) != 0u) {
+            indexSourceSunFaceAssigned(
+                sunDepthBuf, projectedCorners[axis], projectedEdgesU[axis],
+                projectedEdgesV[axis], sunFrame, faceIndex
+            );
+            ++faceIndex;
+        }
+        rasterSunFace(sunDepthBuf, projectedCorners[axis], projectedEdgesU[axis],
+            projectedEdgesV[axis], sunFrame.cascadeOriginUV_0, sunFrame.cascadeTexelSize_0,
+            int(kSourceFaceFallbackOffset), faceMarkers[axis]);
+        rasterSunFace(sunDepthBuf, projectedCorners[axis], projectedEdgesU[axis],
+            projectedEdgesV[axis], sunFrame.cascadeOriginUV_1, sunFrame.cascadeTexelSize_1,
+            kCascadeTexelCount + int(kSourceFaceFallbackOffset), faceMarkers[axis]);
     }
 }

@@ -1,5 +1,34 @@
 #include "ir_sun_face_bounds.glsl"
 
+bool sourceSunGeometryNeedsRecord(uint type, vec2 low, vec2 high) {
+    for (uint cascade = 0u; cascade < kSourceFaceCascadeCount; ++cascade) {
+        const vec2 origin = cascade == 0u ? cascadeOriginUV_0 : cascadeOriginUV_1;
+        const vec2 cellSize = (cascade == 0u ? cascadeTexelSize_0 : cascadeTexelSize_1) * float(kSourceFaceTileEdge);
+        const bool fullCascade = type == 0u && !sourceFaceCascadeArithmeticSafe(origin, cellSize);
+        const vec2 tileX = fullCascade ? vec2(0.0, float(kSourceFaceTilesPerAxis - 1u))
+            : sourceFaceTileInterval(low.x, high.x, origin.x, cellSize.x);
+        const vec2 tileY = fullCascade ? vec2(0.0, float(kSourceFaceTilesPerAxis - 1u))
+            : sourceFaceTileInterval(low.y, high.y, origin.y, cellSize.y);
+        const ivec2 first = ivec2(clamp(floor(vec2(tileX.x, tileY.x)),
+            vec2(0.0), vec2(float(kSourceFaceTilesPerAxis))));
+        const ivec2 last = ivec2(clamp(floor(vec2(tileX.y, tileY.y)),
+            vec2(-1.0), vec2(float(kSourceFaceTilesPerAxis - 1u))));
+        if (first.x <= last.x && first.y <= last.y) return true;
+    }
+    return false;
+}
+
+bool sourceSunFaceNeedsRecord(vec3 corner, vec3 edgeU, vec3 edgeV) {
+    const float determinant = projectedFaceDeterminant(edgeU.xy, edgeV.xy);
+    if (sourceFaceDefinitelyDegenerate(edgeU.xy, edgeV.xy, determinant)) return false;
+    vec2 low, high;
+    if (!sourceFaceIndexBounds(corner.xy, edgeU.xy, edgeV.xy, determinant, low, high)) {
+        low = vec2(-3.4028234663852886e38);
+        high = vec2(3.4028234663852886e38);
+    }
+    return sourceSunGeometryNeedsRecord(0u, low, high);
+}
+
 // Cooperative callers provide identical geometry and cascade bounds on every lane.
 void indexSourceSunGeometry(vec3 corner, vec3 edgeU, vec3 edgeV, uint type, vec2 low, vec2 high) {
 #ifdef IR_SUN_FACE_INDEX_COOPERATIVE
@@ -78,6 +107,74 @@ void indexSourceSunGeometry(vec3 corner, vec3 edgeU, vec3 edgeV, uint type, vec2
             }
         }
     }
+}
+
+void indexSourceSunGeometryAssigned(vec3 corner, vec3 edgeU, vec3 edgeV, uint type,
+                                    vec2 low, vec2 high, uint faceIndex) {
+    const uint boundWords = uint(sunDepthBuf.length());
+    const uint capacity = sourceFaceCapacity(boundWords);
+    bool recordWritten = false;
+    for (uint cascade = 0u; cascade < kSourceFaceCascadeCount; ++cascade) {
+        const vec2 origin = cascade == 0u ? cascadeOriginUV_0 : cascadeOriginUV_1;
+        const vec2 cellSize = (cascade == 0u ? cascadeTexelSize_0 : cascadeTexelSize_1) * float(kSourceFaceTileEdge);
+        const bool fullCascade = type == 0u && !sourceFaceCascadeArithmeticSafe(origin, cellSize);
+        const vec2 tileX = fullCascade ? vec2(0.0, float(kSourceFaceTilesPerAxis - 1u))
+            : sourceFaceTileInterval(low.x, high.x, origin.x, cellSize.x);
+        const vec2 tileY = fullCascade ? vec2(0.0, float(kSourceFaceTilesPerAxis - 1u))
+            : sourceFaceTileInterval(low.y, high.y, origin.y, cellSize.y);
+        const ivec2 first = ivec2(clamp(floor(vec2(tileX.x, tileY.x)),
+            vec2(0.0), vec2(float(kSourceFaceTilesPerAxis))));
+        const ivec2 last = ivec2(clamp(floor(vec2(tileX.y, tileY.y)),
+            vec2(-1.0), vec2(float(kSourceFaceTilesPerAxis - 1u))));
+        if (first.x > last.x || first.y > last.y) continue;
+        if (!recordWritten) {
+            recordWritten = true;
+            if (faceIndex == capacity) atomicExchange(sunDepthBuf[sourceFaceHierarchyNeededIndex(capacity)], 1u);
+            if (faceIndex < capacity) {
+                const uint record = kSourceFaceRecordOffset + faceIndex * kSourceFaceRecordWords;
+                sunDepthBuf[record + 9u] = type;
+                for (uint axis = 0u; axis < 3u; ++axis) {
+                    sunDepthBuf[record + axis] = floatBitsToUint(corner[axis]);
+                    sunDepthBuf[record + 3u + axis] = floatBitsToUint(edgeU[axis]);
+                    sunDepthBuf[record + 6u + axis] = floatBitsToUint(edgeV[axis]);
+                }
+            }
+        }
+        for (int y = first.y; y <= last.y; ++y) for (int x = first.x; x <= last.x; ++x) {
+            const uint tile = cascade * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis + uint(y) * kSourceFaceTilesPerAxis + uint(x);
+            const uint base = sourceFaceTileBase(tile);
+            if (faceIndex >= capacity) {
+                atomicOr(sunDepthBuf[base], kSourceFaceTileRecordLost);
+                continue;
+            }
+            const uint slot = atomicAdd(sunDepthBuf[base], 1u);
+            if (slot == kSourceFaceTileQueryCapacity) atomicExchange(sunDepthBuf[sourceFaceHierarchyNeededIndex(capacity)], 1u);
+            if (slot < kSourceFaceTileCapacity) {
+                sunDepthBuf[base + 1u + slot] = faceIndex;
+            } else if (slot < kSourceFaceTileQueryCapacity) {
+                const uint spill = atomicAdd(sunDepthBuf[sourceFaceSpillCounterIndex(capacity)], 1u);
+                if (spill == kSourceFaceSpillCapacity) atomicExchange(sunDepthBuf[sourceFaceHierarchyNeededIndex(capacity)], 1u);
+                if (spill < kSourceFaceSpillCapacity) {
+                    const uint node = sourceFaceSpillNodeIndex(capacity, spill);
+                    sunDepthBuf[node] = faceIndex;
+                    sunDepthBuf[node + 1u] = atomicExchange(sunDepthBuf[sourceFaceSpillHeadIndex(capacity, tile)], spill);
+                } else {
+                    atomicMax(sunDepthBuf[base], kSourceFaceTileQueryCapacity + 1u);
+                }
+            }
+        }
+    }
+}
+
+void indexSourceSunFaceAssigned(vec3 corner, vec3 edgeU, vec3 edgeV, uint faceIndex) {
+    const float determinant = projectedFaceDeterminant(edgeU.xy, edgeV.xy);
+    if (sourceFaceDefinitelyDegenerate(edgeU.xy, edgeV.xy, determinant)) return;
+    vec2 low, high;
+    if (!sourceFaceIndexBounds(corner.xy, edgeU.xy, edgeV.xy, determinant, low, high)) {
+        low = vec2(-3.4028234663852886e38);
+        high = vec2(3.4028234663852886e38);
+    }
+    indexSourceSunGeometryAssigned(corner, edgeU, edgeV, 0u, low, high, faceIndex);
 }
 
 void indexSourceSunFace(vec3 corner, vec3 edgeU, vec3 edgeV) {

@@ -128,8 +128,11 @@ bool fogCeilingRetained(vec3 p,uvec2 cell,const vec4*,const vec4* heights,
 """
             functions += extract_function(fog, "fogFieldCastsSunShadow") + "\n"
             functions += extract_function(fog, "fogVoxelFaceCastsSunShadow")
-            gate = re.search(r"if \(!\(fogBody\)[\s\S]*?\)\) return;", bake).group()
+            gate = re.search(
+                r"if \(!\(fogBody\)[\s\S]*?\)\) activeVoxel = false;", bake
+            ).group().replace("activeVoxel = false;", "return;")
             loop = extract_block(bake, "for (int axis = 0;")
+            loop = loop.replace("activeVoxel && ", "")
             loop = loop[:loop.index("        // Arbitrary source rotations")]
             emit = ("void emit(vec3 position,unsigned flags,bool fogBody){"
                     "vec3 worldCenter=rotateByQuat(position,viewToWorld);" + gate + loop

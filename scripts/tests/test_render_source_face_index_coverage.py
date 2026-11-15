@@ -297,7 +297,7 @@ int main(){
 """
 
 
-def host_source(backend, raw_bounds=False, cases=CASES):
+def host_source(backend, raw_bounds=False, cases=CASES, assigned=False):
     folder = "metal" if backend == "metal" else ""
     shaders = ROOT / "engine/render/src/shaders" / folder
     layout = load_shader(shaders, "ir_sun_face_query_layout", backend)
@@ -329,8 +329,20 @@ def host_source(backend, raw_bounds=False, cases=CASES):
     tile = re.search(r"const (?:ivec2|int2) tile = [^;]+;", sampler)
     if tile is None:
         raise ValueError("missing production receiver tile calculation")
-    call = ("indexSourceSunFace(corner,u,v);" if backend == "glsl" else
-            "indexSourceSunFace(sunDepthBuf.data,corner,u,v,sunFrame);")
+    if assigned:
+        call = (
+            "if(sourceSunFaceNeedsRecord(corner,u,v)){"
+            "const uint faceIndex=atomicAdd(sunDepthBuf[sourceFaceHeaderIndex("
+            "uint(sunDepthBuf.length()))],1u);"
+            "indexSourceSunFaceAssigned(corner,u,v,faceIndex);}" if backend == "glsl" else
+            "if(sourceSunFaceNeedsRecord(corner,u,v,sunFrame)){"
+            "const uint faceIndex=atomic_fetch_add_explicit(&sunDepthBuf["
+            "kSourceFaceHeaderOffset],1u,memory_order_relaxed);"
+            "indexSourceSunFaceAssigned(sunDepthBuf.data,corner,u,v,sunFrame,faceIndex);}"
+        )
+    else:
+        call = ("indexSourceSunFace(corner,u,v);" if backend == "glsl" else
+                "indexSourceSunFace(sunDepthBuf.data,corner,u,v,sunFrame);")
     source = (layout + "\n" + indexer
               + cases.replace("CALL_INDEX", call).replace("QUERY_TILE", tile[0]))
     source = shader_to_cpp(source)
@@ -353,7 +365,7 @@ class SourceFaceIndexCoverageTest(unittest.TestCase):
 
     def test_mixed_determinant_contraction_preserves_membership(self):
         for backend in ("glsl", "metal"):
-            source = host_source(backend, cases=MIXED_ARITHMETIC_CASES)
+            source = host_source(backend, cases=MIXED_ARITHMETIC_CASES, assigned=True)
             receiver = extract_function(source, "sourceFaceRaySeparation")
             contracted, replacements = re.subn(
                 r"const float determinant = projectedFaceDeterminant\([^;]+;",
@@ -361,10 +373,20 @@ class SourceFaceIndexCoverageTest(unittest.TestCase):
                 receiver)
             self.assertEqual(replacements, 1)
             source = source.replace(receiver, contracted)
-            mutant, replacements = re.subn(
-                r"if \(sourceFaceDefinitelyDegenerate\([^;]+?\)\) return;",
-                "if (abs(determinant) < 0.000001) return;", source)
-            self.assertEqual(replacements, 1, "expected conservative producer degeneracy gate")
+            mutant = source
+            for function_name, return_value in (
+                ("sourceSunFaceNeedsRecord", "false"),
+                ("indexSourceSunFaceAssigned", None),
+            ):
+                function = extract_function(mutant, function_name)
+                replacement = "return;" if return_value is None else f"return {return_value};"
+                changed, replacements = re.subn(
+                    r"if \(sourceFaceDefinitelyDegenerate\([^;]+?\)\) return(?: false)?;",
+                    f"if (abs(determinant) < 0.000001) {replacement}", function)
+                self.assertEqual(
+                    replacements, 1, f"expected conservative gate in {function_name}"
+                )
+                mutant = mutant.replace(function, changed)
             for name, variant in (("production", source), ("rounded_early_skip", mutant)):
                 with self.subTest(backend=backend, mutation=name):
                     run = self.compile_and_run(variant)

@@ -80,6 +80,7 @@ void clearAll(uint capacity){
     sunDepthBuf.readCount=0;
 }
 void indexFace(Face f){INDEX_CALL faces.push_back(f);}
+void indexFaceAssigned(Face f,uint id){INDEX_ASSIGNED_CALL}
 // Small faces spread across both cascades, clear of the receiver's tiles, so no
 // tile overflows its inline list.
 Face spread(uint k){
@@ -144,6 +145,15 @@ int main(){
     // Interior of cascade-0 tile 516 and cascade-1 tile 16514, clear of tile edges.
     const Face lostFace{{35.5f,35.5f,2},{1,0,0},{0,1,0}};
     uint checks=0;
+    allocate(1024u);
+    clearAll(1024u);
+    const Face assignedFirst=spread(0u),assignedSecond=spread(1u);
+    indexFaceAssigned(assignedSecond,1u);
+    indexFaceAssigned(assignedFirst,0u);
+    require(sunDepthBuf.words[kSourceFaceRecordOffset]==floatBitsToUint(assignedFirst.corner.x) &&
+            sunDepthBuf.words[kSourceFaceRecordOffset+kSourceFaceRecordWords]==
+                floatBitsToUint(assignedSecond.corner.x),
+            "assigned record IDs ignore invocation order");
     for(uint capacity:{CAPACITY_LIST}){
         for(uint receiverCase=0;receiverCase<2;++receiverCase){
             allocate(capacity);
@@ -327,11 +337,14 @@ def source(suffix, directory, mutation=None, pass_delta=0, main=GROWN_MAIN):
                      else "sunDepthBuf.words[kSourceFaceCapacityOffset]")
     index_call = ("indexSourceSunFace(f.corner,f.u,f.v);" if suffix == "glsl"
                   else "indexSourceSunFace(sunDepthBuf,f.corner,f.u,f.v,sunFrame);")
+    assigned_call = ("indexSourceSunFaceAssigned(f.corner,f.u,f.v,id);" if suffix == "glsl"
+                     else "indexSourceSunFaceAssigned(sunDepthBuf,f.corner,f.u,f.v,sunFrame,id);")
     prefix = receiver.CASES[:receiver.CASES.index("int main(){")]
     cases = (prefix + PRODUCER_STUBS + producer + (HELPERS + main)
              .replace("READ_CAPACITY", read_capacity)
              .replace("RECORDS", f"{PRIORITY_RECORDS}u")
              .replace("INDEX_CALL", index_call)
+             .replace("INDEX_ASSIGNED_CALL", assigned_call)
              .replace("PASS_DELTA", str(pass_delta))
              .replace("CAPACITY_LIST", ",".join(f"{c}u" for c in CAPACITIES)))
     saved = hierarchy.CASES

@@ -171,8 +171,9 @@ struct VoxelSunFaceFrame {
     vec4 worldOrigin_; // xyz: world translation; w: per-axis raster enabled
     vec4 viewToWorld_;
     ivec4 dispatch_;
+    ivec4 admission_; // x: count / scan / bake; y: workgroup count
 };
-static_assert(sizeof(VoxelSunFaceFrame) == 48, "Voxel sun-face frame must match the shader UBO");
+static_assert(sizeof(VoxelSunFaceFrame) == 64, "Voxel sun-face frame must match the shader UBO");
 
 template <> struct System<BAKE_SUN_SHADOW_MAP> {
     ShaderProgram *hierarchyProgram_ = nullptr;
@@ -367,6 +368,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
 
     ShaderProgram *voxelFaceProgram_ = nullptr;
     Buffer *voxelFaceFrameBuf_ = nullptr;
+    Buffer *voxelFaceAdmissionScratch_ = nullptr;
+    Buffer *voxelIndirectBuf_ = nullptr;
+    std::size_t voxelFaceAdmissionGroups_ = 0;
     ShaderProgram *clearProgram_ = nullptr;
     ShaderProgram *bakeProgram_ = nullptr;
     Buffer *sunShadowDepthMap_ = nullptr;
@@ -1234,20 +1238,54 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 rigidSource             ? 2
                 : rotation.isDetached() ? 1
                                         : 0
-            )
+            ),
+            ivec4(0, grid.x * grid.y, 0, 0)
         };
-        voxelFaceFrameBuf_->subData(0, sizeof(params), &params);
-        voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
+        const std::size_t groups = static_cast<std::size_t>(params.admission_.y);
+        if (voxelFaceAdmissionGroups_ < groups) {
+            voxelFaceAdmissionGroups_ = groups;
+            voxelFaceAdmissionScratch_->resize((groups + 2) * sizeof(std::uint32_t));
+        }
+        if (voxelIndirectBuf_ == nullptr) {
+            voxelIndirectBuf_ = IRRender::getNamedResourceOrNull<Buffer>("IndirectDispatchParams");
+        }
         sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
+        voxelFaceAdmissionScratch_->bindBase(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_SunFaceAdmissionScratch
+        );
         bindFogObservers();
         voxelFaceProgram_->use();
+
+        VoxelSunFaceFrame pass = params;
+        pass.admission_.x = 0;
+        voxelFaceFrameBuf_->subData(0, sizeof(pass), &pass);
+        voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
+        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+
+        pass.admission_.x = 1;
+        voxelFaceFrameBuf_->subData(0, sizeof(pass), &pass);
+        voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
+        IRRender::device()->dispatchCompute(1, 1, 1);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+
+        pass.admission_.x = 2;
+        voxelFaceFrameBuf_->subData(0, sizeof(pass), &pass);
+        voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
         IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         revoxelizeParamsBuf_->bindBase(
             BufferTarget::UNIFORM,
             kBufferIndex_RevoxelizeDetachedParams
         );
+        if (voxelIndirectBuf_ != nullptr) {
+            voxelIndirectBuf_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_IndirectDispatchParams
+            );
+        }
     }
 
     static SystemId create() {
@@ -1349,6 +1387,13 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                                     kBufferIndex_RevoxelizeDetachedParams
         )
                                     .second;
+        p->voxelFaceAdmissionScratch_ = IRRender::createNamedResource<Buffer>(
+                                            "VoxelSunFaceAdmissionScratch",
+                                            nullptr,
+                                            2 * sizeof(std::uint32_t),
+                                            BUFFER_STORAGE_DYNAMIC
+        )
+                                            .second;
         p->detachedShadowFrameBuf_ = IRRender::createNamedResource<Buffer>(
                                          "DetachedShadowFrameBuffer",
                                          nullptr,
