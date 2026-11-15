@@ -130,6 +130,11 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
     if (functionName == "c_per_axis_cell_compact") {
         return MTL::Size(16, 16, 1);
     }
+    // The per-axis store reset walks the occupied-cell list in
+    // kPerAxisCellComputeTile (16 x 16) groups, like every other list consumer.
+    if (functionName == "c_per_axis_cell_clear") {
+        return MTL::Size(16, 16, 1);
+    }
     if (functionName == "c_clear_light_volume") {
         return MTL::Size(8, 8, 8);
     }
@@ -166,7 +171,8 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
 // such parameter, since the bind would then land on
 // whatever it does declare.
 bool functionUsesImageAtomicScratch(const std::string &functionName) {
-    return functionName == "c_voxel_to_trixel_stage_1" ||
+    return functionName == "c_per_axis_cell_clear" ||
+           functionName == "c_voxel_to_trixel_stage_1" ||
            functionName == "c_voxel_to_trixel_stage_1_feeder" ||
            functionName == "c_voxel_to_trixel_stage_1_winner_resolve" ||
            functionName == "c_voxel_to_trixel_stage_2" ||

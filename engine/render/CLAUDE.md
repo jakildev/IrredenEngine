@@ -176,8 +176,8 @@ Changes without a visual effect need no captures.
 
 ### Sun shadow bake AABB sweep
 
-- With sun shadows on, visible geometry bounds include the shadow-feeder
-  sweep, and the sun-map bake and receiver share `kSunShadowMaxDistance`. Read
+- With sun shadows on and the bake on canvas depth (not finite face casting), voxel
+  bounds include the shadow-feeder sweep; the bake and receiver share `kSunShadowMaxDistance`. Read
   the [coverage design](../../docs/design/sun-shadow-bake-coverage.md) before
   changing the bake kernel or splat controls.
 - Cardinal voxel provenance, reconstruction and cascade units: [surface-sampling contract](../../docs/design/surface-shadow-sampling.md#settled-cardinal-voxel-receivers); the presentation receiver's coplanar-neighbour edge rule: [§](../../docs/design/surface-shadow-sampling.md#cardinal-presentation-receivers).

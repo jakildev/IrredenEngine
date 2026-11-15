@@ -17,13 +17,13 @@ another design doc. Feature-level designs are their own documents:
 `C_TriangleCanvasTextures` centralizes the color / distance / entity-id
 format triple in its `detail::makeCanvas*Texture` factories so every other
 canvas component allocates through them; a second copy of the formats would
-drift. The Hi-Z max-depth mip chain over the distance texture is produced
-every frame by `COMPUTE_DISTANCE_HIZ` whether or not the chunk-occlusion
-pre-pass consumes it, so enabling the cull
-(`IRRender::setVoxelOcclusionCullEnabled`) changes no texture lifetime. The
-cull's lag source is last frame's chain, which is stale across a camera cut;
+drift. The Hi-Z max-depth mip chain over the distance texture is allocated
+with the canvas and built by `COMPUTE_DISTANCE_HIZ` only on frames with the
+cull enabled (`IRRender::setVoxelOcclusionCullEnabled`), so toggling the cull
+changes no texture lifetime. The cull's lag source is last frame's chain,
+which is stale across a camera cut and after a cull-off frame;
 `VOXEL_TO_TRIXEL_STAGE_1::beginTick` therefore keeps every chunk for one
-frame after a discontinuous camera move. The cull is bit-identical on and off
+frame after either (`IRPrefab::OcclusionCull::LagSource`). The cull is bit-identical on and off
 because a fully occluded voxel writes nothing either way.
 
 `renderedSubdivisions_` on the canvas records the subdivision the canvas
