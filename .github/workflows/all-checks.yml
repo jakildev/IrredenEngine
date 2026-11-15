@@ -31,6 +31,7 @@ on:
       - Fleet Tests
       - Format Check
       - Header Checks
+      - Instruction Refs
       - Instruction Size
       - No Plan Files
       - Perf Gate
