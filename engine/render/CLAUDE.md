@@ -38,7 +38,7 @@ Changes without a visual effect need no captures.
 - GLSL lives in `engine/render/src/shaders/`; Metal sources live in its
   `metal/` child. Register added or renamed shader paths in
   `render/shader_names.hpp`. Naming follows the
-  [baseline](../../docs/agents/CLAUDE-BASELINE.md#naming).
+  [code conventions](../../docs/agents/CODE-CONVENTIONS.md#naming).
 - A shader fragment may self-include only a macro-free prerequisite.
   Macro-parameterized fragments remain in each wrapper's explicit ordered
   include list after the wrapper's `#define`s.

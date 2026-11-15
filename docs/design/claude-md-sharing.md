@@ -41,11 +41,14 @@ by name. Per-section opt-out via heading text in the creation's own
 
 Concretely:
 
-1. The cross-cutting sections (ECS footgun, naming, style, Bash rules,
-   what-belongs-in-CLAUDE.md, cross-repo isolation) live verbatim in
-   `docs/agents/CLAUDE-BASELINE.md`. The project-root `CLAUDE.md` no
-   longer holds them; instead it points at the baseline file at the
-   top.
+1. Every cross-cutting section has its heading in
+   `docs/agents/CLAUDE-BASELINE.md`, the baseline API. The sections every
+   session needs (ECS footgun, Bash rules, cross-repo isolation, and the
+   rest) live there in full; naming, style and
+   what-belongs-in-agent-docs are stubs there, and their full text lives
+   in the on-demand files named in item 4. The project-root `CLAUDE.md`
+   no longer holds any of them; instead it points at the baseline file
+   at the top.
 2. Each creation's `CLAUDE.md` has an `## Inherits from engine
    baseline` block near the top declaring inheritance. Without an
    `Opt-outs` subsection, every baseline section applies. With an
@@ -54,13 +57,29 @@ Concretely:
    etc.) are the **stable identifiers**. Renaming a heading is a
    breaking change to the opt-out API and requires a sweep of every
    creation that references the old name.
+4. The baseline holds in full only what every session needs. Sections
+   needed only for one kind of edit live in files read on demand
+   beside it: `docs/agents/CODE-CONVENTIONS.md` (`## Naming`,
+   `## Style`, `## Encode contracts in code, not in comments`,
+   `## Deprecation markers`; read before editing source) and
+   `docs/agents/INSTRUCTION-AUTHORING.md` (`## What belongs in
+   agent-facing docs`; read before editing an instruction file). Each
+   moved section keeps its heading in the baseline as a **stub**: the
+   rule in one sentence, when to read the full text, and the link. An
+   opt-out that names a stub heading opts out of the section the stub
+   points to.
 
 ### Why this shape
 
-The harness only auto-loads the worktree's root `CLAUDE.md`. It does
-not traverse upward or follow includes. Whatever mechanism we pick
-must therefore be agent-readable text — agents follow pointers in
-prose, they do not parse markdown directives.
+The Claude Code harness loads the worktree's root `CLAUDE.md` at
+startup, a nested `CLAUDE.md` when a file in its directory is first
+touched, and a `.claude/rules/` file when a path matching its
+`paths:` frontmatter is opened. It does not follow links or include
+directives, and the Codex runtime gets no path-scoped injection at
+all (`AGENTS.md`). Whatever mechanism we pick must therefore be
+agent-readable text — agents follow pointers in prose, they do not
+parse markdown directives — and a pointer must say when to read its
+target, not only where it is.
 
 That ruled out three alternatives:
 
@@ -80,9 +99,10 @@ That ruled out three alternatives:
 
 A prose pointer with an explicit opt-out list is what agents
 already follow well. The cost is one extra file Read per agent
-invocation; the benefit is a single source of truth that creations
-in any layout (engine-bundled, separate gitignored repo) can point
-to with the same syntax.
+invocation, two for source or instruction work (see Discovery); the
+benefit is a single source of truth that creations in any layout
+(engine-bundled, separate gitignored repo) can point to with the same
+syntax.
 
 ---
 
@@ -151,22 +171,35 @@ without a reason should fail review.
 
 ## Discovery
 
-**By reference, not inline.** Agents read both files: their starting
-`CLAUDE.md` (which the harness auto-loads) and the baseline (which
-the inheritance block points them at). Inlining the baseline content
+**By reference, not inline.** Every agent reads at least two files:
+their starting `CLAUDE.md` (which the harness auto-loads) and the
+baseline (which the inheritance block points them at). An agent that
+edits source or instruction files also reads the matching on-demand
+file from item 4. Inlining the baseline content
 into every creation's `CLAUDE.md` would solve the discovery question
 but recreates the duplication problem this design exists to fix.
 
-The cost is one extra Read tool call per agent invocation. The
-benefit is that every baseline edit reaches every creation
-automatically.
+The cost is one extra Read tool call for a session that needs only the
+baseline, and one more (`CODE-CONVENTIONS.md` or
+`INSTRUCTION-AUTHORING.md`) for a session that edits source or
+instruction files. The benefit is that every baseline edit reaches
+every creation automatically.
+
+The on-demand files are found two ways: the baseline stub under each
+moved heading names its trigger, and the nested `CLAUDE.md` files
+that govern source code (`engine/`, `creations/`, `test/`,
+`scripts/fleet/`) point at `CODE-CONVENTIONS.md`, so the harness
+surfaces the pointer when an agent first touches code there. A
+session that edits neither source nor instruction files reads only
+the baseline.
 
 The project-root `CLAUDE.md` follows the same pattern: a top-of-file
 pointer at the baseline, then the engine-fleet-specific sections
-inline. An engine agent reads one extra file relative to the
-pre-design status quo; a creation agent reads the same number of
-files (their own `CLAUDE.md` plus engine baseline) but gets a sharper
-contract.
+inline. Relative to the pre-design status quo, a baseline-only engine
+agent reads one extra file and a baseline-only creation agent reads the
+same number (their own `CLAUDE.md` plus engine baseline) under a
+sharper contract. A session that edits source or instruction files
+reads the matching on-demand file on top of that.
 
 ---
 

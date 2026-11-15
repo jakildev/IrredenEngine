@@ -4,6 +4,7 @@ Every test in this tree compiles into a **single** `IrredenEngineTest`
 executable that links the whole `IrredenEngine` library plus `gtest_main`.
 There is no per-module test target: a test can reach any engine header, and
 `gtest_discover_tests` registers each test individually with CTest.
+Before editing code here, read [`docs/agents/CODE-CONVENTIONS.md`](../docs/agents/CODE-CONVENTIONS.md).
 
 ## New test files must be registered by hand
 

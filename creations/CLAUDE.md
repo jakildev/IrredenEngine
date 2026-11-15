@@ -8,6 +8,7 @@ knows nothing about any specific creation.
 
 Applies the rules in [`docs/agents/CLAUDE-BASELINE.md`](../docs/agents/CLAUDE-BASELINE.md).
 No opt-outs.
+Before editing code here, read [`docs/agents/CODE-CONVENTIONS.md`](../docs/agents/CODE-CONVENTIONS.md).
 
 ## Two visibility tiers
 
