@@ -97,6 +97,9 @@ once and splice its returned systems into UPDATE order.
   resolved storage.
 - `push` and `pushGlobal` create transient records; `upsertBySource` creates a
   persistent writer-owned slot keyed by `(source, field, kind)`.
+- A per-entity finite lifetime enters only through `push`, `pushFrameLocal`,
+  or `pushOneFrame`; they arm `MODIFIER_DECAY`, which skips its rows otherwise.
+  Writing one straight into `C_Modifiers` fails the next pass in assert builds.
 - A system tick that already holds `C_Modifiers&` uses
   `upsertBySourceInPlace`; do not perform an entity lookup for the same row.
 - Destroying a source automatically invokes `removeBySource` before its ID can

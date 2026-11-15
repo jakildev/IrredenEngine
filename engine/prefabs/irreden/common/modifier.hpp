@@ -88,6 +88,7 @@ inline void push(
     if (!c)
         return;
     c->modifiers_.push_back(IRComponents::Modifier{field, kind, param, source, ticksRemaining});
+    detail::armDecayFor(ticksRemaining);
 }
 
 inline void push(
@@ -108,6 +109,7 @@ inline void push(
     c->modifiersVec3_.push_back(
         IRComponents::ModifierVec3{field, kind, param, source, ticksRemaining}
     );
+    detail::armDecayFor(ticksRemaining);
 }
 
 // Quat push. `param` is the engine's canonical quaternion layout
@@ -143,6 +145,7 @@ inline void push(
     c->modifiersQuat_.push_back(
         IRComponents::ModifierQuat{field, kind, param, source, ticksRemaining}
     );
+    detail::armDecayFor(ticksRemaining);
 }
 
 // Caller runs INSIDE the resolver pipeline, after MODIFIER_DECAY in the same
@@ -179,6 +182,7 @@ inline void pushFrameLocal(
     IREntity::EntityId source
 ) {
     mods.modifiers_.push_back(IRComponents::Modifier{field, kind, param, source, 1});
+    detail::globalFieldRegistry().armDecay();
 }
 
 inline void pushFrameLocal(
@@ -189,6 +193,7 @@ inline void pushFrameLocal(
     IREntity::EntityId source
 ) {
     mods.modifiersVec3_.push_back(IRComponents::ModifierVec3{field, kind, param, source, 1});
+    detail::globalFieldRegistry().armDecay();
 }
 
 inline void pushFrameLocal(
@@ -209,6 +214,7 @@ inline void pushFrameLocal(
     if (unitQuatIncompatible)
         return;
     mods.modifiersQuat_.push_back(IRComponents::ModifierQuat{field, kind, param, source, 1});
+    detail::globalFieldRegistry().armDecay();
 }
 
 // Caller runs OUTSIDE the resolver pipeline (Lua, input handler, command).
@@ -245,6 +251,7 @@ inline void pushOneFrame(
     IREntity::EntityId source
 ) {
     mods.modifiers_.push_back(IRComponents::Modifier{field, kind, param, source, 2});
+    detail::globalFieldRegistry().armDecay();
 }
 
 inline void pushOneFrame(
@@ -255,6 +262,7 @@ inline void pushOneFrame(
     IREntity::EntityId source
 ) {
     mods.modifiersVec3_.push_back(IRComponents::ModifierVec3{field, kind, param, source, 2});
+    detail::globalFieldRegistry().armDecay();
 }
 
 inline void pushOneFrame(
@@ -275,6 +283,7 @@ inline void pushOneFrame(
     if (unitQuatIncompatible)
         return;
     mods.modifiersQuat_.push_back(IRComponents::ModifierQuat{field, kind, param, source, 2});
+    detail::globalFieldRegistry().armDecay();
 }
 
 inline void pushGlobal(

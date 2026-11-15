@@ -55,6 +55,7 @@ add_executable(IrredenEngineTest
   ecs/hitbox_2d_gui_test.cpp
   ecs/hover_detect_reset_test.cpp
   ecs/joint_matrix_upload_test.cpp
+  ecs/modifier_decay_gate_test.cpp
   ecs/modifier_quat_runtime_test.cpp
   ecs/modifier_runtime_test.cpp
   ecs/modifier_types_test.cpp

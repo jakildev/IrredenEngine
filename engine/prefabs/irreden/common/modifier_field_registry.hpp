@@ -5,12 +5,15 @@
 // FieldBindingId is a dense integer; index 0 is reserved for
 // kInvalidFieldId so default-constructed Modifier{} cannot resolve.
 // Registration is single-threaded (init phase). Lookups are O(1).
+// The registry also owns the framework's world-wide decay flag.
 //
 // See docs/design/modifiers.md §Public API surface.
 
 #include <irreden/common/components/component_modifiers.hpp>
 
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <vector>
 
@@ -85,14 +88,43 @@ class FieldRegistry {
         return m_names.size() - 1;
     }
 
+    // Set while some `C_Modifiers` may hold a modifier whose lifetime is not
+    // -1; `MODIFIER_DECAY` skips its rows while it is clear. Every push that
+    // gives a per-entity modifier a finite lifetime arms it, from any thread:
+    // the load before the store keeps an already-armed flag a shared read.
+    // Only a completed decay pass that left no finite lifetime clears it, so
+    // a stale set costs one scan and a missed arm loses expiries. Relaxed
+    // order suffices: the scheduler's system boundaries order a push before
+    // the next decay pass reads the flag.
+    void armDecay() {
+        if (!m_decayArmed.load(std::memory_order_relaxed)) {
+            m_decayArmed.store(true, std::memory_order_relaxed);
+        }
+    }
+
+    bool decayArmed() const {
+        return m_decayArmed.load(std::memory_order_relaxed);
+    }
+
+    void clearDecay() {
+        m_decayArmed.store(false, std::memory_order_relaxed);
+    }
+
   private:
     std::vector<const char *> m_names;
     std::vector<IRComponents::FieldValueType> m_types;
+    std::atomic<bool> m_decayArmed{true};
 };
 
 inline FieldRegistry &globalFieldRegistry() {
     static FieldRegistry registry;
     return registry;
+}
+
+inline void armDecayFor(std::int32_t ticksRemaining) {
+    if (ticksRemaining != -1) {
+        globalFieldRegistry().armDecay();
+    }
 }
 
 } // namespace IRPrefab::Modifier::detail
