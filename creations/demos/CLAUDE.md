@@ -1,10 +1,10 @@
 # creations/demos/ — shareable example creations
 
 Small, self-contained creations that exist to exercise or demonstrate a
-specific engine feature. Each is an independent executable. These are the
-only creations checked into the engine repo — private creations (games,
-personal editors, experiments) live as gitignored subdirectories under
-`creations/`.
+specific engine feature. Each is an independent executable. Demos are one of
+the tracked creation families in the engine repo (see
+[`creations/CLAUDE.md`](../CLAUDE.md)); private creations (games, personal
+editors, experiments) live as gitignored subdirectories under `creations/`.
 
 ## Inherits from engine baseline
 

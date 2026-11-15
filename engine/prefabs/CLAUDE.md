@@ -12,7 +12,7 @@ components. The full reasoning, allowlists, and canonical patterns live in
 [`.claude/rules/cpp-math.md`](../../.claude/rules/cpp-math.md),
 [`.claude/rules/cpp-systems.md`](../../.claude/rules/cpp-systems.md), and
 [`.claude/rules/cpp-ecs.md`](../../.claude/rules/cpp-ecs.md) — those auto-load
-when you open any C++ file. The capsules here are reminders.
+for the files they scope. The capsules here are reminders.
 
 - **Math primitives go through IRMath** — never `glm::*` or `std::sin/cos/sqrt/abs/min/max/clamp` outside `engine/math/`. See [`.claude/rules/cpp-math.md`](../../.claude/rules/cpp-math.md).
 - **System state lives on `System<N>` or in `SystemParams`.** Never
@@ -37,11 +37,11 @@ before adding or modifying.
 
 | Type        | Path                                         | Example                      |
 |-------------|----------------------------------------------|------------------------------|
-| Component   | `<domain>/components/component_<name>.hpp`   | `component_move_order.hpp`   |
-| Lua binding | `<domain>/components/component_<name>_lua.hpp` | `component_move_order_lua.hpp` |
+| Component   | `<domain>/components/component_<name>.hpp`   | `component_velocity_3d.hpp`  |
+| Lua binding | `<domain>/components/component_<name>_lua.hpp` | `component_velocity_3d_lua.hpp` |
 | System      | `<domain>/systems/system_<name>.hpp`         | `system_velocity_drag.hpp`   |
 | Command     | `<domain>/commands/command_<name>.hpp`       | `command_zoom_in.hpp`        |
-| Entity      | `<domain>/entities/entity_<name>.hpp`        | `entity_camera.hpp`          |
+| Entity      | `<domain>/entities/entity_<name>.hpp`        | `entity_trixel_canvas.hpp`  |
 
 Exceptions exist (e.g. `engine/prefabs/irreden/spatial/spatial_query.hpp`
 lives directly in the domain root because it's a set of free functions, not a
@@ -55,7 +55,7 @@ in that domain.
   by the categorization below.
 - **Systems** use `template <> struct IRSystem::System<SYSTEM_NAME>` with a
   static `create()` returning `SystemId`. The `SYSTEM_NAME` must exist in
-  `engine/system/include/irreden/ir_system_types.hpp` (`SystemName` enum).
+  `engine/system/include/irreden/system/ir_system_types.hpp` (`SystemName` enum).
 - **Commands** use `template <> struct IRCommand::Command<COMMAND_NAME>`
   with a static `create()` returning a typed callable. `COMMAND_NAME` must
   exist in the corresponding command enum.

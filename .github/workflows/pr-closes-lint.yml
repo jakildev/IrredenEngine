@@ -6,7 +6,7 @@ name: PR Closes Lint
 # on every push and every title/body edit, not once at open.
 #
 # No `paths:` filter: any PR's commit messages can carry a closing keyword.
-# Not a required status check; a red run is a needs-fix through
+# A required status check (`closes-lint`); a red run is a needs-fix through
 # REVIEWER-PROTOCOL.md "Nits vs needs-fix". The PR title and body are fetched
 # by the tool over REST, never interpolated into a script here.
 
