@@ -50,10 +50,12 @@ PILLOW_EXCEPTIONS = frozenset({
     "scripts/render-visible-box-metric.py",
     "scripts/render_probe_geometry.py",
     "scripts/render_receiver_shadow_polygon.py",
+    "scripts/perf/sun_record_loss_stability.py",
     "scripts/tests/test_render_detached_lighting_region.py",
     "scripts/tests/test_render_receiver_shadow_polygon.py",
     "scripts/tests/test_render_shadow_box_edges.py",
     "scripts/tests/test_render_shape_footprint_metric.py",
+    "scripts/tests/test_sun_record_loss_stability.py",
     "scripts/trixel-font-preview.py",
 })
 
@@ -70,6 +72,7 @@ _NEVER_ELIGIBLE = frozenset({
 
 _POPULATION_GLOBS = ("scripts/*.py", "scripts/tests/*.py")
 _POPULATION_FILES = (
+    "scripts/fleet/lint_rules_commands.py",
     "scripts/perf/compare_perf_runs.py",
     "scripts/perf/repeat_profile.py",
     "scripts/perf/sun_depth_slab_capture.py",
@@ -80,6 +83,7 @@ _POPULATION_FILES = (
     "scripts/perf/sun_hierarchy_build_probe.py",
     "scripts/perf/sun_hierarchy_probe.py",
     "scripts/perf/sun_query_probe.py",
+    "scripts/perf/sun_record_loss_stability.py",
 )
 _MANIFEST_GLOB = "creations/demos/*/test/references/manifest.json"
 
