@@ -7,6 +7,10 @@ source "$(dirname "$0")/lib_preflight.sh"
 source "$(dirname "$0")/lib_assert.sh"
 FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 
+export CLAIM_RACE_LIB CLAIM_RACE_SUITE_PID=$$
+CLAIM_RACE_LIB="$(cd "$(dirname "$0")" && pwd)/lib_claim_race.sh"
+source "$CLAIM_RACE_LIB"
+
 TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/fleet-claim-race.XXXXXX")
 source "$(dirname "$0")/lib_hermetic.sh"
 hermetic_poison_gh_env "$TMPROOT"
@@ -20,7 +24,7 @@ export CLAIM_STATE="$TMPROOT/labels"
 export CLAIM_RUN="$TMPROOT/run"
 export CLAIM_LOG="$TMPROOT/calls"
 export CLAIM_MODE=race
-export CLAIM_EXPECTED=2
+export CLAIM_PEERS="alpha beta"
 export CLAIM_RETURN_ORDER=together
 export FLEET_CLAIM_ACQUIRE_RETRIES=3
 mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_HEARTBEATS_DIR" \
@@ -29,15 +33,10 @@ mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_HEARTBEATS_DIR" \
 cat > "$TMPROOT/bin/gh" <<'GH_STUB'
 #!/usr/bin/env bash
 set -euo pipefail
+source "$CLAIM_RACE_LIB"
 
 lock_state() {
-    local tick
-    for ((tick = 0; tick < 1000; tick++)); do
-        mkdir "${CLAIM_STATE}.lock" 2>/dev/null && return 0
-        sleep 0.005
-    done
-    echo "gh stub: state lock timeout" >&2
-    return 1
+    race_lock "${CLAIM_STATE}.lock"
 }
 
 unlock_state() {
@@ -56,25 +55,12 @@ emit_flat() {
     printf ']'
 }
 
-wait_for_count() {
-    local prefix="$1" expected="$2" tick count
-    for ((tick = 0; tick < 1000; tick++)); do
-        count=0
-        for path in "$CLAIM_RUN"/"$prefix"-*; do
-            [[ -e "$path" ]] && count=$((count + 1))
-        done
-        [[ "$count" -ge "$expected" ]] && return 0
-        sleep 0.005
-    done
-    echo "gh stub: $prefix barrier timeout" >&2
-    return 1
-}
-
 case "${1:-} ${2:-}" in
     "issue view")
         if [[ "$CLAIM_MODE" == race ]]; then
+            race_stage pre
             : > "$CLAIM_RUN/pre-${CLAIMANT}"
-            wait_for_count pre "$CLAIM_EXPECTED"
+            race_await pre $CLAIM_PEERS || exit 1
             printf '{"state":"OPEN","labels":[],"body":""}\n'
         else
             printf '{"state":"OPEN","labels":[],"body":""}\n'
@@ -107,6 +93,7 @@ case "${1:-} ${2:-}" in
             esac
         done
         if [[ -n "$posted" ]]; then
+            [[ "$CLAIM_MODE" == race ]] && race_stage post
             printf 'POST %s %s\n' "$CLAIMANT" "$posted" >> "$CLAIM_LOG"
             lock_state
             if ! grep -Fxq "$posted" "$CLAIM_STATE"; then
@@ -115,10 +102,10 @@ case "${1:-} ${2:-}" in
             unlock_state
             if [[ "$CLAIM_MODE" == race && ! -e "$CLAIM_RUN/posted-${CLAIMANT}" ]]; then
                 : > "$CLAIM_RUN/posted-${CLAIMANT}"
-                wait_for_count posted "$CLAIM_EXPECTED"
+                race_await posted $CLAIM_PEERS || exit 1
                 case "$CLAIM_RETURN_ORDER:$CLAIMANT" in
-                    alpha-first:beta) while [[ ! -e "$CLAIM_RUN/returned-alpha" ]]; do sleep 0.005; done ;;
-                    beta-first:alpha) while [[ ! -e "$CLAIM_RUN/returned-beta" ]]; do sleep 0.005; done ;;
+                    alpha-first:beta) race_await returned alpha || exit 1 ;;
+                    beta-first:alpha) race_await returned beta || exit 1 ;;
                 esac
                 : > "$CLAIM_RUN/returned-${CLAIMANT}"
             fi
@@ -174,8 +161,9 @@ chmod +x "$TMPROOT/bin/gh"
 export PATH="$TMPROOT/bin:$PATH"
 
 reset_fixture() {
-    rm -rf "$CLAIM_RUN" "$FLEET_CLAIMS_DIR" "$FLEET_HEARTBEATS_DIR" "$FLEET_ORPHANS_DIR"
-    mkdir -p "$CLAIM_RUN" "$FLEET_CLAIMS_DIR" "$FLEET_HEARTBEATS_DIR" "$FLEET_ORPHANS_DIR"
+    race_reset
+    rm -rf "${CLAIM_STATE}.lock" "$FLEET_CLAIMS_DIR" "$FLEET_HEARTBEATS_DIR" "$FLEET_ORPHANS_DIR"
+    mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_HEARTBEATS_DIR" "$FLEET_ORPHANS_DIR"
     : > "$CLAIM_STATE"
     : > "$CLAIM_LOG"
 }
@@ -184,17 +172,20 @@ label_count() {
     awk 'NF { count++ } END { print count + 0 }' "$CLAIM_STATE"
 }
 
+# review_claim_as <host> <pr>: the claimant's review-claim, run under race_launch.
+review_claim_as() {
+    FLEET_TEST_HOST="$1" "$FLEET_CLAIM" review-claim "$2" "$CLAIMANT"
+}
+
 run_race() {
-    local order="$1" host_a="$2" host_b="$3"
+    local order="$1" host_a="$2" host_b="$3" fails_before="$FAIL"
     reset_fixture
-    export CLAIM_MODE=race CLAIM_EXPECTED=2 CLAIM_RETURN_ORDER="$order"
+    export CLAIM_MODE=race CLAIM_PEERS="alpha beta" CLAIM_RETURN_ORDER="$order"
     unset FLEET_CLAIM_NO_SLEEP
-    (rc=0; CLAIMANT=alpha FLEET_TEST_HOST="$host_a" "$FLEET_CLAIM" review-claim 7001 alpha >"$CLAIM_RUN/alpha.out" 2>&1 || rc=$?; printf '%s\n' "$rc" > "$CLAIM_RUN/alpha.rc") &
-    pid_a=$!
-    (rc=0; CLAIMANT=beta FLEET_TEST_HOST="$host_b" "$FLEET_CLAIM" review-claim 7001 beta >"$CLAIM_RUN/beta.out" 2>&1 || rc=$?; printf '%s\n' "$rc" > "$CLAIM_RUN/beta.rc") &
-    pid_b=$!
-    wait "$pid_a"
-    wait "$pid_b"
+    race_launch alpha review_claim_as "$host_a" 7001
+    race_launch beta review_claim_as "$host_b" 7001
+    race_finish
+    assert_eq "$RACE_BROKEN" "" "$order $host_a/$host_b rendezvous ends on claimant events"
     successes=$(( ($(cat "$CLAIM_RUN/alpha.rc") == 0) + ($(cat "$CLAIM_RUN/beta.rc") == 0) ))
     assert_eq "$successes" 1 "$order $host_a/$host_b race admits exactly one owner"
     assert_eq "$(label_count)" 1 "$order $host_a/$host_b race leaves one label"
@@ -214,6 +205,7 @@ run_race() {
     fi
     marker_count=$(find "$FLEET_CLAIMS_DIR" -name '_prlabel-reviewing-*' -type f | wc -l | tr -d ' ')
     assert_eq "$marker_count" 1 "$order stamps liveness only for the admitted owner"
+    race_report_if_failed "$fails_before" "$order $host_a/$host_b"
 }
 
 run_race alpha-first mac mac
@@ -222,21 +214,114 @@ run_race together mac mac
 run_race together mac windows
 
 echo "three contenders can exhaust, but never co-win"
+fails_before="$FAIL"
 reset_fixture
-export CLAIM_MODE=race CLAIM_EXPECTED=3 CLAIM_RETURN_ORDER=together
+export CLAIM_MODE=race CLAIM_PEERS="alpha beta gamma" CLAIM_RETURN_ORDER=together
 unset FLEET_CLAIM_NO_SLEEP
-pids=()
 for claimant in alpha beta gamma; do
-    (rc=0; CLAIMANT="$claimant" FLEET_TEST_HOST=mac "$FLEET_CLAIM" review-claim 7002 "$claimant" >/dev/null 2>&1 || rc=$?; printf '%s\n' "$rc" > "$CLAIM_RUN/$claimant.rc") &
-    pids+=("$!")
+    race_launch "$claimant" review_claim_as mac 7002
 done
-for pid in "${pids[@]}"; do wait "$pid"; done
+race_finish
+assert_eq "$RACE_BROKEN" "" "three-contender rendezvous ends on claimant events"
 successes=0
 for claimant in alpha beta gamma; do
     [[ "$(cat "$CLAIM_RUN/$claimant.rc")" -eq 0 ]] && successes=$((successes + 1))
 done
 if [[ "$successes" -le 1 ]]; then ok "three contenders admit at most one owner"; else bad "three contenders admitted $successes owners"; fi
 if [[ "$(label_count)" -le 1 ]]; then ok "three contenders leave at most one label"; else bad "three contenders left $(label_count) labels"; fi
+race_report_if_failed "$fails_before" "three-contender"
+
+echo "a claimant that exits before a barrier breaks it with a diagnostic"
+reset_fixture
+export CLAIM_MODE=race CLAIM_PEERS="alpha beta" CLAIM_RETURN_ORDER=together
+unset FLEET_CLAIM_NO_SLEEP
+saved_race_exit="${CLAIM_RACE_EXIT:-}"
+export CLAIM_RACE_EXIT="beta:post"
+race_launch alpha review_claim_as mac 7005
+race_launch beta review_claim_as mac 7005
+race_finish
+export CLAIM_RACE_EXIT="$saved_race_exit"
+assert_eq "$RACE_BROKEN" "" "an early exit ends the schedule without the deadlock guard"
+assert_eq "$(race_rc beta)" 1 "the forced claimant exits non-zero"
+assert_eq "$(race_rc alpha)" 1 "the peer at the broken barrier exits instead of waiting"
+assert_contains "$(cat "$CLAIM_RUN/alpha.out")" "'posted' barrier broken: beta exited with rc 1 before arriving" \
+    "the peer names the broken barrier and the exited claimant"
+report=$(race_report)
+assert_contains "$report" "claimant beta: rc=1 markers=[pre-beta]" "the report carries the exited claimant's rc and progress"
+assert_contains "$report" "| gh stub: beta forced to exit at post" "the report carries the exited claimant's output"
+assert_contains "$report" "claimant alpha: rc=1 markers=[posted-alpha pre-alpha]" "the report carries the peer's rc and progress"
+assert_eq "$(race_live_count)" 0 "no claimant outlives the broken schedule"
+reset_fixture
+assert_eq "$(ls -A "$CLAIM_RUN")" "" "the next schedule starts without rendezvous state"
+if [[ -e "${CLAIM_STATE}.lock" ]]; then bad "the next schedule starts with the state lock held"; else ok "the next schedule starts with the state lock free"; fi
+
+echo "the deadlock guard abandons a wedged schedule and reports it"
+reset_fixture
+export CLAIM_MODE=race CLAIM_PEERS="alpha beta" CLAIM_RETURN_ORDER=together
+unset FLEET_CLAIM_NO_SLEEP
+saved_race_delay="${CLAIM_RACE_DELAY:-}"
+export CLAIM_RACE_DELAY="beta:pre:3" CLAIM_RACE_GUARD_SECS=1
+race_launch alpha review_claim_as mac 7006
+race_launch beta review_claim_as mac 7006
+race_finish
+export CLAIM_RACE_DELAY="$saved_race_delay"
+unset CLAIM_RACE_GUARD_SECS
+assert_contains "$RACE_BROKEN" "deadlock guard expired before every claimant exited" "guard expiry is reported as a deadlock"
+assert_contains "$(cat "$CLAIM_RUN/alpha.out")" "barrier aborted: the suite abandoned the schedule" \
+    "the waiting claimant names the abandoned barrier"
+assert_eq "$(race_rc alpha)" 1 "the waiting claimant exits once the schedule is abandoned"
+assert_eq "$(race_rc beta)" 1 "the held claimant exits once the schedule is abandoned"
+assert_eq "$(race_live_count)" 0 "no claimant outlives the abandoned schedule"
+
+# stubborn_claimant: waits on a descendant that ignores SIGTERM and never
+# polls the abort marker, so only the guard's escalation can end it.
+stubborn_claimant() {
+    bash -c 'trap "" TERM; while :; do sleep 0.1; done' &
+    printf '%s\n' "$!" > "$CLAIM_RUN/$CLAIMANT.child"
+    wait
+}
+
+echo "the deadlock guard reaps a claimant's signal-ignoring descendant"
+reset_fixture
+export CLAIM_RACE_GUARD_SECS=1 CLAIM_RACE_GRACE_SECS=1
+race_launch alpha stubborn_claimant
+race_wait_for alpha test -s "$CLAIM_RUN/alpha.child" || true
+race_finish
+unset CLAIM_RACE_GUARD_SECS CLAIM_RACE_GRACE_SECS
+stubborn_child=$(cat "$CLAIM_RUN/alpha.child")
+assert_contains "$RACE_BROKEN" "deadlock guard expired before every claimant exited" "the wedged claimant trips the guard"
+assert_absent "$RACE_BROKEN" "survived SIGKILL" "SIGKILL ends the signal-ignoring descendant"
+assert_eq "$(race_rc alpha)" 143 "the killed claimant reads a numeric rc"
+assert_eq "$(race_live_count)" 0 "no member of the claimant's process group outlives the guard"
+if ! kill -0 "$stubborn_child" 2>/dev/null; then
+    ok "the signal-ignoring descendant is gone once the guard returns"
+else
+    bad "descendant $stubborn_child outlived the deadlock guard"
+    kill -KILL "$stubborn_child" 2>/dev/null || true
+fi
+
+# leaky_claimant: exits cleanly but leaves a background child running.
+leaky_claimant() {
+    sleep 30 &
+    printf '%s\n' "$!" > "$CLAIM_RUN/$CLAIMANT.child"
+}
+
+echo "a descendant that outlives its exited claimant is reported and reaped"
+reset_fixture
+export CLAIM_RACE_GRACE_SECS=1
+race_launch alpha leaky_claimant
+race_finish
+unset CLAIM_RACE_GRACE_SECS
+leaked_child=$(cat "$CLAIM_RUN/alpha.child")
+assert_eq "$(race_rc alpha)" 0 "the leaky claimant itself exits cleanly"
+assert_contains "$RACE_BROKEN" "claimant processes outlived their claimant" "the leaked descendant is reported"
+assert_eq "$(race_live_count)" 0 "the leaked descendant's process group is reaped"
+if ! kill -0 "$leaked_child" 2>/dev/null; then
+    ok "the leaked descendant is gone once race_finish returns"
+else
+    bad "descendant $leaked_child outlived race_finish"
+    kill -KILL "$leaked_child" 2>/dev/null || true
+fi
 
 run_single() {
     local mode="$1" expected="$2" message="$3"
