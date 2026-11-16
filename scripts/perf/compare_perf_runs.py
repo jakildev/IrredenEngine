@@ -82,6 +82,21 @@ STEADY_FRAME_RE = re.compile(
     r"Steady frame time \(first (\d+) of (\d+) frames excluded\):\s+avg=([\d.]+)ms\s+"
     r"p50=([\d.]+)ms\s+p95=([\d.]+)ms\s+p99=([\d.]+)ms\s+min=([\d.]+)ms\s+max=([\d.]+)ms"
 )
+INPUT_LATENCY_NOT_MEASURED = "not measured"
+INPUT_LATENCY_END_RE = re.compile(r"^End event: (gpu-complete|presented|not measured)$")
+INPUT_LATENCY_STEADY_RE = re.compile(
+    r"^Steady frames: (\d+) \(first (\d+) of (\d+) excluded\) samples=(\d+)$"
+)
+INPUT_LATENCY_METRIC_RE = re.compile(
+    r"^(\w+)_ms: mean=(-?[\d.]+) p99=(-?[\d.]+) max=(-?[\d.]+)$"
+)
+INPUT_LATENCY_IN_FLIGHT_RE = re.compile(
+    r"^Frames in flight at frame start: (?:max=(\d+)|not measured)$"
+)
+INPUT_LATENCY_OBSERVED_RE = re.compile(
+    r"^End observed by the CPU after the end event: mean=(-?[\d.]+)ms max=(-?[\d.]+)ms; "
+    r"clock mapping error <= ([\d.]+)ms$"
+)
 WITNESS_YAW_RE = re.compile(
     r"^Camera yaw: first=(-?[\d.]+)deg last=(-?[\d.]+)deg travel=([\d.]+)deg samples=(\d+)$"
 )
@@ -99,21 +114,6 @@ WITNESS_UPLOAD_RE = re.compile(
 DEVICE_COUNTERS_SUPPORTED_RE = re.compile(r"^Supported: (0|1)$")
 DEVICE_COUNTER_RE = re.compile(r"^(\w+)\s+(\d+)\s+([\d.]+)\s+(\d+)$")
 GPU_PROCESS_PEAK_RE = re.compile(r"^GPU process allocation: peak=(\d+) bytes$")
-INPUT_LATENCY_NOT_MEASURED = "not measured"
-INPUT_LATENCY_END_RE = re.compile(r"^End event: (gpu-complete|presented|not measured)$")
-INPUT_LATENCY_STEADY_RE = re.compile(
-    r"^Steady frames: (\d+) \(first (\d+) of (\d+) excluded\) samples=(\d+)$"
-)
-INPUT_LATENCY_METRIC_RE = re.compile(
-    r"^(\w+)_ms: mean=(-?[\d.]+) p99=(-?[\d.]+) max=(-?[\d.]+)$"
-)
-INPUT_LATENCY_IN_FLIGHT_RE = re.compile(
-    r"^Frames in flight at frame start: (?:max=(\d+)|not measured)$"
-)
-INPUT_LATENCY_OBSERVED_RE = re.compile(
-    r"^End observed by the CPU after the end event: mean=(-?[\d.]+)ms max=(-?[\d.]+)ms; "
-    r"clock mapping error <= ([\d.]+)ms$"
-)
 
 
 @dataclass
