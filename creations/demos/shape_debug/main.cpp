@@ -212,6 +212,15 @@ constexpr IRVideo::AutoScreenshotShot kShadowFootprintShots[] = {
     {4.0f, vec2(0.0f), IRMath::kQuarterPi, "shadow_footprint_yaw45"},
 };
 
+constexpr IRVideo::AutoScreenshotShot kAoContactShots[] = {
+    {4.0f, vec2(0.0f), 0.0f, "ao_contact_yaw0"},
+    {4.0f, vec2(0.0f), IRMath::kPi / 12.0f, "ao_contact_yaw15"},
+    {4.0f, vec2(0.0f), IRMath::kPi / 6.0f, "ao_contact_yaw30"},
+    {4.0f, vec2(0.0f), IRMath::kQuarterPi, "ao_contact_yaw45"},
+    {4.0f, vec2(0.0f), IRMath::kPi / 3.0f, "ao_contact_yaw60"},
+    {4.0f, vec2(0.0f), 5.0f * IRMath::kPi / 12.0f, "ao_contact_yaw75"},
+};
+
 // A voxel cube falling over a voxel floor in quarter-voxel steps: shot i holds
 // the caster at kMovingCasterStart + i * kMovingCasterStep. At zoom 2 with a
 // base subdivision of 2 the raster places it on a quarter-voxel lattice while a
@@ -4897,6 +4906,8 @@ void initSystems() {
             }
         } else if (g_voxelEntityCube) {
             IRVideo::setAutoScreenshotShots(cfg, kVoxelEntityCubeShots);
+        } else if (IREngine::args().getFlag("--ao-contact-probe")) {
+            IRVideo::setAutoScreenshotShots(cfg, kAoContactShots);
         } else if (g_shadowFootprintProbe) {
             IRVideo::setAutoScreenshotShots(cfg, kShadowFootprintShots);
         } else if (g_movingCaster) {
@@ -5997,7 +6008,7 @@ void initEntities() {
     if (IREngine::args().getFlag("--ao-contact-probe")) {
         const EntityId corner = IREntity::createEntity(
             C_LocalTransform{vec3(0.0f)},
-            C_VoxelSetNew{ivec3(9, 9, 5), Color{180, 180, 180, 255}, true}
+            C_VoxelSetNew{ivec3(9, 9, 5), Color{200, 80, 120, 255}, true}
         );
         IREntity::getComponent<C_VoxelSetNew>(corner).carve([](vec3 position) {
             return position.x < 0.0f && position.y < 0.0f && position.z < 1.0f;
