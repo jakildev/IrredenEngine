@@ -405,7 +405,7 @@ for ((_early_i=0; _early_i<${#_early_args[@]}; _early_i++)); do
         --reset-usage)
             RESET_USAGE=1
             if (( _early_i + 1 < ${#_early_args[@]} )) \
-                && [[ "${_early_args[$((_early_i + 1))]}" =~ ^[A-Za-z0-9._-]+$ ]] \
+                && [[ "${_early_args[$((_early_i + 1))]}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] \
                 && [[ "${_early_args[$((_early_i + 1))]}" != @(dry-run|live|review-only) ]]; then
                 RESET_USAGE_TYPE="${_early_args[$((_early_i + 1))]}"
                 _early_i=$((_early_i + 1))

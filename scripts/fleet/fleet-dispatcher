@@ -4074,7 +4074,7 @@ dispatch_role() {
         fi
         USAGE_RETEST_RECORD="" USAGE_RETEST_OBSERVED="" USAGE_RETEST_STARTED="" USAGE_RETEST_TOKEN=""
         if [[ "${ASSIGN_RUNTIME:-claude}" == claude ]]; then
-            local launch_model="${resume_model:-${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}}"
+            local launch_model="${resume_model:-${ASSIGN_MODEL:-${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}}}"
             local claude_gate_now=""
             # Re-read account and model scopes at the launch boundary so a
             # stale breach is acquired by exactly one pane after routing.

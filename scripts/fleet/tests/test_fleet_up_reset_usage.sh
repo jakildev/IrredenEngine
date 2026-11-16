@@ -54,6 +54,17 @@ out=$("$SCRIPT_DIR/fleet-up" --reset-usage missing_type 2>&1)
 assert_contains "$out" "no cached observation (nothing to clear)" "missing type is a successful no-op"
 assert_exists "$USAGE/seven_day.json" "no-op preserves other records"
 
+out=$("$SCRIPT_DIR/fleet-up" --reset-usage --satellite 2>&1)
+assert_contains "$out" "host profile: satellite" "satellite remains a host-profile flag"
+assert_contains "$out" "wiped 1 cached observation(s)" "satellite is not consumed as a type"
+assert_missing "$USAGE/seven_day.json" "reset composed with satellite still clears all records"
+
+printf '%s\n' '{"rateLimitType":"seven_day","observed_at":3}' > "$USAGE/seven_day.json"
+out=$("$SCRIPT_DIR/fleet-up" --reset-usage --no-attach 2>&1)
+assert_contains "$out" "wiped 1 cached observation(s)" "no-attach is not consumed as a type"
+assert_missing "$USAGE/seven_day.json" "reset composed with no-attach still clears all records"
+
+printf '%s\n' '{"rateLimitType":"seven_day","observed_at":3}' > "$USAGE/seven_day.json"
 out=$("$SCRIPT_DIR/fleet-up" --reset-usage 2>&1)
 assert_contains "$out" "wiped 1 cached observation(s)" "unqualified reset still clears all"
 assert_missing "$USAGE/seven_day.json" "full reset clears the remaining record"

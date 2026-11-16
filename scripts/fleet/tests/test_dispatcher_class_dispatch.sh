@@ -1098,6 +1098,22 @@ assert_contains "$(<"$FLEET_STATE_DIR/dispatch/pane-1.json")" '"launch_class":"f
     "record stamps the class the wrapper's argv asserts"
 assert_contains "$(cat "$FLEET_CLAIM_LOG")" "claim 910" "concrete job claimed first"
 
+echo "T36b: launch-boundary retest uses the routed Claude model"
+RETEST_NOW=2000000000
+mkdir -p "$FLEET_STATE_DIR/usage"
+printf '{"rateLimitType":"seven_day_opus","utilization":1,"resetsAt":%s,"observed_at":%s,"status":"rejected"}\n' \
+    "$((RETEST_NOW + 86400))" "$((RETEST_NOW - 21601))" \
+    > "$FLEET_STATE_DIR/usage/seven_day_opus.rejected.json"
+write_slice sonnet-reviewer '{"candidate_prs":[{"number":3074,"repo":"engine","labels":["fleet:author-codex"],"review_class":"opus"}]}'
+out=$(tick sonnet-reviewer 1 FLEET_USAGE_NOW="$RETEST_NOW")
+assert_contains "$(cat "$SEND_LOG")" 'claude-opus-4-8\[1m\]' \
+    "review class routing selects the Opus model"
+assert_contains "$(<"$FLEET_STATE_DIR/dispatch/pane-1.json")" \
+    '"usage_retest_record":"seven_day_opus.rejected.json"' \
+    "the launch-boundary gate acquires the routed model's retest"
+rm -f "$FLEET_STATE_DIR/usage/seven_day_opus.rejected.json"
+rm -rf "$FLEET_STATE_DIR/usage/.retest"
+
 echo "T37: Codex cooldown preserves the trigger without taking a claim"
 mkdir -p "$FLEET_STATE_DIR/runtime-cooldown"
 printf '{"until":9999999999}' > "$FLEET_STATE_DIR/runtime-cooldown/codex.json"
