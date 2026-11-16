@@ -37,6 +37,9 @@ vec4 fogShadowVisionCircleCeilings[2]={{5,4,0,0},{-1,0,0,0}};
 struct {int x;} fogCeilingEnabled{1};
 vec4 viewToWorld{0,0,0,1};
 vec3 worldOrigin(0),sunDirection(.35,.85,-.4),kVoxelRasterCellAnchor(.5);
+const int VOXEL_CHUNK_SIZE=256;
+uint chunkVisible[2]={1,0};
+uint voxelIndex=0;
 bool faceIsExposed(unsigned flags,int face){return (flags&(1u<<face))!=0;}
 struct Face {vec3 corner,u,v;};
 std::vector<Face> faces;
@@ -100,6 +103,10 @@ int main(){
  // A second covering source with no ceiling keeps the neighbor and its face hidden.
  fogShadowVisionCircleCount=2;
  if(fogVoxelFaceCastsSunShadow(false,vec3(0,0,-4),vec3(0,0,-1),false,1,uvec2{0,1}))return 3;
+ // A source slot in a rejected chunk cannot emit any finite caster face.
+ const auto before=faces.size();
+ voxelIndex=256;emit(vec3(0),63u,true);
+ if(faces.size()!=before)return 5;
  std::cout<<checks<<" retained-solid rays; cut-cap witness and covering-source union pass\n";
 }
 """
@@ -131,11 +138,22 @@ bool fogCeilingRetained(vec3 p,uvec2 cell,const vec4*,const vec4* heights,
             gate = re.search(
                 r"if \(!\(fogBody\)[\s\S]*?\)\) activeVoxel = false;", bake
             ).group().replace("activeVoxel = false;", "return;")
+            chunk_gate = re.search(
+                r"if \(activeVoxel\) activeVoxel = "
+                r"chunkVisible\[index / uint\(VOXEL_CHUNK_SIZE\)\] != 0u;",
+                bake,
+            ).group()
+            adapter_chunk_gate = (
+                chunk_gate.replace("if (activeVoxel) activeVoxel = ", "if (!(")
+                .replace(";", ")) return;")
+                .replace("index", "voxelIndex")
+            )
             loop = extract_block(bake, "for (int axis = 0;")
             loop = loop.replace("activeVoxel && ", "")
             loop = loop[:loop.index("        // Arbitrary source rotations")]
             emit = ("void emit(vec3 position,unsigned flags,bool fogBody){"
-                    "vec3 worldCenter=rotateByQuat(position,viewToWorld);" + gate + loop
+                    + adapter_chunk_gate
+                    + "vec3 worldCenter=rotateByQuat(position,viewToWorld);" + gate + loop
                     + "faces.push_back({corner,edgeU,edgeV});}}")
             code = functions + emit
             code = re.sub(r",\s*constant FogShadowObserverData& observers", "", code)
@@ -155,6 +173,7 @@ bool fogCeilingRetained(vec3 p,uvec2 cell,const vec4*,const vec4* heights,
                 "reversed_neighbor": code.replace("worldCenter + outwardNormal",
                                                    "worldCenter - outwardNormal"),
                 "lost_body_guard": code.replace("fogBody || ", "").replace("!(fogBody) && ", ""),
+                "ignored_chunk_mask": code.replace(adapter_chunk_gate, ""),
             }
             for name, variant in variants.items():
                 with (self.subTest(backend=suffix, mutation=name),

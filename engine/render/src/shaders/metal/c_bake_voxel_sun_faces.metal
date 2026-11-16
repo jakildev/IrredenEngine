@@ -2,6 +2,7 @@
 // (buffers 5/6/8: the same positions, colors and active mask stage 1 reads)
 // into the sun depth map. A revoxelized canvas therefore casts its resampled
 // lattice, the geometry its receiver reads and its display shows.
+#include "ir_constants.metal"
 #include "ir_iso_common.metal"
 #include "ir_fog_shadow_caster.metal"
 #include "ir_sun_projection.metal"
@@ -49,6 +50,7 @@ kernel void c_bake_voxel_sun_faces(
     device const float4* positions [[buffer(5)]],
     device const VoxelSunSample* voxels [[buffer(6)]],
     device uint* admissionScratch [[buffer(26)]],
+    device const uint* chunkVisible [[buffer(24)]],
     constant VoxelSunFaceFrame& faceFrame [[buffer(16)]],
     device atomic_uint* sunDepthBuf [[buffer(28)]],
     constant FrameDataSun& sunFrame [[buffer(29)]],
@@ -87,6 +89,7 @@ kernel void c_bake_voxel_sun_faces(
 
     const uint index = (groupId.y * uint(faceFrame.dispatch.y) + groupId.x) * 64u + localId.x;
     bool activeVoxel = index < uint(faceFrame.dispatch.x);
+    if (activeVoxel) activeVoxel = chunkVisible[index / uint(VOXEL_CHUNK_SIZE)] != 0u;
     if (activeVoxel) activeVoxel = (voxels[index].colorPacked >> 24u) != 0u;
     if (activeVoxel) activeVoxel = (activeMask[index >> 5u] & (1u << (index & 31u))) != 0u;
     const uint flags = activeVoxel ? (voxels[index].materialFlagBone >> 8u) & 0xFFu : 0u;
