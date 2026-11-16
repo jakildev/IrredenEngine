@@ -25,16 +25,55 @@ sys.exit(int(any(not result["ok"] for result in results)))
 '''
 
 
-# Online (not active) displays match GLFW's monitor discovery, so an
-# unattended host whose screen merely sleeps still qualifies.
 DISPLAY_PROBE = '''
 import ctypes, ctypes.util
 cg = ctypes.CDLL(ctypes.util.find_library("CoreGraphics"))
+objc = ctypes.CDLL(ctypes.util.find_library("objc"))
+ctypes.CDLL(ctypes.util.find_library("AppKit"))
 ids = (ctypes.c_uint32 * 16)()
 count = ctypes.c_uint32(0)
 err = cg.CGGetOnlineDisplayList(16, ids, ctypes.byref(count))
-print(count.value if err == 0 else -abs(err))
+if err:
+    print(-abs(err), -abs(err), -abs(err))
+else:
+    cg.CGDisplayIsAsleep.argtypes = [ctypes.c_uint32]
+    cg.CGDisplayIsAsleep.restype = ctypes.c_bool
+    awake = sum(not cg.CGDisplayIsAsleep(ids[index]) for index in range(count.value))
+    objc.objc_getClass.argtypes = [ctypes.c_char_p]
+    objc.objc_getClass.restype = ctypes.c_void_p
+    objc.sel_registerName.argtypes = [ctypes.c_char_p]
+    objc.sel_registerName.restype = ctypes.c_void_p
+    objc.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    objc.objc_msgSend.restype = ctypes.c_void_p
+    screens = objc.objc_msgSend(objc.objc_getClass(b"NSScreen"),
+                                objc.sel_registerName(b"screens"))
+    objc.objc_msgSend.restype = ctypes.c_ulong
+    screen_count = objc.objc_msgSend(screens, objc.sel_registerName(b"count"))
+    print(count.value, awake, screen_count)
 '''
+
+
+def classify_display(online, awake, screens):
+    if online < 1:
+        return "none"
+    if awake < 1 or screens < 1:
+        return "mismatch"
+    return "ok"
+
+
+def display_counts(platform=sys.platform, timeout=30):
+    """Return CoreGraphics, awake, and NSScreen counts on macOS."""
+    if platform != "darwin":
+        return None
+    result = subprocess.run([sys.executable, "-c", DISPLAY_PROBE],
+                            capture_output=True, text=True, timeout=timeout)
+    try:
+        online, awake, screens = (int(value) for value in result.stdout.split())
+    except ValueError as exc:
+        raise ValueError(
+            f"invalid display probe output {result.stdout.strip()!r}; "
+            f"{result.stderr.strip()[-500:] or 'no stderr'}") from exc
+    return online, awake, screens
 
 
 def probe_display(platform=sys.platform):
@@ -45,20 +84,22 @@ def probe_display(platform=sys.platform):
     """
     if platform != "darwin":
         return None
-    result = subprocess.run([sys.executable, "-c", DISPLAY_PROBE],
-                            capture_output=True, text=True, timeout=30)
     try:
-        count = int(result.stdout.strip())
-    except ValueError:
-        count = None
-    if count is None or count < 1:
+        counts = display_counts(platform)
+    except ValueError as exc:
+        counts = None
+        detail = str(exc)
+    else:
+        detail = "no stderr"
+    if counts is None or counts[0] < 1:
+        online = None if counts is None else counts[0]
         raise ValueError(
-            f"no display session (CoreGraphics online displays: {count}; "
-            f"{result.stderr.strip()[-500:] or 'no stderr'}). fleet-run and the display "
+            f"no display session (CoreGraphics online displays: {online}; {detail}). "
+            "fleet-run and the display "
             "validators would time out. Start fleet-up from a logged-in GUI (Aqua) "
             "session, not ssh or a LaunchDaemon, then re-run "
             "`fleet-codex --role worker --doctor`.")
-    return count
+    return counts[0]
 
 
 def probe(worktree, roots):

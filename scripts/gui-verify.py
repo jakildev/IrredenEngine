@@ -64,6 +64,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    if verify_common.display_preflight("[gui-verify] ") is not None:
+        raise SystemExit(verify_common.EXIT_ENV_FAIL)
+
     if not args.no_build:
         rc = verify_common.run(["fleet-build", "--target", args.target], check=False)
         if rc != 0:

@@ -849,6 +849,9 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
         print(f"[render-verify] {len(extra_runs)} extra run(s): "
               f"{', '.join(e['name'] for e in extra_runs)}")
 
+    if verify_common.display_preflight("[render-verify] ") is not None:
+        return tally(verify_common.EXIT_ENV_FAIL)
+
     if not args.no_build:
         verify_common.run(["fleet-build", "--target", target], cwd=worktree)
 

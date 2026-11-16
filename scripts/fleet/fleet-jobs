@@ -59,7 +59,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from fleet_codex_doctor import DISPLAY_PROBE  # noqa: E402
+from fleet_codex_doctor import classify_display, display_counts  # noqa: E402
 
 PROFILES = ("build", "fleet-tests", "render-verify", "light-verify", "gui-verify")
 # The verifiers that drive a demo through fleet-run. Each needs a display,
@@ -887,14 +887,17 @@ def display_discovery():
     """One line naming the displays this supervisor's session can reach."""
     if sys.platform == "darwin":
         try:
-            probe = subprocess.run([sys.executable, "-c", DISPLAY_PROBE], capture_output=True,
-                                   text=True, timeout=DISPLAY_PROBE_TIMEOUT)
-            count = int(probe.stdout.strip())
+            online, awake, screens = display_counts(timeout=DISPLAY_PROBE_TIMEOUT)
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
             return f"none (CoreGraphics probe failed: {exc})"
-        if count < 1:
-            return f"none (CoreGraphics online displays: {count})"
-        return f"{count} online CoreGraphics display(s)"
+        classification = classify_display(online, awake, screens)
+        counts = (f"{online} online CoreGraphics display(s), awake={awake}, "
+                  f"NSScreen={screens}")
+        if classification == "mismatch":
+            return f"{counts}; MISMATCH: engine monitor discovery will see 0"
+        if classification == "none":
+            return f"none (CoreGraphics online displays: {online})"
+        return counts
     if IS_WINDOWS:
         return "native Windows desktop session (not probed)"
     found = [f"{k}={os.environ[k]}" for k in ("DISPLAY", "WAYLAND_DISPLAY") if os.environ.get(k)]
