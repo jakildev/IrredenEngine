@@ -2020,8 +2020,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // entity; shadowFeederCullViewport reuses them at both margins.
         const IsoBounds2D chunkVp =
             IRPrefab::SunShadow::shadowFeederCullViewport(kCullChunkMargin, shadowFeederParams_);
-        const IsoBounds2D sunFaceChunkVp =
-            IRPrefab::SunShadow::shadowFeederCullViewport(kCullChunkMargin, sunFaceFeederParams_);
+        const IsoBounds2D sunFaceChunkVp = IRPrefab::SunShadow::sunFaceMaskViewport(
+            IRRender::getCullViewport().isoViewport(kCullChunkMargin),
+            sunFaceFeederParams_
+        );
         const CardinalIndex chunkCardinal = IRMath::rasterYawCardinalIndex(frameData_.rasterYaw_);
         // Smooth camera Z-yaw: while rotating (residual yaw != 0,
         // i.e. the per-axis canvases are active), project the chunk-visibility
@@ -2775,9 +2777,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // Resolve sun direction once per frame so the per-entity tick
         // reads the cached value instead of scanning C_LightSource
         // once per voxel-pool-canvas pair.
-        sunFaceFeederParams_ = IRPrefab::SunShadow::frameShadowFeederParams();
-        shadowFeederParams_ = voxelFaceBaker_ != nullptr ? IRPrefab::SunShadow::ShadowFeederParams{}
-                                                         : sunFaceFeederParams_;
+        shadowFeederParams_ =
+            IRPrefab::SunShadow::voxelRasterFeederParams(voxelFaceBaker_ != nullptr);
+        sunFaceFeederParams_ = voxelFaceBaker_ != nullptr
+                                   ? IRPrefab::SunShadow::frameShadowFeederParams()
+                                   : shadowFeederParams_;
         // Re-accumulated across this frame's canvases by the per-canvas tick.
         frameShadowFeederRingNonEmpty_ = false;
 

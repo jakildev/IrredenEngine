@@ -137,11 +137,11 @@ TEST_F(ChunkBoundsEvictionTest, ContinuousYawViewportHasNoDepthCutoff) {
 TEST_F(ChunkBoundsEvictionTest, SunFaceMaskAdmitsCasterInsideShadowThrow) {
     const IsoBounds2D rasterViewport{vec2(-4.0f), vec2(4.0f)};
     const vec3 sunDirection(-0.3f, -0.2f, -0.93f);
-    const IsoBounds2D sunFaceViewport = IRMath::shadowFeederIsoBounds(
-        rasterViewport,
-        sunDirection,
-        IRPrefab::SunShadow::kSunShadowMaxDistance
-    );
+    IRPrefab::SunShadow::ShadowFeederParams params;
+    params.sunDir_ = sunDirection;
+    params.sweepDistance_ = IRPrefab::SunShadow::kSunShadowMaxDistance;
+    const IsoBounds2D sunFaceViewport =
+        IRPrefab::SunShadow::sunFaceMaskViewport(rasterViewport, params);
     const vec2 casterIso = (sunFaceViewport.min_ + rasterViewport.min_) * 0.5f;
     ASSERT_TRUE(sunFaceViewport.contains(casterIso));
     ASSERT_FALSE(rasterViewport.contains(casterIso));

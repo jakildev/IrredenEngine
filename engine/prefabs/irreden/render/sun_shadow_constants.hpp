@@ -86,6 +86,16 @@ inline ShadowFeederParams voxelRasterFeederParams(bool finiteFaceCasting) {
     return finiteFaceCasting ? ShadowFeederParams{} : frameShadowFeederParams();
 }
 
+// @p visible widened by the shadow-feeder sweep of @p params.
+inline IRMath::IsoBounds2D
+shadowFeederViewport(const IRMath::IsoBounds2D &visible, const ShadowFeederParams &params) {
+    return IRMath::shadowFeederIsoBounds(
+        visible,
+        params.spatialView_ ? params.viewSunDir_ : params.sunDir_,
+        params.sweepDistance_
+    );
+}
+
 // The shared frozen-or-live cull viewport at @p margin, widened to the
 // shadow-feeder AABB so off-screen casters within shadow range still feed the
 // sun-depth bake (see IRMath::shadowFeederIsoBounds). Pass the once-per-frame
@@ -94,21 +104,22 @@ inline ShadowFeederParams voxelRasterFeederParams(bool finiteFaceCasting) {
 // Centralizes the cull-viewport → shadow-feeder derivation shared by
 // VOXEL_TO_TRIXEL_STAGE_1, SHAPES_TO_TRIXEL, and REBUILD_GRID_VOXELS.
 inline IRMath::IsoBounds2D shadowFeederCullViewport(int margin, const ShadowFeederParams &params) {
-    return IRMath::shadowFeederIsoBounds(
-        IRRender::getCullViewport().isoViewport(margin),
-        params.spatialView_ ? params.viewSunDir_ : params.sunDir_,
-        params.sweepDistance_
-    );
+    return shadowFeederViewport(IRRender::getCullViewport().isoViewport(margin), params);
 }
 
 inline IRMath::IsoBounds2D shadowFeederCullViewport(
     int margin, const ShadowFeederParams &params, const IRRender::CullViewportState &cull
 ) {
-    return IRMath::shadowFeederIsoBounds(
-        cull.isoViewport(margin),
-        params.spatialView_ ? params.viewSunDir_ : params.sunDir_,
-        params.sweepDistance_
-    );
+    return shadowFeederViewport(cull.isoViewport(margin), params);
+}
+
+// The viewport the sun-face chunk mask tests against. A caster outside the
+// raster viewport but inside the sun's throw still shades visible pixels, so
+// the mask follows the sun-swept viewport from @p params
+// (frameShadowFeederParams()), never the raster viewport.
+inline IRMath::IsoBounds2D
+sunFaceMaskViewport(const IRMath::IsoBounds2D &rasterViewport, const ShadowFeederParams &params) {
+    return shadowFeederViewport(rasterViewport, params);
 }
 
 // True when the shadow-feeder sweep widens @p visible into a NON-EMPTY
