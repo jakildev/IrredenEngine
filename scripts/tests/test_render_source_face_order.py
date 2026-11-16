@@ -1,8 +1,4 @@
-"""Execute source-face order publication and consumption across the shared sort ABI.
-
-The independent host sort retains four-word records; GPU dispatch publication is
-covered separately by native rigid-cube captures.
-"""
+"""Execute both record families against the shared sort-width ABI."""
 
 import re
 import unittest
@@ -12,6 +8,61 @@ from test_render_overflow_append import run_host
 from test_render_per_axis_caster_position import COMPILER, ROOT
 
 SHADERS = ROOT / "engine/render/src/shaders"
+
+OVERFLOW_WIDTH_SITES = {
+    "glsl": (
+        ("stage-1 append", "c_voxel_to_trixel_stage_1_body.glsl",
+         r"idx \* kFaceSortRecordWords", 1),
+        ("scatter reader", "v_peraxis_scatter.glsl",
+         r"uint\(gl_InstanceID\) \* kFaceSortRecordWords", 3),
+        ("fog reader", "c_fog_overflow_faces.glsl",
+         r"gid \* kFaceSortRecordWords", 1),
+        ("light reader", "c_light_overflow_faces.glsl",
+         r"gid \* kFaceSortRecordWords", 1),
+    ),
+    "metal": (
+        ("stage-1 append", "c_voxel_to_trixel_stage_1_body.metal",
+         r"idx \* kFaceSortRecordWords", 1),
+        ("scatter reader", "peraxis_scatter.metal",
+         r"instanceId \* kFaceSortRecordWords", 3),
+        ("fog reader", "c_fog_overflow_faces.metal",
+         r"gid \* kFaceSortRecordWords", 1),
+        ("light reader", "c_light_overflow_faces.metal",
+         r"gid \* kFaceSortRecordWords", 1),
+    ),
+}
+
+CPU_WIDTH_SITES = (
+    ("scratch bounds", ROOT / "engine/prefabs/irreden/render/components/"
+     "component_per_axis_trixel_canvases.hpp",
+     r"overflowCapacity\) \* kFaceSortRecordWords", 1),
+    ("scratch allocation", ROOT / "engine/prefabs/irreden/render/components/"
+     "component_per_axis_trixel_canvases.hpp",
+     r"overflowCap_\) \* kFaceSortRecordWords", 1),
+    ("composite binding", ROOT / "engine/prefabs/irreden/render/systems/"
+     "system_trixel_to_framebuffer.hpp",
+     r"overflowCap_\) \* kFaceSortRecordWords", 1),
+)
+
+
+def assert_overflow_width_sites(test, dialect, overrides=None):
+    overrides = overrides or {}
+    folder = SHADERS / ("metal" if dialect == "metal" else "")
+    for name, relative, pattern, expected in OVERFLOW_WIDTH_SITES[dialect]:
+        path = folder / relative
+        source = overrides.get(path, path.read_text())
+        test.assertEqual(
+            len(re.findall(pattern, source)),
+            expected,
+            f"{dialect} overflow {name} must use kFaceSortRecordWords",
+        )
+    for name, path, pattern, expected in CPU_WIDTH_SITES:
+        source = overrides.get(path, path.read_text())
+        test.assertEqual(
+            len(re.findall(pattern, source)),
+            expected,
+            f"CPU overflow {name} must use kFaceSortRecordWords",
+        )
 
 
 def adapter(dialect):
@@ -59,14 +110,14 @@ uint read(uint instanceId){
 int main(){
     constexpr uint count=1287;
     for(uint index=0;index<count;++index) publish(index,(index*73u)%count,index%3u);
-    using Record=std::array<uint,4>;
+    using Record=std::array<uint,kFaceSortRecordWords>;
     std::vector<Record> records(2048);
-    for(uint i=0;i<2048;++i)for(uint word=0;word<4;++word)
-        records[i][word]=storage.at(128+i*4+word);
+    for(uint i=0;i<2048;++i)for(uint word=0;word<kFaceSortRecordWords;++word)
+        records[i][word]=storage.at(128+i*kFaceSortRecordWords+word);
     std::sort(records.begin(),records.end(),[](const Record&a,const Record&b){return LESS(
         a[0],a[1],a[2],a[3],b[0],b[1],b[2],b[3]);});
-    for(uint i=0;i<2048;++i)for(uint word=0;word<4;++word)
-        storage.at(128+i*4+word)=records[i][word];
+    for(uint i=0;i<2048;++i)for(uint word=0;word<kFaceSortRecordWords;++word)
+        storage.at(128+i*kFaceSortRecordWords+word)=records[i][word];
     std::vector<bool> seen(count);
     uint previous=0;
     for(uint i=0;i<count;++i){
@@ -78,7 +129,8 @@ int main(){
         previous=key;
     }
     for(uint i=0;i<128;++i)if(storage[i]!=0xffffffffu)return 3;
-    for(uint i=128+2048*4;i<storage.size();++i)if(storage[i]!=0xffffffffu)return 4;
+    for(uint i=128+2048*kFaceSortRecordWords;i<storage.size();++i)
+        if(storage[i]!=0xffffffffu)return 4;
     std::printf("source_faces=%u exact_permutation=PASS sorted_keys=PASS guard=PASS\n",count);
 }
 """).replace("LESS(", less_name + "(").replace("constant uint", "const uint")
@@ -94,17 +146,28 @@ class SourceFaceOrderTest(unittest.TestCase):
         self.assertIn("std::size_t{kFaceSortRecordWords} * orderCapacity", system)
         for dialect in ("glsl", "metal"):
             with self.subTest(backend=dialect):
+                assert_overflow_width_sites(self, dialect)
                 source = adapter(dialect)
                 result = run_host(source)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 print(f"{dialect}: {result.stdout}", end="")
-                for before, after in (
-                    ("index * kFaceSortRecordWords", "index * 3u"),
-                    ("instanceId * kFaceSortRecordWords", "instanceId * 3u"),
-                ):
-                    self.assertIn(before, source)
-                    mutant = run_host(source.replace(before, after))
-                    self.assertNotEqual(mutant.returncode, 0, "three-word mutation escaped")
+                print(f"{dialect}: overflow_records=PASS shared_width=PASS")
+
+    def test_face_family_three_word_mutation_control(self):
+        source = adapter("glsl")
+        before = "index * kFaceSortRecordWords"
+        self.assertIn(before, source)
+        mutant = run_host(source.replace(before, "index * 3u"))
+        self.assertNotEqual(mutant.returncode, 0, "face-family three-word mutation escaped")
+
+    def test_overflow_family_literal_width_mutation_control(self):
+        path = SHADERS / "c_voxel_to_trixel_stage_1_body.glsl"
+        source = path.read_text()
+        before = "idx * kFaceSortRecordWords"
+        self.assertIn(before, source)
+        mutated = source.replace(before, "idx * 4u", 1)
+        with self.assertRaisesRegex(AssertionError, "glsl overflow stage-1 append"):
+            assert_overflow_width_sites(self, "glsl", {path: mutated})
 
 
 if __name__ == "__main__":

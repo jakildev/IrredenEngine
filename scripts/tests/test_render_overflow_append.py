@@ -101,12 +101,14 @@ def adapter(source, metal):
         function = re.sub(r"\b(?:constant|device)\s+", "", function)
     folder = ROOT / "engine/render/src/shaders" / ("metal" if metal else "")
     common = (folder / ("ir_iso_common.metal" if metal else "ir_iso_common.glsl")).read_text()
+    width = re.search(r"(?:const|constant) uint kFaceSortRecordWords = [^;]+;", common).group()
     flag = re.search(r"(?:const|constant) uint kOverflowCutFaceBit = [^;]+;", common).group()
+    width = width.replace("constant", "const")
     flag = flag.replace("constant", "const")
     key = "\n".join(functions(common, name) for name in (
         "packOverflowEntryCell", "overflowEntryCell", "overflowEntryIsCutFace"))
     key = re.sub(r"\bint2\b", "ivec2", key)
-    return (HOST + flag + key + "\n" + ("#define METAL_ADAPTER\n" if metal else "")
+    return (HOST + width + flag + key + "\n" + ("#define METAL_ADAPTER\n" if metal else "")
             + function + CHECKS)
 
 

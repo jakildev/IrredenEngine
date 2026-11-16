@@ -303,7 +303,8 @@ struct PerAxisCanvasStore {
     //     baseInstance} + droppedCount.
     //     instanceCount/droppedCount are GPU atomics (resolveMode 3). The
     //     overflow indirect draw sources its args at ctrlBaseUints_*4 directly.
-    // [entriesBaseUints_, +overflowCap_*4) — overflow entries, 4 uints
+    // [entriesBaseUints_, +overflowCap_*kFaceSortRecordWords) — overflow entries,
+    //     kFaceSortRecordWords uints
     //     each: {iso cell x|y (16+15) with cut flag in bit 31, colorPacked,
     //     encoded distance, voxel pool index}. Height is below 32768; the
     //     exact (cell, value) pair the cardinal store would have written, so
@@ -382,7 +383,7 @@ struct PerAxisCanvasStore {
     }
 
     // VoxelPoolConfig::kMaxEdge is sized off this bound: the largest pool's
-    // face demand fits four-word entries plus a signed-offset scratch prefix.
+    // face demand fits the sort records plus a signed-offset scratch prefix.
     static constexpr std::uint64_t kMaxOverflowRecords = std::uint64_t{1} << 29;
     static_assert(
         static_cast<std::uint64_t>(IRRender::VoxelPoolConfig::kMaxEdge) *
@@ -407,7 +408,7 @@ struct PerAxisCanvasStore {
         const std::uint64_t demand = IRMath::max(faceDemand, canvasReserve);
         IR_ASSERT(
             demand <= kMaxOverflowRecords,
-            "per-axis capacity exceeds four-word shader address space"
+            "per-axis capacity exceeds shader record address space"
         );
         return static_cast<int>(IRMath::nextPowerOfTwo(static_cast<std::uint32_t>(demand)));
     }
@@ -425,7 +426,7 @@ struct PerAxisCanvasStore {
         const int controlBase = IRMath::divCeil(axisCells, kScratchAlignUints) * kScratchAlignUints;
         IR_ASSERT(
             static_cast<std::uint64_t>(controlBase) + kOverflowControlUints +
-                    static_cast<std::uint64_t>(overflowCapacity) * 4u <=
+                    static_cast<std::uint64_t>(overflowCapacity) * kFaceSortRecordWords <=
                 std::uint64_t{1} << 32,
             "per-axis scratch entries exceed uint shader address space"
         );
@@ -525,7 +526,7 @@ struct PerAxisCanvasStore {
         winnerIds_ = IRRender::createResource<Buffer>(
             nullptr,
             (static_cast<std::size_t>(entriesBaseUints_) +
-             static_cast<std::size_t>(overflowCap_) * 4u) *
+             static_cast<std::size_t>(overflowCap_) * kFaceSortRecordWords) *
                 sizeof(std::uint32_t),
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
