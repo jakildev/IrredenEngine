@@ -152,8 +152,14 @@ tick forgets every route without touching them, and four consecutive X cells
 share a cache line, the order a worker reads them in. Soft and ungated sources,
 an unpublished field, a lane whose probe runs out and a rise inside a band all
 take `losVisibility`. Only `begin` allocates, sizing each lane from the last
-tick's demand. `C_FogRevealSettings::staggerPeriod_` stays the knob for
-populations past what this sharing absorbs.
+tick's demand. `C_FogRevealSettings::staggerPeriod_` keeps the per-entity stride.
+`windowPeriod_` is the voxel BODY alternative for larger populations: it walks
+one residue of 4096-id blocks per update and returns before reading the voxel-set
+row outside that window. Overrides remain immediate; set-side repairs are
+bounded by the window period. When both periods exceed one, the window takes
+precedence for voxel BODY subjects while the other reveal evaluators keep the
+stride. The measured control is
+[`docs/perf/fog-reveal-stagger.md`](../perf/fog-reveal-stagger.md).
 
 The per-pixel FIELD march has no such sharing: each pixel's exact XY is its
 own. Its cost scales with the blocks a segment crosses, not with a texel read,

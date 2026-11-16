@@ -910,8 +910,11 @@ later dispatch will make up for a skipped one:
 
 **Fog triggers.** A settled subject's verdict still changes when the fog
 does. The gated evaluators run over settled rows when any of these inputs
-changed since their last pass, and for `staggerPeriod_` consecutive
-dispatches so each staggered row is visited once
+changed since their last pass, and for their effective cadence `E`
+consecutive dispatches so every staggered or windowed row is visited once.
+For voxel BODY subjects, `E` is `windowPeriod_` when that value is greater
+than one and `staggerPeriod_` otherwise; the other evaluators use
+`staggerPeriod_`
 (`.claude/rules/cpp-ecs.md` § "A change-gated recompute must trigger on
 every input its function reads"). The list is the read set of
 `system_fog_reveal_eval.hpp` on `369cb6b06`; the implementation re-reads it
@@ -1803,7 +1806,7 @@ reference host. The measured basis is 8,192 moves at 0.28 µs, or 2.3 ms.
 **Gate 9, fog still follows the fog (new).** `IRFogDemo`, or a unit test
 with a fog component, any build type: a settled subject inside a vision
 circle is shown; the circle moves away and the subject is hidden or
-ghost-held within `staggerPeriod_` updates; the circle returns and it is
+ghost-held within the evaluator's effective cadence `E`; the circle returns and it is
 shown again, with mask and carrier bits equal to a dynamic twin's at each
 step.
 
