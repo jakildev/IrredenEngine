@@ -100,10 +100,13 @@ four cardinal yaws pass with the switch unset, `0` and `1`.
 - The cost gate: Release, five interleaved parent/head pairs of the million
   control and the fog-free surface-lighting matrix under a benchmark lease.
 - OpenGL: every reading here is Metal.
-- Fog pipelines: with the switch on by default a fog pipeline without
-  line-of-sight sources or an active glitch subject composes fog in the
-  composite (`SurfaceFogRoute::COMPOSE`) instead of lighting in compute. Its
-  captures and the million control's frame rows have not been re-read.
+- Pipelines that register a fog pass: with the switch on by default they no
+  longer fall back to compute lighting. A main canvas with fog and no
+  line-of-sight source or active glitch subject composes fog in the composite
+  (`SurfaceFogRoute::COMPOSE`); a main canvas without fog takes the surface
+  routes unfogged. Either way the cardinal frame there moves as well, from one
+  query per stored micro-face to one per fragment. The rows that move and the
+  million control's frame rows have not been re-read.
 
 ### Alternatives measured
 
