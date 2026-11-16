@@ -343,6 +343,57 @@ TEST_F(PropagateTransformTest, CacheInvalidationOnSpawnDestroyReparent) {
     expectVec3Near(rootWorld.translation_, IRMath::vec3(1, 2, 3));
 }
 
+// `destroyEntity` never cascades: the child survives, still names the dead
+// parent, and composes as a root.
+TEST_F(PropagateTransformTest, OrphanAfterEagerParentDestroyComposesAsRoot) {
+    auto parent = IREntity::createEntity(C_LocalTransform{IRMath::vec3(10, 0, 0)});
+    auto child = IREntity::createEntity(C_LocalTransform{IRMath::vec3(0, 3, 0)});
+    auto grandchild = IREntity::createEntity(C_LocalTransform{IRMath::vec3(0, 0, 2)});
+    IREntity::setParent(child, parent);
+    IREntity::setParent(grandchild, child);
+    tick();
+    expectVec3Near(
+        IREntity::getComponent<C_WorldTransform>(child).translation_,
+        IRMath::vec3(10, 3, 0)
+    );
+
+    m_entity_manager.destroyEntity(parent);
+    EXPECT_NO_THROW(tick());
+
+    expectVec3Near(
+        IREntity::getComponent<C_WorldTransform>(child).translation_,
+        IRMath::vec3(0, 3, 0)
+    );
+    expectVec3Near(
+        IREntity::getComponent<C_WorldTransform>(grandchild).translation_,
+        IRMath::vec3(0, 3, 2)
+    );
+    EXPECT_EQ(m_entity_manager.getParent(child) & IR_ENTITY_ID_BITS, parent & IR_ENTITY_ID_BITS);
+}
+
+TEST_F(PropagateTransformTest, OrphanAfterDeferredParentDestroyComposesAsRoot) {
+    auto parent = IREntity::createEntity(C_LocalTransform{IRMath::vec3(10, 0, 0)});
+    auto child = IREntity::createEntity(C_LocalTransform{IRMath::vec3(0, 3, 0)});
+    auto grandchild = IREntity::createEntity(C_LocalTransform{IRMath::vec3(0, 0, 2)});
+    IREntity::setParent(child, parent);
+    IREntity::setParent(grandchild, child);
+    tick();
+
+    IREntity::destroyEntity(parent);
+    m_entity_manager.destroyMarkedEntities();
+    EXPECT_NO_THROW(tick());
+
+    expectVec3Near(
+        IREntity::getComponent<C_WorldTransform>(child).translation_,
+        IRMath::vec3(0, 3, 0)
+    );
+    expectVec3Near(
+        IREntity::getComponent<C_WorldTransform>(grandchild).translation_,
+        IRMath::vec3(0, 3, 2)
+    );
+    EXPECT_EQ(m_entity_manager.getParent(child) & IR_ENTITY_ID_BITS, parent & IR_ENTITY_ID_BITS);
+}
+
 TEST_F(PropagateTransformTest, CacheHitsWhenTopologyIsStable) {
     // Once the partition is built, repeating ticks on the same scene
     // should reuse the cached level structure (signature comparison
