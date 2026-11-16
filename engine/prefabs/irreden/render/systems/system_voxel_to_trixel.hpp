@@ -21,7 +21,7 @@
 #include <irreden/render/canvas_clear.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/canvas_coverage.hpp>
-#include <irreden/render/occlusion_lag_source.hpp>
+#include <irreden/render/distance_hiz.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
@@ -502,6 +502,7 @@ static_assert(
 template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     System<BAKE_SUN_SHADOW_MAP> *voxelFaceBaker_ = nullptr;
     ShaderProgram *compactProgram_ = nullptr;
+    ShaderProgram *currentHiZProgram_ = nullptr;
     // Fog-ceiling compile-time specialization of the compact
     // (IR_FOG_CEILING_PASS 1), dispatched in place of compactProgram_ only
     // for a canvas whose own fog window has a ceiling-enabled source live.
@@ -622,7 +623,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     bool countVoxelWinners_ = false;
     ShaderProgram *winnerCountProgram_ = nullptr;
     Buffer *winnerSeenBuf_ = nullptr;
-    // Chunk-occlusion HZB pre-pass, off by default. The query
+    // Current-frame chunk-occlusion pass. The query
     // buffer is bound transiently on kBufferIndex_CompactedVoxelIndices (25) for
     // the pre-pass and the compacted-index buffer restored afterward — the Metal
     // 0-30 buffer table has no free index. `chunkOcclusionScratch_` holds the
@@ -631,14 +632,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     Buffer *chunkOcclusionQueryBuf_ = nullptr;
     std::vector<ChunkOcclusionQuery> chunkOcclusionScratch_;
     int maxPoolChunks_ = 0;
-    // One-frame occlusion-cull disable when last frame's Hi-Z chain is not
-    // this view's: a camera cut/teleport, a zoom, density or backing change,
-    // or no chain at all because the cull was off last frame. The projected
-    // chunk AABBs would otherwise test unrelated depths and could cull
-    // on-screen geometry; disabling keeps every chunk. Resolved once per frame
-    // in beginTick; read by the per-canvas gate.
-    IRPrefab::OcclusionCull::LagSource occlusionLagSource_{};
-    bool occlusionLagSourceStale_ = true;
     // Per-axis store list-walk split. While the main canvas's per-axis
     // trixel canvases are active (smooth camera Z-yaw), the compact pass splits
     // its visible-voxel list into three axis-keyed regions — each voxel landing
@@ -1768,14 +1761,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
     }
 
-    // Chunk-occlusion HZB pre-pass. Runs after the frustum
-    // ChunkVisibility mask + frame-data are uploaded and BEFORE the compact pass,
-    // so the compact reads the AND of frustum ∧ occlusion. Tests last frame's
-    // Hi-Z; only fully-on-screen NONE-mode cardinal chunks are eligible
-    // (shadow-feeder-safe by construction — off-screen casters fall outside the
-    // visible viewport and are never tested). Conservative: a footprint still
-    // seeing background (65535) keeps the chunk. Caller gates the whole pass off
-    // by default, so a default scene never reaches here.
+    // Refine the frustum mask using this frame's complete depth pass. Only
+    // fully-visible NONE chunks use the CPU iso/depth bounds; subdivided
+    // voxels use the shader's micro-cell hull instead.
     void dispatchChunkOcclusion(
         C_VoxelPool &voxelPool, const C_TriangleCanvasTextures &canvas, const IsoBounds2D &visibleVp
     ) {
@@ -1839,7 +1827,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // Hi-Z downsampled levels [0, mipCount) as sampled images; surplus sampler
         // slots get the coarsest level (never sampled — mip selection clamps).
         for (int u = 0; u < kChunkOcclusionMaxHiZLevels; ++u) {
-            canvas.getHiZMip(IRMath::min(u, mipCount - 1))->bind(u);
+            const auto *mip = canvas.getHiZMip(IRMath::min(u, mipCount - 1));
+            mip->bind(u);
+            mip->bindAsImage(u, TextureAccess::READ_ONLY, TextureFormat::R32I);
         }
 
         // Matches local_size_x in c_chunk_occlusion_cull.{glsl,metal}.
@@ -2336,35 +2326,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             }
         }
 
-        // Occlusion cull gate: chunk pre-pass plus per-voxel refine, off
-        // by default). Enabled only on the states whose distance encoding +
-        // shadow-feeder semantics are verified: enabled, NOT stale (no
-        // discontinuous camera move this frame, resolved in
-        // beginTick), NONE render mode (encodeDepthWithFace = rawDepth*kDepthEncodeShift), cardinal
-        // yaw (!rotating → per-axis canvases inactive, so no split-list
-        // interaction), a non-re-voxelize pool (the frustum mask is the real
-        // per-chunk mask, not the all-visible dest-cell scratch), a NON-detached
-        // canvas (detached content rasters in model space, so the camera-space
-        // last-frame Hi-Z has no meaning for it), AND a built Hi-Z
-        // chain. Any other state keeps every voxel (conservative). The chunk
-        // pre-pass ANDs occluded chunks out of ChunkVisibility (24); the compact
-        // then runs the per-voxel Hi-Z test on the survivors (occlusionCullMipCount_
-        // uploaded here, Hi-Z bound at the compact dispatch below).
+        // Recompact after the complete current-frame depth pass. Rotation,
+        // detached rasters and revoxelized pools retain their existing paths.
         const int occlusionMipCount = triangleCanvasTextures.hiZMipCount();
-        const bool occlusionCullActive =
-            IRRender::getVoxelOcclusionCullEnabled() && !occlusionLagSourceStale_ &&
-            frameData_.voxelRenderOptions_.x == 0 && !rotating && revoxBuffer == nullptr &&
-            !canvasLocalRotation.isDetached() && occlusionMipCount > 0;
-        // The chunk pre-pass (dispatched below on occlusionCullActive) and the
-        // per-voxel Hi-Z refine are separately toggleable so the marginal
-        // diagnostic can A/B the per-voxel test in isolation while the chunk
-        // cull stays on: --no-per-voxel-occlusion zeroes the mip count (skips the
-        // compact's per-voxel test) without touching dispatchChunkOcclusion. The
-        // per-voxel toggle defaults on, so --occlusion-cull alone runs both.
-        frameData_.occlusionCullMipCount_ =
-            (occlusionCullActive && IRRender::getVoxelPerVoxelOcclusionEnabled())
-                ? occlusionMipCount
-                : 0;
+        const bool occlusionCullActive = IRRender::getVoxelOcclusionCullEnabled() && !rotating &&
+                                         revoxBuffer == nullptr &&
+                                         !canvasLocalRotation.isDetached() && occlusionMipCount > 0;
+        // The first compact admits every candidate for this frame's depth pass.
+        frameData_.occlusionCullMipCount_ = 0;
         // Cap the shadow-feeder dispatch's strided micro-grid to
         // the sun-bake texel density so an off-screen caster's coarse trixel
         // depth still lands ≥1 sample per sun-map texel (no shadow holes).
@@ -2403,10 +2372,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 ? 1
                 : 0;
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
-
-        if (occlusionCullActive) {
-            dispatchChunkOcclusion(voxelPool, triangleCanvasTextures, visibleVp);
-        }
 
         // Voxel positions are uploaded via the pending-range queue populated by
         // `UPDATE_VOXEL_SET_CHILDREN` (`cpp-ecs.md` pending-list-flush rule).
@@ -2784,6 +2749,58 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 }
             }
 
+            if (occlusionCullActive) {
+                IR_PROFILE_SCOPE("vs1_occlusion");
+                // Metal atomics live in scratch until explicitly resolved. The
+                // cull must read the complete depth pass of this very frame.
+                IRRender::device()->resolveImageAtomicScratch(
+                    triangleCanvasTextures.getTextureDistances()
+                );
+                IRPrefab::OcclusionCull::detail::buildDistanceHiZ(
+                    triangleCanvasTextures,
+                    *currentHiZProgram_
+                );
+                if (frameData_.voxelRenderOptions_.x == 0) {
+                    dispatchChunkOcclusion(voxelPool, triangleCanvasTextures, visibleVp);
+                }
+                frameData_.occlusionCullMipCount_ =
+                    IRRender::getVoxelPerVoxelOcclusionEnabled() ? occlusionMipCount : 0;
+                frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
+                IRRender::device()->fillBuffer(indirectBuf_, 2 * kPerAxisSsboAlignBytes, 0);
+                indirectBuf_->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_IndirectDispatchParams
+                );
+                compactedBuf_->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_CompactedVoxelIndices
+                );
+                (compactCeiling ? compactCeilingProgram_ : compactProgram_)->use();
+                (fog != nullptr ? fog->getTexture() : fogCullPlaceholder_)
+                    ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
+                hiZLevel0->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+                IRRender::device()->dispatchCompute(compactGrid.x, compactGrid.y, 1);
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+                IRRender::publishIndirectArgs(
+                    indirectBuf_,
+                    0,
+                    indirectArgsBuf_,
+                    0,
+                    2 * kPerAxisSsboAlignBytes
+                );
+                if (cullStatsSlot >= 0) {
+                    IRRender::device()->copyBufferSubData(
+                        indirectBuf_,
+                        0,
+                        cullStatsBuffers_[cullStatsSlot],
+                        0,
+                        2 * kPerAxisSsboAlignBytes
+                    );
+                }
+                triangleCanvasTextures.getTextureDistances()
+                    ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            }
+
             // Projected source faces and displaced cells can quantize to equal
             // depth keys. Elect one pool index before any non-atomic color write.
             const bool cardinalElection =
@@ -2970,7 +2987,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         frameRecordUploadBytes_ = 0;
         frameMaskUploadBytes_ = 0;
         ++uploadAuditFrame_;
-        const bool mainBackingResized = IRPrefab::CanvasCoverage::syncMainBacking();
+        IRPrefab::CanvasCoverage::syncMainBacking();
         renderRunWitness().openPoolFrame();
         renderRunWitness().recordPose(
             IRPrefab::Camera::getYaw(),
@@ -3054,27 +3071,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 gatherFogWindow(*worldFog_, IRMath::ivec2(IRRender::getMainCanvasSizeTrixels()));
             }
         }
-
-        // Resolve the one-frame occlusion-cull disable. The cut threshold is
-        // half the visible viewport's smaller iso extent — larger than any
-        // single-frame smooth pan but far below a cut; a smooth pan's
-        // one-frame-lag pop is the accepted intentional drift, not a
-        // discontinuity. The view is read only with the cull on, so the default
-        // config adds nothing.
-        const bool occlusionCullEnabled = IRRender::getVoxelOcclusionCullEnabled();
-        IRPrefab::OcclusionCull::LagSourceView occlusionView{};
-        if (occlusionCullEnabled) {
-            const IsoBounds2D occlusionViewport = IRRender::getCullViewport().isoViewport();
-            const vec2 viewportExtent = occlusionViewport.max_ - occlusionViewport.min_;
-            occlusionView = {
-                .cameraIso_ = IRRender::getEffectiveCameraIso(),
-                .zoom_ = IRRender::getCameraZoom(),
-                .density_ = IRRender::getVoxelRenderEffectiveSubdivisions(),
-                .cutThreshold_ = 0.5f * IRMath::min(viewportExtent.x, viewportExtent.y),
-                .backingResized_ = mainBackingResized,
-            };
-        }
-        occlusionLagSourceStale_ = occlusionLagSource_.advance(occlusionCullEnabled, occlusionView);
     }
 
     static SystemId create() {
@@ -3131,6 +3127,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::createNamedResource<ShaderProgram>(
             "ChunkOcclusionProgram",
             std::vector{ShaderStage{IRRender::kFileCompChunkOcclusionCull, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "VoxelCurrentHiZProgram",
+            std::vector{ShaderStage{IRRender::kFileCompBuildDistanceHiZ, ShaderType::COMPUTE}}
         );
         IRRender::createNamedResource<ShaderProgram>(
             "VoxelWinnerCountProgram",
@@ -3410,6 +3410,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             C_CanvasLocalRotation>("SingleVoxelToCanvasFirst");
         auto *p = getSystemParams<System<VOXEL_TO_TRIXEL_STAGE_1>>(systemId);
         p->compactProgram_ = IRRender::getNamedResource<ShaderProgram>("VoxelCompactProgram");
+        p->currentHiZProgram_ = IRRender::getNamedResource<ShaderProgram>("VoxelCurrentHiZProgram");
         p->compactCeilingProgram_ =
             IRRender::getNamedResource<ShaderProgram>("VoxelCompactCeilingProgram");
         p->cellCompactProgram_ =

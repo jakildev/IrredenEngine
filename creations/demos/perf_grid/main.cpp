@@ -220,6 +220,23 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {4.0f, vec2(16, 8), 0.35f, "zoom4_rot_pan"},
 };
 
+// Capture each new pose on its first rendered frame: small pans, zoom changes,
+// a large jump, then a cardinal snap. A stale depth pyramid cannot pass this pair.
+constexpr IRVideo::AutoScreenshotShot kOcclusionMotionShots[] = {
+    {1.0f, vec2(0, 0), 0.0f, "motion_origin"},
+    {1.0f, vec2(1, 0), 0.0f, "motion_pan1"},
+    {1.0f, vec2(2, 1), 0.0f, "motion_pan2"},
+    {2.0f, vec2(3, 1), 0.0f, "motion_zoom2"},
+    {4.0f, vec2(4, 2), 0.0f, "motion_zoom4"},
+    {4.0f, vec2(-96, 64), 0.0f, "motion_jump"},
+    {4.0f, vec2(16, 8), 0.0f, "motion_return"},
+    {4.0f, vec2(16, 8), IRMath::kHalfPi, "motion_snap90"},
+    {4.0f, vec2(17, 9), IRMath::kHalfPi, "motion_pan90"},
+    {2.0f, vec2(-24, -12), IRMath::kPi, "motion_snap180"},
+    {1.0f, vec2(0, 0), 3.0f * IRMath::kHalfPi, "motion_snap270"},
+    {1.0f, vec2(0, 0), 0.0f, "motion_snap0"},
+};
+
 // Gallery-mode shots (reduction harness): the same scene swept from
 // cardinal through mid-quadrant residual yaws, plus a close-up on the contact
 // pairs at screen center. Ordered by increasing yaw so consecutive shots stay
@@ -486,15 +503,7 @@ constexpr std::size_t kAutoProfileCpuScopeCount =
 
 AutoProfileStat g_autoProfileFrameTime;
 AutoProfileStat g_autoProfileCpu[kAutoProfileCpuScopeCount];
-// --occlusion-cull: force the voxel-pool chunk-occlusion HZB
-// pre-pass ON (off by default in the engine). This is the measurement + verify
-// toggle for the cull: pair `--mode voxel_set --auto-profile` runs with and
-// without it to read the realized `voxelStage1` reduction (the 0.97 ceiling on
-// the many-small-entity grid), and pair `--auto-screenshot` runs to prove the
-// output is bit-identical cull-on vs cull-off (fully-occluded voxels write
-// nothing, so any diff would be a cull bug). Intentional drift: on a
-// discontinuous camera move the cull self-disables for one frame (stale Hi-Z),
-// which can produce a one-frame silhouette pop — by design, not a regression.
+// Explicit enable pairs with --no-occlusion-cull for verification.
 bool g_occlusionCull = false;
 // --no-overlay: drop PERF_STATS_OVERLAY from the render
 // pipeline. The overlay bakes live CPU/GPU timing text into every frame, which
@@ -514,15 +523,7 @@ bool g_noOverlay = false;
 // understates the mechanism.
 bool g_noSunShadows = false;
 IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
-// --no-per-voxel-occlusion: with --occlusion-cull on, disable ONLY the
-// per-voxel Hi-Z refine (keep the chunk pre-pass). This is the marginal
-// acceptance-gate isolation: --occlusion-cull A/B measures the UNION of the two
-// culls, and the chunk cull owns the pre-existing `max_delta 96` silhouette
-// holes (its own bug, filed separately), so union-vs-no-cull can never be
-// bit-identical. The per-voxel test's real, PR-scoped contribution is the
-// MARGINAL delta — cull-with-per-voxel vs cull-without — which is bit-identical
-// (it drops zero visible voxels; the 2×2 isolation E2==A proved it). No-op
-// without --occlusion-cull.
+// Isolate the chunk cull for the per-voxel positive-fire gate.
 bool g_noPerVoxelOcclusion = false;
 // --feeder-classify-pad: a DIAGNOSTIC iso-texel pad on the shadow-feeder
 // classify box (`frameData_.visibleIsoBounds_`) and nothing else. It is the only
@@ -906,10 +907,8 @@ void registerCliArgs() {
         "Run N frames (default 300) collecting CPU+GPU per-stage timing, then exit",
         300
     );
-    args.flag(
-        "--occlusion-cull",
-        "Force the voxel-pool chunk-occlusion HZB pre-pass ON (off by default)"
-    );
+    args.flag("--occlusion-cull", "Enable exact current-frame cardinal voxel occlusion culling");
+    args.flag("--no-occlusion-cull", "Disable cardinal voxel occlusion culling");
     args.flag("--legacy-depth-shadows", "Benchmark the legacy point-depth shadow caster");
     args.flag(
         "--count-voxel-winners",
@@ -928,8 +927,7 @@ void registerCliArgs() {
     );
     args.flag(
         "--no-per-voxel-occlusion",
-        "With --occlusion-cull, disable only the #1812 per-voxel Hi-Z refine (keep the #1294 chunk "
-        "cull) — the marginal-gate isolation"
+        "Disable per-voxel Hi-Z refinement, retaining the cardinal NONE chunk cull"
     );
     args.integer(
         "--feeder-classify-pad",
@@ -1062,6 +1060,7 @@ void registerCliArgs() {
         "Request one screenshot after this rendered frame; its readback lands in that frame's time",
         0
     );
+    args.flag("--occlusion-motion", "Capture the first rendered frame after each camera change");
     args.flag("--yaw-ramp", "Rotated-solidity validation sweep (#1882/#1883)");
     args.flag(
         "--yaw-ramp-crops",
@@ -1979,26 +1978,14 @@ int main(int argc, char **argv) {
             ->countVoxelWinners_ = true;
     }
 
+    if (IREngine::args().getFlag("--no-occlusion-cull")) {
+        IRRender::setVoxelOcclusionCullEnabled(false);
+    }
     if (g_occlusionCull) {
         IRRender::setVoxelOcclusionCullEnabled(true);
-        IR_LOG_INFO(
-            "Voxel chunk-occlusion cull forced ON (--occlusion-cull, #1294 child 3/3). "
-            "Output stays bit-identical to cull-off; one-frame silhouette pop on a "
-            "discontinuous camera move is intentional drift (stale Hi-Z self-disable)."
-        );
-        if (g_noPerVoxelOcclusion) {
-            IRRender::setVoxelPerVoxelOcclusionEnabled(false);
-            IR_LOG_INFO(
-                "Per-voxel Hi-Z refine DISABLED (--no-per-voxel-occlusion, #1812). Chunk "
-                "cull only; this is the marginal-gate B side (A = per-voxel on). The two "
-                "must render bit-identical — the per-voxel test drops zero visible voxels."
-            );
-        }
-    } else if (g_noPerVoxelOcclusion) {
-        IR_LOG_WARN(
-            "--no-per-voxel-occlusion is a no-op without --occlusion-cull (the whole "
-            "cull is off, so the per-voxel refine never runs)."
-        );
+    }
+    if (g_noPerVoxelOcclusion) {
+        IRRender::setVoxelPerVoxelOcclusionEnabled(false);
     }
 
     if (IREngine::args().getFlag("--legacy-depth-shadows")) {
@@ -2373,7 +2360,10 @@ void initSystems() {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        if (g_cliOverrides.yawRamp_) {
+        if (IREngine::args().getFlag("--occlusion-motion")) {
+            IRVideo::setAutoScreenshotShots(cfg, kOcclusionMotionShots);
+            cfg.settleFrames_ = 1;
+        } else if (g_cliOverrides.yawRamp_) {
             buildYawRampShots();
             cfg.shots_ = g_yawRampShots.data();
             cfg.numShots_ = static_cast<int>(g_yawRampShots.size());

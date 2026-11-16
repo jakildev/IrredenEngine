@@ -1,4 +1,99 @@
-# Voxel-pool solid-coverage occlusion culling
+# Exact current-frame cardinal occlusion
+
+Issue #4955 replaces the temporal cull described in the historical exploration
+below. Cardinal world canvases use a complete **current-frame depth prepass**,
+then cull only the deterministic winner-election and color/entity-id passes.
+The depth prepass, shadow inputs and rotating/detached/revoxelized paths keep
+all candidates admitted by the existing frustum, exposure and fog rules.
+
+## Dispatch and ownership contract
+
+1. Upload the current positions, camera, density and fog state. Compact with
+   `occlusionCullMipCount = 0`, then run the existing full stage-1 depth pass,
+   including its legacy shadow-feeder partition when enabled.
+2. Resolve Metal's R32I atomic scratch into the distance texture. Downsample
+   **max** depth into the canvas's existing Hi-Z textures. Each mip has an
+   image-access barrier before it becomes the next dispatch's input.
+3. In NONE mode, refine the chunk mask with the current pyramid. In every
+   subdivision mode, recompact using the finest downsampled mip and the
+   current raster's conservative source-voxel hull. Publish new indirect
+   arguments, then run election and stage 2 on the survivors.
+4. Keep the full depth texture. AO and the legacy point-depth shadow bake see
+   exactly the original depth. The finite voxel-face sun baker keeps its
+   separately retained caster admission mask; raster occlusion cannot remove
+   a source-face shadow caster.
+
+No prior-frame visibility state participates in rejection. Camera pan, zoom,
+backing resize, density change, cardinal snap, changed transforms and changed
+exposure all reach stage 1 before the Hi-Z query. The first frame after a jump
+therefore uses the same proof as a stationary frame; there is no lag exception
+or disable-on-jump approximation. `LagSource` remains available for existing
+consumers but the raster no longer uses it.
+
+## Conservative rejection proof
+
+For NONE, the query uses the raster's rounded, cardinal-rotated voxel origin
+and the union of its three deformed 2×3 face hulls, padded by one texel.
+For FULL and POSITION_ONLY it first applies the raster's near-integer snap,
+subdivision scaling and round-half-up, then rotates that **cell origin**.
+All six face micro-grids (including opposite polarities and strided feeder
+samples) lie in the positive `[0, subdivisions]^3` cube from that view-space
+origin. Its iso projection fits within `±subdivisions` horizontally and
+`±2*subdivisions` vertically; adding the face hull and rounding pad covers all
+emitted taps. The origin's `x+y+z` is a lower bound on every micro-cell depth.
+This intentionally loose bound trades cull rate for a simple proof.
+
+The query visits every finest-mip texel touched by that hull and takes its
+maximum encoded depth. A footprint that crosses the image boundary is kept;
+coordinates are never clamped onto an unrelated border. Background keeps a
+voxel too. Rejection requires the encoded lower depth bound to be **strictly**
+greater than that maximum plus one raw depth unit (eight encoded units).
+Every possible color tap must then lose to an existing closer surface. Equal
+depth and face/flip low-bit contenders survive, preserving deterministic
+winner election. Removing rejected candidates cannot affect any color or
+entity-id write, and the depth prepass itself is unchanged.
+
+The CPU chunk bounds are currently used only in NONE. Subdivided modes use
+the per-voxel proof; disabling per-voxel refinement in those modes is a full
+candidate-count control. Metal binds chunk pyramid inputs as images as well
+as samplers because its compute texture table prefers a live image binding.
+
+## Verification and controls
+
+The engine enables this cull by default. `setVoxelOcclusionCullEnabled(false)`
+retains the original single compact and full election/color dispatch;
+IRPerfGrid and IRShapeDebug expose `--no-occlusion-cull`. The explicit
+`--occlusion-cull` flag enables it, and `--no-per-voxel-occlusion` isolates the
+NONE chunk pass. None of these switches changes the source-face sun baker.
+`--count-voxel-winners` is an opt-in diagnostic: the election image's distinct
+voxel indices are counted with an atomic seen-bitset and read back only after
+the producer submission completes. It is excluded from performance runs.
+
+The IRPerfGrid manifest requires on/off identity against existing references
+for NONE, FULL and POSITION_ONLY. `--occlusion-motion` captures each changed
+pose on its **first rendered frame**, including small pans, zoom changes, a
+large jump and all four cardinal snaps. Its paired captures must be byte
+identical; normal settled references cannot prove that property.
+`occlusion-fire-verify.py` independently requires positive marginal rejection
+in all three modes, and the million control must admit fewer than 25% of its
+786,156 baseline visible candidates. Headless production-kernel tests exercise
+positive fire, disabled gates, ties, partial coverage and subdivision reach.
+
+Performance acceptance remains five interleaved 300-frame Release base/head
+pairs on AC power under the GPU lease with `QUIET=guarded`: at yaw 0 the mean
+GPU-envelope reduction must be at least 4 ms with positive one-sided 95% lower
+confidence bound. Yaw 45 and the 64³ zoom-1 control must pass the documented
+noise-aware no-regression rule. Host-blocked or contaminated runs do not
+establish these results. Native OpenGL image/performance coverage remains a
+separate host requirement; GLSL/Metal source parity alone does not prove it.
+
+---
+
+# Historical design exploration (#1290)
+
+The exploration below records the original temporal approach and its trigger;
+its defer recommendation and last-frame assumptions are superseded by #4955.
+
 
 Design exploration for issue #1290. This doc scopes a third culling phase for
 the voxel-pool render path — culling voxels that are inside the frustum and

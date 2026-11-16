@@ -126,6 +126,12 @@ class Verdict(unittest.TestCase):
 
 
 class ArmArgs(unittest.TestCase):
+    def test_subdivision_modes_replace_the_fixture_mode(self):
+        for mode in ("none", "full", "position_only"):
+            args = _ofv.arm_args(_ofv.ARM_CHUNK_PER_VOXEL, [], mode)
+            self.assertEqual(args[args.index("--subdivision-mode") + 1], mode)
+            self.assertEqual(args.count("--subdivision-mode"), 1)
+
     def test_chunk_only_arm_adds_both_toggles(self):
         self.assertEqual(
             _ofv.arm_args(_ofv.ARM_CHUNK_ONLY, []),
@@ -147,9 +153,12 @@ class ArmArgs(unittest.TestCase):
 class MainExitCode(unittest.TestCase):
     """End-to-end through ``main`` with the demo runs replaced by canned reports."""
 
-    def _run_main(self, reports: dict[str, str], argv: list[str]) -> int:
-        def fake_run_arm(*, arm, worktree, report, dest, frames, timeout, extra):
-            dest.write_text(reports[arm])
+    def _run_main(self, reports: dict[str | tuple[str, str], str], argv: list[str]) -> int:
+        modes_seen = set()
+
+        def fake_run_arm(*, arm, worktree, report, dest, frames, timeout, extra, mode):
+            modes_seen.add(mode)
+            dest.write_text(reports.get((mode, arm), reports[arm]))
 
         with tempfile.TemporaryDirectory() as td:
             exe = Path(td) / "build" / "creations" / "demos" / "perf_grid" / "IRPerfGrid"
@@ -160,7 +169,29 @@ class MainExitCode(unittest.TestCase):
                                  return_value=Path(td)), \
                     patch.object(_ofv.verify_common, "find_exe", return_value=exe), \
                     redirect_stdout(io.StringIO()):
-                return _ofv.main(["--no-build"] + argv)
+                result = _ofv.main(["--no-build"] + argv)
+                expected_modes = {"none", "full", "position_only"}
+                if "--subdivision-mode" in argv:
+                    selected = argv[argv.index("--subdivision-mode") + 1]
+                    if selected != "all":
+                        expected_modes = {selected}
+                self.assertEqual(modes_seen, expected_modes)
+                return result
+
+    def test_selected_mode_runs_only_that_mode(self):
+        reports = {_ofv.ARM_CHUNK_ONLY: _report(23816.0),
+                   _ofv.ARM_CHUNK_PER_VOXEL: _report(12781.3)}
+        for mode in ("none", "full", "position_only"):
+            with self.subTest(mode=mode):
+                self.assertEqual(self._run_main(reports, ["--subdivision-mode", mode]), 0)
+
+    def test_one_nonfiring_subdivision_mode_fails_the_entire_gate(self):
+        for mode in ("none", "full", "position_only"):
+            reports = {_ofv.ARM_CHUNK_ONLY: _report(23816.0),
+                       _ofv.ARM_CHUNK_PER_VOXEL: _report(12781.3),
+                       (mode, _ofv.ARM_CHUNK_PER_VOXEL): _report(23816.0)}
+            with self.subTest(mode=mode):
+                self.assertEqual(self._run_main(reports, []), 1)
 
     def test_firing_cull_exits_zero(self):
         rc = self._run_main({_ofv.ARM_CHUNK_ONLY: _report(23816.0),

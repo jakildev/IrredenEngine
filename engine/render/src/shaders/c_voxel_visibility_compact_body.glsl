@@ -60,7 +60,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     vec4 cameraViewRotation;
 };
 
-// Finest Hi-Z downsampled level (conceptual mip 1) over last frame's canvas distances, R32I.
+// Finest Hi-Z downsampled level (conceptual mip 1) over this frame's complete canvas distances, R32I.
 // Bound as a read-only image at unit 1 by VOXEL_TO_TRIXEL_STAGE_1 when this compact runs.
 // Read only when occlusionCullMipCount > 0; off unit 0 so it never aliases the fog image
 // there.
@@ -240,96 +240,53 @@ void writeDispatchDims(uint base, uint microSliceCount) {
         uint(kStageMicroSlicesPerGroup);
 }
 
-// Per-voxel Hi-Z occlusion refine, layered on top of the per-chunk pre-pass
-// (coarse -> fine hierarchical occlusion). Drops a voxel that is
-// locally-exposed + in-frustum but globally occluded by closer geometry, which
-// the all-or-nothing 256-voxel chunk test cannot. Conservative + off by default:
-//   * occlusionCullMipCount == 0 (the default; any non-cardinal / rotating /
-//     re-voxelize / no-Hi-Z frame) -> no test.
-//   * Domain = the full shadow-feeder-widened canvas. The Hi-Z
-//     downsample-maxes the WHOLE distance canvas — visible viewport plus the
-//     shadow-feeder ring the feeders raster into — so a ring caster's occluder
-//     data is real and testable. The gate is a canvas-COVERAGE guard, not a
-//     viewport box: a voxel is tested iff its expanded footprint lies fully
-//     inside the Hi-Z texel extent (a footprint spilling off-canvas would clamp
-//     onto the border texel and is kept). SOUNDNESS: a
-//     voxel conservatively occluded at every canvas texel it can raster to leaves
-//     no trace in trixelDistances, and BOTH the visible resolve and the
-//     sun-shadow bake consume trixelDistances (never voxels) — so dropping it is
-//     bit-identical for the shadow it would have cast too, against the frame the
-//     Hi-Z was built from; a stale-lag false cull costs a feeder its shadow for
-//     one frame.
-//   * A footprint that still sees background keeps the voxel (empty texels carry
-//     the 65535 sentinel -> hiZMax stays large -> never occlude). A false
-//     positive is a visible hole; a false negative is only lost savings.
-// Encoding matches the Hi-Z exactly: encodeDepthWithFace(pos3DtoDistance(voxelPos), 0)
-// — the same cardinal iso depth dispatchChunkOcclusion writes as its
-// encodedNearest_ (cb.minDepth_ * kDepthEncodeShift, face slot 0). Route through
-// the shared encode helper, NOT an open-coded scale: the cardinal layout is
-// depth [31:3] | flip [2] | slot [1:0], and a hard-coded scale that disagrees
-// with kDepthEncodeShift compares a mis-scaled depth against the Hi-Z so the
-// test never fires (a vacuous no-op). flip = 0 on the
-// cardinal path this cull runs on (riser-flip is gated to rotated content), so
-// slot 0 / flip 0 is the correct encode; the margin absorbs the Hi-Z's low bits.
-bool voxelOccludedByHiZ(ivec3 voxelPos, ivec2 isoPos) {
-    if (occlusionCullMipCount <= 0) {
-        return false;
+// Test every texel of a conservative emission hull against the CURRENT
+// frame's full depth pass. Keep partial coverage, background and equal-depth
+// contenders; only strictly hidden voxels leave the election/color list.
+// Stage 1 already ran for every candidate, so depth, AO and legacy shadow
+// feeders remain intact. A zero gate preserves the first (unculled) compact.
+bool voxelOccludedByHiZ(ivec3 voxelPos, ivec2 isoPos, vec3 sourcePosition) {
+    if (occlusionCullMipCount <= 0) return false;
+    const int subdivisions = effectiveTrixelSubdivisionScale(voxelRenderOptions);
+    if (voxelRenderOptions.x != 0) {
+        voxelPos = roundHalfUp(snapNearIntegerVoxelPosition(sourcePosition) * float(subdivisions));
+        voxelPos = rotateCardinalZ(voxelPos, rasterYawCardinalIndex(rasterYaw));
+        isoPos = pos3DtoPos2DIso(voxelPos);
     }
-    // iso -> canvas pixel, exactly as dispatchChunkOcclusion / stage 1 at NONE
-    // mode (effectiveTrixelSubdivisionScale == 1). This is stage 1's emit `base`.
-    ivec2 base = trixelCanvasOffsetZ1 + ivec2(floor(frameCanvasOffset)) + isoPos;
-    // Sample the Hi-Z over the EMISSION HULL — the conservative superset of every
-    // pixel stage 1 can write for this voxel — NOT a fixed ±1 window. stage 1's
-    // emitDeformedFace writes each face at `base + roundHalfUp(D_s * src)` for src
-    // across the [0,2)x[0,3) invocation lattice (local_size 2x3), per visible-
-    // triplet slot s, with D_s = mat2(faceDeform[s].xy, faceDeform[s].zw). A
-    // fixed ±1 window misses the +iso extreme of that hull at silhouette / upper
-    // edges (the near Z face is unexposed so it never writes at `base`, and the
-    // exposed X/Y faces land past the window), false-culling a VISIBLE voxel whose
-    // own last-frame depth write falls outside the sampled window.
-    // The window MUST stay a superset of emitDeformedFace's
-    // write set (the self-referential Hi-Z then re-anchors every surviving voxel):
-    // KEEP IN SYNC with c_voxel_to_trixel_stage_1_body.{glsl,metal} emitDeformedFace.
-    // faceDeform is identity at residualYaw==0 (the only path the cull runs on), so
-    // this reduces to a fixed ~3x4-texel box on the cardinal path; deriving it from
-    // faceDeform keeps it correct by construction if the emit deform ever changes.
+    const ivec2 base =
+        trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) + isoPos;
     const vec2 hullCorners[4] =
         vec2[4](vec2(0.0, 0.0), vec2(2.0, 0.0), vec2(0.0, 3.0), vec2(2.0, 3.0));
     vec2 loF = vec2(1.0e30);
     vec2 hiF = vec2(-1.0e30);
-    for (int s = 0; s < 3; ++s) {
-        mat2 D = mat2(faceDeform[s].xy, faceDeform[s].zw);
-        for (int c = 0; c < 4; ++c) {
-            vec2 p = D * hullCorners[c];
-            loF = min(loF, p);
-            hiF = max(hiF, p);
+    for (int face = 0; face < 3; ++face) {
+        const mat2 deform = mat2(faceDeform[face].xy, faceDeform[face].zw);
+        for (int corner = 0; corner < 4; ++corner) {
+            const vec2 offset = deform * hullCorners[corner];
+            loF = min(loF, offset);
+            hiF = max(hiF, offset);
         }
     }
-    // ±1 px pad absorbs roundHalfUp of the intra-hull super-sample taps; >>1 maps
-    // canvas px to the finest half-res Hi-Z level.
-    ivec2 loTexel = (base + ivec2(floor(loF)) - ivec2(1)) >> 1;
-    ivec2 hiTexel = (base + ivec2(ceil(hiF)) + ivec2(1)) >> 1;
-    ivec2 sz = imageSize(hiZLevel0);
-    // Canvas-coverage guard: only cull a voxel whose full expanded
-    // footprint lies inside the Hi-Z texel extent [0, sz). c_build_distance_hiz
-    // ceil-sizes each level and writes every texel a real downsampled max
-    // (background sentinel 65535 where empty), so every read in [0, sz-1] is
-    // faithful. A footprint that spills PAST that extent has no data off-canvas;
-    // clamping such a tap onto the border texel would read a near occluder in
-    // place of the empty-background sentinel, deflating hiZMax and risking a
-    // false cull of an edge voxel that actually sees background, so those voxels
-    // are kept. With the guard holding, every read is in-bounds and the taps need
-    // no clamp.
-    if (loTexel.x < 0 || loTexel.y < 0 || hiTexel.x >= sz.x || hiTexel.y >= sz.y) {
-        return false;
+    // Every micro-cell of all six faces lies in the positive subdivision
+    // cube. Its iso projection includes both polarities and feeder samples.
+    // The cube origin is also a lower bound on every emitted raw depth.
+    if (voxelRenderOptions.x != 0) {
+        const vec2 cubeReach = vec2(subdivisions, 2 * subdivisions);
+        loF -= cubeReach;
+        hiF += cubeReach;
     }
-    int hiZMax = -2147483648;
-    for (int ty = loTexel.y; ty <= hiTexel.y; ++ty) {
-        for (int tx = loTexel.x; tx <= hiTexel.x; ++tx) {
-            hiZMax = max(hiZMax, imageLoad(hiZLevel0, ivec2(tx, ty)).x);
+    // Include rounding at the emitted hull; a partial footprint is never clamped.
+    const ivec2 loTexel = (base + ivec2(floor(loF)) - ivec2(1)) >> 1;
+    const ivec2 hiTexel = (base + ivec2(ceil(hiF)) + ivec2(1)) >> 1;
+    const ivec2 size = imageSize(hiZLevel0);
+    if (any(lessThan(loTexel, ivec2(0))) || any(greaterThanEqual(hiTexel, size))) return false;
+    int farthest = -2147483648;
+    for (int y = loTexel.y; y <= hiTexel.y; ++y) {
+        for (int x = loTexel.x; x <= hiTexel.x; ++x) {
+            farthest = max(farthest, imageLoad(hiZLevel0, ivec2(x, y)).x);
         }
     }
-    return encodeDepthWithFace(pos3DtoDistance(voxelPos), 0) > hiZMax + kOcclusionDepthMargin;
+    return encodeDepthWithFace(pos3DtoDistance(voxelPos), 0) > farthest + kOcclusionDepthMargin;
 }
 
 shared uint groupUniqueSurvivors[64];
@@ -454,7 +411,7 @@ void main() {
                         uint flagsByte = (voxels[idx].materialFlagBone >> 8u) & 0xFFu;
                         if ((visionCircleCount != 0 ||
                              (flagsByte & kFaceOccludedMaskBits) != kFaceOccludedMaskBits) &&
-                            !voxelOccludedByHiZ(voxelPos, isoPos)) {
+                            !voxelOccludedByHiZ(voxelPos, isoPos, positions[idx].xyz)) {
                             // Split this survivor into the visible
                             // list (struct 0, full effSub² density) or the
                             // off-screen shadow-feeder list (struct 1, strided

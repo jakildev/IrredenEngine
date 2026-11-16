@@ -154,84 +154,57 @@ constant uint kFogWholeBodyExemptBit = 1u << 3u;
 // c_chunk_occlusion_cull.metal (both = the encode scale).
 constant int kOcclusionDepthMargin = kDepthEncodeShift;
 
-// Per-voxel Hi-Z occlusion refine; mirrors voxelOccludedByHiZ in
-// c_voxel_visibility_compact.glsl. Conservative, off by default
-// (occlusionCullMipCount == 0 -> no-op), tests the full
-// shadow-feeder-widened canvas gated by a Hi-Z canvas-COVERAGE guard (a
-// footprint fully inside [0, sz) is testable; one spilling off-canvas is kept),
-// sound because a voxel occluded at every canvas texel leaves no trace in
-// trixelDistances that either the visible resolve or the sun bake consumes —
-// against the frame the Hi-Z was built from; a stale-lag false cull costs a
-// feeder its shadow for one frame.
-// Background sentinel keeps a voxel that still sees background, and the encoding
-// (encodeDepthWithFace(pos3DtoDistance(voxelPos), 0)) matches
-// dispatchChunkOcclusion's cb.minDepth_ * kDepthEncodeShift exactly — route it
-// through the shared encode helper, never an open-coded scale (a scale that
-// disagrees with kDepthEncodeShift silently no-ops the test).
-// hiZLevel0 is the finest downsampled level (source px >> 1); the
-// sampled window is derived from stage 1's emission hull so it always contains
-// the voxel's own last-frame write.
+// Test every texel of a conservative emission hull against the CURRENT
+// frame's full depth pass. Keep partial coverage, background and equal-depth
+// contenders; only strictly hidden voxels leave the election/color list.
+// Stage 1 already ran for every candidate, so depth, AO and legacy shadow
+// feeders remain intact. A zero gate preserves the first (unculled) compact.
 static bool voxelOccludedByHiZ(
     texture2d<int, access::read> hiZLevel0,
     constant FrameDataVoxelToTrixel& fd,
-    int3 voxelPos,
-    int2 isoPos
+    int3 voxelPos, int2 isoPos, float3 sourcePosition
 ) {
-    if (fd.occlusionCullMipCount <= 0) {
-        return false;
+    if (fd.occlusionCullMipCount <= 0) return false;
+    const int subdivisions = effectiveTrixelSubdivisionScale(fd.voxelRenderOptions);
+    if (fd.voxelRenderOptions.x != 0) {
+        voxelPos = roundHalfUp(snapNearIntegerVoxelPosition(sourcePosition) * float(subdivisions));
+        voxelPos = rotateCardinalZ(voxelPos, rasterYawCardinalIndex(fd.rasterYaw));
+        isoPos = pos3DtoPos2DIso(voxelPos);
     }
-    // stage 1's emit `base` at NONE (effectiveTrixelSubdivisionScale == 1).
     const int2 base =
-        fd.trixelCanvasOffsetZ1 + int2(floor(fd.frameCanvasOffset)) + isoPos;
-    // Sample the Hi-Z over the EMISSION HULL — the conservative superset of every
-    // pixel stage 1 can write for this voxel — NOT a fixed ±1 window. stage 1's
-    // emitDeformedFace writes each face at `base + roundHalfUp(D_s * src)` for src
-    // across the [0,2)x[0,3) invocation lattice (threadgroup 2x3), per visible-
-    // triplet slot s, with D_s = float2x2(faceDeform[s].xy, faceDeform[s].zw). A
-    // fixed ±1 window misses the +iso extreme of that hull at silhouette / upper
-    // edges (the near Z face is unexposed so it never writes at `base`, the exposed
-    // X/Y faces land past the window), false-culling a VISIBLE voxel.
-    // The window MUST stay a superset of emitDeformedFace's write
-    // set: KEEP IN SYNC with c_voxel_to_trixel_stage_1_body.{glsl,metal} emitDeformedFace.
-    // faceDeform is identity at residualYaw==0 (the only path the cull runs on), so
-    // this reduces to a fixed ~3x4-texel box; deriving it from faceDeform keeps it
-    // correct by construction if the emit deform ever changes.
-    const float2 hullCorners[4] = {
-        float2(0.0f, 0.0f), float2(2.0f, 0.0f), float2(0.0f, 3.0f), float2(2.0f, 3.0f)
-    };
-    float2 loF = float2(1.0e30f);
-    float2 hiF = float2(-1.0e30f);
-    for (int s = 0; s < 3; ++s) {
-        const float2x2 D = float2x2(fd.faceDeform[s].xy, fd.faceDeform[s].zw);
-        for (int c = 0; c < 4; ++c) {
-            const float2 p = D * hullCorners[c];
-            loF = min(loF, p);
-            hiF = max(hiF, p);
+        trixelFrameOffset(fd.trixelCanvasOffsetZ1, fd.frameCanvasOffset, fd.voxelRenderOptions) + isoPos;
+    const float2 hullCorners[4] =
+        {float2(0.0, 0.0), float2(2.0, 0.0), float2(0.0, 3.0), float2(2.0, 3.0)};
+    float2 loF = float2(1.0e30);
+    float2 hiF = float2(-1.0e30);
+    for (int face = 0; face < 3; ++face) {
+        const float2x2 deform = float2x2(fd.faceDeform[face].xy, fd.faceDeform[face].zw);
+        for (int corner = 0; corner < 4; ++corner) {
+            const float2 offset = deform * hullCorners[corner];
+            loF = min(loF, offset);
+            hiF = max(hiF, offset);
         }
     }
-    // ±1 px pad absorbs roundHalfUp of the intra-hull super-sample taps; >>1 maps
-    // canvas px to the finest half-res Hi-Z level.
+    // Every micro-cell of all six faces lies in the positive subdivision
+    // cube. Its iso projection includes both polarities and feeder samples.
+    // The cube origin is also a lower bound on every emitted raw depth.
+    if (fd.voxelRenderOptions.x != 0) {
+        const float2 cubeReach = float2(subdivisions, 2 * subdivisions);
+        loF -= cubeReach;
+        hiF += cubeReach;
+    }
+    // Include rounding at the emitted hull; a partial footprint is never clamped.
     const int2 loTexel = (base + int2(floor(loF)) - int2(1)) >> 1;
     const int2 hiTexel = (base + int2(ceil(hiF)) + int2(1)) >> 1;
-    const int2 sz = int2(int(hiZLevel0.get_width()), int(hiZLevel0.get_height()));
-    // Canvas-coverage guard — mirror of the GLSL twin: only cull a voxel
-    // whose full expanded footprint lies inside the Hi-Z texel extent [0, sz).
-    // c_build_distance_hiz ceil-sizes each level and writes every texel a real
-    // downsampled max (background sentinel 65535 where empty), so every read in
-    // [0, sz-1] is faithful. A footprint spilling PAST that extent has no data
-    // off-canvas; clamping such a tap onto the border texel would deflate hiZMax
-    // and risk a false cull of an edge voxel that sees background — keep those.
-    // Guard holding ⇒ every read is in-bounds, so the taps need no clamp.
-    if (loTexel.x < 0 || loTexel.y < 0 || hiTexel.x >= sz.x || hiTexel.y >= sz.y) {
-        return false;
-    }
-    int hiZMax = -2147483648;
-    for (int ty = loTexel.y; ty <= hiTexel.y; ++ty) {
-        for (int tx = loTexel.x; tx <= hiTexel.x; ++tx) {
-            hiZMax = max(hiZMax, hiZLevel0.read(uint2(int2(tx, ty))).x);
+    const int2 size = int2(hiZLevel0.get_width(), hiZLevel0.get_height());
+    if (any(loTexel < int2(0)) || any(hiTexel >= size)) return false;
+    int farthest = -2147483648;
+    for (int y = loTexel.y; y <= hiTexel.y; ++y) {
+        for (int x = loTexel.x; x <= hiTexel.x; ++x) {
+            farthest = max(farthest, hiZLevel0.read(uint2(x, y)).x);
         }
     }
-    return encodeDepthWithFace(pos3DtoDistance(voxelPos), 0) > hiZMax + kOcclusionDepthMargin;
+    return encodeDepthWithFace(pos3DtoDistance(voxelPos), 0) > farthest + kOcclusionDepthMargin;
 }
 
 // True iff this column lies under any live analytic vision circle, so its voxels
@@ -392,7 +365,7 @@ kernel void IR_COMPACT_KERNEL_NAME(
                         const uint flagsByte = (voxels[idx].materialFlagBone >> 8u) & 0xFFu;
                         if ((fogObservers.visionCircleCount != 0 ||
                              (flagsByte & kFaceOccludedMaskBits) != kFaceOccludedMaskBits) &&
-                            !voxelOccludedByHiZ(hiZLevel0, frameData, voxelPos, isoPos)) {
+                            !voxelOccludedByHiZ(hiZLevel0, frameData, voxelPos, isoPos, positions[idx].xyz)) {
                             // Mirrors the GLSL twin: split into the
                             // visible list (struct 0, full effSub²) or the
                             // off-screen shadow-feeder list (struct 1, strided

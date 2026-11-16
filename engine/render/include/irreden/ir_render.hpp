@@ -542,19 +542,14 @@ float getSunAmbient();
 /// When false, sun face shading remains active but projected shadows are disabled.
 void setSunShadowsEnabled(bool enabled);
 bool getSunShadowsEnabled();
-/// Voxel-pool chunk-occlusion cull. Off by default: the
-/// HZB pre-pass is dispatched only when enabled, so the default pipeline is
-/// byte-identical to master. When on, pool-chunks proven fully covered by
-/// closer geometry (last frame's Hi-Z) are dropped before the compact pass.
+/// Exact cardinal world-voxel occlusion, enabled by default. The full current
+/// depth pass proves rejection before winner election and color/entity-id writes.
+/// Disable to retain the original full election/color dispatch for comparison.
 void setVoxelOcclusionCullEnabled(bool enabled);
 bool getVoxelOcclusionCullEnabled();
-/// Per-voxel Hi-Z occlusion refine, layered on the chunk cull. On
-/// by default, but only active when the chunk cull is enabled (the per-voxel
-/// test shares getVoxelOcclusionCullEnabled()'s gate), so a default scene stays
-/// byte-identical. Set false to isolate the chunk cull's contribution: with
-/// the chunk cull enabled, cull-with-per-voxel and
-/// cull-without-per-voxel must be bit-identical (the
-/// per-voxel test drops zero visible voxels; the chunk cull owns any holes).
+/// Per-voxel Hi-Z refinement, enabled by default while the occlusion cull is on.
+/// Disable to isolate the NONE chunk pass; subdivision modes then keep all
+/// candidates. Both settings preserve the full current-frame depth prepass.
 void setVoxelPerVoxelOcclusionEnabled(bool enabled);
 bool getVoxelPerVoxelOcclusionEnabled();
 /// When false, ambient occlusion crease darkening is skipped — the AO compute

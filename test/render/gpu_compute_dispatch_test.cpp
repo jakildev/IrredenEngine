@@ -1974,6 +1974,124 @@ using PositionUploadTest = GpuComputeDispatchTest;
 
 using CanvasBackingResizeTest = PositionUploadTest;
 
+TEST_F(PositionUploadTest, CardinalOcclusionKeepsTiesPartialCoverageAndSubdivisionExtents) {
+    using namespace IRRender;
+    using namespace IRMath;
+    constexpr int size = 512;
+    constexpr int stride =
+        IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>::kPerAxisSsboAlignBytes;
+    Texture2D hiZ{TextureKind::TEXTURE_2D, size, size, TextureFormat::R32I};
+    Texture2D fog{TextureKind::TEXTURE_2D, 1, 1, TextureFormat::RG32UI};
+    const uvec2 revealed(255u, 1u);
+    fog.clear(PixelDataFormat::RG_INTEGER, PixelDataType::UINT32, &revealed);
+    vec4 position(-1.5f, 2.25f, 10.0f, 1.0f);
+    const std::array<std::uint32_t, 3> voxel{0xFFFFFFFFu, 0u, 0u};
+    const std::uint32_t one = 1;
+    Buffer positions(&position, sizeof(position), BUFFER_STORAGE_DYNAMIC);
+    Buffer colors(voxel.data(), sizeof(voxel), BUFFER_STORAGE_DYNAMIC);
+    Buffer active(&one, sizeof(one), BUFFER_STORAGE_DYNAMIC);
+    Buffer chunks(&one, sizeof(one), BUFFER_STORAGE_DYNAMIC);
+    Buffer compacted(nullptr, 64 * sizeof(std::uint32_t), BUFFER_STORAGE_DYNAMIC);
+    Buffer counts(nullptr, 2 * stride, BUFFER_STORAGE_DYNAMIC);
+    FrameDataVoxelToCanvas frame{};
+    frame.voxelCount_ = 1;
+    frame.voxelDispatchGrid_ = ivec2(1);
+    frame.trixelCanvasOffsetZ1_ = ivec2(size);
+    frame.canvasSizePixels_ = ivec2(size * 2);
+    frame.cullIsoMin_ = ivec2(-4096);
+    frame.cullIsoMax_ = ivec2(4096);
+    frame.visibleIsoBounds_ = ivec4(-4096, -4096, 4096, 4096);
+    frame.feederSubCap_ = 1;
+    frame.feederPassTailBase_ = 1;
+    Buffer uniform(&frame, sizeof(frame), BUFFER_STORAGE_DYNAMIC);
+    const IRComponents::FrameDataFogObservers observers{};
+    Buffer fogUniform(&observers, sizeof(observers), BUFFER_STORAGE_DYNAMIC);
+    const std::string path =
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_visibility_compact.glsl";
+    ShaderProgram program{std::vector{ShaderStage{path.c_str(), ShaderType::COMPUTE}}};
+    std::vector<std::int32_t> pixels(size * size);
+    auto admitted = [&] {
+        hiZ.subImage2D(
+            0,
+            0,
+            size,
+            size,
+            PixelDataFormat::RED_INTEGER,
+            PixelDataType::INT32,
+            pixels.data()
+        );
+        uniform.subData(0, sizeof(frame), &frame);
+        device()->fillBuffer(&counts, 2 * stride, 0);
+        positions.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelPositions);
+        colors.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelColors);
+        active.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_VoxelActiveMask);
+        chunks.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ChunkVisibility);
+        compacted.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_CompactedVoxelIndices);
+        counts.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_IndirectDispatchParams);
+        uniform.bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
+        fogUniform.bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
+        fog.bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
+        hiZ.bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+        program.use();
+        device()->dispatchCompute(1, 1, 1);
+        device()->memoryBarrier(BarrierType::ALL);
+        device()->finish();
+        VoxelIndirectDispatchParams result{};
+        counts.getSubData(0, sizeof(result), &result);
+        return result.visibleCount;
+    };
+    for (int mode : {0, 1, 2}) {
+        for (int density : {1, 4, 16}) {
+            for (int cardinal = 0; cardinal < 4; ++cardinal) {
+                SCOPED_TRACE(
+                    ::testing::Message()
+                    << "mode=" << mode << " density=" << density << " cardinal=" << cardinal
+                );
+                frame.voxelRenderOptions_ = ivec2(mode, density);
+                frame.rasterYaw_ = cardinal * kHalfPi;
+                frame.trixelCanvasOffsetZ1_ = ivec2(size);
+                const int scale = mode == 0 ? 1 : density;
+                const ivec3 origin = rotateCardinalZ(
+                    roundVec3HalfUp(vec3(position) * float(scale)),
+                    static_cast<CardinalIndex>(cardinal)
+                );
+                const int nearest = pos3DtoDistance(origin) * kDepthEncodeShift;
+                std::fill(pixels.begin(), pixels.end(), nearest - 16);
+                frame.occlusionCullMipCount_ = 0;
+                EXPECT_EQ(admitted(), 1u) << "disabled gate must retain the depth candidate";
+                frame.occlusionCullMipCount_ = 1;
+                EXPECT_EQ(admitted(), 0u) << "strictly hidden positive control must fire";
+                std::fill(pixels.begin(), pixels.end(), nearest);
+                EXPECT_EQ(admitted(), 1u) << "ties must remain eligible for winner election";
+                std::fill(pixels.begin(), pixels.end(), nearest - 16);
+                const std::array<ivec2, 4> offsets =
+                    mode == 0
+                        ? std::array<ivec2, 4>{ivec2(0), ivec2(2, 0), ivec2(0, 3), ivec2(2, 3)}
+                        : std::array<ivec2, 4>{
+                              ivec2(0),
+                              ivec2(-scale, -scale),
+                              ivec2(scale, -scale),
+                              ivec2(0, 2 * scale)
+                          };
+                for (const auto offset : offsets) {
+                    // Independent iso projections of the cell origin and three
+                    // positive-axis face endpoints. Any uncovered endpoint must
+                    // keep the source voxel, including the high-density reach.
+                    const ivec2 texel = (ivec2(size) + pos3DtoPos2DIso(origin) + offset) / 2;
+                    const int index = texel.y * size + texel.x;
+                    ASSERT_GE(index, 0);
+                    ASSERT_LT(index, static_cast<int>(pixels.size()));
+                    pixels[index] = 65535;
+                    EXPECT_EQ(admitted(), 1u);
+                    pixels[index] = nearest - 16;
+                }
+                frame.trixelCanvasOffsetZ1_ = ivec2(-4096);
+                EXPECT_EQ(admitted(), 1u) << "off-canvas hulls must not clamp to occluders";
+            }
+        }
+    }
+}
+
 void expectEmptyCanvasDepth(const IRRender::Texture2D &texture) {
     const IRMath::uvec2 size = texture.getSize();
     std::vector<std::int32_t> pixels(std::size_t(size.x) * size.y, -1);

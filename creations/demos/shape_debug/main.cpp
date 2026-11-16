@@ -278,11 +278,7 @@ bool g_checkerboard = false; // opt-in via --checkerboard; flickered, off by def
 // `System<SETTINGS_MENU>::destroyMenu()` keeps for its own pause path, and this
 // demo is the reference other creations copy the setter shape from.
 float g_timeScaleBeforePause = 1.0f;
-// --occlusion-cull: force the voxel-pool chunk-occlusion HZB
-// pre-pass on (off by default in the engine). A test hook so the cull can be
-// exercised before the measurement demo lands. On the sparse shape_debug
-// scene nothing is inter-object-occluded, so output must stay identical (a hole
-// would be a false-positive cull bug).
+// Explicit enable pairs with --no-occlusion-cull for verification.
 bool g_occlusionCull = false;
 // --gpu-voxel-smoke: spawn one voxel cube routed through the GPU
 // voxel-position prepass with a fixed 45° rotation. Off by default so the
@@ -1645,10 +1641,8 @@ void registerCliArgs() {
     );
     args.flag("--depth-color", "Tint each voxel by local iso-depth (front=red, back=blue)");
     args.flag("--checkerboard", "Tint alternating voxels darker (flickers; off by default)");
-    args.flag(
-        "--occlusion-cull",
-        "Force the voxel-pool chunk-occlusion HZB pre-pass ON (off by default)"
-    );
+    args.flag("--occlusion-cull", "Enable exact current-frame cardinal voxel occlusion culling");
+    args.flag("--no-occlusion-cull", "Disable cardinal voxel occlusion culling");
     args.flag("--gpu-voxel-smoke", "Spawn one cube routed through the GPU voxel-position prepass");
     args.flag("--pivot-focus-demo", "Yaw sweep pinning the pivot on a tall pillar (#1921)");
     args.flag("--skin-smoke", "Spawn one 2-bone rigged voxel bar skinned via binding-17 (#1605)");
@@ -2282,9 +2276,11 @@ int main(int argc, char **argv) {
     if (g_debugOverlay != IRRender::DebugOverlayMode::NONE) {
         IRRender::setDebugOverlay(g_debugOverlay);
     }
+    if (IREngine::args().getFlag("--no-occlusion-cull")) {
+        IRRender::setVoxelOcclusionCullEnabled(false);
+    }
     if (g_occlusionCull) {
         IRRender::setVoxelOcclusionCullEnabled(true);
-        IR_LOG_INFO("Voxel chunk-occlusion cull forced ON (--occlusion-cull, #1294 child 2/3)");
     }
     if (g_initialYawRadians != 0.0f) {
         IRPrefab::Camera::setYaw(g_initialYawRadians);

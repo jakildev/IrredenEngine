@@ -1,7 +1,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// Mirrors shaders/c_chunk_occlusion_cull.glsl. The Hi-Z is last frame's, so a
+// Mirrors shaders/c_chunk_occlusion_cull.glsl. The Hi-Z is current frame's, so a
 // cull is only ever strictly-behind that frame's max. Only chunks the CPU
 // flagged `eligible_` are tested, and a footprint that still sees background
 // (the 65535 sentinel, the largest encoded value) is never culled.

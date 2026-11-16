@@ -259,10 +259,7 @@ class RenderManager {
     float m_sunAmbient = 0.4f;
     bool m_sunShadowsEnabled = true;
     bool m_aoEnabled = true;
-    // Voxel-pool chunk-occlusion cull. Off by default: the pre-pass is
-    // not dispatched unless this is set, so a default scene is byte-identical to
-    // the unculling path.
-    bool m_voxelOcclusionCullEnabled = false;
+    bool m_voxelOcclusionCullEnabled = true;
     // Per-voxel Hi-Z occlusion refine, layered on the chunk pre-pass above. On
     // by default, but only active when the chunk cull is enabled (the
     // per-voxel test shares getVoxelOcclusionCullEnabled()'s gate). Flip it off

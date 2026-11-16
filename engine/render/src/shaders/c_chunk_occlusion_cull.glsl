@@ -5,7 +5,7 @@
 //
 // One invocation per pool-chunk. Each chunk's iso AABB is projected to canvas
 // pixels CPU-side and delivered in the query buffer alongside the chunk's
-// nearest encoded depth. This pass samples the MAX of LAST frame's Hi-Z
+// nearest encoded depth. This pass samples the MAX of the current frame's Hi-Z
 // over the chunk's pixel footprint, at the mip whose texel covers the
 // footprint, and ANDs 0 into the chunk's ChunkVisibility entry (binding 24)
 // iff the chunk's nearest depth is strictly behind that max — i.e. closer
