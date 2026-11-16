@@ -31,7 +31,8 @@ permissions:
 
 jobs:
   linux-build:
-    runs-on: ubuntu-latest
+    # GCC 13 requires Ubuntu 24.04's libjack-compatible C++ ABI.
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
