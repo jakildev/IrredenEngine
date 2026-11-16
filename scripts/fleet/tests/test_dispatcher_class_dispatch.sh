@@ -1114,6 +1114,40 @@ assert_contains "$(<"$FLEET_STATE_DIR/dispatch/pane-1.json")" \
 rm -f "$FLEET_STATE_DIR/usage/seven_day_opus.rejected.json"
 rm -rf "$FLEET_STATE_DIR/usage/.retest"
 
+echo "T36c: account retest on a Claude-only host claims only the launched target"
+unset FLEET_RUNTIMES
+printf '{"rateLimitType":"seven_day","utilization":1,"resetsAt":%s,"observed_at":%s,"status":"rejected"}\n' \
+    "$((RETEST_NOW + 86400))" "$((RETEST_NOW - 21601))" \
+    > "$FLEET_STATE_DIR/usage/seven_day.rejected.json"
+GITHUB_NOW=$(date +%s)
+for pool in core graphql; do
+    printf '{"identity":"user","rateLimitType":"github_%s","utilization":0.1,"observed_at":%s,"resetsAt":%s}\n' \
+        "$pool" "$GITHUB_NOW" "$((GITHUB_NOW + 3600))" \
+        > "$FLEET_STATE_DIR/usage/github-user-$pool.json"
+done
+write_slice worker '{"tasks_open":[
+  {"issue":"#10","model":"opus","effort":null,"owner":"free","blocked":false,"repo":"engine"},
+  {"issue":"#11","model":"opus","effort":null,"owner":"free","blocked":false,"repo":"engine"}],
+ "feedback_prs":[],"needs_plan":[]}'
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+: > "$FLEET_CLAIM_LOG"; : > "$FLEET_CLAIM_ENV_LOG"; : > "$SEND_LOG"
+: > "$FLEET_STATE_DIR/triggers/worker"
+out=$(FLEET_USAGE_NOW="$RETEST_NOW" FLEET_DISPATCHER_TEST_USAGE_GATE_OPEN=1 \
+    "$DISPATCHER" --dispatch-role worker 1 2>&1 >/dev/null)
+assert_eq "$(grep -c '^claim ' "$FLEET_CLAIM_LOG")" "1" \
+    "account retest takes one target claim"
+assert_eq "$(count_dispatches "$out")" "1" \
+    "account retest launches exactly one pane"
+assert_contains "$(<"$FLEET_STATE_DIR/dispatch/pane-1.json")" \
+    '"usage_retest_record":"seven_day.rejected.json"' \
+    "the launched pane owns the account retest lease"
+rm -f "$FLEET_STATE_DIR/usage/seven_day.rejected.json"
+rm -f "$FLEET_STATE_DIR/usage/github-user-core.json" \
+    "$FLEET_STATE_DIR/usage/github-user-graphql.json"
+rm -rf "$FLEET_STATE_DIR/usage/.retest"
+export FLEET_RUNTIMES=claude,codex
+write_slice worker '{"tasks_open":[{"issue":"#910","model":"fable","owner":"free","blocked":false,"labels":["fleet:runtime-codex"]}]}'
+
 echo "T37: Codex cooldown preserves the trigger without taking a claim"
 mkdir -p "$FLEET_STATE_DIR/runtime-cooldown"
 printf '{"until":9999999999}' > "$FLEET_STATE_DIR/runtime-cooldown/codex.json"

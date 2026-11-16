@@ -3296,7 +3296,7 @@ assign_for_pane() {
     inflight=$(grep -ho '"target":"[^"]*"' "$DISPATCH_DIR"/*.json 2>/dev/null || true)
     local line now runtime_blocked=0 claude_gate="" claude_gate_model=""
     local refusal_key claim_rc
-    local claude_only_gate=""
+    local claude_only_gate="" claude_only_scope="scoped"
     local route_class="$DISPATCH_CLASS" route_claude_gate="open"
     if [[ -n "${FLEET_RUNTIMES:-}" && "$role" == "merger" ]]; then
         if [[ -z "$route_class" ]]; then
@@ -3359,10 +3359,11 @@ assign_for_pane() {
                 }
             fi
         else
-            # No routing on this host: the fleet-wide gate already holds the
-            # account windows, and a window scoped to the launch model binds
-            # here, before the claim.
-            [[ -n "$claude_only_gate" ]] || claude_only_gate=$(usage_gate_status scoped \
+            # No routing on this host: the fleet-wide gate normally holds the
+            # account windows. During an account retest, the combined scope
+            # must bind here before another target is claimed.
+            [[ -z "$USAGE_ACCOUNT_RETEST_STATUS" ]] || claude_only_scope="claude"
+            [[ -n "$claude_only_gate" ]] || claude_only_gate=$(usage_gate_status "$claude_only_scope" \
                 "${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}")
             usage_gate_route_open "$claude_only_gate" || {
                 ASSIGN_BLOCK_REASON="claude-quota-closed"; runtime_blocked=1; continue;
@@ -4948,6 +4949,10 @@ case "${1:-}" in
         fi
         DISPATCH_MODE="$(read_dispatch_mode)"
         for (( _tick = 0; _tick < ${3:-1}; _tick++ )); do
+            if [[ -n "${FLEET_DISPATCHER_TEST_USAGE_GATE_OPEN:-}" ]] \
+                && ! usage_gate_open; then
+                continue
+            fi
             if (( _tick > 0 )) && [[ -n "${FLEET_DISPATCHER_TEST_REARM:-}" ]] \
                 && [[ "${FLEET_DISPATCHER_TEST_NO_REARM_TICK:-}" != "$((_tick + 1))" ]]; then
                 mkdir -p "$TRIGGERS_DIR"
