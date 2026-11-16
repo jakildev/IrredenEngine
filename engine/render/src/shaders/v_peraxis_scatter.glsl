@@ -106,6 +106,7 @@ flat out float vCellTieOffset;
 // An overflow entry's fog class byte, plus kScatterFogCarrierCutFace on a cut
 // face; 0 for a cell, whose class rides its axis canvas's entity id.
 flat out uint vFogCarrier;
+flat out float vOverflowAO;
 flat out uvec2 vOverflowEntityId;
 layout(std430, binding = 13) readonly buffer EntityIdBuffer { uvec2 entityIds[]; };
 
@@ -149,6 +150,7 @@ vec3 faceSpanCorner(int axis, vec3 origin, vec2 cornerSel) {
 
 void main() {
     vOverflowEntityId = uvec2(0);
+    vOverflowAO = 1.0;
     vVisibilityExtent = ivec3(scatterFbResolution.xyz);
     const ivec2 canvasSize = textureSize(triangleDistances, 0);
     ivec2 ij;
@@ -160,7 +162,9 @@ void main() {
         // color. The rest of the vertex path is
         // bit-identical to the cell path; only the data source differs.
         const uint entryBase = uint(gl_InstanceID) * 4u;
-        vOverflowEntityId = entityIds[compactedCells[entryBase + 3u]];
+        const uint voxelAO = compactedCells[entryBase + 3u];
+        vOverflowEntityId = entityIds[overflowVoxelIndex(voxelAO)];
+        vOverflowAO = overflowAO(voxelAO);
         const uint packedCell = overflowEntryCell(compactedCells[entryBase + 0u]);
         ij = ivec2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
         color = unpackColor(compactedCells[entryBase + 1u]);

@@ -444,7 +444,8 @@ int check(int mode,int enabled,int shadows,uint entries,float visibility,
 int main(){
     if(check(3,1,1,0,.25f,0,0,vec3(0)))return 1;
     if(check(3,0,1,1,.25f,0,0,vec3(0)))return 2;
-    for(int mode:{1,2,9})if(check(mode,1,1,1,.25f,0,0,vec3(0)))return 3;
+    for(int mode:{2,9})if(check(mode,1,1,1,.25f,0,0,vec3(0)))return 3;
+    if(check(1,1,1,1,.25f,1,0,vec3(0)))return 3;
     if(check(8,1,1,1,.25f,0,1,vec3(0.f,128.f/255.f,128.f/255.f)))return 4;
     if(check(3,1,1,1,.25f,1,1,vec3(1.f,0.f,1.f)))return 5;
     if(check(3,1,1,1,.999f,1,1,vec3(0)))return 6;

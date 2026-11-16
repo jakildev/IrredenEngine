@@ -63,7 +63,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec4 _detachedViewToWorldPadding;
     // Frame the per-axis store is keyed in: .xy = store cell of the frame's iso
     // origin, .z = cardinal index of the view the key positions are rotated
-    // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
+    // into.
     uniform ivec4 perAxisStoreFrame;
     ivec4 _fogCeilingPadding;
     vec4 cameraViewRotation;
@@ -95,6 +95,9 @@ layout(std140, binding = 29) uniform FrameDataSun {
 
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
 layout(rgba8, binding = 1) writeonly uniform image2D canvasAO;
+layout(r32i, binding = 2) readonly uniform iimage2D perAxisDistancesX;
+layout(r32i, binding = 3) readonly uniform iimage2D perAxisDistancesY;
+layout(r32i, binding = 4) readonly uniform iimage2D perAxisDistancesZ;
 
 // Per-axis compacted occupied-cell list + per-axis indirect-args region.
 // On the per-axis path the dispatch runs over the compacted cells and each
@@ -162,6 +165,53 @@ vec3 singleCanvasPixelToWorld3D(ivec2 pixel, int rawDepth, int cardinalIndex) {
         pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cardinalIndex
     );
 #endif
+}
+
+int loadPerAxisDistance(int axis, ivec2 pixel) {
+    if (axis == 0) return imageLoad(perAxisDistancesX, pixel).x;
+    if (axis == 1) return imageLoad(perAxisDistancesY, pixel).x;
+    return imageLoad(perAxisDistancesZ, pixel).x;
+}
+
+float crossAxisContactOcclusion(
+    vec3 receiverOrigin,
+    int receiverFaceId,
+    ivec3 tangent,
+    ivec2 storeSize
+) {
+    const int candidateFaceId = perAxisContactFaceId(tangent);
+    const vec3 candidateOrigin =
+        perAxisContactCandidateOrigin(receiverOrigin, receiverFaceId, tangent);
+    const ivec2 candidateCell =
+        perAxisFaceOriginToStoreCell(candidateOrigin, perAxisStoreFrame);
+    if (!isInsideCanvas(candidateCell, storeSize)) return 0.0;
+
+    const int encoded = loadPerAxisDistance(candidateFaceId >> 1, candidateCell);
+    if (encoded == 0x7FFFFFFF) return 0.0;
+    const int recoveredFaceId = visibleFaceIds[decodeSlot(encoded)] ^ decodeFlipPerAxis(encoded);
+    if (recoveredFaceId != candidateFaceId) return 0.0;
+
+    const vec3 recoveredOrigin = perAxisCellToWorld3DSubCell(
+        candidateCell, encoded, recoveredFaceId, perAxisStoreFrame
+    );
+    const vec3 originError = recoveredOrigin - candidateOrigin;
+    if (dot(originError, originError) > 0.004) return 0.0;
+
+    const vec3 separation = perAxisFaceCenter(recoveredOrigin, recoveredFaceId) -
+                            perAxisFaceCenter(receiverOrigin, receiverFaceId);
+    const float distanceSquared = dot(separation, separation);
+    if (distanceSquared <= kAOMinDistanceSquared || distanceSquared >= kAORadiusSquared)
+        return 0.0;
+    const float receiverFacing = max(
+        dot(separation, vec3(faceOutwardNormal6I(receiverFaceId))), 0.0
+    );
+    const float occluderFacing = max(
+        dot(-separation, vec3(faceOutwardNormal6I(recoveredFaceId))), 0.0
+    );
+    const float facing = receiverFacing * occluderFacing;
+    if (facing <= 0.0) return 0.0;
+    const float rangeWeight = 1.0 - distanceSquared / kAORadiusSquared;
+    return facing / distanceSquared * rangeWeight * rangeWeight;
 }
 
 void main() {
@@ -261,6 +311,12 @@ void main() {
     }
 
     float occlusion = 0.0;
+    if (perAxis && (perAxisRoute & 2) == 0) {
+        occlusion += crossAxisContactOcclusion(pos3D, faceId, t1, size);
+        occlusion += crossAxisContactOcclusion(pos3D, faceId, -t1, size);
+        occlusion += crossAxisContactOcclusion(pos3D, faceId, t2, size);
+        occlusion += crossAxisContactOcclusion(pos3D, faceId, -t2, size);
+    }
     for (int dir = 0; dir < 4; ++dir) {
         ivec2 delta;
         if (dir == 0) delta = deltaT1;

@@ -154,7 +154,9 @@ inline void overflowAppendTap(
     );
     atomic_store_explicit(&scratch[entryBase + 1u], colorPacked, memory_order_relaxed);
     atomic_store_explicit(&scratch[entryBase + 2u], uint(voxelDistance), memory_order_relaxed);
-    atomic_store_explicit(&scratch[entryBase + 3u], voxelIndex, memory_order_relaxed);
+    atomic_store_explicit(
+        &scratch[entryBase + 3u], packOverflowVoxelAO(voxelIndex, 1.0f), memory_order_relaxed
+    );
 }
 #endif
 

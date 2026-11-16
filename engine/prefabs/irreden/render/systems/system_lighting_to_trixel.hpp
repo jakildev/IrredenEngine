@@ -110,6 +110,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // (entries stay albedo-only) — the A/B kill switch for the lit-vs-albedo
     // screenshot pair and GPU-delta diagnostics.
     bool overflowLightingDisabled_ = false;
+    bool crossAxisContactDisabled_ = false;
     // Readiness requires an executed main-canvas tick preserving voxel albedo.
     bool cardinalSurfaceLightingEligible_ = false;
     bool cardinalSurfaceLightingReady_ = false;
@@ -446,6 +447,11 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated() && shadow != nullptr) {
             if (perAxisSurfaceLightingEligible_) {
+                // Surface shading consumes albedo later in the fragment stage,
+                // but overflow records still need the contact-AO carrier that
+                // scatter forwards to that stage.
+                dispatchOverflowLighting(*perAxisCanvases_, true);
+                program_->use();
                 perAxisSurfaceLightingReady_ = true;
             } else {
                 program_->use();
@@ -503,7 +509,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             // at their recovered world pos, while the sun-depth map (slot 28) + light
             // volume are still bound from the cell pass above. Switches the compute
             // program; the caller leaves the ordinary lighting kernel active.
-            dispatchOverflowLighting(axes);
+            dispatchOverflowLighting(axes, false);
             program_->use();
         }
         // Restore slot 8 to the pool's active mask. dispatchOverflowLighting
@@ -537,13 +543,15 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // albedo-only. A bounded compute dispatch over the
     // overflow list recovers each entry's world pos + face normal and rewrites
     // its stored colour with the same world sample the per-axis cells got
-    // (sun cascade + light volume + Lambert, AO = 1.0); the unchanged framebuffer
-    // scatter then draws LIT slivers. Reuses every resource the cell pass bound —
+    // (sun cascade + light volume + Lambert + bounded contact AO); the unchanged
+    // framebuffer scatter then draws LIT slivers. In the surface-lighting route,
+    // the same kernel writes only the packed AO carrier and leaves albedo intact.
+    // Reuses every resource the cell pass bound —
     // sun-depth map (28), light volume (5), light list (4), and the four UBOs —
     // adding only the overflow scratch at kBufferIndex_OverflowLightingScratch (a
     // buffer slot dead during lighting; slot 28 holds the sun-depth map). Runs
     // only while rotating (per-axis canvases allocated), so yaw-0 is byte-identical.
-    void dispatchOverflowLighting(C_PerAxisTrixelCanvases &axes) {
+    void dispatchOverflowLighting(C_PerAxisTrixelCanvases &axes, bool aoOnly) {
         if (overflowLightingDisabled_ || axes.overflowCap_ <= 0 ||
             axes.winnerIds_.second == nullptr) {
             return;
@@ -564,16 +572,61 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             sizeof(ivec4),
             &overflowLayout
         );
+        if (aoOnly) {
+            const int overflowAoOnly = 1;
+            voxelFrameDataBuf_->subData(
+                offsetof(FrameDataVoxelToCanvas, perAxisStoreFrame_) + 3 * sizeof(int),
+                sizeof(overflowAoOnly),
+                &overflowAoOnly
+            );
+        }
+        if (crossAxisContactDisabled_) {
+            const int diagnosticPerAxisRoute = 3;
+            voxelFrameDataBuf_->subData(
+                offsetof(FrameDataVoxelToCanvas, perAxisRoute_),
+                sizeof(diagnosticPerAxisRoute),
+                &diagnosticPerAxisRoute
+            );
+        }
         // Whole-buffer bind; the kernel offsets into it via overflowScratchLayout.
         axes.winnerIds_.second->bindBase(
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_OverflowLightingScratch
         );
+        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+            axes.axes_[axis].distances_.second->bindAsImage(
+                10 + axis,
+                TextureAccess::READ_ONLY,
+                TextureFormat::R32I
+            );
+        }
         IRRender::device()->dispatchComputeIndirect(
             axes.cellIndirectArgs_.second,
             kOverflowLightingDispatchArgsOffsetBytes
         );
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        if (aoOnly) {
+            const int restoreOverflowAoOnly = 0;
+            voxelFrameDataBuf_->subData(
+                offsetof(FrameDataVoxelToCanvas, perAxisStoreFrame_) + 3 * sizeof(int),
+                sizeof(restoreOverflowAoOnly),
+                &restoreOverflowAoOnly
+            );
+        }
+        if (crossAxisContactDisabled_) {
+            const int restoreOverflowRoute = aoOnly ? 0 : 1;
+            voxelFrameDataBuf_->subData(
+                offsetof(FrameDataVoxelToCanvas, perAxisRoute_),
+                sizeof(restoreOverflowRoute),
+                &restoreOverflowRoute
+            );
+        }
+        if (mainCanvasTextures_ != nullptr) {
+            for (int slot = 10; slot <= 12; ++slot) {
+                mainCanvasTextures_->getTextureDistances()
+                    ->bindAsImage(slot, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            }
+        }
     }
 
     void beginTick() {
@@ -806,6 +859,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             IRRender::getNamedResource<ShaderProgram>("LightOverflowFacesProgram");
         // A/B kill switch for the lit-vs-albedo overflow screenshots + GPU delta.
         p->overflowLightingDisabled_ = std::getenv("IR_OVERFLOW_LIGHTING_DISABLE") != nullptr;
+        p->crossAxisContactDisabled_ = std::getenv("IR_CROSS_AXIS_CONTACT_AO_DISABLE") != nullptr;
         const char *surfaceLighting = std::getenv("IR_PERAXIS_SURFACE_LIGHTING");
         // Creates the switch singleton here, on the main thread. `0` forces the
         // per-face sampled receiver and compute fog lighting, `1` the surface

@@ -67,4 +67,26 @@ inline float3 perAxisFaceCenter(float3 faceOrigin, int faceId) {
     return faceOrigin - 0.5 * faceOutOfPlaneUnitAxis(faceId >> 1);
 }
 
+// The perpendicular face sharing a receiver edge belongs to the voxel one
+// step beyond both the receiver normal and the signed tangent. Face origins
+// use the positive-axis corner convention, so negative receiver normals and
+// positive tangents are the two offsets that survive that conversion.
+inline float3 perAxisContactCandidateOrigin(
+    float3 receiverOrigin, int receiverFaceId, int3 tangent
+) {
+    const int3 receiverOutward = faceOutwardNormal6I(receiverFaceId);
+    return receiverOrigin + float3(min(receiverOutward, int3(0)) + max(tangent, int3(0)));
+}
+
+inline int perAxisContactFaceId(int3 tangent) {
+    const int axis = tangent.x != 0 ? 0 : (tangent.y != 0 ? 1 : 2);
+    const int sign = tangent[axis];
+    return axis * 2 + (sign < 0 ? 1 : 0);
+}
+
+inline int2 perAxisFaceOriginToStoreCell(float3 faceOrigin, int4 storeFrame) {
+    const int3 latticeOrigin = roundHalfUp(faceOrigin);
+    return storeFrame.xy + pos3DtoPos2DIso(rotateCardinalZ(latticeOrigin, storeFrame.z));
+}
+
 #endif // IR_PER_AXIS_LIGHTING_METAL_INCLUDED

@@ -83,8 +83,7 @@ fragment FragmentOut IR_PER_AXIS_FRAGMENT_NAME(
         sunQueryStats.counts[counter] = 0u;
 #endif
     const float3 position = perAxisFaceClosestPoint(in.faceOrigin, in.faceId, in.quadParam);
-    // Overflow faces have no AO owner texel; their material uses AO 1.
-    const float ao = in.ownerPixel.x < 0 ? 1.0 : surfaceAO.read(uint2(in.ownerPixel)).r;
+    const float ao = in.ownerPixel.x < 0 ? in.overflowAO : surfaceAO.read(uint2(in.ownerPixel)).r;
     out.color = float4(worldSurfaceLighting(in.color.rgb, ao, position,
                        faceOutwardNormal6(in.faceId), sunFrameData.sunCasterViewToWorld, in.faceOrigin,
                        lighting, volumeParams, sunFrameData, sunDepthBuf, lights,

@@ -36,6 +36,7 @@ flat in uint vFogCarrier;
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out uvec2 FragEntityId;
 flat in uvec2 vOverflowEntityId;
+flat in float vOverflowAO;
 
 // HSV → RGB. Keep identical to hsvToRgb in c_shapes_to_trixel_body.glsl so
 // voxel-scatter depth-color is bit-exact with the SDF twin when mode is on.
@@ -84,8 +85,7 @@ void main() {
         sunQueryStats.counts[counter] = 0u;
 #endif
     const vec3 position = perAxisFaceClosestPoint(vFaceOrigin, vFaceId, vQuadParam);
-    // Overflow faces have no AO owner texel; their material uses AO 1.
-    const float ao = vOwnerPixel.x < 0 ? 1.0 : texelFetch(surfaceAO, vOwnerPixel, 0).r;
+    const float ao = vOwnerPixel.x < 0 ? vOverflowAO : texelFetch(surfaceAO, vOwnerPixel, 0).r;
     FragColor = vec4(worldSurfaceLighting(vColor.rgb, ao, position,
                       faceOutwardNormal6(vFaceId), sunCasterViewToWorld, vFaceOrigin
 #if IR_SUN_QUERY_STATS

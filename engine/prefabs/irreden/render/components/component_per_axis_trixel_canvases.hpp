@@ -340,7 +340,7 @@ struct PerAxisCanvasStore {
     //     this block.
     // [entriesBaseUints_, +overflowCap_*4) — overflow entries, 4 uints
     //     each: {iso cell x|y (16+15) with cut flag in bit 31, colorPacked,
-    //     encoded distance, voxel pool index}. Height is below 32768; the
+    //     encoded distance, 28-bit voxel pool index | 4-bit AO factor}. Height is below 32768; the
     //     exact (cell, value) pair the cardinal store would have written, so
     //     the scatter's overflow branch reuses the cell path's recovery
     //     bit-for-bit.
@@ -475,6 +475,12 @@ struct PerAxisCanvasStore {
     // VoxelPoolConfig::kMaxEdge is sized off this bound: the largest pool's
     // face demand fits four-word entries plus a signed-offset scratch prefix.
     static constexpr std::uint64_t kMaxOverflowRecords = std::uint64_t{1} << 29;
+    static_assert(
+        static_cast<std::uint64_t>(IRRender::VoxelPoolConfig::kMaxEdge) *
+                IRRender::VoxelPoolConfig::kMaxEdge * IRRender::VoxelPoolConfig::kMaxEdge <
+            (std::uint64_t{1} << 28),
+        "overflow AO packing requires the voxel-pool index to fit 28 bits"
+    );
     static_assert(
         static_cast<std::uint64_t>(IRRender::VoxelPoolConfig::kMaxEdge) *
                 IRRender::VoxelPoolConfig::kMaxEdge * IRRender::VoxelPoolConfig::kMaxEdge *

@@ -74,3 +74,23 @@ vec3 perAxisCellToWorld3DSubCell(ivec2 cell, int encoded, int faceId, ivec4 stor
 vec3 perAxisFaceCenter(vec3 faceOrigin, int faceId) {
     return faceOrigin - 0.5 * faceOutOfPlaneUnitAxis(faceId >> 1);
 }
+
+// The perpendicular face sharing a receiver edge belongs to the voxel one
+// step beyond both the receiver normal and the signed tangent. Face origins
+// use the positive-axis corner convention, so negative receiver normals and
+// positive tangents are the two offsets that survive that conversion.
+vec3 perAxisContactCandidateOrigin(vec3 receiverOrigin, int receiverFaceId, ivec3 tangent) {
+    const ivec3 receiverOutward = faceOutwardNormal6I(receiverFaceId);
+    return receiverOrigin + vec3(min(receiverOutward, ivec3(0)) + max(tangent, ivec3(0)));
+}
+
+int perAxisContactFaceId(ivec3 tangent) {
+    const int axis = tangent.x != 0 ? 0 : (tangent.y != 0 ? 1 : 2);
+    const int sign = tangent[axis];
+    return axis * 2 + (sign < 0 ? 1 : 0);
+}
+
+ivec2 perAxisFaceOriginToStoreCell(vec3 faceOrigin, ivec4 storeFrame) {
+    const ivec3 latticeOrigin = roundHalfUp(faceOrigin);
+    return storeFrame.xy + pos3DtoPos2DIso(rotateCardinalZ(latticeOrigin, storeFrame.z));
+}

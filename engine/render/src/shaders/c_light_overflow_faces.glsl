@@ -8,12 +8,15 @@
 // entry with its stored colorPacked. This compute pass, dispatched inside LIGHTING_TO_TRIXEL
 // AFTER the per-axis CELL lighting (so the baked sun-shadow map at slot 28 and
 // the 128^3 light volume are already bound), relights each overflow entry at its
-// recovered WORLD position — sun-shadow cascade + light-volume + Lambert,
-// AO = 1.0 — and rewrites the entry's stored colorPacked in place, so the
-// scatter composites LIT slivers while rotating.
+// recovered WORLD position — sun-shadow cascade + light-volume + Lambert plus
+// bounded cross-axis contact AO — and rewrites the entry's stored colorPacked
+// in place, so the scatter composites LIT slivers while rotating. The surface
+// route uses perAxisStoreFrame.w bit 0 to request AO-carrier-only output;
+// perAxisRoute bit 1 is the diagnostic cross-axis disable.
 //
-// Overflow faces own no canvas cell, so they get no screen-space AO. The world
-// sample path mirrors c_lighting_to_trixel.glsl's per-axis + world-receive
+// Overflow faces own no canvas cell, so contact AO is recovered directly from
+// the three per-axis distance stores. The world sample path mirrors
+// c_lighting_to_trixel.glsl's per-axis + world-receive
 // branches (same sun/volume/Lambert/HDR math + shared helpers), so a revealed
 // sliver shades consistently with the adjacent lit cells.
 //
@@ -67,7 +70,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     vec4 _detachedViewToWorldPadding;
     // Frame the per-axis store is keyed in: .xy = store cell of the frame's iso
     // origin, .z = cardinal index of the view the key positions are rotated
-    // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
+    // into, .w = overflow AO-only dispatch. FrameDataVoxelToCanvas::
+    // perAxisStoreFrame_ (offset 256).
     ivec4 perAxisStoreFrame;
 };
 
@@ -82,6 +86,9 @@ layout(std140, binding = 23) uniform LightVolumeParams {
 
 layout(binding = 3) uniform sampler2D paletteLUT;
 layout(binding = 5) uniform sampler3D lightVolume;
+layout(r32i, binding = 10) readonly uniform iimage2D perAxisDistancesX;
+layout(r32i, binding = 11) readonly uniform iimage2D perAxisDistancesY;
+layout(r32i, binding = 12) readonly uniform iimage2D perAxisDistancesZ;
 
 // The overflow entry list + ctrl block live in the per-axis resolve scratch.
 // Slot 28 is held by the sun-depth map this pass samples, so the scratch is
@@ -93,6 +100,40 @@ layout(binding = 5) uniform sampler3D lightVolume;
 layout(std430, binding = 8) buffer OverflowLightingScratch {
     uint overflowScratch[];
 };
+
+int loadPerAxisDistance(int axis, ivec2 pixel) {
+    if (axis == 0) return imageLoad(perAxisDistancesX, pixel).x;
+    if (axis == 1) return imageLoad(perAxisDistancesY, pixel).x;
+    return imageLoad(perAxisDistancesZ, pixel).x;
+}
+
+float overflowContactOcclusion(vec3 receiverOrigin, int receiverFaceId, ivec3 tangent) {
+    const int candidateFaceId = perAxisContactFaceId(tangent);
+    const vec3 candidateOrigin =
+        perAxisContactCandidateOrigin(receiverOrigin, receiverFaceId, tangent);
+    const ivec2 candidateCell =
+        perAxisFaceOriginToStoreCell(candidateOrigin, perAxisStoreFrame);
+    if (!isInsideCanvas(candidateCell, imageSize(perAxisDistancesX))) return 0.0;
+    const int encoded = loadPerAxisDistance(candidateFaceId >> 1, candidateCell);
+    if (encoded == 0x7FFFFFFF) return 0.0;
+    const int recoveredFaceId = visibleFaceIds[decodeSlot(encoded)] ^ decodeFlipPerAxis(encoded);
+    if (recoveredFaceId != candidateFaceId) return 0.0;
+    const vec3 recoveredOrigin = perAxisCellToWorld3DSubCell(
+        candidateCell, encoded, recoveredFaceId, perAxisStoreFrame
+    );
+    const vec3 originError = recoveredOrigin - candidateOrigin;
+    if (dot(originError, originError) > 0.004) return 0.0;
+    const vec3 separation = perAxisFaceCenter(recoveredOrigin, recoveredFaceId) -
+                            perAxisFaceCenter(receiverOrigin, receiverFaceId);
+    const float distanceSquared = dot(separation, separation);
+    if (distanceSquared <= 1.0e-6 || distanceSquared >= 4.0) return 0.0;
+    const float facing = max(
+        dot(separation, vec3(faceOutwardNormal6I(receiverFaceId))), 0.0
+    ) * max(dot(-separation, vec3(faceOutwardNormal6I(recoveredFaceId))), 0.0);
+    if (facing <= 0.0) return 0.0;
+    const float rangeWeight = 1.0 - distanceSquared / 4.0;
+    return facing / distanceSquared * rangeWeight * rangeWeight;
+}
 
 void main() {
     // The dispatch is a 2-D group grid (the GPU finalizer wraps past
@@ -106,7 +147,7 @@ void main() {
         return;
     }
     // Only the shadow and normals diagnostics recolor overflow faces.
-    if (lightingEnabled == 0 || (debugOverlayMode != 0 && debugOverlayMode != 3 && debugOverlayMode != 8)) {
+    if (lightingEnabled == 0 || (debugOverlayMode != 0 && debugOverlayMode != 1 && debugOverlayMode != 3 && debugOverlayMode != 8)) {
         return;
     }
 
@@ -114,6 +155,7 @@ void main() {
     const uint packedCell = overflowEntryCell(overflowScratch[entryBase + 0u]);
     const uint colorPacked = overflowScratch[entryBase + 1u];
     const int  rawDist = int(overflowScratch[entryBase + 2u]);
+    const uint voxelAO = overflowScratch[entryBase + 3u];
 
     const vec4 albedo = unpackColor(colorPacked);
 
@@ -135,11 +177,28 @@ void main() {
     const vec3 pos3D = perAxisCellToWorld3DSubCell(cell, rawDist, faceId, perAxisStoreFrame);
 
     // World-space lighting — mirrors c_lighting_to_trixel's world sample.
-    // AO = 1.0 (no canvas cell), sun-shadow via the shared cascade lookup at the
+    // Sun-shadow uses the shared cascade lookup at the
     // face's own world pos + normal (an overflow face owns no precomputed
     // canvasSunShadow texel), Lambert on the world normal. The sun-shadow darkens
     // only the directional term so a self-shadowed sliver keeps its ambient floor.
-    const float ao = 1.0;
+    vec3 tangentU, tangentV;
+    faceInPlaneUnitAxes(faceId >> 1, tangentU, tangentV);
+    float occlusion = 0.0;
+    if ((perAxisRoute & 2) == 0) {
+        occlusion += overflowContactOcclusion(pos3D, faceId, ivec3(tangentU));
+        occlusion += overflowContactOcclusion(pos3D, faceId, -ivec3(tangentU));
+        occlusion += overflowContactOcclusion(pos3D, faceId, ivec3(tangentV));
+        occlusion += overflowContactOcclusion(pos3D, faceId, -ivec3(tangentV));
+    }
+    const float ao = 1.0 - occlusion * 0.25;
+    overflowScratch[entryBase + 3u] = packOverflowVoxelAO(overflowVoxelIndex(voxelAO), ao);
+    if (debugOverlayMode == 1) {
+        overflowScratch[entryBase + 1u] = packColor(vec4(vec3(ao), albedo.a));
+        return;
+    }
+    if ((perAxisStoreFrame.w & 1) != 0) {
+        return;
+    }
     const float shadow = shadowsEnabled != 0
         ? perAxisSunShadowFactor(pos3D, faceId)
         : 1.0;
