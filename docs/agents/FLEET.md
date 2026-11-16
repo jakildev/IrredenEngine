@@ -360,7 +360,7 @@ For the first `(pending)` row in `fleet-claim stack-pr-state <worktree>`
    "fleet:wip"`, then `fleet-claim stack-set-pr <worktree> <issue> <branch> <pr-url>`
    and the native-link step (skipped when `<base>` is `master`).
 
-PR body: `## Summary`, `## Test plan`, `Closes #<N>`; no stack markers.
+PR body: `## Summary`, evidence table or `## Test plan`, `Closes #<N>`; no stack markers.
 After an upstream merge, `gh stack sync` before continuing local work
 downstream. Feedback on a stacked PR is pushed on its own branch.
 

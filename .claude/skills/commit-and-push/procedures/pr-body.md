@@ -2,52 +2,91 @@
 
 Canonical `--body-file` content for `commit-and-push` step 8.
 
+## What the page is for
+
+The owner reads a PR page to decide whether to merge; a reviewing agent
+reads it to check the proof. Write for the first reader and keep the
+second one's detail one click away. These rules hold for the body, for a
+review ([`review-pr`](../../../../docs/agents/skills/review-pr.md) step 5)
+and for every follow-up comment:
+
+- **State each fact once.** A reading in the evidence table is not repeated
+  in the summary, a note or a later comment. A review does not restate the
+  PR, and an amend comment does not restate the review.
+- **Outcome, not inventory or history.** Say what behaves differently after
+  the merge and why. The diff lists the files; the commit log has the order
+  things happened in.
+- **Visible: summary, screenshots, evidence. Collapsed: everything else.**
+  Agents read through a `<details>` block; people skip it.
+- **A table cell holds one command or one reading.** A row that needs
+  explaining gets a line under `## Notes for reviewer`.
+
+A body over about 40 visible lines is carrying something that belongs in
+the collapsed block, the issue thread or a committed document.
+
 ## Canonical template (single-PR mode)
 
 ```
 ## Summary
-- <one bullet per key change>
+<at most five lines: what changes for the engine or its user, and why>
 
-## Test plan
-- [x] <verification steps — written from observed output, ticked>
+## Screenshots
+| Before | After |
+|---|---|
+| ![before](<url>) | ![after](<url>) |
 
 ## Acceptance evidence
 | Criterion | Check run | Observed |
 |---|---|---|
-| <criterion from the plan> | `<command>` | <output line proving it fired> |
+| <criterion, abbreviated> | `<command>` | <the reading that proves it fired> |
+
+<details>
+<summary>Reviewer notes</summary>
 
 ## Plan departures
-- <optional — one line per plan-vs-tree difference you absorbed: what the plan said, what the tree has, what you did>
+- <one line per plan-vs-tree difference you absorbed: what the plan said, what the tree has, what you did>
 
 ## Notes for reviewer
-<optional — include only when the reviewer needs specific guidance>
+- <only what the diff and the table cannot show>
+
+</details>
 
 Closes #<issue-N>
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
-- `## Plan departures`: one line per difference between the issue's
-  `## Plan` and the tree you built against — a renamed symbol, a merged
-  neighbour, a dependency that landed under other names, a literal you
-  worded differently (PLANNING-PROTOCOL.md § "Drift at pickup"). The
-  acceptance grader reads it and grades substance. Omit when there were
-  none.
-- `## Notes for reviewer`: omit when there is nothing non-obvious.
-- `Closes #<issue-N>`: omit when the task's `Issue:` field is `(none)`.
-  Write `Refs #N` instead when your own `## Acceptance evidence` grades a
-  criterion as not shipped, so the issue stays open for the residual
-  (`scripts/fleet/fleet_scope_shipped.py` reads `Refs` as non-closing).
+- `## Screenshots`: every PR that touches a visual-file glob has this
+  section, straight after the summary. The **lead pair** (the shot where
+  the change shows best) is visible; any other pairs sit in one
+  `<details>` block under it. A change with no visual effect embeds no
+  image and says so in one line (`No visual change: 28 of 28 pairs
+  identical, IRShapeDebug`). Snippet and rules: the screenshot skill's
+  step 8. Omit the section for a PR that touches no visual path.
 - `## Acceptance evidence`: required whenever the body carries `Closes #N`
   and issue N states acceptance criteria anywhere — a `## Plan` comment's
   `### Acceptance criteria` or a bold `**Acceptance criteria**` line in
-  the body (the `fleet:no-plan` lane). One row per criterion; authoring
-  rules, the unverifiable-on-this-host convention, and fails-means-not-done
-  live in [`docs/agents/AUTHOR-PIPELINE.md`](../../../../docs/agents/AUTHOR-PIPELINE.md)
-  §"Acceptance evidence". Omit otherwise.
-- `## Test plan` records verification already run — each item written
-  from observed output and ticked. An unticked `- [ ]` box means the PR
-  is not ready to leave WIP: run it and tick it, or delete the item.
+  the body (the `fleet:no-plan` lane). One row per criterion; a check you
+  ran beyond the criteria is one more row. Authoring rules, the
+  unverifiable-on-this-host convention, and fails-means-not-done live in
+  [`docs/agents/AUTHOR-PIPELINE.md`](../../../../docs/agents/AUTHOR-PIPELINE.md)
+  §"Acceptance evidence".
+- `## Test plan`: only for a PR with no evidence table. A ticked list of
+  the checks already run, each written from observed output (`- [x]
+  <command>: <reading>`). Never both sections: the table already is the
+  test plan. An unticked `- [ ]` box means the PR is not ready to leave
+  WIP: run it and tick it, or delete the item.
+- The `<details>` block holds `## Plan departures` (one line per difference
+  between the issue's `## Plan` and the tree you built against —
+  PLANNING-PROTOCOL.md § "Drift at pickup"; the acceptance grader reads
+  it), `## Notes for reviewer`, and any `fleet-pr-overlap` rows the commit
+  flow asks you to quote. Drop a heading with nothing under it, and the
+  whole block when all are empty.
+- `Closes #<issue-N>` and a `Parked-until: #<N>` line stay outside the
+  block, each alone on its line. Omit `Closes` when the task's `Issue:`
+  field is `(none)`. Write `Refs #N` instead when your own evidence grades
+  a criterion as not shipped, so the issue stays open for the residual
+  (`scripts/fleet/fleet_scope_shipped.py` reads `Refs` as non-closing).
 
 Before creating a PR or updating an existing PR body, run the executable
 `fleet-pr-body-lint` gate from `commit-and-push` step 8a once for every

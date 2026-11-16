@@ -333,6 +333,10 @@ fleet-claim amending-release <N> <your-worktree-basename>
 gh pr comment <N> --body "Addressed feedback: <bullet list of what changed>"
 ```
 
+One line per finding: what it was, then what changed or why it was
+declined. New readings go in the body's evidence table, never here
+(`commit-and-push` `procedures/pr-body.md` § "What the page is for").
+
 ### Step f — leave the verdict label to the reviewer
 
 Remove a stale `fleet:needs-fix` if present; never stamp
