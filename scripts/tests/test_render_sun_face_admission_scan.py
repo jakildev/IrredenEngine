@@ -60,10 +60,21 @@ static uint g_capacity = 0u;
 static uint sourceFaceCapacity(uint) { return g_capacity; }
 static uint sourceFaceHeaderIndex(uint) { return kSourceFaceHeaderOffset; }
 static uint sourceFaceHierarchyNeededIndex(uint) { return 2u; }
-static uint atomicAdd(uint &word, uint value) { ++headerAdds; const uint old = word; word += value; return old; }
-static uint atomicExchange(uint &word, uint value) { const uint old = word; word = value; return old; }
+static uint atomicAdd(uint &word, uint value) {
+    ++headerAdds;
+    const uint old = word;
+    word += value;
+    return old;
+}
+static uint atomicExchange(uint &word, uint value) {
+    const uint old = word;
+    word = value;
+    return old;
+}
 static uint atomic_load_explicit(uint *word, int) { return *word; }
-static uint atomic_fetch_add_explicit(uint *word, uint value, int) { return atomicAdd(*word, value); }
+static uint atomic_fetch_add_explicit(uint *word, uint value, int) {
+    return atomicAdd(*word, value);
+}
 static void atomic_store_explicit(uint *word, uint value, int) { *word = value; }
 """
 
@@ -162,7 +173,8 @@ class SunFaceAdmissionScanTest(unittest.TestCase):
     def test_mutations_fail(self):
         mutations = {
             "inclusive": lambda body: replace_once(
-                body, "total + sharedRecordCounts[lane] - count", "total + sharedRecordCounts[lane]"),
+                body, "total + sharedRecordCounts[lane] - count",
+                "total + sharedRecordCounts[lane]"),
             "header_per_lane": lambda body: replace_once(
                 body, "if (lane == 0u) {", "if (lane < 2u) {"),
             "short_rounds": lambda body: replace_once(
