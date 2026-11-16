@@ -112,13 +112,13 @@ plan goes stale on the next surface move and costs a re-plan, not a rebase:
 
      **Park it when no later planner could do better.** Leaving
      `fleet:needs-plan` on is right when the gap is more planning thought.
-     When the blocker needs a human action — refuted premise, target code
-     not on master, parent `fleet:design-blocked`, superseded issue — also
-     add `fleet:needs-human` (keep `fleet:needs-plan` and `human:approved`),
-     comment exactly what the human must do (close, add `**Blocked by:**
-     #N`, revise direction), and `planning-release`. The planning
-     projection drops a parked issue and `planning-claim` refuses it; the
-     human removing `fleet:needs-human` re-enters it.
+     A blocker or one-OS host the plan locks is not a park: set the line
+     with `fleet-issue set-field`, citing the plan decision. When the
+     blocker needs a human action — refuted premise, parent
+     `fleet:design-blocked`, superseded issue — also add `fleet:needs-human`
+     (keep `fleet:needs-plan` and `human:approved`), comment what the human
+     must do (close, revise direction), and `planning-release`. A parked
+     issue leaves the projection; removing `fleet:needs-human` re-enters it.
 
      No choreography: no file-by-file step lists, paste-ready code,
      line-number anchors, or pickup instructions beyond a phase-0 bail. An

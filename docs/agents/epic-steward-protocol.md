@@ -52,7 +52,9 @@ artifacts — umbrella bodies, comments, labels — and never pushes code.
   between children of a claimed umbrella (human ruling, 2026-10-06). Edit
   the line to match the recorded gate, one `#N` per line, and record the
   edit as a ledger event citing the Decision. Never add a gate no recorded
-  decision names, and never touch a child of an unclaimed umbrella.
+  decision names, and never touch a child of an unclaimed umbrella. A gate
+  to an issue outside the epic is written with `fleet-issue set-field`
+  when a recorded Decision names it.
 - **Never commit anything.** **Never touch `human:*` labels.**
 - **Never answer non-epic design blocks** — a `fleet:design-blocked` PR
   whose backing issue is not on a claimed umbrella's checklist is the

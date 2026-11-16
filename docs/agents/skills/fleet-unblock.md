@@ -70,6 +70,7 @@ points here and answers the delta keys below
 | Orphan claim labels, a stack whose base merged | `architect-protocol.md` self-heal step | nothing |
 | Epic whose only remaining children are ghosts or closed | closes the ghosts; the steward closes the umbrella | nothing |
 | `fleet:approved` PR in the merge queue | nothing | merges |
+| `fleet:approved` PR labeled `fleet:checks-red` | nothing: a check failed on its head, so it is not listed as ready to merge | nothing until the head is green |
 | Human-filed issue that should close as not planned, fleet self-config, an objective amendment | asks; closes, files or edits on the answer | answers |
 
 ## Step 1 — Survey
