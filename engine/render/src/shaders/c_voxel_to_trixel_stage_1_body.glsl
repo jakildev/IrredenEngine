@@ -300,7 +300,7 @@ void overflowAppendTap(
         atomicAdd(perAxisWinnerIds[ctrlBase + 5u], 1u);
         return;
     }
-    const uint entryBase = uint(overflowScratchLayout.z) + idx * 4u;
+    const uint entryBase = uint(overflowScratchLayout.z) + idx * kFaceSortRecordWords;
     perAxisWinnerIds[entryBase + 0u] =
         packOverflowEntryCell(cardPix, isCutFace);
     perAxisWinnerIds[entryBase + 1u] = colorPacked;

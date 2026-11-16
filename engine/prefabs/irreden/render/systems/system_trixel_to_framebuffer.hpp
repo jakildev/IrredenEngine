@@ -794,7 +794,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_PerAxisCellCompacted,
                 static_cast<std::ptrdiff_t>(axes.entriesBaseUints_) * sizeof(std::uint32_t),
-                static_cast<size_t>(axes.overflowCap_) * 4u * sizeof(std::uint32_t)
+                static_cast<size_t>(axes.overflowCap_) * kFaceSortRecordWords *
+                    sizeof(std::uint32_t)
             );
             IRRender::device()->drawElementsInstancedIndirect(
                 DrawMode::TRIANGLES,

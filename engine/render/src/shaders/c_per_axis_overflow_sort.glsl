@@ -8,14 +8,14 @@
 // indices with atomicAdd, and entry index IS draw order in the overflow
 // scatter branch (v_peraxis_scatter.glsl indexes by gl_InstanceID), so
 // unsorted, equal-key entries resolve their depth contest by run-variant
-// arrival order. This pass in-place bitonic-sorts the appended 4-word
+// arrival order. This pass in-place bitonic-sorts the appended fixed-width
 // entries by full record value between the append and the indirect draw,
 // making draw order — and therefore every equal-key winner — a pure
 // function of the appended SET.
 //
 // Sort key: lexicographic (masked cell, encoded distance, color, cut flag, voxel index).
 // The flag in word 0 bit 31 breaks only otherwise identical ties; this groups
-// cell ties adjacently. The key spans ALL FOUR words, so key-equality and
+// cell ties adjacently. The key spans all kFaceSortRecordWords words, so key-equality and
 // record-equality coincide — which is why the compare-exchange can be
 // strict (equal records never swap) without making draw order depend on
 // arrival order: two fully-equal records are indistinguishable in the output.
@@ -24,7 +24,7 @@
 // the entry cap is a power of two by construction in
 // component_per_axis_trixel_canvases.hpp):
 //   3 — write current-frame indirect grids into sortArgs.
-//   0 — sentinel-fill every slot in [liveCount, span) with 0xFFFFFFFF^4. The
+//   0 — sentinel-fill every slot in [liveCount, span) with an all-ones record. The
 //       region above the live range holds stale prior-frame entries, NOT
 //       zeros — the fill is mandatory, every rotating frame, before any
 //       network step. A real entry cannot tie the sentinel: word 0 packs

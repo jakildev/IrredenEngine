@@ -122,7 +122,7 @@ TEST(PerAxisCanvasLifecycle, ScratchUniformUsesTheOwnedRegionOffsets) {
     EXPECT_EQ(store.overflowScratchLayout(), IRMath::ivec4(0, 128, 256, 65536));
 }
 
-TEST(PerAxisCanvasLifecycle, LargestPoolAndScratchPrefixFitFourWordAddressing) {
+TEST(PerAxisCanvasLifecycle, LargestPoolAndScratchPrefixFitSortRecordAddressing) {
     using Store = IRComponents::PerAxisCanvasStore;
     constexpr int edge = IRRender::VoxelPoolConfig::kMaxEdge;
     const int capacity = Store::overflowCapacityFor(0, edge * edge * edge);
@@ -131,7 +131,8 @@ TEST(PerAxisCanvasLifecycle, LargestPoolAndScratchPrefixFitFourWordAddressing) {
         capacity
     );
     EXPECT_LE(
-        static_cast<std::uint64_t>(layout.z) + static_cast<std::uint64_t>(layout.w) * 4u - 1u,
+        static_cast<std::uint64_t>(layout.z) +
+            static_cast<std::uint64_t>(layout.w) * IRRender::kFaceSortRecordWords - 1u,
         std::numeric_limits<std::uint32_t>::max()
     );
 }
