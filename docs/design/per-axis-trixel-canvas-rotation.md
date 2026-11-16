@@ -1479,7 +1479,10 @@ the full rotation, which is the part #1396 did not do).
   over each axis canvas, gated on `residualYaw != 0`. The framebuffer-resolution
   **MRT G-buffer / post-composite per-fragment** approach (the pre-implementation
   findings note below) is **rejected**: the engine keeps lighting at trixel
-  resolution (hard product constraint — no fragment-rate lighting). The two
+  resolution (hard product constraint — no fragment-rate lighting). Sun
+  visibility on voxel faces is the one exception: by default the scatter
+  fragment takes the exact query at its own point on the face
+  ([voxel receiver yaw continuity](voxel-receiver-yaw-continuity.md)). The two
   cross-canvas maps stay **world-space and SHARED** — the sun-shadow depth SSBO
   and the 128³ light volume are sampled by world-pos reconstructed per-axis
   (`perAxisCellToWorld3D`, the exact `faceOriginFromInPlane` inverse), never from

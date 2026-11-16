@@ -216,8 +216,8 @@ ROUTING_CASES = r"""
 int main(){
     const char* values[]={nullptr,"","0","1","01","true","1 ","11"};
     for(const char* value:values){
-        const bool expected=value && std::strcmp(value,"1")==0;
-        if(enabledFromEnv(value)!=expected){std::fprintf(stderr,"explicit opt-in\n");return 1;}
+        const bool expected=!(value && std::strcmp(value,"0")==0);
+        if(enabledFromEnv(value)!=expected){std::fprintf(stderr,"explicit opt-out\n");return 1;}
     }
     int resource=1;
     for(bool glitch:{false,true})for(bool voxelPool:{false,true})
@@ -338,9 +338,13 @@ def routing_harness(variant):
         tick, r"if\s*\(\s*entity\s*==\s*perAxisCanvasEntity_\s*&&\s*perAxisCanvases_")
     consume = re.search(r"scatterLightingEnabled_\s*=\s*[^;]+;",
                         functions(consumer, "beginTick"))[0]
-    enabled = re.search(
-        r"if\s*\((surfaceLighting\s*!=\s*nullptr\s*&&\s*surfaceLighting\[0\][^{};]*)\)"
-        r"\s*\{\s*IRPrefab::PerAxisSurfaceLighting::setEnabled\(true\);", producer)[1]
+    recognised, requested = re.search(
+        r"if\s*\((surfaceLighting\s*!=\s*nullptr\s*&&[^{};]*)\)"
+        r"\s*\{\s*IRPrefab::PerAxisSurfaceLighting::setEnabled\(([^;]*)\);", producer).groups()
+    default = re.search(
+        r"bool enabled_ = (true|false);",
+        (ROOT / "engine/prefabs/irreden/render/components/"
+                "component_per_axis_surface_lighting.hpp").read_text())[1]
     if variant == "stale-ready":
         reset = re.sub(r"perAxisSurfaceLightingReady_\s*=\s*false\s*;", "", reset)
     elif variant == "ready-before-tick":
@@ -352,8 +356,10 @@ def routing_harness(variant):
                       r"SurfaceFogRoute::FALLBACK\)", "if (false)", gate)
     elif variant == "relight-eligible":
         publish = re.sub(r"if\s*\(perAxisSurfaceLightingEligible_\)", "if (false)", publish)
-    elif variant == "presence-enables":
-        enabled = "surfaceLighting != nullptr"
+    elif variant == "presence-disables":
+        recognised, requested = "surfaceLighting != nullptr", "false"
+    elif variant == "default-off":
+        default = "false"
     elif variant == "per-axis-glitch-gate":
         gate = gate.replace("perAxisSurfaceLightingEligible_ =",
                             "perAxisSurfaceLightingEligible_ = "
@@ -403,7 +409,8 @@ struct ShadowProducer {
             "const auto& behavior=IREntity::behavior;" + skip_detached + publish + "}\n};\n"
             "bool consume(const Producer* lighting_){bool scatterLightingEnabled_=false;"
             + consume + "return scatterLightingEnabled_;}\n" + shadow_adapter +
-            "bool enabledFromEnv(const char* surfaceLighting){return " + enabled + ";}\n"
+            "bool enabledFromEnv(const char* surfaceLighting){return (" + recognised + ") ? ("
+            + requested + ") : " + default + ";}\n"
             + ROUTING_CASES)
 
 
@@ -584,7 +591,7 @@ class PerAxisSurfaceLightingTest(unittest.TestCase):
     def test_albedo_producer_consumer_readiness(self):
         original = routing_harness("production")
         for variant in ("production", "stale-ready", "ready-before-tick", "consumer-eligibility",
-                        "fog-accepted", "relight-eligible", "presence-enables",
+                        "fog-accepted", "relight-eligible", "presence-disables", "default-off",
                         "per-axis-glitch-gate", "per-axis-voxel-pool", "shadow-always-sampled",
                         "shadow-always-skipped", "shadow-missing-consumer", "shadow-stale-route"):
             with self.subTest(variant=variant), tempfile.TemporaryDirectory() as temporary:

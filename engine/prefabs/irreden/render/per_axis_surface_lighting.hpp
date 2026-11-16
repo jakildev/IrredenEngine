@@ -6,12 +6,14 @@
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_per_axis_surface_lighting.hpp>
 
-// Per-axis surface lighting: when enabled, an eligible lit pipeline
-// (camera-iso per-axis canvas, no debug overlay) shades per-axis voxel faces
-// per output fragment at the continuous point on the face, so sun-shadow
-// edges on voxel receivers are smooth instead of stepping a whole face at a
-// time under camera yaw. Work scales with output fragments and shadow candidates.
-// Read every frame, so it can change at runtime.
+// Per-axis surface lighting: when enabled (the default), an eligible lit
+// pipeline (camera-iso per-axis canvas, no debug overlay) shades per-axis voxel
+// faces per output fragment at the continuous point on the face, the receiver
+// the cardinal surface route uses, so a sun-shadow edge on a voxel receiver
+// keeps its shape as the camera leaves or reaches a cardinal yaw. Disabled, a
+// rotating frame takes one query per whole face at its centre. Work scales
+// with output fragments and shadow candidates. Read every frame, so it can
+// change at runtime.
 //
 // The same switch admits both surface routes, cardinal and per-axis, on a
 // pipeline that registers FOG_TO_TRIXEL; without it fog keeps lighting in

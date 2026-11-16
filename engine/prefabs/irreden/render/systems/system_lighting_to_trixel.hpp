@@ -807,10 +807,13 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // A/B kill switch for the lit-vs-albedo overflow screenshots + GPU delta.
         p->overflowLightingDisabled_ = std::getenv("IR_OVERFLOW_LIGHTING_DISABLE") != nullptr;
         const char *surfaceLighting = std::getenv("IR_PERAXIS_SURFACE_LIGHTING");
-        // Creates the switch singleton here, on the main thread; the flag turns it on.
+        // Creates the switch singleton here, on the main thread. `0` selects the
+        // per-face sampled receiver for comparisons; `1` states the default.
         IRPrefab::PerAxisSurfaceLighting::state();
-        if (surfaceLighting != nullptr && surfaceLighting[0] == '1' && surfaceLighting[1] == '\0') {
-            IRPrefab::PerAxisSurfaceLighting::setEnabled(true);
+        if (surfaceLighting != nullptr &&
+            (surfaceLighting[0] == '0' || surfaceLighting[0] == '1') &&
+            surfaceLighting[1] == '\0') {
+            IRPrefab::PerAxisSurfaceLighting::setEnabled(surfaceLighting[0] == '1');
         }
         p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("LightingToTrixelFrameData");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");

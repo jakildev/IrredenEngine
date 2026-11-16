@@ -4,7 +4,7 @@
 #include <irreden/render/per_axis_surface_lighting.hpp>
 
 // The per-axis surface lighting switch lives on the C_PerAxisSurfaceLighting
-// singleton: off until set, readable back, and kept across a scene
+// singleton: on by default, readable back, and kept across a scene
 // transition like every singleton row. On a fog pipeline the same switch
 // admits the surface routes, and `surfaceFogRoute` decides whether the
 // composite fogs them or fog keeps lighting in compute.
@@ -16,23 +16,23 @@ class PerAxisSurfaceLightingTest : public testing::Test {
     IREntity::EntityManager m_entity_manager;
 };
 
-TEST_F(PerAxisSurfaceLightingTest, OffUntilEnabledAndReadsBack) {
-    EXPECT_FALSE(IRPrefab::PerAxisSurfaceLighting::isEnabled());
-    ASSERT_NE(IREntity::singletonOrNull<IRComponents::C_PerAxisSurfaceLighting>(), nullptr);
-
-    IRPrefab::PerAxisSurfaceLighting::setEnabled(true);
+TEST_F(PerAxisSurfaceLightingTest, OnByDefaultAndReadsBack) {
     EXPECT_TRUE(IRPrefab::PerAxisSurfaceLighting::isEnabled());
+    ASSERT_NE(IREntity::singletonOrNull<IRComponents::C_PerAxisSurfaceLighting>(), nullptr);
 
     IRPrefab::PerAxisSurfaceLighting::setEnabled(false);
     EXPECT_FALSE(IRPrefab::PerAxisSurfaceLighting::isEnabled());
+
+    IRPrefab::PerAxisSurfaceLighting::setEnabled(true);
+    EXPECT_TRUE(IRPrefab::PerAxisSurfaceLighting::isEnabled());
 }
 
 TEST_F(PerAxisSurfaceLightingTest, SurvivesSceneTransition) {
-    IRPrefab::PerAxisSurfaceLighting::setEnabled(true);
+    IRPrefab::PerAxisSurfaceLighting::setEnabled(false);
 
     IREntity::resetGameplay();
 
-    EXPECT_TRUE(IRPrefab::PerAxisSurfaceLighting::isEnabled());
+    EXPECT_FALSE(IRPrefab::PerAxisSurfaceLighting::isEnabled());
 }
 
 using IRComponents::C_CanvasFogOfWar;
@@ -64,10 +64,10 @@ TEST(SurfaceFogRoute, PipelineWithoutAFogPassRunsUnfogged) {
     EXPECT_EQ(surfaceFogRoute(false, &observers, true, true), SurfaceFogRoute::NONE);
 }
 
-TEST(SurfaceFogRoute, FogPipelineKeepsComputeUntilOptedIn) {
+TEST(SurfaceFogRoute, FogPipelineKeepsComputeWhileSwitchedOff) {
     const FrameDataFogObservers observers = observersWithSources(1);
     EXPECT_EQ(surfaceFogRoute(true, &observers, false, false), SurfaceFogRoute::FALLBACK);
-    // A main canvas without fog on a fog pipeline is still a default-off frame.
+    // A main canvas without fog on a fog pipeline still follows the switch.
     EXPECT_EQ(surfaceFogRoute(true, nullptr, false, false), SurfaceFogRoute::FALLBACK);
 }
 
