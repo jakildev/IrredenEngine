@@ -310,6 +310,10 @@
 # FLEET_DISPATCHER_USAGE_SCOPE_SEVEN_DAY_OVERAGE_INCLUDED=fable
 
 # FLEET_DISPATCHER_USAGE_STALE_SECONDS=3600
+# A future-reset breach older than this gets one real-session retest. The
+# retest holds every other launch on that scope until it ends; no new breach
+# clears the cached record, while a fresh event restarts this interval.
+# FLEET_DISPATCHER_USAGE_RETEST_SECONDS=21600
 # FLEET_DISPATCHER_RESET_GRACE_SECONDS=600
 
 # --- Dispatch stagger + short-window 429 backoff --------------------------

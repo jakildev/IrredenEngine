@@ -333,6 +333,14 @@ Rejections remain binding through that identity's reset plus grace; missing
 or stale core/GraphQL observations close only the consuming lane. A healthy
 self-report does not clear a refusal from real traffic.
 
+Anthropic observations with a future reset remain binding, but after
+`FLEET_DISPATCHER_USAGE_RETEST_SECONDS` (default six hours) the dispatcher
+admits one real launch on the gated account or model-family scope. Other
+launches remain held. A fresh breach restarts the interval; when the admitted
+launch ends without refreshing that record, cleanup removes it. Closed status
+lines report the observation age and, once eligible, the equivalent targeted
+`fleet-up --reset-usage <type>` remedy.
+
 Pane admission reads the user pool, independently of provider quota gates.
 On an App-configured host the scout gates daemon polling and recurring
 maintenance on the App pool, while continuing quota probes for recovery.

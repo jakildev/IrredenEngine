@@ -518,6 +518,7 @@ read_dispatch_mode() {
 # the wall's own `rejected` event at 100%, holds closed once it is hit.
 USAGE_STALE_SECONDS="${FLEET_DISPATCHER_USAGE_STALE_SECONDS:-3600}"
 RESET_GRACE_SECONDS="${FLEET_DISPATCHER_RESET_GRACE_SECONDS:-600}"
+USAGE_RETEST_SECONDS="${FLEET_DISPATCHER_USAGE_RETEST_SECONDS:-21600}"
 # Validate-and-clamp: a non-numeric override (operator typo, trailing
 # unit suffix like "600s") would crash the inline-Python `int()` cast,
 # emit nothing on stdout, and silently flip the gate to OPEN — the same
@@ -527,6 +528,11 @@ if ! [[ "$RESET_GRACE_SECONDS" =~ ^[0-9]+$ ]]; then
     printf '[%s dispatcher] RESET_GRACE_SECONDS=%q is not a non-negative integer; falling back to 600\n' \
         "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$RESET_GRACE_SECONDS" >&2
     RESET_GRACE_SECONDS=600
+fi
+if ! [[ "$USAGE_RETEST_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+    printf '[%s dispatcher] USAGE_RETEST_SECONDS=%q is not a positive integer; falling back to 21600\n' \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$USAGE_RETEST_SECONDS" >&2
+    USAGE_RETEST_SECONDS=21600
 fi
 
 # Export the gate env vars so the inline-Python in usage_gate_status
@@ -1274,12 +1280,18 @@ write_dispatch_record() {
     # wrapper derives its class from the model. Not `class`: that is the
     # concurrency-cap key, which a routed launch can legitimately differ from.
     local launch_class="${7:-}"
+    local retest_record="${8:-}" retest_observed="${9:-}" retest_started="${10:-}" retest_token="${11:-}"
     local ts epoch extra="" shadow=""
     ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     epoch=$(date +%s)   # read back by cleanup_stale_dispatches for the empty-exit streak
     extra=$(printf ',"runtime":"%s"' "$runtime")
     [[ -n "$agent" ]] && extra+=$(printf ',"agent":"%s"' "$agent")
     [[ -n "$launch_class" ]] && extra+=$(printf ',"launch_class":"%s"' "$launch_class")
+    if [[ -n "$retest_record" && "$retest_observed" =~ ^[0-9]+$ \
+          && "$retest_started" =~ ^[0-9]+$ && -n "$retest_token" ]]; then
+        extra+=$(printf ',"usage_retest_record":"%s","usage_retest_observed":%s,"usage_retest_started":%s,"usage_retest_token":"%s"' \
+            "$retest_record" "$retest_observed" "$retest_started" "$retest_token")
+    fi
     if [[ -n "$target" ]]; then
         extra+=$(printf ',"target":"%s"' "$target")
         [[ "$target" == plan:* ]] && extra+=$(printf ',"plan_issue":"%s"' "${target#plan:}")
@@ -1916,6 +1928,7 @@ cleanup_stale_dispatches() {
         return
     fi
     local file role pane dispatched_epoch class claimed target agent verdict updated detail runtime shadow
+    local retest_record retest_observed retest_started retest_token retest_result
     for file in "$DISPATCH_DIR"/*.json; do
         [[ -e "$file" ]] || continue
         role=$(sed -n 's/.*"role":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
@@ -1940,6 +1953,10 @@ cleanup_stale_dispatches() {
         target=$(sed -n 's/.*"target":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
         agent=$(sed -n 's/.*"agent":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
         runtime=$(sed -n 's/.*"runtime":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
+        retest_record=$(sed -n 's/.*"usage_retest_record":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
+        retest_observed=$(sed -n 's/.*"usage_retest_observed":\([0-9]*\).*/\1/p' "$file" | head -n 1)
+        retest_started=$(sed -n 's/.*"usage_retest_started":\([0-9]*\).*/\1/p' "$file" | head -n 1)
+        retest_token=$(sed -n 's/.*"usage_retest_token":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
         verdict=""
         shadow=$(sed -n 's/.*"shadow_merged_pr":\([0-9][0-9]*\).*/\1/p' "$file" | head -n 1)
         if [[ "${runtime:-claude}" == claude ]] && dispatch_hit_usage_limit "$pane" "$dispatched_epoch"; then
@@ -1972,6 +1989,12 @@ cleanup_stale_dispatches() {
                     ;;
                 abandoned) claimed=no; handle_abandoned_target "$target" "$agent" "$role" ;;
             esac
+        fi
+        if [[ -n "$retest_record" && "$retest_observed" =~ ^[0-9]+$ \
+              && "$retest_started" =~ ^[0-9]+$ && -n "$retest_token" ]]; then
+            retest_result=$(usage_retest_finish "$retest_record" "$retest_observed" \
+                "$retest_started" "$retest_token" 2>/dev/null || echo failed)
+            log "usage retest $retest_record completed: $retest_result"
         fi
         # Fold the just-finished dispatch into the role's empty-exit streak.
         # Legacy records (pre-upgrade, no dispatched_epoch) skip this silently;
@@ -2052,6 +2075,7 @@ usage_gate_status() {
     FLEET_DAEMON_GH_IDENTITY="$daemon_identity" LIMIT_DELAY="$LIMIT_DELAY" \
     USAGE_STALE_SECONDS="$USAGE_STALE_SECONDS" \
     RESET_GRACE_SECONDS="$RESET_GRACE_SECONDS" \
+    USAGE_RETEST_SECONDS="$USAGE_RETEST_SECONDS" \
     FLEET_LIB_DIR="$FLEET_LIB_DIR" python3 - <<'PY'
 import json
 import os
@@ -2062,10 +2086,12 @@ from datetime import datetime
 
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 from fleet_github_identity import quota_gate
+from fleet_usage_retest import format_age, retest_status
 
 usage_dir = pathlib.Path(os.environ["USAGE_DIR"])
 stale_s = int(os.environ.get("USAGE_STALE_SECONDS", "3600"))
 reset_grace_s = int(os.environ.get("RESET_GRACE_SECONDS", "600"))
+retest_s = int(os.environ.get("USAGE_RETEST_SECONDS", "21600"))
 try:
     breaker_s = int(os.environ.get("LIMIT_DELAY", "900"))
 except ValueError:
@@ -2194,7 +2220,7 @@ if scope in ("shared", "daemon"):
     print(f"{gate['state']}:{detail}")
     sys.exit(0)
 
-now = int(time.time())
+now = int(os.environ.get("FLEET_USAGE_NOW", time.time()))
 scope = os.environ.get("FLEET_USAGE_RUNTIME", "all")
 model_arg = os.environ.get("FLEET_USAGE_MODEL", "")
 # A model outside every known family matches no model-scoped window.
@@ -2297,7 +2323,9 @@ for path in sorted(usage_dir.glob("*.json")):
     if util_f >= th or data.get("status") == "rejected":
         if util_f < th:
             note += "; a rejected wall binds past its threshold"
-        breaches.append((util_f, th, rl_type, resets_at, note, scope_note))
+        retest = retest_status(usage_dir, path.name, data, now, retest_s)
+        breaches.append((util_f, th, rl_type, raw_type, resets_at, note, scope_note,
+                         path.name, retest))
     if top_observation is None or util_f > top_observation[0]:
         top_observation = (util_f, th, rl_type, resets_at, note, scope_note)
 
@@ -2307,12 +2335,22 @@ if breaches:
     # Multiple breaches: report the highest utilization. That's the
     # most pressing one and what the operator will care about first.
     breaches.sort(key=lambda x: x[0], reverse=True)
-    util_f, th, rl_type, resets, note, scope_note = breaches[0]
+    util_f, th, rl_type, raw_type, resets, note, scope_note, record_name, retest = breaches[0]
+    scope_retestable = all(item[-1].eligible for item in breaches)
     pct = int(round(util_f * 100))
     thr_pct = int(round(th * 100))
     resets_part = f" resets={resets}" if resets else ""
     cmp = ">=" if util_f >= th else "<"
-    print(f"closed:{rl_type} util={pct}% ({cmp} {thr_pct}%{note}){scope_note}{resets_part}")
+    age_part = (f" observed={format_age(retest.age_seconds)} ago"
+                if retest.age_seconds is not None else " observed=unknown")
+    remedy = ""
+    if retest.age_seconds is not None and retest.age_seconds >= retest_s:
+        retest_state = retest.state if scope_retestable or not retest.eligible else "blocked-by-other-breach"
+        remedy = f" clear='fleet-up --reset-usage {raw_type}' retest={retest_state}"
+        if retest.eligible and scope_retestable:
+            remedy += f" retest-record={record_name}"
+    print(f"closed:{rl_type} util={pct}% ({cmp} {thr_pct}%{note}){scope_note}{resets_part}"
+          f"{age_part}{remedy}")
 elif breaker is not None:
     age, rl_type, family = breaker
     print(f"closed:{family} breaker — a {family} launch hit the {rl_type} wall {age}s ago"
@@ -2326,6 +2364,65 @@ elif top_observation is not None:
     print(f"open:{rl_type} util={pct}% (< {thr_pct}%{note}){scope_note}")
 else:
     print("open")
+PY
+}
+
+USAGE_RETEST_RECORD=""
+USAGE_RETEST_OBSERVED=""
+USAGE_RETEST_STARTED=""
+USAGE_RETEST_TOKEN=""
+
+usage_gate_route_open() {
+    [[ "$1" == open* || "$1" == *" retest=available retest-record="* ]]
+}
+
+usage_retest_acquire() {
+    local status="$1" pane_key="$2" record now token out
+    USAGE_RETEST_RECORD="" USAGE_RETEST_OBSERVED="" USAGE_RETEST_STARTED="" USAGE_RETEST_TOKEN=""
+    [[ "$status" == *" retest=available retest-record="* ]] || return 1
+    record="${status##* retest-record=}"
+    record="${record%% *}"
+    [[ "$record" =~ ^[A-Za-z0-9._-]+\.json$ ]] || return 1
+    now="${FLEET_USAGE_NOW:-$(date +%s)}"
+    token="${pane_key}-${now}-${RANDOM}"
+    out=$(python3 - "$FLEET_LIB_DIR" "$USAGE_DIR" "$record" "$now" "$USAGE_RETEST_SECONDS" "$token" <<'PY'
+import pathlib
+import sys
+
+sys.path.insert(0, sys.argv[1])
+from fleet_usage_retest import acquire
+
+state = acquire(pathlib.Path(sys.argv[2]), sys.argv[3], int(sys.argv[4]), int(sys.argv[5]), sys.argv[6])
+if state is None:
+    raise SystemExit(1)
+print(state["record"], state["observed_at"], state["started_at"], state["token"], sep="\t")
+PY
+    ) || return 1
+    IFS=$'\t' read -r USAGE_RETEST_RECORD USAGE_RETEST_OBSERVED USAGE_RETEST_STARTED USAGE_RETEST_TOKEN <<< "$out"
+    [[ -n "$USAGE_RETEST_TOKEN" ]]
+}
+
+usage_retest_finish() {
+    python3 - "$FLEET_LIB_DIR" "$USAGE_DIR" "$1" "$2" "$3" "$4" <<'PY'
+import pathlib
+import sys
+
+sys.path.insert(0, sys.argv[1])
+from fleet_usage_retest import finish
+
+print(finish(pathlib.Path(sys.argv[2]), sys.argv[3], int(sys.argv[4]), int(sys.argv[5]), sys.argv[6]))
+PY
+}
+
+usage_retest_rollback() {
+    python3 - "$FLEET_LIB_DIR" "$USAGE_DIR" "$1" "$2" "$3" <<'PY' >/dev/null
+import pathlib
+import sys
+
+sys.path.insert(0, sys.argv[1])
+from fleet_usage_retest import rollback
+
+raise SystemExit(0 if rollback(pathlib.Path(sys.argv[2]), sys.argv[3], int(sys.argv[4]), sys.argv[5]) else 1)
 PY
 }
 
@@ -2367,7 +2464,9 @@ log_scoped_gate_transition() {
 # wait, fable plans degrade to opus — and fable feedback fixes degrade too.
 fable_model_walled() {
     [[ -n "${CLASS_MODEL[fable]:-}" ]] || return 1
-    [[ "$(usage_gate_status scoped "${CLASS_MODEL[fable]}")" == closed:* ]]
+    local status
+    status=$(usage_gate_status scoped "${CLASS_MODEL[fable]}")
+    ! usage_gate_route_open "$status"
 }
 
 # The model a reserved Claude pane resumes on, or empty when it launches
@@ -2391,14 +2490,19 @@ PY
 
 # Returns 0 (true) when the gate is open and dispatching may proceed.
 # Side effect: the one-shot transition log above.
+USAGE_ACCOUNT_RETEST_STATUS=""
 usage_gate_open() {
     local status
+    USAGE_ACCOUNT_RETEST_STATUS=""
     status=$(usage_gate_status shared) || status="closed:GitHub quota evaluator failed"
     if [[ "$status" == open* && "${FLEET_RUNTIMES:-claude}" != *codex* ]]; then
         status=$(usage_gate_status claude)
+        if [[ "$status" == *" retest=available retest-record="* ]]; then
+            USAGE_ACCOUNT_RETEST_STATUS="$status"
+        fi
     fi
     log_gate_transition fleet "$status" "usage gate" "deferring all dispatches" "resuming dispatch"
-    [[ "$status" != closed:* ]]
+    usage_gate_route_open "$status"
 }
 
 quiet_gate_status() {
@@ -3106,7 +3210,7 @@ assign_pinned_target() {
         else
             gate=$(usage_gate_status scoped "$ASSIGN_PIN_MODEL")
         fi
-        [[ "$gate" == open* ]] || return 4
+        usage_gate_route_open "$gate" || return 4
         class=$(sidecar_field "$sidecar" class)
     else
         abandon_release "$target" "$agent" "pinned resume has no launchable route"
@@ -3200,7 +3304,7 @@ assign_for_pane() {
         fi
         claude_gate_model="${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}"
         claude_gate=$(usage_gate_status claude "$claude_gate_model")
-        [[ "$claude_gate" == open* ]] || route_claude_gate="closed"
+        usage_gate_route_open "$claude_gate" || route_claude_gate="closed"
     fi
     now=$(date +%s)
     ASSIGN_BLOCK_REASON=""
@@ -3243,7 +3347,7 @@ assign_for_pane() {
                     claude_gate=$(usage_gate_status claude "$ASSIGN_MODEL")
                     claude_gate_model="$ASSIGN_MODEL"
                 fi
-                [[ "$claude_gate" == open* ]] || {
+                usage_gate_route_open "$claude_gate" || {
                     ASSIGN_BLOCK_REASON="claude-quota-closed"; runtime_blocked=1; continue;
                 }
             else
@@ -3260,7 +3364,7 @@ assign_for_pane() {
             # here, before the claim.
             [[ -n "$claude_only_gate" ]] || claude_only_gate=$(usage_gate_status scoped \
                 "${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}")
-            [[ "$claude_only_gate" == open* ]] || {
+            usage_gate_route_open "$claude_only_gate" || {
                 ASSIGN_BLOCK_REASON="claude-quota-closed"; runtime_blocked=1; continue;
             }
         fi
@@ -3792,7 +3896,7 @@ dispatch_role() {
     # through to the lane default and exhaust), so the trigger must outlive
     # the tick instead of being consumed below.
     local reserved_held=""
-    local batch_route_checked=0 batch_claude_gate=""
+    local batch_route_checked=0 batch_claude_gate="" batch_route_claude_gate="closed"
     local batch_runtime="" batch_class="" batch_model="" batch_effort=""
     PICKS_CACHE_KEY=""
     CLAIM_ATTEMPTS_LEFT=$CLAIM_ATTEMPTS_PER_TICK
@@ -3946,12 +4050,11 @@ dispatch_role() {
             && "${FLEET_RUNTIMES:-claude}" == *codex* ]]; then
             if (( ! batch_route_checked )); then
                 local batch_route
-                batch_claude_gate="closed"
-                [[ "$(usage_gate_status claude "${ROLE_MODEL[$role]}")" == open* ]] \
-                    && batch_claude_gate="open"
+                batch_claude_gate=$(usage_gate_status claude "${ROLE_MODEL[$role]}")
+                usage_gate_route_open "$batch_claude_gate" && batch_route_claude_gate="open"
                 batch_route=$(python3 "$FLEET_LIB_DIR/fleet_runtime.py" route-role \
                     "$role" "$(class_of_model "${ROLE_MODEL[$role]}")" \
-                    "${ROLE_MODEL[$role]}" "${ROLE_EFFORT[$role]}" "$batch_claude_gate") || {
+                    "${ROLE_MODEL[$role]}" "${ROLE_EFFORT[$role]}" "$batch_route_claude_gate") || {
                         ASSIGN_BLOCK_REASON="route-failed"; assign_budget_hit=1; break;
                     }
                 batch_route="${batch_route//$'\r'/}"
@@ -3969,22 +4072,24 @@ dispatch_role() {
                 ASSIGN_MODEL="$batch_model" ASSIGN_EFFORT="$batch_effort"
             fi
         fi
-        if [[ -z "${ASSIGN_RUNTIME:-}" ]]; then
+        USAGE_RETEST_RECORD="" USAGE_RETEST_OBSERVED="" USAGE_RETEST_STARTED="" USAGE_RETEST_TOKEN=""
+        if [[ "${ASSIGN_RUNTIME:-claude}" == claude ]]; then
             local launch_model="${resume_model:-${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}}"
             local claude_gate_now=""
-            if [[ "${FLEET_RUNTIMES:-claude}" == *codex* ]]; then
-                claude_gate_now="${batch_claude_gate:-}"
-                [[ -n "$claude_gate_now" ]] \
-                    || claude_gate_now=$(usage_gate_status claude "$launch_model")
+            # Re-read account and model scopes at the launch boundary so a
+            # stale breach is acquired by exactly one pane after routing.
+            if [[ "${FLEET_RUNTIMES:-claude}" == *codex* \
+                  || -n "$USAGE_ACCOUNT_RETEST_STATUS" ]]; then
+                claude_gate_now=$(usage_gate_status claude "$launch_model")
             else
-                # Claude-only: the fleet-wide gate holds the account windows.
                 claude_gate_now=$(usage_gate_status scoped "$launch_model")
             fi
             # A closed gate holds the whole lane only for a pane launching on
             # the lane's model: a reserved resume's model is its own, so a
             # wall on it holds that pane and the free panes behind it still
             # read the gate for theirs.
-            if [[ "$claude_gate_now" != open* ]]; then
+            if [[ "$claude_gate_now" != open* ]] \
+                && ! usage_retest_acquire "$claude_gate_now" "$pane_key"; then
                 if [[ -n "$claude_resume" ]]; then
                     reserved_held=1
                     # A pin served this pass keeps its claim; restoring the
@@ -4044,10 +4149,15 @@ dispatch_role() {
         # record carries it, so a targetless launch resolves it here.
         [[ -n "$pane_basename" ]] || pane_basename=$(pane_worktree_basename "$pane_id") || true
         write_dispatch_record "$role" "$pane_id" "$(dispatch_class_key "$role")" "$target_arg" \
-            "$pane_basename" "$launch_runtime" "${ASSIGN_RUNTIME:+$ASSIGN_CLASS}"
+            "$pane_basename" "$launch_runtime" "${ASSIGN_RUNTIME:+$ASSIGN_CLASS}" \
+            "$USAGE_RETEST_RECORD" "$USAGE_RETEST_OBSERVED" "$USAGE_RETEST_STARTED" "$USAGE_RETEST_TOKEN"
         if ! dispatch_send_keys -t "$pane_id" C-u "$cmd" C-m; then
             log "send-keys timeout/failed for $role -> $pane_id; trying next idle pane"
             rm -f "$(dispatch_record "$pane_id")"
+            if [[ -n "$USAGE_RETEST_RECORD" ]]; then
+                usage_retest_rollback "$USAGE_RETEST_RECORD" "$USAGE_RETEST_STARTED" \
+                    "$USAGE_RETEST_TOKEN" || true
+            fi
             # Error-path release: the launch failed AFTER a successful
             # pre-claim. Release under the same basename (any other name
             # would no-op) and let the next pane re-attempt the claim. A
@@ -5058,6 +5168,35 @@ case "${1:-}" in
             quiet) quiet_gate_status ;;
             *) echo "usage: fleet-dispatcher --gate-status [all|claude|shared|daemon|scoped|quiet] [<model>]" >&2; exit 2 ;;
         esac
+        exit 0
+        ;;
+    --usage-retest-acquire)
+        # Hermetic seam for the same final launch-boundary acquisition used by
+        # dispatch_role. Prints the dispatch-record fields on success.
+        if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+            echo "usage: fleet-dispatcher --usage-retest-acquire <claude|scoped> <pane-key> [model]" >&2
+            exit 2
+        fi
+        _retest_status=$(usage_gate_status "$2" "${4:-}")
+        if [[ "$_retest_status" == open* ]]; then
+            echo open
+            exit 0
+        fi
+        if usage_retest_acquire "$_retest_status" "$3"; then
+            printf '%s\t%s\t%s\t%s\n' "$USAGE_RETEST_RECORD" "$USAGE_RETEST_OBSERVED" \
+                "$USAGE_RETEST_STARTED" "$USAGE_RETEST_TOKEN"
+            exit 0
+        fi
+        echo "closed:$_retest_status"
+        exit 1
+        ;;
+    --usage-retest-finish)
+        if [[ -z "${2:-}" || ! "${3:-}" =~ ^[0-9]+$ || ! "${4:-}" =~ ^[0-9]+$ \
+              || -z "${5:-}" ]]; then
+            echo "usage: fleet-dispatcher --usage-retest-finish <record> <observed> <started> <token>" >&2
+            exit 2
+        fi
+        usage_retest_finish "$2" "$3" "$4" "$5"
         exit 0
         ;;
     --retain-trigger-check)
