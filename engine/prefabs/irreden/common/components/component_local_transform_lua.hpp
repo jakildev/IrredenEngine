@@ -33,9 +33,10 @@ template <> inline void bindLuaType<IRComponents::C_LocalTransform>(LuaScript &l
     // converters. A bare `&C_LocalTransform::rotation_` member pointer can't be
     // used — IRMath::vec3/vec4 are not registered Lua usertypes, so Lua could
     // neither construct a value to assign nor read the returned userdata. Writes
-    // land in place because `:at(i)` hands Lua a std::ref to the column row (see
-    // recordComponentLuaName in lua_script.hpp), so the property setter's `self`
-    // is the live row. Convention: engine/script/CLAUDE.md "C++-component
+    // land in place because `:at(i)` on a written column hands Lua a std::ref to
+    // the column row (see recordComponentLuaName in lua_script.hpp), so the
+    // property setter's `self` is the live row; on a `reads` column it hands Lua
+    // a copy. Convention: engine/script/CLAUDE.md "C++-component
     // per-field writes from Lua".
     //
     // These are added *after* registerType, directly on the returned usertype,

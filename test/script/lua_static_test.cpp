@@ -133,6 +133,34 @@ TEST_F(LuaStatic, AnEvalSystemWritesWhatItListsUnlessItIsUnderReads) {
     EXPECT_FALSE(global<bool>("readerWrote")) << "setAt on a reads column raises";
 }
 
+TEST_F(LuaStatic, APropertyWriteThroughAReadsColumnNeverReachesTheRow) {
+    const EntityId entity = IREntity::createEntity(C_Static{});
+    ASSERT_EQ(IRTest::settleNow({entity}), 0u);
+    const IRMath::vec3 before = IREntity::getComponent<C_LocalTransform>(entity).translation_;
+
+    ASSERT_TRUE(runOk(R"lua(
+        readerRows, copyMoved = 0, false
+        reader = IRSystem.registerSystem({
+            name = 'LuaPropertyReader',
+            components = {},
+            reads = { IRComponent.C_LocalTransform },
+            tick = function(arch)
+                readerRows = readerRows + arch.length
+                local row = arch.C_LocalTransform:at(0)
+                row.translation = { x = 7, y = 8, z = 9 }
+                copyMoved = row.translation.x == 7
+            end,
+        })
+    )lua"));
+    m_system_manager.executeSystem(static_cast<IRSystem::SystemId>(global<int>("reader")));
+
+    ASSERT_EQ(global<int>("readerRows"), 1);
+    EXPECT_TRUE(global<bool>("copyMoved")) << "the write lands on the copy Lua holds";
+    EXPECT_EQ(IREntity::getComponent<C_LocalTransform>(entity).translation_, before);
+    Static::drain();
+    EXPECT_TRUE(Static::isSettled(entity));
+}
+
 TEST_F(LuaStatic, AnEvalSystemsDeclaredStaticExclusionSurvivesReclassification) {
     IREntity::createEntity();
     IREntity::createEntity(C_Static{});
