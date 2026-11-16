@@ -21,6 +21,7 @@
 #include <chrono>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace IREngine {
 
@@ -58,6 +59,46 @@ constexpr std::array<std::pair<const char *, DeviceErrorCounter>, 2> kDeviceErro
     {"commandBufferErrors", &IRRender::DeviceErrorStats::commandBufferErrors_},
     {"skippedFrames", &IRRender::DeviceErrorStats::skippedFrames_},
 }};
+
+using RenderPassCounter = std::uint64_t IRRender::RenderPassStats::*;
+constexpr std::array<std::pair<const char *, RenderPassCounter>, 2> kRenderPassCounters{{
+    {"renderPasses", &IRRender::RenderPassStats::renderPasses_},
+    {"draws", &IRRender::RenderPassStats::draws_},
+}};
+
+template <typename Stats, std::size_t N>
+void appendFrameDelta(
+    const std::array<std::pair<const char *, std::uint64_t Stats::*>, N> &counters,
+    const Stats &current,
+    Stats &atLastFrame,
+    std::vector<Stats> &frames
+) {
+    Stats delta;
+    for (const auto &[name, counter] : counters) {
+        delta.*counter = current.*counter - atLastFrame.*counter;
+    }
+    frames.push_back(delta);
+    atLastFrame = current;
+}
+
+template <typename Stats, std::size_t N>
+void appendCounterEntries(
+    const std::array<std::pair<const char *, std::uint64_t Stats::*>, N> &counters,
+    const std::vector<Stats> &frames,
+    std::vector<IRProfile::DeviceCounterEntry> &entries
+) {
+    const size_t warmupFrames = frames.size() / IRProfile::kProfileWarmupDivisor;
+    for (const auto &[name, counter] : counters) {
+        IRProfile::DeviceCounterEntry entry{name};
+        for (size_t frame = 0; frame < frames.size(); ++frame) {
+            const uint64_t value = frames[frame].*counter;
+            entry.total_ += value;
+            entry.steadyTotal_ += frame >= warmupFrames ? value : 0;
+            entry.maxPerFrame_ = IRMath::max(entry.maxPerFrame_, value);
+        }
+        entries.push_back(std::move(entry));
+    }
+}
 
 } // namespace
 
@@ -624,10 +665,14 @@ void World::enableFrameTiming(bool enabled) {
         m_frameMaxUpdateTicksPerFrame = 0;
         m_frameBufferWrites.clear();
         m_frameBufferWrites.reserve(1024);
-        m_bufferWritesAtLastFrame = IRRender::device()->deviceStats().bufferWrites_;
+        m_framePassStats.clear();
+        m_framePassStats.reserve(1024);
         m_frameDeviceErrors.clear();
         m_frameDeviceErrors.reserve(1024);
-        m_deviceErrorsAtLastFrame = IRRender::device()->deviceStats().errors_;
+        const IRRender::RenderDeviceStats deviceStats = IRRender::device()->deviceStats();
+        m_bufferWritesAtLastFrame = deviceStats.bufferWrites_;
+        m_passStatsAtLastFrame = deviceStats.renderPasses_;
+        m_deviceErrorsAtLastFrame = deviceStats.errors_;
         m_gpuProcessPeakBytes = 0;
         m_systemManager.resetTimingStats();
         IRRender::buildLightOcclusionGridTiming().reset();
@@ -652,20 +697,25 @@ void World::takeFrameCompletions() {
 }
 
 void World::recordDeviceCounters() {
-    const IRRender::RenderDeviceStats currentStats = IRRender::device()->deviceStats();
-    const IRRender::BufferWriteStats current = currentStats.bufferWrites_;
-    IRRender::BufferWriteStats delta;
-    for (const auto &[name, counter] : kBufferWriteCounters) {
-        delta.*counter = current.*counter - m_bufferWritesAtLastFrame.*counter;
-    }
-    m_frameBufferWrites.push_back(delta);
-    m_bufferWritesAtLastFrame = current;
-    IRRender::DeviceErrorStats errorDelta;
-    for (const auto &[name, counter] : kDeviceErrorCounters) {
-        errorDelta.*counter = currentStats.errors_.*counter - m_deviceErrorsAtLastFrame.*counter;
-    }
-    m_frameDeviceErrors.push_back(std::move(errorDelta));
-    m_deviceErrorsAtLastFrame = currentStats.errors_;
+    const IRRender::RenderDeviceStats current = IRRender::device()->deviceStats();
+    appendFrameDelta(
+        kBufferWriteCounters,
+        current.bufferWrites_,
+        m_bufferWritesAtLastFrame,
+        m_frameBufferWrites
+    );
+    appendFrameDelta(
+        kRenderPassCounters,
+        current.renderPasses_,
+        m_passStatsAtLastFrame,
+        m_framePassStats
+    );
+    appendFrameDelta(
+        kDeviceErrorCounters,
+        current.errors_,
+        m_deviceErrorsAtLastFrame,
+        m_frameDeviceErrors
+    );
     m_gpuProcessPeakBytes = IRMath::max<uint64_t>(
         m_gpuProcessPeakBytes,
         IRRender::device()->gpuMemoryStats().processAllocatedBytes_
@@ -698,27 +748,9 @@ void World::buildAndWriteProfileReport() {
     }
     report.deviceCountersSupported_ = IRRender::device()->deviceStats().supported_;
     report.gpuProcessPeakBytes_ = m_gpuProcessPeakBytes;
-    const size_t warmupFrames = m_frameBufferWrites.size() / IRProfile::kProfileWarmupDivisor;
-    for (const auto &[name, counter] : kBufferWriteCounters) {
-        IRProfile::DeviceCounterEntry entry{name};
-        for (size_t frame = 0; frame < m_frameBufferWrites.size(); ++frame) {
-            const uint64_t value = m_frameBufferWrites[frame].*counter;
-            entry.total_ += value;
-            entry.steadyTotal_ += frame >= warmupFrames ? value : 0;
-            entry.maxPerFrame_ = IRMath::max(entry.maxPerFrame_, value);
-        }
-        report.deviceCounters_.push_back(std::move(entry));
-    }
-    for (const auto &[name, counter] : kDeviceErrorCounters) {
-        IRProfile::DeviceCounterEntry entry{name};
-        for (size_t frame = 0; frame < m_frameDeviceErrors.size(); ++frame) {
-            const uint64_t value = m_frameDeviceErrors[frame].*counter;
-            entry.total_ += value;
-            entry.steadyTotal_ += frame >= warmupFrames ? value : 0;
-            entry.maxPerFrame_ = IRMath::max(entry.maxPerFrame_, value);
-        }
-        report.deviceCounters_.push_back(std::move(entry));
-    }
+    appendCounterEntries(kBufferWriteCounters, m_frameBufferWrites, report.deviceCounters_);
+    appendCounterEntries(kRenderPassCounters, m_framePassStats, report.deviceCounters_);
+    appendCounterEntries(kDeviceErrorCounters, m_frameDeviceErrors, report.deviceCounters_);
     const IRRender::DeviceErrorStats errors = IRRender::device()->deviceStats().errors_;
     report.firstCommandBufferErrorFrame_ = errors.firstCommandBufferErrorFrame_;
     report.firstCommandBufferError_ = std::string(errors.firstCommandBufferError_);

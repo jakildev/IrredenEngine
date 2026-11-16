@@ -189,6 +189,7 @@ MTL::ComputeCommandEncoder *createComputeEncoder(MTL::CommandBuffer *commandBuff
     if (commandBuffer == nullptr) {
         return nullptr;
     }
+    endMetalRenderPass();
     if (g_nextComputeTimestampAttachment.sampleBuffer_ == nullptr) {
         return commandBuffer->computeCommandEncoder();
     }
@@ -213,6 +214,7 @@ MTL::BlitCommandEncoder *createBlitEncoder(MTL::CommandBuffer *commandBuffer) {
     if (commandBuffer == nullptr) {
         return nullptr;
     }
+    endMetalRenderPass();
     if (g_nextComputeTimestampAttachment.sampleBuffer_ == nullptr) {
         return commandBuffer->blitCommandEncoder();
     }
@@ -240,31 +242,44 @@ void attachTimestampSamples(MTL::RenderPassDescriptor *descriptor) {
     attachment->setEndOfFragmentSampleIndex(indices.end_);
 }
 
-MTL::RenderCommandEncoder *createRenderEncoder() {
+MetalRenderPassAttachments currentRenderAttachments() {
+    if (metalUsesDefaultRenderTarget()) {
+        return {.color_ = metalDefaultColorTexture(), .entityId_ = metalCurrentEntityIdTexture()};
+    }
+    return {
+        .color_ = metalCurrentColorTexture(),
+        .depth_ = metalCurrentDepthTexture(),
+        .entityId_ = metalCurrentEntityIdTexture()
+    };
+}
+
+bool drawSamplesOpenPassAttachment() {
+    for (std::uint32_t i = 0; i < kMaxMetalBindings; ++i) {
+        if (metalRenderPassAttaches(boundMetalTexture(i))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The open render pass when the draw's attachments match it, otherwise a new
+// pass that stays open for the draws after this one.
+MTL::RenderCommandEncoder *renderEncoderForDraw() {
     auto *commandBuffer = metalCommandBuffer();
     if (commandBuffer == nullptr) {
         return nullptr;
     }
-
-    MTL::Texture *colorTexture = nullptr;
-    MTL::Texture *depthTexture = nullptr;
-    MTL::PixelFormat colorPixelFormat = metalCurrentColorPixelFormat();
-    MTL::PixelFormat depthPixelFormat = metalCurrentDepthPixelFormat();
-
-    if (metalUsesDefaultRenderTarget()) {
-        colorTexture = metalDefaultColorTexture();
-        if (colorTexture == nullptr) {
-            return nullptr;
-        }
-        colorPixelFormat = colorTexture->pixelFormat();
-    } else {
-        colorTexture = metalCurrentColorTexture();
-        depthTexture = metalCurrentDepthTexture();
-    }
-
+    const MetalRenderPassAttachments attachments = currentRenderAttachments();
+    MTL::Texture *colorTexture = attachments.color_;
+    MTL::Texture *depthTexture = attachments.depth_;
     if (colorTexture == nullptr) {
         return nullptr;
     }
+    if (auto *open = openMetalRenderPass(attachments);
+        open != nullptr && !metalRenderTargetClearPending() && !drawSamplesOpenPassAttachment()) {
+        return open;
+    }
+    endMetalRenderPass();
 
     const bool clearTarget = consumeMetalRenderTargetClear();
 
@@ -280,7 +295,7 @@ MTL::RenderCommandEncoder *createRenderEncoder() {
         colorAttachment->setClearColor(MTL::ClearColor(0.0, 0.0, 0.0, 1.0));
     }
 
-    if (auto *ids = metalCurrentEntityIdTexture()) {
+    if (auto *ids = attachments.entityId_) {
         auto *attachment = renderPassDescriptor->colorAttachments()->object(1);
         attachment->setTexture(ids);
         attachment->setLoadAction(MTL::LoadActionLoad);
@@ -305,6 +320,7 @@ MTL::RenderCommandEncoder *createRenderEncoder() {
         static_cast<NS::UInteger>(colorTexture->width()),
         static_cast<NS::UInteger>(colorTexture->height())
     ));
+    beginMetalRenderPass(encoder, attachments);
     return encoder;
 }
 
@@ -431,6 +447,7 @@ class MetalRenderDevice final : public RenderDevice {
             .supported_ = true,
             .bufferWrites_ = metalBufferWriteStats(),
             .errors_ = metalDeviceErrorStats(),
+            .renderPasses_ = metalRenderPassStats()
         };
     }
 
@@ -489,6 +506,7 @@ class MetalRenderDevice final : public RenderDevice {
             m_gpuFrameTiming.endFrame();
             return;
         }
+        endMetalRenderPass();
         if (auto *drawable = metalDrawable(); drawable != nullptr) {
             commandBuffer->presentDrawable(drawable);
         }
@@ -648,10 +666,11 @@ class MetalRenderDevice final : public RenderDevice {
         encoder->endEncoding();
     }
 
+    // Encoder boundaries order work that shares resources: every dispatch has
+    // its own encoder, and ending the open render pass orders the draws before
+    // the barrier against everything after it.
     void memoryBarrier(BarrierType) override {
-        // Metal command-encoder boundaries (one encoder per dispatch in this
-        // backend) act as implicit barriers between dispatches that touch
-        // shared resources, so an explicit barrier is unnecessary here.
+        endMetalRenderPass();
     }
 
     void unbindBufferBase(BufferTarget target, std::uint32_t index) override {
@@ -693,10 +712,11 @@ class MetalRenderDevice final : public RenderDevice {
             return;
         }
 
-        auto *encoder = createRenderEncoder();
+        auto *encoder = renderEncoderForDraw();
         if (encoder == nullptr) {
             return;
         }
+        ++metalRenderPassStats().draws_;
 
         auto *pipelineState = pipeline->getRenderPipelineState(
             currentMetalRenderPipelineKey(m_blendingEnabled),
@@ -718,7 +738,6 @@ class MetalRenderDevice final : public RenderDevice {
             layout.indexBuffer_,
             0
         );
-        encoder->endEncoding();
     }
 
     void drawElementsInstanced(DrawMode drawMode, int count, IndexType indexType, int instanceCount) override {
@@ -731,10 +750,11 @@ class MetalRenderDevice final : public RenderDevice {
             return;
         }
 
-        auto *encoder = createRenderEncoder();
+        auto *encoder = renderEncoderForDraw();
         if (encoder == nullptr) {
             return;
         }
+        ++metalRenderPassStats().draws_;
 
         auto *pipelineState = pipeline->getRenderPipelineState(
             currentMetalRenderPipelineKey(m_blendingEnabled),
@@ -757,7 +777,6 @@ class MetalRenderDevice final : public RenderDevice {
             0,
             static_cast<NS::UInteger>(instanceCount)
         );
-        encoder->endEncoding();
     }
 
     void drawElementsInstancedIndirect(
@@ -779,10 +798,11 @@ class MetalRenderDevice final : public RenderDevice {
             return;
         }
 
-        auto *encoder = createRenderEncoder();
+        auto *encoder = renderEncoderForDraw();
         if (encoder == nullptr) {
             return;
         }
+        ++metalRenderPassStats().draws_;
 
         auto *pipelineState = pipeline->getRenderPipelineState(
             currentMetalRenderPipelineKey(m_blendingEnabled),
@@ -808,7 +828,6 @@ class MetalRenderDevice final : public RenderDevice {
             mtlIndirect,
             static_cast<NS::UInteger>(indirectOffset)
         );
-        encoder->endEncoding();
     }
 
     void copyImageSubData(
@@ -854,10 +873,11 @@ class MetalRenderDevice final : public RenderDevice {
             return;
         }
 
-        auto *encoder = createRenderEncoder();
+        auto *encoder = renderEncoderForDraw();
         if (encoder == nullptr) {
             return;
         }
+        ++metalRenderPassStats().draws_;
 
         auto *pipelineState = pipeline->getRenderPipelineState(
             currentMetalRenderPipelineKey(m_blendingEnabled),
@@ -876,7 +896,6 @@ class MetalRenderDevice final : public RenderDevice {
             static_cast<NS::UInteger>(first),
             static_cast<NS::UInteger>(count)
         );
-        encoder->endEncoding();
     }
 
     void drawArraysInstanced(
@@ -891,10 +910,11 @@ class MetalRenderDevice final : public RenderDevice {
             return;
         }
 
-        auto *encoder = createRenderEncoder();
+        auto *encoder = renderEncoderForDraw();
         if (encoder == nullptr) {
             return;
         }
+        ++metalRenderPassStats().draws_;
 
         auto *pipelineState = pipeline->getRenderPipelineState(
             currentMetalRenderPipelineKey(m_blendingEnabled),
@@ -914,7 +934,6 @@ class MetalRenderDevice final : public RenderDevice {
             static_cast<NS::UInteger>(count),
             static_cast<NS::UInteger>(instanceCount)
         );
-        encoder->endEncoding();
     }
 
     void setPolygonMode(PolygonMode) override {}
@@ -1165,6 +1184,7 @@ class MetalRenderDevice final : public RenderDevice {
         if (commandBuffer == nullptr) {
             return;
         }
+        endMetalRenderPass();
         commandBuffer->commit();
         commandBuffer->waitUntilCompleted();
         ++m_submissionSerial;
@@ -1259,6 +1279,9 @@ class MetalRenderDevice final : public RenderDevice {
         if (pair == nullptr || pair->sampleBuffer_ == nullptr) {
             return;
         }
+        // A render pass samples the attachment active when it began, so one
+        // straddling this boundary would charge its draws to the wrong stage.
+        endMetalRenderPass();
 
         if (slot == TimestampSlot::START) {
             releaseTimestampCompletion(*pair);

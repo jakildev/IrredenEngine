@@ -193,7 +193,7 @@ class MetalTexture2DImpl final : public Texture2DImpl {
         // while the blit preserves ordering with earlier clear/compute work.
         const MetalStagingBufferSlice staging = stageMetalUpload(data, totalSize);
 
-        auto *blit = commandBuffer->blitCommandEncoder();
+        auto *blit = createMetalBlitEncoder();
         blit->copyFromBuffer(
             staging.buffer_,
             staging.offset_,
@@ -240,7 +240,7 @@ class MetalTexture2DImpl final : public Texture2DImpl {
         auto *commandBuffer = metalCommandBuffer();
         if (commandBuffer != nullptr) {
             // Unchanged patterns reuse their source without a CPU texture-write stall.
-            auto *blit = commandBuffer->blitCommandEncoder();
+            auto *blit = createMetalBlitEncoder();
             blit->copyFromBuffer(
                 clearSource,
                 0,

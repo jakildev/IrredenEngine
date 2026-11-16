@@ -64,7 +64,9 @@ waits and adds no lookup to the per-frame timing brackets.
   (`engine/render/src/metal/metal_render_impl.cpp`). Every encoder of the stage
   (compute, blit and render pass) samples its own pair, and
   `resolveGpuEncoderIntervals` (`gpu_encoder_intervals.hpp`) reports the length
-  of the union of those intervals as exclusive time. Encoders beyond the
+  of the union of those intervals as exclusive time. Consecutive draws to one
+  target share a render pass, and a timing boundary ends the open pass, so a
+  draw-heavy stage holds one encoder per run of draws, not one per draw. Encoders beyond the
   capacity share the last pair, which still bounds the window but not the union:
   that invocation is window-only, and a row whose every invocation is
   window-only is marked `window-only` with no cost figure. An encoder whose

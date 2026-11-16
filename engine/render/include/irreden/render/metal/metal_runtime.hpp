@@ -15,6 +15,7 @@ namespace IRRender {
 class RenderDevice;
 struct BufferWriteStats;
 struct DeviceErrorStats;
+struct RenderPassStats;
 
 enum class MetalAllocationKind {
     BUFFER,
@@ -211,12 +212,41 @@ void bindMetalFramebufferRenderTarget(
 );
 void requestMetalRenderTargetClear();
 bool consumeMetalRenderTargetClear();
+bool metalRenderTargetClearPending();
 bool metalUsesDefaultRenderTarget();
 MTL::Texture *metalCurrentColorTexture();
 MTL::Texture *metalCurrentDepthTexture();
 MTL::Texture *metalCurrentEntityIdTexture();
 MTL::PixelFormat metalCurrentColorPixelFormat();
 MTL::PixelFormat metalCurrentDepthPixelFormat();
+
+struct MetalRenderPassAttachments {
+    MTL::Texture *color_ = nullptr;
+    MTL::Texture *depth_ = nullptr;
+    MTL::Texture *entityId_ = nullptr;
+
+    bool operator==(const MetalRenderPassAttachments &) const = default;
+};
+
+// At most one render pass stays open, so consecutive draws to the same
+// attachments share it. A command buffer has one active encoder at a time:
+// creating a compute or blit encoder, committing or swapping the command
+// buffer, a GPU timing boundary, a device memory barrier, and destroying one of
+// the pass's attachments each end the open pass first. A pass's load action
+// and its timing sample attachment are fixed when it begins, so a pending
+// clear or a sampled attachment makes the next draw begin a new pass.
+//
+// The open pass when its attachments match, else nullptr.
+MTL::RenderCommandEncoder *openMetalRenderPass(const MetalRenderPassAttachments &attachments);
+// Ends any open pass, then holds @p encoder open and counts it.
+void beginMetalRenderPass(
+    MTL::RenderCommandEncoder *encoder, const MetalRenderPassAttachments &attachments
+);
+void endMetalRenderPass();
+bool metalRenderPassOpen();
+bool metalRenderPassAttaches(MTL::Texture *texture);
+// The counters RenderDevice::deviceStats() reports for draws and passes.
+RenderPassStats &metalRenderPassStats();
 
 // A CPU write to a buffer in the encoded set must not land before queued GPU
 // work that reads it. Word-aligned partial writes are staged and copied in
