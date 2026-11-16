@@ -14,5 +14,5 @@
     "max_delta": 0,
     "psnr_db": 0.0
   },
-  "notes": "The idle wave advances each tick, so --wave-amplitude 0 freezes the scene independently of auto-screenshot warmup. The shot order matches kShots[] in main_lua.cpp. References are macos-debug-only; other backends are out of scope until their sets are committed."
+  "notes": "The idle wave advances each tick, so --wave-amplitude 0 freezes the scene independently of auto-screenshot warmup. The shot order matches kShots[] in main_lua.cpp. References are macos-debug-only; other backends are out of scope until their sets are committed. The references were blessed after #5063 made sun-face record admission deterministic. A few texels along one screen line lose their sun-face record and read as shadowed. A later change to the sun-face record capacity or admission rule can move those texels; when it does, re-bless the references."
 }
