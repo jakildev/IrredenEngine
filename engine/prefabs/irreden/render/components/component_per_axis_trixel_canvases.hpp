@@ -196,6 +196,7 @@ struct PerAxisCanvasStore {
     };
 
     ivec2 size_{0, 0}; // worst-case texel size shared by all axes; (0,0) while unallocated
+    float heightHeadroom_ = IRMath::kPerAxisStoreHeightHeadroom;
     // The cardinal canvas size the set was allocated for; resolveDepth_ is this
     // size, and a parked set is reused only under the same one. The main
     // canvas does not resize today, so the guard is for the day it does.
@@ -334,8 +335,9 @@ struct PerAxisCanvasStore {
     //     draw args {indexCount, instanceCount, firstIndex, baseVertex,
     //     baseInstance}, then droppedCount (word 5), the faces the append
     //     rejected with no framebuffer sample in their footprint (word 6) and
-    //     the faces it rejected behind the occluder prepass (word 7).
-    //     instanceCount and the three counters are GPU atomics (the overflow
+    //     the faces it rejected behind the occluder prepass (word 7), and
+    //     visible faces discarded outside the per-axis store (word 8).
+    //     instanceCount and the four counters are GPU atomics (the overflow
     //     append). The overflow indirect draw sources its args from a copy of
     //     this block.
     // [entriesBaseUints_, +overflowCap_*4) — overflow entries, 4 uints
@@ -367,7 +369,7 @@ struct PerAxisCanvasStore {
     std::vector<std::pair<ResourceId, Buffer *>> overflowCtrlBuffers_;
     std::uint64_t overflowCtrlFrames_ = 0;
     int ctrlBaseUints_ = 0;
-    static constexpr std::size_t kOverflowCtrlUints = 8;
+    static constexpr std::size_t kOverflowCtrlUints = 9;
     std::ptrdiff_t ctrlOffsetBytes() const {
         return static_cast<std::ptrdiff_t>(ctrlBaseUints_) * sizeof(std::uint32_t);
     }
@@ -386,8 +388,10 @@ struct PerAxisCanvasStore {
     static constexpr std::size_t kOverflowCtrlDroppedWord = 5;
     static constexpr std::size_t kOverflowCtrlUnsampledWord = 6;
     static constexpr std::size_t kOverflowCtrlHiddenWord = 7;
+    static constexpr std::size_t kOverflowCtrlStoreDroppedWord = 8;
     // Newest completed-frame count retained for diagnostics and run witnesses.
     std::uint32_t settledOverflowCount_ = 0;
+    std::uint32_t settledStoreDropCount_ = 0;
 
     // Block-maximum depth pyramid of the scatter occluder prepass, as an
     // R32I atlas: level L (1..kOccluderLevels) holds the farthest depth code
@@ -541,13 +545,16 @@ struct PerAxisCanvasStore {
     // Allocate the three axis texture sets at @p size (worst-case per-axis) plus
     // the screen-space resolve texture at @p mainSize. No-op if already
     // allocated. Called at rotation start by the lifecycle.
-    void allocate(ivec2 size, ivec2 mainSize) {
+    void allocate(
+        ivec2 size, ivec2 mainSize, float heightHeadroom = IRMath::kPerAxisStoreHeightHeadroom
+    ) {
         // ir_iso_common reserves the packed cell's high y bit for cut provenance.
         IR_ASSERT(size.y < 32768, "per-axis canvas height must be below 32768 cells");
         if (isAllocated()) {
             return;
         }
         size_ = size;
+        heightHeadroom_ = heightHeadroom;
         // Reuse the canonical canvas-texture factories so the per-axis textures
         // stay format-identical to the single canvas (detail:: in
         // component_triangle_canvas_textures.hpp).
@@ -728,8 +735,10 @@ struct PerAxisCanvasStore {
         entriesBaseUints_ = 0;
         overflowCap_ = 0;
         settledOverflowCount_ = 0;
+        settledStoreDropCount_ = 0;
         size_ = ivec2{0, 0};
         mainSize_ = ivec2{0, 0};
+        heightHeadroom_ = IRMath::kPerAxisStoreHeightHeadroom;
     }
 };
 

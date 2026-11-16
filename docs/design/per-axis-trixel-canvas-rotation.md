@@ -95,21 +95,29 @@ was acquired on.
 **Sizing** (`IRMath::perAxisTrixelCanvasWorstCaseSize`). For a `W × H` main
 canvas the store holds the rotated view at the worst residual yaw —
 `√(W² + H²)` along a dimension whose own extent is the larger one, `(W + H)/√2`
-otherwise — plus `kPerAxisStoreHeightHeadroom` of content height, half an anchor
-quantum and an edge pad on each side, and never less than the face-deformation
-and density bounds `(2W, W + H)`. A 1280×720 canvas keeps `(2W, W + H)`; a
-canvas taller than about 0.9× its width grows across. The height headroom is
-the store's contract with tall scenes: at zoom 1, content farther than that from
-the reference plane can leave the store near a screen edge at residuals
-approaching 45°; any higher zoom shrinks the footprint and widens the margin.
+otherwise — plus a content-derived height allowance, half an anchor quantum and
+an edge pad on each side, and never less than the face-deformation and density
+bounds `(2W, W + H)`. The main pool's cached world bounds supply the greatest
+distance above or below the current reference plane. The allowance rounds up in
+64-cell steps, stays at least 64, caps at 256, and only grows while a live or
+parked set exists; growth replaces the set before that frame uses it. A
+1280×720 canvas whose content stays within 64 cells therefore keeps the prior
+`(2W, W + H)` store. Any higher zoom shrinks the on-screen footprint and widens
+the margin, but does not shrink the allocation.
+
+Both out-of-store discard sites increment a dedicated control-block counter.
+It is independent of overflow-cap drops and reaches the run witness and a
+one-shot warning, so GPU-authored positions outside the CPU bounds and content
+beyond the cap remain observable.
 
 **Verification.** `test/render/per_axis_store_frame_test.cpp` asserts the
 obligation headlessly — every on-screen point within the headroom is inside the
 store at every yaw, pan and canvas aspect — and pins what a camera-anchored
 yaw-0 window loses. `IRZYawCoverage` renders a voxel floor wider than the view,
 1,700 cells from the world origin, from every yaw quadrant under each pivot, on
-a landscape and a portrait canvas; `scripts/render-view-coverage-metric.py`
-fails a sweep that shows any background.
+a landscape and a portrait canvas. Its tall preset extends the pillars 128
+cells from the reference plane. `scripts/render-view-coverage-metric.py` fails
+a sweep that shows any background.
 
 ## Current contract — finite-face scatter and cardinal-loser overflow
 

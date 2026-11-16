@@ -135,6 +135,7 @@ struct RunWitnessSummary {
     uint32_t overflowSamples_ = 0;
     uint32_t maxOverflowEntries_ = 0;
     uint32_t maxOverflowDropped_ = 0;
+    uint32_t maxStoreDropped_ = 0;
     uint32_t overflowCap_ = 0;
     /// Bytes uploaded per frame to the voxel record and active-mask buffers:
     /// the first frame, then the mean and maximum of every later frame.

@@ -76,6 +76,58 @@ inline void resolveWinnerTap(
     atomic_fetch_min_explicit(&perAxisWinnerIds[linearIndex], voxelIndex, memory_order_relaxed);
 }
 
+inline void countPerAxisStoreDrop(
+    constant FrameDataVoxelToTrixel& frameData,
+    device atomic_uint* scratch
+) {
+    atomic_fetch_add_explicit(
+        &scratch[uint(frameData.overflowScratchLayout.y) + 8u],
+        1u,
+        memory_order_relaxed
+    );
+}
+
+inline void writePerAxisDistanceTap(
+    int2 canvasPixel,
+    int voxelDistance,
+    bool visible,
+    constant FrameDataVoxelToTrixel& frameData,
+    device atomic_int* distanceScratch,
+    device atomic_uint* scratch,
+    int2 canvasSize
+) {
+    if (!isInsideCanvas(canvasPixel, canvasSize)) {
+        if (visible) {
+            countPerAxisStoreDrop(frameData, scratch);
+        }
+        return;
+    }
+    const uint linearIndex =
+        uint(canvasPixel.y) * uint(canvasSize.x) + uint(canvasPixel.x);
+    atomic_fetch_min_explicit(
+        &distanceScratch[linearIndex],
+        voxelDistance,
+        memory_order_relaxed
+    );
+}
+
+inline bool perAxisStoreDropIsVisible(
+    float3 voxelPosition,
+    constant FrameDataVoxelToTrixel& frameData
+) {
+    const int3 voxelCell = roundHalfUp(voxelPosition);
+    const int2 isoPos = spatialViewEnabled(frameData.cameraViewRotation)
+                            ? roundHalfUp(spatialViewIso(
+                                  float3(voxelCell) - kVoxelRasterCellAnchor,
+                                  frameData.cameraViewRotation
+                              ))
+                            : roundHalfUp(pos3DtoPos2DIsoYawedCellAnchor(
+                                  float3(voxelCell), frameData.visualYaw
+                              ));
+    return all(isoPos >= frameData.visibleIsoBounds.xy) &&
+           all(isoPos <= frameData.visibleIsoBounds.zw);
+}
+
 #if IR_OVERFLOW_APPEND
 // Overflow append. An exposed face that loses its cardinal store cell is
 // retained for finite-quad rasterization and the framebuffer depth test,
@@ -96,6 +148,7 @@ inline void overflowAppendTap(
     uint colorPacked,
     bool isCutFace,
     uint voxelIndex,
+    bool visible,
     constant FrameDataVoxelToTrixel& frameData,
     constant PerAxisScatterFrame& scatterFrame,
     constant PerAxisScatterGlobals& scatterGlobals,
@@ -108,6 +161,7 @@ inline void overflowAppendTap(
     // Off-canvas cardinal key never stored (writeDistanceTap dropped it) and is
     // outside the worst-case-sized render domain — mirror the silent drop.
     if (!isInsideCanvas(cardPix, canvasSize)) {
+        if (visible) countPerAxisStoreDrop(frameData, scratch);
         return;
     }
     const uint cardCell = uint(cardPix.y) * uint(canvasSize.x) + uint(cardPix.x);
@@ -477,6 +531,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
             (voxels[voxelIndex].colorPacked & 0x00FFFFFFu) | (fogClassByte << 24u);
         overflowAppendTap(
             perAxisBase, facePos, voxelDistance, overflowColor, sel.isCutFace, voxelIndex,
+            perAxisStoreDropIsVisible(voxelPosition.xyz, frameData),
             frameData, scatterFrame, scatterGlobals, occluderDepth,
             distanceScratch, perAxisWinnerIds, canvasSize
         );
@@ -492,9 +547,10 @@ kernel void IR_STAGE1_KERNEL_NAME(
             );
             return;
         }
-        writeDistanceTap(
+        writePerAxisDistanceTap(
             perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance,
-            distanceScratch, canvasSize
+            perAxisStoreDropIsVisible(voxelPosition.xyz, frameData),
+            frameData, distanceScratch, perAxisWinnerIds, canvasSize
         );
         return;
 #endif

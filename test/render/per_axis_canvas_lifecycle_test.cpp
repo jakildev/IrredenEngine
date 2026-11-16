@@ -201,6 +201,17 @@ TEST(PerAxisCanvasLifecycle, ParkedSetSizedForAnotherCanvasIsReplaced) {
     );
 }
 
+TEST(PerAxisCanvasLifecycle, HeadroomGrowthReplacesLiveAndParkedStores) {
+    EXPECT_EQ(
+        lifecycleStep({.rotating_ = true, .live_ = true, .liveFits_ = false}),
+        LifecycleStep::REPLACE_LIVE
+    );
+    EXPECT_EQ(
+        lifecycleStep({.rotating_ = true, .parked_ = true, .parkedFits_ = false}),
+        LifecycleStep::REPLACE_PARKED
+    );
+}
+
 TEST(PerAxisCanvasLifecycle, ParkedSetIsFreedOnTheFrameItsWindowCloses) {
     EXPECT_EQ(
         lifecycleStep({.parked_ = true, .parkedFrames_ = kParkedCardinalFrames - 1}),

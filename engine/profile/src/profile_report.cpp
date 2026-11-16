@@ -717,6 +717,7 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
             uploads->frames_
         );
     }
+    std::fprintf(f, "Per-axis store: maxDropped=%u\n", w.maxStoreDropped_);
     std::fprintf(f, "\n");
 
     // Parsed by scripts/perf/compare_perf_runs.py like the section above.

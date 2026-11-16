@@ -872,6 +872,7 @@ void World::buildAndWriteProfileReport() {
     report.witness_.overflowSamples_ = witness.overflowSamples_;
     report.witness_.maxOverflowEntries_ = witness.maxOverflowEntries_;
     report.witness_.maxOverflowDropped_ = witness.maxOverflowDropped_;
+    report.witness_.maxStoreDropped_ = witness.maxStoreDropped_;
     report.witness_.overflowCap_ = witness.overflowCap_;
     const auto summarizeUploads = [](const IRRender::VoxelUploadBytes &uploads) {
         IRProfile::VoxelUploadSummary summary;

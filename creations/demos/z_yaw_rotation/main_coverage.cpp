@@ -39,10 +39,12 @@ using namespace IRComponents;
 namespace {
 
 constexpr vec3 kFloorCenter{1500.0f, -900.0f, 0.0f};
+constexpr int kTallPillarHeight = 128;
 constexpr int kFloorEdge = 400;
 constexpr int kPillarEdge = 12;
 constexpr int kPillarHeight = 40;
 constexpr float kPillarOffset = 60.0f;
+constexpr float kTallPillarOffset = 180.0f;
 
 enum class Pivot { FLOOR, ORIGIN, DEFAULT };
 
@@ -62,6 +64,8 @@ static_assert(
 
 IRVideo::IndexedSweepShots<> g_shots;
 int g_autoWarmupFrames = 0;
+int g_pillarHeight = kPillarHeight;
+float g_pillarOffset = kPillarOffset;
 
 IRVideo::AutoScreenshotShot coverageShot(std::size_t index) {
     IRVideo::AutoScreenshotShot shot{};
@@ -103,6 +107,13 @@ void initEntities();
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: z_yaw_rotation/coverage");
     IREngine::init(argc, argv);
+    if (IREngine::args().configPreset() == "configs/coverage_tall.lua") {
+        g_pillarHeight = kTallPillarHeight;
+        // Keep the tall geometry away from the crosshair so the default-pivot
+        // block continues to acquire the floor plane, just like the baseline
+        // coverage presets.
+        g_pillarOffset = kTallPillarOffset;
+    }
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     initSystems();
     IRPrefab::Camera::registerStandardKeyboardCommands();
@@ -155,13 +166,13 @@ void initEntities() {
 
     // Height above the reference plane: pillars displace along the view axis
     // under yaw, which is what a store window with no headroom drops first.
-    const float pillarZ = -0.5f * static_cast<float>(kPillarHeight);
+    const float pillarZ = -0.5f * static_cast<float>(g_pillarHeight);
     for (const vec2 corner :
          {vec2(1.0f, 1.0f), vec2(1.0f, -1.0f), vec2(-1.0f, 1.0f), vec2(-1.0f)}) {
         IREntity::createEntity(
-            C_LocalTransform{kFloorCenter + vec3(corner * kPillarOffset, pillarZ)},
+            C_LocalTransform{kFloorCenter + vec3(corner * g_pillarOffset, pillarZ)},
             C_VoxelSetNew{
-                ivec3(kPillarEdge, kPillarEdge, kPillarHeight),
+                ivec3(kPillarEdge, kPillarEdge, g_pillarHeight),
                 Color{220, 140, 80, 255},
                 true
             }

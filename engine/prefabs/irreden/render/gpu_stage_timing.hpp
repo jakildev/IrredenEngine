@@ -365,6 +365,7 @@ struct RenderRunWitness {
     std::uint32_t overflowSamples_ = 0;
     std::uint32_t maxOverflowEntries_ = 0;
     std::uint32_t maxOverflowDropped_ = 0;
+    std::uint32_t maxStoreDropped_ = 0;
     std::uint32_t overflowCap_ = 0;
     // Overflow-lane rejection, from the sampled frame with the most
     // candidates. A candidate is an exposed face that lost its cardinal store
@@ -469,9 +470,12 @@ struct RenderRunWitness {
         maskUploads_.record(maskBytes);
     }
 
-    void recordOverflow(std::uint32_t entries, std::uint32_t dropped, std::uint32_t cap) {
+    void recordOverflow(
+        std::uint32_t entries, std::uint32_t dropped, std::uint32_t storeDropped, std::uint32_t cap
+    ) {
         maxOverflowEntries_ = IRMath::max(maxOverflowEntries_, entries);
         maxOverflowDropped_ = IRMath::max(maxOverflowDropped_, dropped);
+        maxStoreDropped_ = IRMath::max(maxStoreDropped_, storeDropped);
         overflowCap_ = cap;
         ++overflowSamples_;
     }

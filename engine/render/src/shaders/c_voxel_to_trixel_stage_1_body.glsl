@@ -223,6 +223,34 @@ void resolveWinnerTap(const ivec2 canvasPixel, const int voxelDistance, const ui
     atomicMin(perAxisWinnerIds[cell], voxelIndex);
 }
 
+void countPerAxisStoreDrop() {
+    atomicAdd(perAxisWinnerIds[uint(overflowScratchLayout.y) + 8u], 1u);
+}
+
+void writePerAxisDistanceTap(
+    const ivec2 canvasPixel, const int voxelDistance, const bool visible
+) {
+    if (!isInsideCanvas(canvasPixel, imageSize(triangleCanvasDistances))) {
+        if (visible) countPerAxisStoreDrop();
+        return;
+    }
+    imageAtomicMin(triangleCanvasDistances, canvasPixel, voxelDistance);
+}
+
+bool perAxisStoreDropIsVisible(const vec3 voxelPosition) {
+    const ivec3 voxelCell = roundHalfUp(voxelPosition);
+    const ivec2 isoPos = spatialViewEnabled(cameraViewRotation)
+                             ? roundHalfUp(spatialViewIso(
+                                   vec3(voxelCell) - kVoxelRasterCellAnchor,
+                                   cameraViewRotation
+                               ))
+                             : roundHalfUp(pos3DtoPos2DIsoYawedCellAnchor(
+                                   vec3(voxelCell), visualYaw
+                               ));
+    return all(greaterThanEqual(isoPos, visibleIsoBounds.xy)) &&
+           all(lessThanEqual(isoPos, visibleIsoBounds.zw));
+}
+
 #if IR_OVERFLOW_APPEND
 // Overflow append. An exposed face that loses its cardinal store cell is
 // retained for finite-quad rasterization and the framebuffer depth test,
@@ -236,12 +264,15 @@ void resolveWinnerTap(const ivec2 canvasPixel, const int voxelDistance, const ui
 // behind the occluder prepass. A rejected face is never counted as dropped.
 void overflowAppendTap(
     const ivec2 perAxisBase, const ivec3 facePos, const int voxelDistance, const uint colorPacked,
-    const bool isCutFace, const uint voxelIndex
+    const bool isCutFace, const uint voxelIndex, const bool visible
 ) {
     const ivec2 cardPix = perAxisBase + pos3DtoPos2DIso(facePos);
     // Off-canvas cardinal key never stored (writeDistanceTap dropped it) and is
     // outside the worst-case-sized render domain — mirror the silent drop.
-    if (!isInsideCanvas(cardPix, imageSize(triangleCanvasDistances))) return;
+    if (!isInsideCanvas(cardPix, imageSize(triangleCanvasDistances))) {
+        if (visible) countPerAxisStoreDrop();
+        return;
+    }
     if (imageLoad(triangleCanvasDistances, cardPix).x == voxelDistance) {
         return; // this face IS (or ties) the settled winner — the cell path draws it
     }
@@ -575,7 +606,15 @@ void main() {
         );
         const uint overflowColor =
             (voxels[voxelIndex].colorPacked & 0x00FFFFFFu) | (fogClassByte << 24u);
-        overflowAppendTap(perAxisBase, facePos, voxelDistance, overflowColor, sel.isCutFace, voxelIndex);
+        overflowAppendTap(
+            perAxisBase,
+            facePos,
+            voxelDistance,
+            overflowColor,
+            sel.isCutFace,
+            voxelIndex,
+            perAxisStoreDropIsVisible(voxelPosition.xyz)
+        );
         return;
 #else
         // Equal keys arise from perAxisStoreFacePos's 4-bit frac quantization —
@@ -585,7 +624,11 @@ void main() {
             resolveWinnerTap(perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelIndex);
             return;
         }
-        writeDistanceTap(perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance);
+        writePerAxisDistanceTap(
+            perAxisBase + pos3DtoPos2DIso(facePos),
+            voxelDistance,
+            perAxisStoreDropIsVisible(voxelPosition.xyz)
+        );
         return;
 #endif
     }

@@ -2115,7 +2115,9 @@ inline constexpr float kPerAxisStoreHeightHeadroom = 64.0f;
 ///     count. Zoom scales trixels at TRIXEL_TO_FRAMEBUFFER (not by resizing the
 ///     canvas), so it does not enter this bound.
 inline ivec2 perAxisTrixelCanvasWorstCaseSize(
-    const ivec2 cardinalExtent, const float minOnScreenTrixelPx = 1.0f
+    const ivec2 cardinalExtent,
+    const float minOnScreenTrixelPx = 1.0f,
+    const float heightHeadroom = kPerAxisStoreHeightHeadroom
 ) {
     const float floorPx = max(minOnScreenTrixelPx, 1.0f);
     const float W = static_cast<float>(cardinalExtent.x);
@@ -2124,10 +2126,10 @@ inline ivec2 perAxisTrixelCanvasWorstCaseSize(
     const float bisector = (W + H) / kSqrt2;
     const float windowSlack =
         static_cast<float>(kPerAxisStoreAnchorQuantum / 2 + kPerAxisStoreEdgePad);
-    const float viewX = (H <= W ? diagonal : bisector) +
-                        2.0f * (kSqrt2 * kPerAxisStoreHeightHeadroom + windowSlack);
-    const float viewY = (W <= H ? diagonal : bisector) +
-                        2.0f * ((2.0f - kSqrt2) * kPerAxisStoreHeightHeadroom + windowSlack);
+    const float viewX =
+        (H <= W ? diagonal : bisector) + 2.0f * (kSqrt2 * heightHeadroom + windowSlack);
+    const float viewY =
+        (W <= H ? diagonal : bisector) + 2.0f * ((2.0f - kSqrt2) * heightHeadroom + windowSlack);
     const float boundsX = max(W * max(kSqrt2, 2.0f / floorPx), viewX);
     const float boundsY = max(max(W + H, H / floorPx), viewY);
     return ivec2{static_cast<int>(ceil(boundsX)), static_cast<int>(ceil(boundsY))};

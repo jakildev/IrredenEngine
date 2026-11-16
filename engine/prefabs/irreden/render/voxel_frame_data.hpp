@@ -210,7 +210,7 @@ inline void buildVoxelFrameData(
             0
         );
         frameData.perAxisStoreFrame_ =
-            IRPrefab::PerAxisCanvas::storeFrame(IRPrefab::PerAxisCanvas::storeSize());
+            IRPrefab::PerAxisCanvas::storeFrame(IRPrefab::PerAxisCanvas::liveStoreSizeOrDefault());
         for (auto &deform : frameData.faceDeform_)
             deform = vec4(1, 0, 0, 1);
         return;
@@ -230,7 +230,7 @@ inline void buildVoxelFrameData(
     // Only the main world canvas owns per-axis stores, and only while rotating.
     if (residualYaw != 0.0f) {
         frameData.perAxisStoreFrame_ =
-            IRPrefab::PerAxisCanvas::storeFrame(IRPrefab::PerAxisCanvas::storeSize());
+            IRPrefab::PerAxisCanvas::storeFrame(IRPrefab::PerAxisCanvas::liveStoreSizeOrDefault());
     }
     const auto cardinalIndex = IRMath::rasterYawCardinalIndex(rasterYaw);
     const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
