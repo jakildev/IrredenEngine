@@ -41,6 +41,129 @@ void EntityManager::cacheComponentType(std::size_t slot, ComponentId componentTy
     m_componentTypeCache[slot] = componentType;
 }
 
+void EntityManager::recordComponentTraits(
+    ComponentId componentType, StaticGuard guard, bool foreignCleared, bool tracksInputChanges
+) {
+    if (guard != StaticGuard::NONE) {
+        m_staticGuards.emplace(componentType, guard);
+    }
+    if (foreignCleared) {
+        m_foreignClearedComponents.push_back(componentType);
+    }
+    if (tracksInputChanges) {
+        m_parentChainComponents.push_back(componentType);
+    }
+}
+
+bool EntityManager::eraseForeignCleared(
+    const ArchetypeNode *fromNode, ComponentId named, Archetype &type
+) const {
+    if (!fromNode->hasForeignCleared_) {
+        return false;
+    }
+    bool erased = false;
+    for (ComponentId component : m_foreignClearedComponents) {
+        if (component != named && type.erase(component) > 0) {
+            erased = true;
+        }
+    }
+    return erased;
+}
+
+void EntityManager::removeForeignClearedRows(
+    ArchetypeNode *fromNode,
+    const ArchetypeNode *toNode,
+    ComponentId named,
+    unsigned int row,
+    EntityId entity
+) {
+    bool dropped = false;
+    for (ComponentId component : m_foreignClearedComponents) {
+        if (component != named && fromNode->type_.contains(component) &&
+            !toNode->type_.contains(component)) {
+            fromNode->components_.at(component)->removeDataAndPack(static_cast<int>(row));
+            dropped = true;
+        }
+    }
+    if (dropped) {
+        m_trackedChanges.push_back(entityBits(entity));
+    }
+}
+
+void EntityManager::takeTrackedChanges(std::vector<EntityId> &out) {
+    IR_ASSERT(
+        isMainThreadForDeferred(),
+        "EntityManager::takeTrackedChanges must run on the main thread"
+    );
+    out.insert(out.end(), m_trackedChanges.begin(), m_trackedChanges.end());
+    m_trackedChanges.clear();
+}
+
+void EntityManager::reserveRows(ArchetypeNode *node, int rows) {
+    IR_ASSERT(isMainThreadForDeferred(), "EntityManager::reserveRows must run on the main thread");
+    if (rows <= 0) {
+        return;
+    }
+    node->entities_.reserve(static_cast<std::size_t>(rows));
+    for (auto &column : node->components_) {
+        column.second->reserveRows(rows);
+    }
+}
+
+void EntityManager::handleInputChange(EntityId entity, bool withDescendants) {
+    EntityRecord *record = findRecord(entity);
+    if (record == nullptr || record->archetypeNode == nullptr ||
+        !record->archetypeNode->tracksInputChanges_) {
+        return;
+    }
+    // Removing a cleared component by name is not a foreign move, so the
+    // entity is logged here whether or not it carried one.
+    for (ComponentId component : m_foreignClearedComponents) {
+        removeComponentById(entity, component);
+    }
+    m_trackedChanges.push_back(entityBits(entity));
+    if (withDescendants) {
+        handleInputChangeOfChildren(entity);
+    }
+}
+
+void EntityManager::handleInputChangeOfChildren(EntityId parent) {
+    for (EntityId child : getChildren(parent)) {
+        handleInputChange(child);
+    }
+}
+
+ArchetypeNode *
+EntityManager::moveForAddedComponent(EntityRecord &record, ComponentId componentType) {
+    ArchetypeNode *fromNode = record.archetypeNode;
+    const unsigned int fromRow = static_cast<unsigned int>(record.row);
+    Archetype type = fromNode->type_;
+    if (!eraseForeignCleared(fromNode, componentType, type)) {
+        type.insert(componentType);
+        ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(type);
+        moveEntityByArchetype(record, fromNode->type_, fromNode, toNode);
+        return toNode;
+    }
+    const Archetype kept = type;
+    type.insert(componentType);
+    ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(type);
+    const EntityId entity = fromNode->entities_.at(fromRow);
+    moveEntityByArchetype(record, kept, fromNode, toNode);
+    removeForeignClearedRows(fromNode, toNode, componentType, fromRow, entity);
+    return toNode;
+}
+
+void EntityManager::takeEntityNotes(std::vector<EntityId> &out) {
+    IR_ASSERT(
+        isMainThreadForDeferred(),
+        "EntityManager::takeEntityNotes must run on the main thread"
+    );
+    for (WorkerStaging &staging : m_workerStaging) {
+        out.insert(out.end(), staging.entityNotes_.begin(), staging.entityNotes_.end());
+        staging.entityNotes_.clear();
+    }
+}
+
 void EntityManager::resizeWorkerStaging(std::size_t workerSlots) {
     IR_ASSERT(
         workerSlots >= 1,
@@ -189,6 +312,12 @@ void EntityManager::destroyEntity(EntityId entity) {
             m_preDestroyHooks[i].hook_(entity);
         }
         m_preDestroyHookIterating = false;
+        // The children survive and still name this parent; whatever of them
+        // tracks its parent chain is derived again. A child a hook
+        // re-parented went through the link-change rule already.
+        if (m_parentRelations.contains(entityBits(entity))) {
+            handleInputChangeOfChildren(entity);
+        }
     }
     EntityRecord &record = getRecord(entity);
     IRE_LOG_DEBUG("entity={}, record.row={}", entity, record.row);
@@ -309,6 +438,7 @@ void EntityManager::removeComponentById(EntityId entity, ComponentId componentTy
     }
 
     type.erase(componentType);
+    eraseForeignCleared(fromNode, componentType, type);
     ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(type);
     removeComponentById(record, entity, componentType, fromNode, toNode);
 }
@@ -384,6 +514,7 @@ void EntityManager::flushStructuralChanges() {
                 }
 
                 type.erase(componentType);
+                eraseForeignCleared(fromNode, componentType, type);
                 ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(type);
 
                 std::sort(entities.begin(), entities.end(), [this](EntityId a, EntityId b) {
@@ -695,12 +826,25 @@ void EntityManager::setChildOfRelation(EntityId entity, RelationId relation) {
     if (current != kNullRelation) {
         kept.erase(current);
     }
+    const bool cleared = eraseForeignCleared(fromNode, kNullComponent, kept);
     Archetype target = kept;
     if (relation != kNullRelation) {
         target.insert(relation);
     }
     ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(target);
+    const unsigned int fromRow = static_cast<unsigned int>(record.row);
+    const bool tracksChain = fromNode->tracksInputChanges_;
     moveEntityByArchetype(record, kept, fromNode, toNode);
+    if (cleared) {
+        removeForeignClearedRows(fromNode, toNode, kNullComponent, fromRow, entity);
+    }
+    if (tracksChain) {
+        // The link is a pose input of the entity and of everything below it.
+        if (!cleared) {
+            m_trackedChanges.push_back(entityBits(entity));
+        }
+        handleInputChangeOfChildren(entity);
+    }
     ++m_hierarchyRevision;
     IRE_LOG_DEBUG("Moved entity to new archetype with relation {}", relation);
 }
@@ -888,11 +1032,7 @@ EntityManager::registerComponentDynamic(const std::string &typeName, smart_Compo
 }
 
 void EntityManager::addComponentByIdImpl(EntityRecord &record, ComponentId componentType) {
-    ArchetypeNode *fromNode = record.archetypeNode;
-    Archetype type = fromNode->type_;
-    type.insert(componentType);
-    ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(type);
-    moveEntityByArchetype(record, fromNode->type_, fromNode, toNode);
+    ArchetypeNode *toNode = moveForAddedComponent(record, componentType);
     bool ok = toNode->components_[componentType]->appendDefaultRow();
     IR_ASSERT(
         ok,
@@ -988,6 +1128,9 @@ void EntityManager::removeComponentById(
     moveEntityByArchetype(record, toNode->type_, fromNode, toNode);
 
     fromNode->components_[componentType]->removeDataAndPack(row);
+    if (fromNode->hasForeignCleared_) {
+        removeForeignClearedRows(fromNode, toNode, componentType, row, entity);
+    }
 
     IRE_LOG_DEBUG(
         "Removed component type={} from entity={} (new row={})",

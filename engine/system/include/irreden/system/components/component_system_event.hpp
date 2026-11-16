@@ -55,7 +55,13 @@ template <> struct C_SystemEvent<IRSystem::TICK> {
     PrepareRangedTickFn prepareRangedTick_;
 
     IREntity::Archetype archetype_;
+    /// The filter `executeSystem` matches against: the declared exclusions
+    /// plus what the static-resident matching policy adds. Only
+    /// `SystemManager` writes it, always rebuilding it from the declared set.
     IREntity::Archetype excludeArchetype_;
+    /// What the author declared: the `Exclude<...>` pack or the lane's
+    /// exclude list, plus every later `addSystemExcludeTag`.
+    IREntity::Archetype declaredExcludeArchetype_;
 
     C_SystemEvent(
         TickFn tickFunction,
@@ -66,7 +72,8 @@ template <> struct C_SystemEvent<IRSystem::TICK> {
         : functionTick_(std::move(tickFunction))
         , prepareRangedTick_(std::move(prepareRangedTick))
         , archetype_(std::move(archetype))
-        , excludeArchetype_(std::move(excludeArchetype)) {}
+        , excludeArchetype_(excludeArchetype)
+        , declaredExcludeArchetype_(std::move(excludeArchetype)) {}
 
     /// Legacy two-arg overload — used by `createSystemDynamic`. Leaves
     /// `prepareRangedTick_` empty (validator rejects PARALLEL_FOR).
@@ -78,7 +85,8 @@ template <> struct C_SystemEvent<IRSystem::TICK> {
         : functionTick_(std::move(tickFunction))
         , prepareRangedTick_()
         , archetype_(std::move(archetype))
-        , excludeArchetype_(std::move(excludeArchetype)) {}
+        , excludeArchetype_(excludeArchetype)
+        , declaredExcludeArchetype_(std::move(excludeArchetype)) {}
 
     C_SystemEvent()
         : functionTick_()

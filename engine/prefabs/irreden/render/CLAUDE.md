@@ -87,7 +87,7 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 - Fog subject classes: untagged voxel sets, SDF shapes and world-placed detached
   canvas owners are BODY subjects (one owner/ground-anchor `evalReveal` verdict);
   detached BODY factor + hidden state modulates/skips the whole authored composite.
-  `C_FogField` / `C_FogExempt` are explicit and `revealSystems()` is the splice.
+  `C_FogField` / `C_FogExempt` are explicit and `revealSystems()` is the splice. The voxel and shape subject systems and `GATE_VOXEL_SETS_BY_LOD` are gated for settled static residents (`fog_settled_gate.hpp`): a mutator that changes a verdict input advances `C_CanvasFogOfWar::revision_`, and a subject's own inputs go through the `IRPrefab::Fog::set*` setters, which resettle it.
   EXEMPT uses the matching BODY carrier at factor 255; a detached owner-private
   pool holds the uniform carrier policy so later allocations and whole-record
   seeds inherit the class without a recurring scan.

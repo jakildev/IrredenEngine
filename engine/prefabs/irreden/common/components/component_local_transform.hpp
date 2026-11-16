@@ -23,6 +23,8 @@
 
 #include <irreden/ir_math.hpp>
 
+#include <irreden/entity/ir_entity_types.hpp>
+
 namespace IRComponents {
 
 struct C_LocalTransform {
@@ -47,5 +49,14 @@ struct C_LocalTransform {
 };
 
 } // namespace IRComponents
+
+namespace IREntity {
+
+// A pose input of a static resident (docs/design/static-residents.md): a
+// system or query that declares a write to it never matches one.
+template <>
+inline constexpr StaticGuard kStaticGuard<IRComponents::C_LocalTransform> = StaticGuard::INPUT;
+
+} // namespace IREntity
 
 #endif /* COMPONENT_LOCAL_TRANSFORM_H */

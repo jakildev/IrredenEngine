@@ -60,6 +60,14 @@ bool isPureComponent(ComponentId component) {
     return getEntityManager().isPureComponent(component);
 }
 
+bool isClearedByForeignMove(ComponentId component) {
+    return getEntityManager().isClearedByForeignMove(component);
+}
+
+bool tracksInputChanges(ComponentId component) {
+    return getEntityManager().tracksInputChanges(component);
+}
+
 bool isChildOfRelation(RelationId relation) {
     return getEntityManager().isChildOfRelation(relation);
 }

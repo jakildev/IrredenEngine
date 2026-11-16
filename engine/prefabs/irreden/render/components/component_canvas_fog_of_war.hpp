@@ -465,6 +465,13 @@ struct C_CanvasFogOfWar {
     /// texture it needs no dirty flag. Cleared/added via `clearVisionCircles`
     /// / `addVisionCircle`; empty (count 0) means grid-only.
     FrameDataFogObservers observers_{};
+    /// Advanced by every mutation a BODY reveal verdict can read: a cell's
+    /// state or channels, the explored policy and clock, a vision source,
+    /// and a line-of-sight publish. Never reset. The gated fog evaluators
+    /// compare it with the value they last saw to decide whether settled
+    /// static residents need a pass (`fog_settled_gate.hpp`); a write that
+    /// bypasses the mutators below must advance it too.
+    std::uint64_t revision_ = 0;
     /// Line-of-sight column field (layout in the header comment). The CPU
     /// mirror is the texel image itself; `FOG_LOS_BUILD` writes both.
     /// `losQueryColumnTops_` is `lineOfSight`'s own, sized on its first call.
@@ -591,6 +598,7 @@ struct C_CanvasFogOfWar {
     }
 
     void setCell(int wx, int wy, std::uint8_t state) {
+        ++revision_;
         field_->setCell({wx, wy}, state);
     }
 
@@ -604,6 +612,7 @@ struct C_CanvasFogOfWar {
     /// the two masks intersect, and decays only where it intersects the
     /// policy's mask. Zero admits nothing.
     bool setCellChannels(int wx, int wy, std::uint32_t channels) {
+        ++revision_;
         return field_->setCellChannels({wx, wy}, channels);
     }
 
@@ -614,6 +623,7 @@ struct C_CanvasFogOfWar {
     /// memory behind a moving reveal authors it with `exploreRadius`, or
     /// wipes the field before each call.
     void revealRadius(int cx, int cy, int radius, std::uint32_t channels = kFogChannelDefault) {
+        ++revision_;
         field_->revealRadius({cx, cy}, radius, channels);
     }
 
@@ -621,6 +631,7 @@ struct C_CanvasFogOfWar {
     /// intersects @p channels becomes EXPLORED with its exploration time
     /// refreshed; VISIBLE cells are retained. Returns the changed-cell count.
     int exploreRadius(int cx, int cy, int radius, std::uint32_t channels = kFogChannelDefault) {
+        ++revision_;
         return field_->exploreRadius({cx, cy}, radius, channels);
     }
 
@@ -631,6 +642,7 @@ struct C_CanvasFogOfWar {
         std::uint64_t durationMs,
         std::uint32_t channels = kFogChannelDefault
     ) {
+        ++revision_;
         return field_->setExploredPolicy(policy, durationMs, channels);
     }
 
@@ -641,6 +653,9 @@ struct C_CanvasFogOfWar {
     /// Advances the creation-owned simulation clock the DECAY policy ages on;
     /// false and unchanged for a backwards or out-of-range time. Serial.
     bool setExploredTimeMs(std::uint64_t nowMs) {
+        if (nowMs != field_->exploredTimeMs()) {
+            ++revision_;
+        }
         return field_->setExploredTimeMs(nowMs);
     }
 
@@ -654,6 +669,7 @@ struct C_CanvasFogOfWar {
     /// `setVisionCircleLineOfSight` again, since every new slot starts with
     /// LOS off.
     void clearVisionCircles() {
+        ++revision_;
         clearVisionCircles(observers_, *field_);
     }
 
@@ -712,6 +728,7 @@ struct C_CanvasFogOfWar {
         float freeBand = 0.0f,
         std::uint32_t channels = kFogChannelDefault
     ) {
+        ++revision_;
         return addVisionCircle(
             observers_,
             *field_,
@@ -741,6 +758,7 @@ struct C_CanvasFogOfWar {
     void setVisionCircleLineOfSight(
         int source, float losEyeHeight, float losSoftness = kFogLosHardGate
     ) {
+        ++revision_;
         setVisionCircleLineOfSight(observers_, source, losEyeHeight, losSoftness);
     }
 
@@ -756,6 +774,7 @@ struct C_CanvasFogOfWar {
     /// `addVisionCircle`'s return. Every slot starts disabled, both when added
     /// and after `clearVisionCircles`.
     void setVisionCircleCeiling(int source, float ceilingHeight, float fadeHeight = 0.0f) {
+        ++revision_;
         setVisionCircleCeiling(observers_, source, ceilingHeight, fadeHeight);
     }
 
@@ -988,6 +1007,7 @@ struct C_CanvasFogOfWar {
     }
 
     void clearAll() {
+        ++revision_;
         field_->clear();
         windowOrigin_.reset();
     }

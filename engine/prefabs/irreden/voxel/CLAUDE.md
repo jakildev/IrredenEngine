@@ -21,6 +21,7 @@ API contracts; this file owns cross-header and pipeline constraints.
   mask, and face occupancy in that order. For a multi-pass raw-span edit,
   write everything and call `resyncAfterRawEdits()` once; never hand-roll the
   pair. `syncActiveMask()` remains only for existing low-level raw-loop sites. Authored local-canvas editing uses `mutableAuthoredRecords()` + `resyncAfterAuthoredEdits()` so rotated raster output cannot overwrite source geometry.
+- Every set mutator tells a static owner through `IRPrefab::Static::noteChanged(ownerEntityId_)` (routed by `ownerStatic_`, which only the static-resident drain writes); a new record mutator exits through `markPoolRecordsChanged` or `notifyRecordsChanged`, a band change through `setLodBand`, owner registration through `IRPrefab::Voxel::adoptOwner`.
 - `visible_`, `ghostHeld_`, and `lodCulled_` are transient whole-set gates.
   Pose writers read `renders()` and stay frozen for ghosts;
   mask writers read `masksActive()` so held ghosts retain alpha; closing both clears the mask.
@@ -71,36 +72,12 @@ out-of-range writes are errors. Use `sdf_fill.hpp` for in-place fills and
 
 ## Transform and revoxelization pipeline
 
-- `UPDATE_VOXEL_SET_CHILDREN` copies only the composed `C_WorldTransform.translation_` to pool globals,
-  after every transform writer, modifier resolver and `PROPAGATE_TRANSFORM`. It runs in UPDATE, or in
-  RENDER ahead of the first pool-position reader (once per rendered frame; the GRID rebuild and seed
-  systems ordered against it move too; `test/ecs/voxel_set_children_render_placement_test.cpp`).
-  Visible sets upload every tick; only the shared shadow-feeder cull gate skips work. Its parallel
-  workers write disjoint spans and merge queued-position ranges in `endTick`.
-- `REBUILD_GRID_VOXELS` runs after that baseline update for explicit GRID entities, inverse-
-  mapping dest cells into source occupancy (forward scatter leaves holes); aliasing is first-wins.
-  It emits every exposed dest cell; interior cells fill what remains. `allocatedVoxels_` (resident
-  slots) can exceed `numVoxels_` (authored records): the rebuild grows it to a bounded 3/2 high-water
-  mark, the output-only tail is inactive at identity, and masks, owner ids, cull ranges and frees span
-  the allocation while edits and saves use the authored count. An unadmitted pose fails closed (header
-  contract). Rotated output carries `VoxelReserved::kRotatedEmit` for the silhouette-riser face rule.
-- `REBUILD_GRID_VOXELS_IMPLICIT` handles entities with no `C_RotationMode`
-  (absence means GRID everywhere else); register it right after the explicit
-  system. Their archetypes are disjoint; the twin delegates to the same code.
-- Creations using GRID entities register both rebuild arms after
-  `UPDATE_VOXEL_SET_CHILDREN`. On-screen rotation re-rasterizes every frame;
-  transform comparison is a forbidden dirty flag. Extend
-  `test/ecs/grid_rotation_test.cpp` whenever adding public grid-rotation math.
-- DETACHED entities bypass GRID rebuild and rotate through their canvas TRS.
-  `REBUILD_DETACHED_VOXELS`, after `PROPAGATE_CANVAS_ROTATION`, only seeds the
-  pool's rotation-independent static cull bound once; the GPU compute owns
-  per-frame revoxelization with the same round-half-up inverse mapping as CPU
-  GRID rotation. A pool resamples one CENTER set, or the cell groups
-  `PROPAGATE_CANVAS_PARTS` posts for its hosted parts, each about its own
-  origin ([design](../../../../docs/design/composite-entity-canvases.md)).
-- Temporal spin flicker is an accepted lattice-resampling limitation: occupied
-  cells change discontinuously at half-integer crossings. Do not add sticky
-  cells or hysteresis, which cache last-frame state as a dirty flag.
+- `UPDATE_VOXEL_SET_CHILDREN` copies only the composed `C_WorldTransform.translation_` to pool globals, after every transform writer, modifier resolver and `PROPAGATE_TRANSFORM`. It runs in UPDATE, or in RENDER ahead of the first pool-position reader (once per rendered frame; the GRID rebuild and seed systems ordered against it move too; `test/ecs/voxel_set_children_render_placement_test.cpp`). Visible sets of dynamic and settling entities upload every tick; only the shared shadow-feeder cull gate skips work. A settled static entity's sets are written and queued once when it settles (`docs/design/static-residents.md`). Its parallel workers write disjoint spans and merge queued-position ranges in `endTick`.
+- `REBUILD_GRID_VOXELS` runs after that baseline update for explicit GRID entities, inverse-mapping dest cells into source occupancy (forward scatter leaves holes); aliasing is first-wins. It emits every exposed dest cell; interior cells fill what remains. `allocatedVoxels_` (resident slots) can exceed `numVoxels_` (authored records): the rebuild grows it to a bounded 3/2 high-water mark, the output-only tail is inactive at identity, and masks, owner ids, cull ranges and frees span the allocation while edits and saves use the authored count. An unadmitted pose fails closed (header contract). Rotated output carries `VoxelReserved::kRotatedEmit` for the silhouette-riser face rule.
+- `REBUILD_GRID_VOXELS_IMPLICIT` handles entities with no `C_RotationMode` (absence means GRID everywhere else); register it right after the explicit system. Their archetypes are disjoint; the twin delegates to the same code.
+- Creations using GRID entities register both rebuild arms after `UPDATE_VOXEL_SET_CHILDREN`. On-screen rotation of a dynamic entity re-rasterizes every frame; transform comparison is a forbidden dirty flag. A settled static entity is rasterized once when it settles. Extend `test/ecs/grid_rotation_test.cpp` whenever adding public grid-rotation math.
+- DETACHED entities bypass GRID rebuild and rotate through their canvas TRS. `REBUILD_DETACHED_VOXELS`, after `PROPAGATE_CANVAS_ROTATION`, only seeds the pool's rotation-independent static cull bound once; the GPU compute owns per-frame revoxelization with the same round-half-up inverse mapping as CPU GRID rotation. A pool resamples one CENTER set, or the cell groups `PROPAGATE_CANVAS_PARTS` posts for its hosted parts, each about its own origin ([design](../../../../docs/design/composite-entity-canvases.md)).
+- Temporal spin flicker is an accepted lattice-resampling limitation: occupied cells change discontinuously at half-integer crossings. Do not add sticky cells or hysteresis, which cache last-frame state as a dirty flag.
 
 Any system that writes `pool.getPositionGlobals()` must cull with
 `IRPrefab::SunShadow::shadowFeederCullViewport`, not the narrower render

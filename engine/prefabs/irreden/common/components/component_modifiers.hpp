@@ -181,6 +181,14 @@ struct C_GlobalModifiers {
     std::vector<Modifier> modifiers_;
     std::vector<ModifierVec3> modifiersVec3_;
     std::vector<ModifierQuat> modifiersQuat_;
+
+    /// Advanced by every mutation that changes a composed value: a push, an
+    /// upsert, a source sweep that removed an entry, an expiry. Never
+    /// reset. The static-resident transition step compares it with the
+    /// value it last saw (`docs/design/static-residents.md`, "The
+    /// global-modifier floor"); a write to the vectors that bypasses the
+    /// `IRPrefab::Modifier` mutators must advance it too.
+    std::uint64_t revision_ = 0;
 };
 
 /// Empty tag opting an entity out of `C_GlobalModifiers`. The
@@ -356,5 +364,16 @@ struct C_ResolvedFields {
 };
 
 } // namespace IRComponents
+
+namespace IREntity {
+
+// Pose input and derived pose of a static resident
+// (docs/design/static-residents.md, "The matching policy").
+template <>
+inline constexpr StaticGuard kStaticGuard<IRComponents::C_Modifiers> = StaticGuard::INPUT;
+template <>
+inline constexpr StaticGuard kStaticGuard<IRComponents::C_ResolvedFields> = StaticGuard::DERIVED;
+
+} // namespace IREntity
 
 #endif /* COMPONENT_MODIFIERS_H */

@@ -193,7 +193,7 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
         SystemId id = registerSystem<
             FRAMEBUFFER_TO_SCREEN,
             C_TrixelCanvasFramebuffer,
-            C_WorldTransform,
+            const C_WorldTransform,
             C_Name>("FramebufferToScreen");
         auto *sys = getSystemParams<System<FRAMEBUFFER_TO_SCREEN>>(id);
         sys->frameDataBuf_ = IRRender::getNamedResource<Buffer>("FramebufferToScreenFrameData");

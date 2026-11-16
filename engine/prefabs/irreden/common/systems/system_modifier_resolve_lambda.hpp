@@ -17,7 +17,8 @@ template <> struct System<MODIFIER_RESOLVE_LAMBDA> {
     static SystemId create() {
         return createSystem<
             IRComponents::C_LambdaModifiers,
-            IRComponents::C_ResolvedFields
+            IRComponents::C_ResolvedFields,
+            Exclude<IRComponents::C_Settled>
         >(
             "ModifierResolveLambda",
             [](IRComponents::C_LambdaModifiers &m,

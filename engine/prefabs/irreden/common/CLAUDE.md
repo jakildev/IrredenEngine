@@ -62,6 +62,37 @@ GRID; creations must register `REBUILD_GRID_VOXELS_IMPLICIT` alongside
 not by `createEntity`. Its contract is
 [`world-streaming.md`](../../../../docs/design/world-streaming.md).
 
+## Static residents
+
+`IRPrefab::Static` (`static_residents.hpp`) implements
+[`docs/design/static-residents.md`](../../../../docs/design/static-residents.md):
+an entity its owner declares static (`C_Static` in the `createEntity` bundle,
+or `freeze`) stops matching pose writers at once and the deriving systems
+once `drain` has promoted it (`C_Settled`). Read the design before touching
+any of it; the short form:
+
+- `freeze` / `thaw` / `resettle` are deferred to the next structural flush
+  and safe from a worker tick. `drain` is the only promoter; `World` calls it
+  after each pipeline, and a headless test calls it where it runs pipelines.
+- A raw write to a settled entity's inputs is stored, not derived: follow it
+  with `resettle(entity)`. The engine mutators do it themselves
+  (`Modifier::push*` and `setMode` thaw; voxel-set and fog setters resettle).
+  `static_audit.hpp` asserts on a raw write nobody resettled.
+- Eligibility is GRID, CPU-direct, non-skeletal, with a static parent or
+  none. `freeze` returns the reason; a refused bundle entity stays dynamic.
+- A system that only maintains state derived from pose adds
+  `Exclude<C_Settled>`; that includes a creation's `C_ResolvedFields`
+  seeder, or the resolver composes a settling row from an unseeded value.
+- A one-shot query (`executeQuery`, `executeQueryDynamic`) never derives. One
+  that writes `C_WorldTransform` or `C_ResolvedFields` visits no static row,
+  so a command thaws the entity first or changes its inputs through a
+  mutator.
+- A destroyed parent's static children keep their link, resettle, and derive
+  as roots, as dynamic children do.
+- A global modifier pushed after an entity settles does not reach it.
+- A component method reaches its entity through `static_notes.hpp`
+  (`noteChanged(id)`), never a lookup.
+
 ## Simulation-clock contract
 
 The ECS simulation clock pauses and scales independently of the always-running

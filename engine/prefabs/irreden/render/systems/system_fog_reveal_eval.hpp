@@ -11,6 +11,8 @@
 #include <irreden/render/components/component_fog_ghost.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/fog_of_war.hpp>
+#include <irreden/render/fog_settled_gate.hpp>
+#include <irreden/common/static_notes.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
@@ -58,7 +60,8 @@ inline void applyFogGateToPool(
 }
 
 struct FogRevealEvalGhost {
-    static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
+    static constexpr int kGrainSize = kDefaultGrainSize;
+    IRPrefab::Fog::SettledGate gate_;
 
     struct PendingTransition {
         IRComponents::C_VoxelSetNew *voxelSet_ = nullptr;
@@ -117,8 +120,9 @@ struct FogRevealEvalGhost {
         settings_ = IREntity::singleton<IRComponents::C_FogRevealSettings>();
         settings_.staggerPeriod_ = IRMath::max(settings_.staggerPeriod_, std::uint32_t{1});
         ++frameCounter_;
+        gate_.begin(activeCanvas_, activePool_, fog_, settings_);
 
-        const std::vector<IREntity::ArchetypeNode *> nodes = matchingNodes();
+        const std::vector<IREntity::ArchetypeNode *> nodes = matchingNodes(gate_.queryExclude());
         std::size_t population = 0;
         for (IREntity::ArchetypeNode *node : nodes) {
             population += static_cast<std::size_t>(node->length_);
@@ -134,13 +138,15 @@ struct FogRevealEvalGhost {
         restampedByWorker_.assign(slots, 0u);
     }
 
-    static std::vector<IREntity::ArchetypeNode *> matchingNodes() {
+    static std::vector<IREntity::ArchetypeNode *>
+    matchingNodes(const IREntity::Archetype &exclude = {}) {
         return IREntity::queryArchetypeNodesSimple(
             IREntity::getArchetype<
                 IRComponents::C_FogRevealed,
                 IRComponents::C_FogGhost,
                 IRComponents::C_WorldTransform,
-                IRComponents::C_VoxelSetNew>()
+                IRComponents::C_VoxelSetNew>(),
+            exclude
         );
     }
 
@@ -187,7 +193,7 @@ struct FogRevealEvalGhost {
             voxelSet.visible_ == revealed.shown_ && voxelSet.ghostHeld_ == revealed.ghostHeld_;
         const bool wasShown = revealed.shown_;
         const bool evaluated = revealed.override_ != IRComponents::FogOverride::NONE ||
-                               !fogGatesAgree ||
+                               !fogGatesAgree || gate_.nodeSettling_ ||
                                (entity + frameCounter_) % settings_.staggerPeriod_ == 0u;
         if (evaluated) {
             bool shown = revealed.shown_;
@@ -221,6 +227,12 @@ struct FogRevealEvalGhost {
                 return verdict(position, channels);
             }
         );
+        // A set ghost-held at a pose other than its own keeps its ghost
+        // positions, so its pool span does not hold the entity's pose yet.
+        if (gate_.nodeSettling_ && revealed.ghostHeld_ &&
+            !IRPrefab::Fog::samePose(ghost.pose_, worldTransform)) {
+            IRPrefab::Static::noteHeld(entity);
+        }
 
         if ((revealed.shown_ || revealed.ghostHeld_) && activePool_ != nullptr) {
             const std::uint8_t factor =
@@ -276,7 +288,8 @@ struct FogRevealEvalGhost {
 } // namespace detail
 
 template <> struct System<FOG_REVEAL_EVAL> {
-    static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
+    static constexpr int kGrainSize = kDefaultGrainSize;
+    IRPrefab::Fog::SettledGate gate_;
 
     struct PendingTransition {
         IRComponents::C_VoxelSetNew *voxelSet_ = nullptr;
@@ -299,13 +312,15 @@ template <> struct System<FOG_REVEAL_EVAL> {
     std::vector<std::uint32_t> restampedByWorker_;
     std::uint32_t restampedVoxelsLastFrame_ = 0;
 
-    static std::vector<IREntity::ArchetypeNode *> matchingNodes() {
+    static std::vector<IREntity::ArchetypeNode *>
+    matchingNodes(IREntity::Archetype exclude = {}) {
+        exclude.insert(IREntity::getComponentType<IRComponents::C_FogGhost>());
         return IREntity::queryArchetypeNodesSimple(
             IREntity::getArchetype<
                 IRComponents::C_FogRevealed,
                 IRComponents::C_WorldTransform,
                 IRComponents::C_VoxelSetNew>(),
-            IREntity::getArchetype<IRComponents::C_FogGhost>()
+            exclude
         );
     }
 
@@ -341,8 +356,9 @@ template <> struct System<FOG_REVEAL_EVAL> {
         settings_ = IREntity::singleton<IRComponents::C_FogRevealSettings>();
         settings_.staggerPeriod_ = IRMath::max(settings_.staggerPeriod_, std::uint32_t{1});
         ++frameCounter_;
+        gate_.begin(activeCanvas_, activePool_, fog_, settings_);
 
-        const std::vector<IREntity::ArchetypeNode *> nodes = matchingNodes();
+        const std::vector<IREntity::ArchetypeNode *> nodes = matchingNodes(gate_.queryExclude());
         std::size_t population = 0;
         for (IREntity::ArchetypeNode *node : nodes) {
             population += static_cast<std::size_t>(node->length_);
@@ -393,7 +409,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
         }
         const bool fogGatesAgree = voxelSet.visible_ == revealed.shown_ && !voxelSet.ghostHeld_;
         if (revealed.override_ == IRComponents::FogOverride::NONE && fogGatesAgree &&
-            (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
+            !gate_.nodeSettling_ && (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
             return;
         }
 
@@ -454,14 +470,25 @@ template <> struct System<FOG_REVEAL_EVAL> {
         });
     }
 
+    void tick(
+        const IREntity::Archetype &type,
+        std::vector<IREntity::EntityId> &entities,
+        std::vector<IRComponents::C_FogRevealed> &revealed,
+        std::vector<IRComponents::C_WorldTransform> &worldTransforms,
+        std::vector<IRComponents::C_VoxelSetNew> &voxelSets
+    ) {
+        gate_.walkNode(*this, kGrainSize, type, entities, revealed, worldTransforms, voxelSets);
+    }
+
     static SystemId create() {
         return registerSystem<
             FOG_REVEAL_EVAL,
             IRComponents::C_FogRevealed,
-            IRComponents::C_WorldTransform,
+            const IRComponents::C_WorldTransform,
             IRComponents::C_VoxelSetNew,
             Exclude<IRComponents::C_FogGhost>,
-            ParallelSafe>("FogRevealEval");
+            GatesSettled,
+            MainThread>("FogRevealEval");
     }
 };
 
@@ -476,14 +503,35 @@ template <> struct System<FOG_REVEAL_EVAL_GHOST> : detail::FogRevealEvalGhost {
         tickGhost(entity, revealed, ghost, worldTransform, voxelSet);
     }
 
+    void tick(
+        const IREntity::Archetype &type,
+        std::vector<IREntity::EntityId> &entities,
+        std::vector<IRComponents::C_FogRevealed> &revealed,
+        std::vector<IRComponents::C_FogGhost> &ghosts,
+        std::vector<IRComponents::C_WorldTransform> &worldTransforms,
+        std::vector<IRComponents::C_VoxelSetNew> &voxelSets
+    ) {
+        gate_.walkNode(
+            *this,
+            kGrainSize,
+            type,
+            entities,
+            revealed,
+            ghosts,
+            worldTransforms,
+            voxelSets
+        );
+    }
+
     static SystemId create() {
         return registerSystem<
             FOG_REVEAL_EVAL_GHOST,
             IRComponents::C_FogRevealed,
             IRComponents::C_FogGhost,
-            IRComponents::C_WorldTransform,
+            const IRComponents::C_WorldTransform,
             IRComponents::C_VoxelSetNew,
-            ParallelSafe>("FogRevealEvalGhost");
+            GatesSettled,
+            MainThread>("FogRevealEvalGhost");
     }
 };
 

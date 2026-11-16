@@ -33,6 +33,15 @@ template <typename... Cs> struct CallCreateSystem<TypeList<Cs...>> {
     }
 };
 
+// A `const C` in a registration pack declares a read. Storage, archetype
+// matching and column access all name the bare component, so the const is
+// dropped before the pack reaches them; the tick still takes `const C &`.
+template <typename L> struct StripConstImpl;
+template <typename... Cs> struct StripConstImpl<TypeList<Cs...>> {
+    using type = TypeList<std::remove_const_t<Cs>...>;
+};
+template <typename L> using StripConst_t = typename StripConstImpl<L>::type;
+
 template <typename L> struct ArchetypeFromList;
 template <typename... Cs> struct ArchetypeFromList<TypeList<Cs...>> {
     static IREntity::Archetype value() {
@@ -193,7 +202,8 @@ constexpr SystemId createSystem(
     // PartitionExcludes<Pack...>::Included whenever the pack carries no tag
     // types (proof: test/system/system_access_test.cpp). The Excluded half
     // (`Partition::Excluded`, above) still drives the exclude archetype.
-    return detail::CallCreateSystem<detail::FilterTags_t<TickComponents...>>::run(
+    return detail::CallCreateSystem<
+        detail::StripConst_t<detail::FilterTags_t<TickComponents...>>>::run(
         getSystemManager(),
         std::move(name),
         std::move(functionTick),
@@ -206,7 +216,8 @@ constexpr SystemId createSystem(
         grainSize,
         cadence,
         offset,
-        accessDescriptor
+        accessDescriptor,
+        detail::writeGuardOf<TickComponents...>()
     );
 }
 
@@ -247,9 +258,27 @@ template <typename T, typename L> struct MakeMemberTickFn;
 //   2. tick(EntityId, Cs&...)                        — per-entity-id
 //   3. tick(const Archetype&, std::vector<EntityId>&,
 //          std::vector<Cs>&...)                      — per-archetype batch
+//
+// A `GatesSettled` system decides per archetype node whether to walk its
+// rows, so it registers the per-archetype form even when it also declares a
+// row-form `tick` overload for its own use (`WholeNodeOnly`).
 template <typename T, typename... Cs> struct MakeMemberTickFn<T, TypeList<Cs...>> {
-    static auto build(T *p) {
-        if constexpr (requires(T &s, Cs &...cs) { s.tick(cs...); }) {
+    template <bool WholeNodeOnly = false> static auto build(T *p) {
+        if constexpr (WholeNodeOnly) {
+            static_assert(
+                requires(
+                    T &s,
+                    const Archetype &a,
+                    std::vector<EntityId> &ids,
+                    std::vector<Cs> &...cols
+                ) { s.tick(a, ids, cols...); },
+                "registerSystem<N, ...>: a GatesSettled or kWholeNodeTick System<N> must declare "
+                "tick(const Archetype&, std::vector<EntityId>&, std::vector<Cs>&...)."
+            );
+            return [p](const Archetype &a, std::vector<EntityId> &ids, std::vector<Cs> &...cols) {
+                p->tick(a, ids, cols...);
+            };
+        } else if constexpr (requires(T &s, Cs &...cs) { s.tick(cs...); }) {
             return [p](Cs &...cs) { p->tick(cs...); };
         } else if constexpr (requires(T &s, EntityId id, Cs &...cs) { s.tick(id, cs...); }) {
             return [p](EntityId id, Cs &...cs) { p->tick(id, cs...); };
@@ -330,6 +359,22 @@ template <typename T> constexpr int grainSizeOf() {
     }
 }
 
+// `static constexpr bool kWholeNodeTick = true` on a System<N> registers its
+// per-archetype `tick` even when it also declares a row-form overload for
+// its own use: the system decides something once per archetype node.
+template <typename T>
+concept HasWholeNodeTickMember = requires {
+    { T::kWholeNodeTick } -> std::convertible_to<bool>;
+};
+
+template <typename T> constexpr bool wholeNodeTickOf() {
+    if constexpr (HasWholeNodeTickMember<T>) {
+        return T::kWholeNodeTick;
+    } else {
+        return false;
+    }
+}
+
 // Detect `static constexpr std::uint32_t kCadence` / `kCadenceOffset`
 // members on a System<N> specialization, mirroring kConcurrency / kGrainSize.
 // Absent → cadence 1 (every tick) / offset 0, so every legacy spec is
@@ -403,12 +448,15 @@ registerSystem(std::string name, RelationParams<RelationComponents...> relationP
     // staying byte-identical to `PartitionExcludes::Included` for tag-free
     // packs. The `createSystem<Components...>` call below still sees the full
     // pack, so the tag still flips `parallelSafe_` in the access descriptor.
-    using IncludedList = detail::FilterTags_t<Components...>;
+    using IncludedList = detail::StripConst_t<detail::FilterTags_t<Components...>>;
 
     auto instance = std::make_unique<SystemT>();
     SystemT *p = instance.get();
 
-    auto tickFn = detail::MakeMemberTickFn<SystemT, IncludedList>::build(p);
+    constexpr bool wholeNodeTick = detail::wholeNodeTickOf<SystemT>() ||
+                                   (detail::IsGatesSettledTag<Components>::value || ...);
+    auto tickFn =
+        detail::MakeMemberTickFn<SystemT, IncludedList>::template build<wholeNodeTick>(p);
     auto beginFn = detail::makeMemberBeginTickFn<SystemT>(p);
     auto endFn = detail::makeMemberEndTickFn<SystemT>(p);
     auto relationFn = detail::makeMemberRelationTickFn<SystemT, RelationComponents...>(p);
@@ -479,16 +527,37 @@ inline SystemId createSystemDynamic(
     IREntity::Archetype includeArchetype,
     IREntity::Archetype excludeArchetype,
     std::function<void(IREntity::ArchetypeNode *)> body,
-    Concurrency concurrency = Concurrency::SERIAL
+    Concurrency concurrency = Concurrency::SERIAL,
+    IREntity::Archetype readOnly = {}
 ) {
     return getSystemManager().createSystemDynamic(
         std::move(name),
         std::move(includeArchetype),
         std::move(excludeArchetype),
         std::move(body),
-        concurrency
+        concurrency,
+        1,
+        0,
+        std::move(readOnly)
     );
 }
+
+namespace detail {
+
+template <typename PerNodeFn>
+void walkQueryNodes(
+    const IREntity::Archetype &includeArchetype,
+    const IREntity::Archetype &excludeArchetype,
+    PerNodeFn &&body
+) {
+    IR_ASSERT_MAIN_THREAD();
+    auto nodes = IREntity::queryArchetypeNodesSimple(includeArchetype, excludeArchetype);
+    for (auto *node : nodes) {
+        body(node);
+    }
+}
+
+} // namespace detail
 
 // One-shot query execution — the run-now counterpart to `createSystemDynamic`
 // (#17). Runs `body` once per archetype node matching `(includeArchetype,
@@ -503,17 +572,31 @@ inline SystemId createSystemDynamic(
 // worker-safe). Structural changes inside `body` must use the `IREntity::
 // deferred*` API; this primitive does NOT flush (the pipeline's group boundary
 // owns that). Zero matches is a silent no-op — correct for a command.
+//
+// The body is opaque, so every included component counts as written for the
+// static-resident matching policy, minus `readOnly`: a query that includes a
+// pose component it has not declared read-only does not visit static
+// entities. `readOnly` is a declaration the body is trusted to honour. A
+// query is never a deriving system, so `C_Settled` in `excludeArchetype`
+// only filters; a derived-pose writer visits no static row either way.
 template <typename PerNodeFn>
 void executeQueryDynamic(
     const IREntity::Archetype &includeArchetype,
     const IREntity::Archetype &excludeArchetype,
-    PerNodeFn &&body
+    PerNodeFn &&body,
+    const IREntity::Archetype &readOnly = {}
 ) {
-    IR_ASSERT_MAIN_THREAD();
-    auto nodes = IREntity::queryArchetypeNodesSimple(includeArchetype, excludeArchetype);
-    for (auto *node : nodes) {
-        body(node);
+    IREntity::Archetype writes;
+    for (IREntity::ComponentId component : includeArchetype) {
+        if (!readOnly.contains(component)) {
+            writes.insert(component);
+        }
     }
+    detail::walkQueryNodes(
+        includeArchetype,
+        detail::applyStaticExclusion(excludeArchetype, detail::writeGuardOf(writes), false),
+        std::forward<PerNodeFn>(body)
+    );
 }
 
 namespace detail {
@@ -531,7 +614,7 @@ template <typename... Cs> struct RunQueryRows<TypeList<Cs...>> {
     run(const IREntity::Archetype &includeArchetype,
         const IREntity::Archetype &excludeArchetype,
         FunctionTick &&tick) {
-        executeQueryDynamic(
+        walkQueryNodes(
             includeArchetype,
             excludeArchetype,
             [&tick](IREntity::ArchetypeNode *node) {
@@ -575,11 +658,17 @@ void executeQuery(FunctionTick &&tick) {
     using Partition = detail::PartitionExcludes<QueryComponents...>;
     IREntity::Archetype excludeArchetype =
         detail::ArchetypeFromList<typename Partition::Excluded>::value();
-    using IncludedList = detail::FilterTags_t<QueryComponents...>;
+    using IncludedList = detail::StripConst_t<detail::FilterTags_t<QueryComponents...>>;
     IREntity::Archetype includeArchetype = detail::ArchetypeFromList<IncludedList>::value();
+    static_assert(
+        !(detail::IsGatesSettledTag<QueryComponents>::value || ...),
+        "executeQuery<Cs...>: GatesSettled marks a deriving system, and a one-shot query "
+        "joins no round, so it is never one. Drop the tag."
+    );
+    constexpr IREntity::StaticGuard writeGuard = detail::writeGuardOf<QueryComponents...>();
     detail::RunQueryRows<IncludedList>::run(
         includeArchetype,
-        excludeArchetype,
+        detail::applyStaticExclusion(excludeArchetype, writeGuard, false),
         std::forward<FunctionTick>(tick)
     );
 }
@@ -734,6 +823,28 @@ inline std::uint32_t cadenceFromRate(double targetHz) {
     const double divisor = static_cast<double>(IRConstants::kFPS) / targetHz;
     const long rounded = static_cast<long>(divisor + 0.5); // round-half-up (divisor > 0)
     return rounded < 1 ? 1u : static_cast<std::uint32_t>(rounded);
+}
+
+/// Whether `system` is a deriving system for static residents
+/// (`docs/design/static-residents.md`, "The matching policy").
+inline bool isDerivingSystem(SystemId system) {
+    return getSystemManager().isDerivingSystem(system);
+}
+
+/// Round counters the static-resident transition step compares against.
+/// See `SystemManager::roundsOpened`.
+inline std::uint64_t roundsOpened() {
+    return getSystemManager().roundsOpened();
+}
+inline std::uint64_t roundsCompleted() {
+    return getSystemManager().roundsCompleted();
+}
+
+/// A whole-node tick reports the rows it iterated, for the profile report's
+/// `Walked` column. Call it on the thread that entered the tick; a system
+/// that never calls it is counted at its matched length.
+inline void reportRowsWalked(std::uint64_t rows) {
+    SystemManager::reportRowsWalked(rows);
 }
 
 inline void setTimingEnabled(bool enabled) {

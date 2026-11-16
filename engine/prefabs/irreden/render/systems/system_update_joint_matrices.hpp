@@ -427,7 +427,7 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
         // No shader, no buffer of its own — the skin matrices land in
         // UPDATE_VOXEL_POSITIONS_GPU's EntityTransformBuffer (resolved lazily in
         // endTick) and the prepass's existing shader applies them per voxel.
-        return registerSystem<UPDATE_JOINT_MATRICES, C_Joint, C_WorldTransform>(
+        return registerSystem<UPDATE_JOINT_MATRICES, C_Joint, const C_WorldTransform>(
             "UpdateJointMatrices"
         );
     }

@@ -108,10 +108,10 @@ default: `LuaScript::setEcsDefaultMode` (`EVAL`). With codegen, initialize in or
 
 ## Lua-defined systems (`IRSystem.registerSystem`)
 
-`registerSystem({ name, components, excludes?, tick, concurrency?, mode? })` returns a `SystemId` for any pipeline.
+`registerSystem({ name, components, reads?, excludes?, tick, concurrency?, mode? })` returns a `SystemId` for any pipeline.
 
 - Name components by handle (`IRComponent.C_LocalTransform`, or the value
-  `IRComponent.register` returned); strings resolve but hide typos.
+  `IRComponent.register` returned); strings resolve but hide typos. A listed component counts as written unless it is under `reads` (read-only column: a write raises), and a system that writes a pose component never matches a [static resident](../../docs/design/static-residents.md); registering `C_Static` installs `IRStatic` (`freeze`, `thaw`, `resettle`, `isStatic`, `isSettled`, `stats`).
 - `tick` runs once per matched archetype over `arch.length`, `arch.entityAt(i)`,
   and the column views; structural changes use `IREntity.deferred*`.
 - `concurrency` takes `IRSystem.Concurrency.*`; EVAL runs `PARALLEL_FOR` as

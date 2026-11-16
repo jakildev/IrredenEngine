@@ -62,7 +62,7 @@ template <> struct System<HITBOX_MOUSE_TEST> {
     }
 
     static SystemId create() {
-        return registerSystem<HITBOX_MOUSE_TEST, C_HitBox2D, C_WorldTransform>("HitBoxMouseTest");
+        return registerSystem<HITBOX_MOUSE_TEST, C_HitBox2D, const C_WorldTransform>("HitBoxMouseTest");
     }
 };
 

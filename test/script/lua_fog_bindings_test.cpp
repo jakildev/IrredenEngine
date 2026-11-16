@@ -390,7 +390,7 @@ class LuaFogVisionSlotsTest : public testing::Test {
   protected:
     LuaFogVisionSlotsTest() {
         IRScript::detail::bindFog(m_lua, [this]() {
-            return IRScript::detail::FogVisionTarget{&m_observers, &m_field};
+            return IRScript::detail::FogVisionTarget{&m_observers, &m_field, &m_revision};
         });
     }
 
@@ -405,7 +405,31 @@ class LuaFogVisionSlotsTest : public testing::Test {
     IREntity::EntityManager m_entityManager;
     IRComponents::FrameDataFogObservers m_observers{};
     IRPrefab::Fog::WorldField m_field;
+    std::uint64_t m_revision = 0;
 };
+
+// The gated fog passes re-walk settled subjects only when the owning
+// component's revision moves, so every vision entry that writes must move it.
+TEST_F(LuaFogVisionSlotsTest, EveryVisionWriteAdvancesTheOwnersRevision) {
+    const char *const kWrites[] = {
+        "IRFog.addVision(0, 0, 5)",
+        "IRFog.setVision(2, 2, 5)",
+        "IRFog.setVisionLineOfSight(0, 1.5)",
+        "IRFog.setVisionCeiling(0, 4.0)",
+        "IRFog.clearVisions()",
+    };
+    for (const char *write : kWrites) {
+        const std::uint64_t before = m_revision;
+        ASSERT_TRUE(m_lua.lua().safe_script(write, sol::script_pass_on_error).valid()) << write;
+        EXPECT_GT(m_revision, before) << write;
+    }
+    const std::uint64_t before = m_revision;
+    ASSERT_TRUE(m_lua.lua().safe_script("IRFog.addVision(1, 1, 5)").valid());
+    const std::uint64_t afterAdd = m_revision;
+    ASSERT_GT(afterAdd, before);
+    ASSERT_TRUE(m_lua.lua().safe_script("IRFog.getVisionCeiling(0)").valid());
+    EXPECT_EQ(m_revision, afterAdd) << "a read leaves it alone";
+}
 
 TEST_F(LuaFogVisionSlotsTest, AddAndSetVisionReturnTheSlot) {
     EXPECT_TRUE(m_lua.lua()
