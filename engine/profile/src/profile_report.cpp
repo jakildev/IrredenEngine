@@ -186,6 +186,11 @@ void writeInputLatency(FILE *f, const ProfileReport &report) {
     const InputLatencySummary &latency = report.inputLatency_;
     std::fprintf(f, "--- Input latency ---\n");
     std::fprintf(f, "End event: %s\n", frameEndEventName(latency.endEvent_));
+    std::fprintf(
+        f,
+        "Stale pick input ticks: %llu\n",
+        static_cast<unsigned long long>(latency.stalePickInputTicks_)
+    );
     if (latency.endEvent_ == FrameEndEvent::NOT_MEASURED) {
         std::fprintf(f, "Frames in flight at frame start: not measured\n\n");
         return;

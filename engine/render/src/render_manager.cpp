@@ -204,6 +204,81 @@ RenderManager::~RenderManager() {
     }
 }
 
+void RenderManager::setPresentedPickPreviousCompletedFault(bool enabled) {
+    m_presentedPickPreviousCompletedFault = enabled;
+}
+
+void RenderManager::publishMouseTrixelPick(Buffer *hoverBuffer) {
+    const int slot = m_presentedPickRing.write(
+        IRRender::device()->submissionSerial(),
+        {IRRender::device()->presentingFrameId(), IRRender::mouseMainFramebufferPixel()}
+    );
+    if (m_presentedPickBuffers[static_cast<std::size_t>(slot)] == nullptr) {
+        m_presentedPickBuffers[static_cast<std::size_t>(slot)] = IRRender::createResource<Buffer>(
+                                                                     nullptr,
+                                                                     sizeof(HoveredEntityIdLayout),
+                                                                     BUFFER_STORAGE_DYNAMIC
+        )
+                                                                     .second;
+    }
+    IRRender::device()->memoryBarrier(BarrierType::BUFFER_UPDATE);
+    IRRender::device()->copyBufferSubData(
+        hoverBuffer,
+        0,
+        m_presentedPickBuffers[static_cast<std::size_t>(slot)],
+        0,
+        sizeof(HoveredEntityIdLayout)
+    );
+}
+
+void RenderManager::drainCompletedMouseTrixelPicks() {
+    m_presentedPickRing.drainCompleted(
+        IRRender::device()->completedSubmissionSerial(),
+        [this](int slot, const PresentedPickProducer &producer) {
+            PresentedPickRecord record;
+            m_presentedPickBuffers[static_cast<std::size_t>(slot)]
+                ->getSubData(0, sizeof(record.layout_), &record.layout_);
+            record.frameId_ = producer.frameId_;
+            record.cursorPixel_ = producer.cursorPixel_;
+            m_presentedPickHistory.accept(record);
+        }
+    );
+}
+
+MouseTrixelPick RenderManager::mouseTrixelPick() {
+    drainCompletedMouseTrixelPicks();
+    const ivec2 currentCursor = IRRender::mouseMainFramebufferPixel();
+    MouseTrixelPick result = resolvePresentedPick(
+        m_presentedPickHistory.served(m_presentedPickPreviousCompletedFault),
+        currentCursor,
+        [](IREntity::EntityId entity) {
+            return IREntity::entityExists(entity) &&
+                   !IREntity::getEntityManager().isMarkedForDeletion(entity);
+        }
+    );
+    IRInput::InputManager &input = IRInput::getInputManager();
+    if (result.stale_ && input.currentEvent() == IRTime::Events::INPUT &&
+        input.inputTick() != m_lastStalePickInputTick) {
+        m_lastStalePickInputTick = input.inputTick();
+        ++m_stalePickInputTicks;
+    }
+    return result;
+}
+
+std::uint64_t RenderManager::newestCompletedMouseTrixelPickFrameId() {
+    drainCompletedMouseTrixelPicks();
+    return m_presentedPickHistory.newestFrameId();
+}
+
+void RenderManager::resetMouseTrixelPickStats() {
+    m_lastStalePickInputTick = 0;
+    m_stalePickInputTicks = 0;
+}
+
+std::uint64_t RenderManager::staleMouseTrixelPickInputTicks() const {
+    return m_stalePickInputTicks;
+}
+
 void RenderManager::beginFrame() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 

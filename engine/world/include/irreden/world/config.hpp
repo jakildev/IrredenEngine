@@ -244,6 +244,10 @@ class WorldConfig {
             "input_latency_test_delay_ms",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::NUMBER>>(0.0)
         );
+        m_config.addEntry(
+            "presented_pick_previous_completed_test_fault",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false)
+        );
         sol::table configTable = m_lua.getTable("config");
         // A config file with no `config` global yields an invalid table, whose
         // `operator[]` would index a null `lua_State*`; an empty table takes

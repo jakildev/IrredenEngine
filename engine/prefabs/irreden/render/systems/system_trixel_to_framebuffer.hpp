@@ -235,11 +235,14 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     }
 
     void endTick() {
-        if (!scatterHoverPending_)
-            return;
-        auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
-        auto &frameData = IREntity::getComponent<C_FrameDataTrixelToFramebuffer>("mainFramebuffer");
-        resolveScatterHover(framebuffer, frameData, 1);
+        if (scatterHoverPending_) {
+            auto &framebuffer =
+                IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+            auto &frameData =
+                IREntity::getComponent<C_FrameDataTrixelToFramebuffer>("mainFramebuffer");
+            resolveScatterHover(framebuffer, frameData, 1);
+        }
+        IRRender::publishMouseTrixelPick(hoveredIdBuf_);
     }
 
     void tick(

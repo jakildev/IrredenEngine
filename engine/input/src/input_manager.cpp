@@ -44,6 +44,7 @@ InputManager::~InputManager() {
 }
 
 void InputManager::tick() {
+    ++m_inputTick;
     m_scrollEntitiesThisFrame.clear();
     m_scrollStepsThisFrame = 0;
     m_scrollOffsetThisFrame = IRMath::dvec2(0.0, 0.0);

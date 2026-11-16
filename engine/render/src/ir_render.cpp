@@ -12,8 +12,6 @@
 #include <irreden/render/trixel_rect.hpp>
 #include <irreden/render/trixel_text.hpp>
 
-#include <cstring>
-
 namespace IRRender {
 
 RenderingResourceManager *g_renderingResourceManager = nullptr;
@@ -504,40 +502,18 @@ ivec2 mouseCanvasTexelWorld() {
 }
 
 MouseTrixelPick getMouseTrixelPick() {
-    // Only TRIXEL_TO_FRAMEBUFFER creates HoveredEntityIdBuffer, so a creation
-    // that composites via ENTITY_CANVAS_TO_FRAMEBUFFER has no hover readback at
-    // all and "nothing hovered" is the right answer. The probing lookup is what
-    // makes that answer reachable — the asserting one throws in debug and
-    // dereferences an end iterator in release.
-    auto *buf = IRRender::getNamedResourceOrNull<Buffer>("HoveredEntityIdBuffer");
-    if (!buf)
-        return {};
-
-    // Re-fetch every frame: on Metal a full subData of an encoded buffer
-    // swaps its MTL::Buffer, so a statically-cached pointer from mapRange
-    // could be stale by the next frame.
-    void *mappedPtr = buf->mapRange(
-        0,
-        sizeof(HoveredEntityIdLayout),
-        BUFFER_STORAGE_MAP_READ | BUFFER_STORAGE_MAP_PERSISTENT | BUFFER_STORAGE_MAP_COHERENT
-    );
-    if (!mappedPtr)
-        return {};
-
-    HoveredEntityIdLayout layout;
-    std::memcpy(&layout, mappedPtr, sizeof(layout));
-
-    // Strip the per-trixel priority carrier from the high word before
-    // reconstructing the 64-bit id — THE chokepoint so a prioritized
-    // fragment never reports a corrupted picked id.
-    const IREntity::EntityId entity =
-        static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(layout.entityId_));
-    if (entity == IREntity::kNullEntity) {
+    if (IRRender::getNamedResourceOrNull<Buffer>("HoveredEntityIdBuffer") == nullptr) {
         return {};
     }
-    const DecodedCompositeDepth depth =
-        decodeCompositeDepth(compositeRawDepthFromNormalized(layout.depth_));
-    return {entity, depth.tier_, depth.iso_};
+    return getRenderManager().mouseTrixelPick();
+}
+
+std::uint64_t newestCompletedMouseTrixelPickFrameId() {
+    return getRenderManager().newestCompletedMouseTrixelPickFrameId();
+}
+
+void publishMouseTrixelPick(Buffer *hoverBuffer) {
+    getRenderManager().publishMouseTrixelPick(hoverBuffer);
 }
 
 IREntity::EntityId getEntityIdAtMouseTrixel() {

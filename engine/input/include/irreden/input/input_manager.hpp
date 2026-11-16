@@ -12,6 +12,7 @@
 #include <irreden/window/pointer_gesture.hpp>
 
 #include <array>
+#include <cstdint>
 #include <unordered_map>
 #include <queue>
 #include <utility>
@@ -49,6 +50,12 @@ class InputManager {
 
     void tick();
     void advanceInputState(IRTime::Events event);
+    std::uint64_t inputTick() const {
+        return m_inputTick;
+    }
+    IRTime::Events currentEvent() const {
+        return m_currentEvent;
+    }
 
     ButtonStatuses getButtonStatus(KeyMouseButtons button) const;
     bool checkButtonPressed(KeyMouseButtons button) const;
@@ -121,6 +128,7 @@ class InputManager {
     std::queue<std::pair<double, double>> m_injectedScrolls;
     std::queue<PointerGestureEvent> m_injectedPointerGestures;
     std::array<bool, kNumKeyMouseButtons> m_syntheticButtonsDown{};
+    std::uint64_t m_inputTick = 0;
 
     void processKeyMouseButtons(std::queue<int> &queueOfButtons, ButtonStatuses status);
 

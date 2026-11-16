@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include <irreden/render/gpu_readback_ring.hpp>
+#include <irreden/render/presented_pick.hpp>
 
 #include <cstdint>
 #include <vector>
@@ -105,6 +106,67 @@ TEST(GpuReadbackRing, AtCapacityTheOldestPendingSampleIsDropped) {
     ASSERT_EQ(afterFour.size(), 1u);
     EXPECT_EQ(afterFour[0].slot_, 0);
     EXPECT_EQ(afterFour[0].producer_, 40);
+}
+
+TEST(PresentedPick, NewestCompletedFrameWinsEvenWhenSlotsDrainOutOfFrameOrder) {
+    IRRender::PresentedPickHistory history;
+    IRRender::PresentedPickRecord frame12;
+    frame12.frameId_ = 12;
+    frame12.cursorPixel_ = {12, 4};
+    IRRender::PresentedPickRecord frame11;
+    frame11.frameId_ = 11;
+    frame11.cursorPixel_ = {11, 4};
+
+    history.accept(frame12);
+    history.accept(frame11);
+
+    ASSERT_NE(history.served(false), nullptr);
+    EXPECT_EQ(history.served(false)->frameId_, 12u);
+    ASSERT_NE(history.served(true), nullptr);
+    EXPECT_EQ(history.served(true)->frameId_, 11u);
+}
+
+TEST(PresentedPick, PendingSlotIsNotServedAndFullRingDropsItsOldestPendingFrame) {
+    GpuReadbackRing<IRRender::PresentedPickRecord, 2> ring;
+    IRRender::PresentedPickHistory history;
+    IRRender::PresentedPickRecord frame1;
+    frame1.frameId_ = 1;
+    IRRender::PresentedPickRecord frame2;
+    frame2.frameId_ = 2;
+    IRRender::PresentedPickRecord frame3;
+    frame3.frameId_ = 3;
+    ring.write(1, frame1);
+    ring.write(2, frame2);
+    ring.write(3, frame3);
+
+    ring.drainCompleted(1, [&history](int, const IRRender::PresentedPickRecord &record) {
+        history.accept(record);
+    });
+    EXPECT_EQ(history.newestFrameId(), 0u);
+
+    ring.drainCompleted(3, [&history](int, const IRRender::PresentedPickRecord &record) {
+        history.accept(record);
+    });
+    EXPECT_EQ(history.newestFrameId(), 3u);
+    ASSERT_NE(history.served(true), nullptr);
+    EXPECT_EQ(history.served(true)->frameId_, 2u);
+}
+
+TEST(PresentedPick, DestroyedEntityIsFilteredWithoutDiscardingFrameOrCursorState) {
+    IRRender::PresentedPickRecord record;
+    record.frameId_ = 7;
+    record.cursorPixel_ = {20, 30};
+    record.layout_.entityId_ = {42u, 0u};
+
+    const IRRender::MouseTrixelPick pick =
+        IRRender::resolvePresentedPick(&record, IRMath::ivec2(21, 30), [](IREntity::EntityId) {
+            return false;
+        });
+
+    EXPECT_EQ(pick.entity_, IREntity::kNullEntity);
+    EXPECT_EQ(pick.frameId_, 7u);
+    EXPECT_EQ(pick.renderedCursorPixel_, IRMath::ivec2(20, 30));
+    EXPECT_TRUE(pick.stale_);
 }
 
 } // namespace

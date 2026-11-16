@@ -5,6 +5,7 @@
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/ir_render_enums.hpp>
 #include <irreden/render/ir_render_types.hpp>
+#include <irreden/render/presented_pick.hpp>
 #include <irreden/render/rendering_rm.hpp>
 #include <irreden/render/shapes_2d.hpp>
 #include <irreden/render/image_data.hpp>
@@ -395,18 +396,17 @@ vec2 cameraRasterCorrectionFramebufferPx();
 /// Spatial picking inverse: includes the compositor's camera raster offset.
 /// Use the continuous inverse above for cursor-anchored zoom and camera math.
 vec3 windowPointsToDisplayedWorldPos3DAtViewDepth(vec2 windowPoint, float depth);
-struct MouseTrixelPick {
-    IREntity::EntityId entity_ = IREntity::kNullEntity;
-    int priority_ = 0;
-    int isoDepth_ = 0;
-};
-/// Entity id and backend-neutral priority/depth key of the trixel under the
-/// mouse. All values come from one persistent-mapped read of the previous
-/// frame's hover buffer.
+/// Newest completed-frame pick and its rendered cursor. The entity is empty
+/// when it has died since that frame; stale_ reports a different current
+/// input cursor without suppressing a live entity.
 MouseTrixelPick getMouseTrixelPick();
+/// Frame id of the newest completed pick record, including when the test-only
+/// fault makes getMouseTrixelPick serve the preceding record.
+std::uint64_t newestCompletedMouseTrixelPickFrameId();
+/// GPU-timeline copy of the current hover buffer, tagged with this frame's id
+/// and render-time cursor. Called after the final hover writer.
+void publishMouseTrixelPick(Buffer *hoverBuffer);
 /// Entity id of the voxel under the mouse cursor, read from the entity-id GPU texture.
-/// @note This reads a persistent-mapped GPU buffer — values become valid only after the
-///       GPU pipeline has completed the previous frame's @c FRAMEBUFFER_TO_SCREEN pass.
 IREntity::EntityId getEntityIdAtMouseTrixel();
 /// @}
 

@@ -50,7 +50,11 @@ enum class AssertKind {
     PICKS_VOXEL,       // castVoxelRay() hits with voxelPos_ == expectedVoxel_
     PICKS_ISO_COLUMN,  // castVoxelRay() hits a voxel on expectedVoxel_'s iso column
     HOVERED_ENTITY_ID, // IRRender::getEntityIdAtMouseTrixel() == widget_ on the last frames_ frames
-    PREDICATE,         // creation-supplied predicate over its own state
+    PICK_FRAME_CURRENT, // pick frame equals the newest completed frame on the last frames_ frames
+    PICK_ENTITY_EMPTY,  // the newest pick names no live entity
+    PICK_STALE_CLEAR,   // no stale cursor on the last frames_ frames
+    PICK_STALE_SEEN,    // at least one live frame in the shot observed a stale cursor
+    PREDICATE,          // creation-supplied predicate over its own state
 };
 
 // One assertion evaluated at a shot's capture frame. Only the fields a given
@@ -165,6 +169,36 @@ inline Assertion hoveredEntityId(
     return assertion;
 }
 
+inline Assertion pickFrameCurrent(int frames, const char *label = "pick_frame_current") {
+    Assertion assertion;
+    assertion.kind_ = AssertKind::PICK_FRAME_CURRENT;
+    assertion.frames_ = frames;
+    assertion.label_ = label;
+    return assertion;
+}
+
+inline Assertion pickStaleSeen(const char *label = "pick_stale_seen") {
+    Assertion assertion;
+    assertion.kind_ = AssertKind::PICK_STALE_SEEN;
+    assertion.label_ = label;
+    return assertion;
+}
+
+inline Assertion pickEntityEmpty(const char *label = "pick_entity_empty") {
+    Assertion assertion;
+    assertion.kind_ = AssertKind::PICK_ENTITY_EMPTY;
+    assertion.label_ = label;
+    return assertion;
+}
+
+inline Assertion pickStaleClear(int frames, const char *label = "pick_stale_clear") {
+    Assertion assertion;
+    assertion.kind_ = AssertKind::PICK_STALE_CLEAR;
+    assertion.frames_ = frames;
+    assertion.label_ = label;
+    return assertion;
+}
+
 // Assert a creation-owned predicate over state this layer cannot see (an
 // editor mode flag, a voxel-set cell, a tool's internal phase). @p fn writes
 // the observed value into `actual` for the log line and returns pass/fail;
@@ -197,6 +231,9 @@ inline Assertion predicate(
 struct LatchState {
     std::unordered_set<IREntity::EntityId> firedWidgets_;
     std::vector<IREntity::EntityId> hoveredIds_; // one entry per live frame, oldest first
+    std::vector<bool> pickFramesCurrent_;
+    std::vector<bool> pickStale_;
+    bool pickStaleSeen_ = false;
     // Logs the GUI layout audit (`GuiAudit::logReport`) on every capture
     // frame; the creation arms it from `GuiAudit::kLayoutCheckFlag`.
     bool layoutCheck_ = false;
@@ -220,6 +257,14 @@ inline const char *kindName(AssertKind kind) {
         return "PICKS_ISO_COLUMN";
     case AssertKind::HOVERED_ENTITY_ID:
         return "HOVERED_ENTITY_ID";
+    case AssertKind::PICK_FRAME_CURRENT:
+        return "PICK_FRAME_CURRENT";
+    case AssertKind::PICK_ENTITY_EMPTY:
+        return "PICK_ENTITY_EMPTY";
+    case AssertKind::PICK_STALE_CLEAR:
+        return "PICK_STALE_CLEAR";
+    case AssertKind::PICK_STALE_SEEN:
+        return "PICK_STALE_SEEN";
     case AssertKind::PREDICATE:
         return "PREDICATE";
     }
@@ -244,7 +289,13 @@ inline bool firedThisShot(const LatchState &latch, IREntity::EntityId widget) {
 // Record this frame's GPU hover readback (the previous frame's completed
 // write — see hoveredEntityId's phase contract).
 inline void latchHoveredId(LatchState &latch) {
-    latch.hoveredIds_.push_back(IRRender::getEntityIdAtMouseTrixel());
+    const IRRender::MouseTrixelPick pick = IRRender::getMouseTrixelPick();
+    latch.hoveredIds_.push_back(pick.entity_);
+    latch.pickFramesCurrent_.push_back(
+        pick.frameId_ != 0 && pick.frameId_ == IRRender::newestCompletedMouseTrixelPickFrameId()
+    );
+    latch.pickStale_.push_back(pick.stale_);
+    latch.pickStaleSeen_ = latch.pickStaleSeen_ || pick.stale_;
 }
 
 } // namespace detail
@@ -317,6 +368,35 @@ inline bool evaluateOne(const Assertion &assertion, const LatchState &latch, std
             actual += " frames=" + std::to_string(have) + "/" + std::to_string(want);
         return pass;
     }
+    case AssertKind::PICK_FRAME_CURRENT: {
+        const int have = static_cast<int>(latch.pickFramesCurrent_.size());
+        const int want = IRMath::max(assertion.frames_, 1);
+        const int first = IRMath::max(have - want, 0);
+        bool pass = have >= want;
+        for (int i = first; i < have; ++i) {
+            pass = pass && latch.pickFramesCurrent_[i];
+        }
+        actual = "current=" + std::to_string(pass ? want : 0) + "/" + std::to_string(want);
+        return pass;
+    }
+    case AssertKind::PICK_ENTITY_EMPTY:
+        actual = latch.hoveredIds_.empty() ? "no-frame"
+                                           : "entity=" + std::to_string(latch.hoveredIds_.back());
+        return !latch.hoveredIds_.empty() && latch.hoveredIds_.back() == IREntity::kNullEntity;
+    case AssertKind::PICK_STALE_CLEAR: {
+        const int have = static_cast<int>(latch.pickStale_.size());
+        const int want = IRMath::max(assertion.frames_, 1);
+        const int first = IRMath::max(have - want, 0);
+        bool pass = have >= want;
+        for (int i = first; i < have; ++i) {
+            pass = pass && !latch.pickStale_[i];
+        }
+        actual = "current=" + std::to_string(pass ? want : 0) + "/" + std::to_string(want);
+        return pass;
+    }
+    case AssertKind::PICK_STALE_SEEN:
+        actual = latch.pickStaleSeen_ ? "stale" : "current-only";
+        return latch.pickStaleSeen_;
     case AssertKind::PREDICATE: {
         if (assertion.predicate_ == nullptr) {
             actual = "no-predicate";
@@ -393,6 +473,9 @@ inline void onFrame(
         GuiAudit::logReport(shotIndex, shotLabel);
     latch.firedWidgets_.clear();
     latch.hoveredIds_.clear();
+    latch.pickFramesCurrent_.clear();
+    latch.pickStale_.clear();
+    latch.pickStaleSeen_ = false;
 }
 
 } // namespace IRPrefab::GuiTest

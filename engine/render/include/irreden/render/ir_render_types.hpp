@@ -87,7 +87,7 @@ struct SpriteRenderEntry {
 
 /// CPU mirror of the @c HoveredEntityIdBuffer SSBO layout (binding 14).
 /// The fragment shader writes the hovered entity id + depth here every frame;
-/// @c IRRender::getEntityIdAtMouseTrixel reads it back via persistent map.
+/// the CPU reads a submission-gated copy through the presented-pick ring.
 /// The binary layout must stay byte-identical to the GLSL/MSL @c std430 block
 /// declared in @c f_trixel_to_framebuffer.glsl and @c trixel_to_framebuffer.metal.
 struct HoveredEntityIdLayout {

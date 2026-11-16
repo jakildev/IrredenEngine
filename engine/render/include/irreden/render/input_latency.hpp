@@ -99,6 +99,9 @@ class FrameCompletionQueue {
     void setFrameId(std::uint64_t frameId) {
         m_frameId = frameId;
     }
+    std::uint64_t frameId() const {
+        return m_frameId;
+    }
     template <typename Clock> void submitted(const Clock &now) {
         if (!m_enabled) {
             return;

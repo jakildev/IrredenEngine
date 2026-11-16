@@ -499,6 +499,7 @@ TEST(InputLatencyReport, StatisticsCoverTheSteadyFramesOnly) {
     report.frameTimesMs_.assign(8, 16.0f);
     report.inputLatency_.endEvent_ = IRProfile::FrameEndEvent::GPU_COMPLETE;
     report.inputLatency_.clockMappingErrorMs_ = 0.0001;
+    report.inputLatency_.stalePickInputTicks_ = 7;
     // The first two of eight frames are warm-up: their 100 ms and in-flight
     // count of 5 must not reach the statistics.
     report.inputLatency_.frames_ = {
@@ -515,6 +516,7 @@ TEST(InputLatencyReport, StatisticsCoverTheSteadyFramesOnly) {
 
     EXPECT_NE(text.find("--- Input latency ---\nEnd event: gpu-complete\n"), std::string::npos)
         << text;
+    EXPECT_NE(text.find("Stale pick input ticks: 7\n"), std::string::npos) << text;
     EXPECT_NE(text.find("Steady frames: 6 (first 2 of 8 excluded) samples=5\n"), std::string::npos)
         << text;
     EXPECT_NE(
@@ -552,6 +554,7 @@ TEST(InputLatencyReport, ADeviceWithoutFrameEndsIsNotMeasuredRatherThanZero) {
     EXPECT_NE(
         text.find(
             "--- Input latency ---\nEnd event: not measured\n"
+            "Stale pick input ticks: 0\n"
             "Frames in flight at frame start: not measured\n"
         ),
         std::string::npos

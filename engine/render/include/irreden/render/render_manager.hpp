@@ -7,12 +7,15 @@
 #include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/default_pivot_latch.hpp>
+#include <irreden/render/gpu_readback_ring.hpp>
+#include <irreden/render/presented_pick.hpp>
 #include <irreden/render/renderer_impl.hpp>
 #include <irreden/render/spatial_pivot_state.hpp>
 #include <irreden/render/voxel_pool_allocation.hpp>
 
 #include <irreden/voxel/components/component_voxel.hpp>
 
+#include <array>
 #include <string>
 
 using namespace IRComponents;
@@ -119,6 +122,13 @@ class RenderManager {
     void setHoveredTrixelVisible(bool visible);
     bool isHoveredTrixelVisible() const;
 
+    void setPresentedPickPreviousCompletedFault(bool enabled);
+    void publishMouseTrixelPick(Buffer *hoverBuffer);
+    MouseTrixelPick mouseTrixelPick();
+    std::uint64_t newestCompletedMouseTrixelPickFrameId();
+    void resetMouseTrixelPickStats();
+    std::uint64_t staleMouseTrixelPickInputTicks() const;
+
     void setSunDirection(vec3 dir);
     vec3 getSunDirection() const;
     void setSunIntensity(float intensity);
@@ -221,6 +231,18 @@ class RenderManager {
     detail::SpatialPivotState m_spatialPivotState;
     bool defaultPivotOwnsDepth() const;
     bool m_hoveredTrixelVisible = true;
+    struct PresentedPickProducer {
+        std::uint64_t frameId_ = 0;
+        ivec2 cursorPixel_{};
+    };
+    static constexpr int kMaxPresentedPickSlots = 8;
+    detail::GpuReadbackRing<PresentedPickProducer, kMaxPresentedPickSlots> m_presentedPickRing;
+    std::array<Buffer *, kMaxPresentedPickSlots> m_presentedPickBuffers{};
+    PresentedPickHistory m_presentedPickHistory;
+    std::uint64_t m_lastStalePickInputTick = 0;
+    std::uint64_t m_stalePickInputTicks = 0;
+    bool m_presentedPickPreviousCompletedFault = false;
+    void drainCompletedMouseTrixelPicks();
     int m_voxelRenderSubdivisions = 1;
     // Unit vector pointing from surfaces toward the sun. Default is a
     // mostly-overhead pose with a small -X / -Y tilt: those are the

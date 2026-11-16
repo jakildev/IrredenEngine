@@ -2517,6 +2517,38 @@ struct HoverParityFixture {
 };
 HoverParityFixture g_hoverParity;
 
+constexpr int kPresentedPickCurrentShotIndex = kNumHoverParityShots;
+constexpr int kPresentedPickStaleShotIndex = kPresentedPickCurrentShotIndex + 1;
+constexpr int kHelpDragPanShotIndex = kPresentedPickStaleShotIndex + 1;
+constexpr int kPresentedPickDestroyedShotIndex = kHelpDragPanShotIndex + 1;
+
+struct PresentedPickFixture {
+    IRVideo::GuiInputEvent staleEvents_[3]{
+        {1, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+        {1,
+         IRVideo::GuiInputEvent::Type::PRESS,
+         IRMath::ivec2(0),
+         vec2(0.0f),
+         IRInput::kMouseButtonLeft},
+        {2,
+         IRVideo::GuiInputEvent::Type::RELEASE,
+         IRMath::ivec2(0),
+         vec2(0.0f),
+         IRInput::kMouseButtonLeft},
+    };
+    IRVideo::GuiInputEvent destroyedEvents_[1]{
+        {1, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+    };
+    IRPrefab::GuiTest::Assertion currentAssertions_[2];
+    IRPrefab::GuiTest::Assertion staleAssertions_[1];
+    IRPrefab::GuiTest::Assertion destroyedAssertions_[1];
+    bool aimed_ = false;
+    bool destroyAimed_ = false;
+    bool destroyArmed_ = false;
+    bool destroyIssued_ = false;
+};
+PresentedPickFixture g_presentedPick;
+
 // ---------------------------------------------------------------------------
 // Drag-pan tracking fixture (--gui-test)
 // ---------------------------------------------------------------------------
@@ -2558,13 +2590,13 @@ struct DragPanShot {
 };
 DragPanShot g_dragPan;
 
-constexpr int kDragPanShotIndex = kNumHoverParityShots;
+constexpr int kContinuousDragPanShotIndex = kNumHoverParityShots;
 
 // Aimed once, on the shot's first live frame: the drag moves the camera, so a
 // re-aim on a later frame would chase the voxel instead of holding the cursor
 // path fixed.
-void onDragPanAssertFrame(int shotIndex) {
-    if (shotIndex != kDragPanShotIndex || g_dragPan.aimed_) {
+void onDragPanAssertFrame(int shotIndex, int dragPanShotIndex) {
+    if (shotIndex != dragPanShotIndex || g_dragPan.aimed_) {
         return;
     }
     g_dragPan.aimed_ = true;
@@ -2610,6 +2642,14 @@ void initHoverParityFixture() {
         "hover_id_follows_drag_pan",
         kDragPanStableFrames
     );
+    g_presentedPick.currentAssertions_[0] =
+        IRPrefab::GuiTest::pickFrameCurrent(30, "newest_completed_pick_frame");
+    g_presentedPick.currentAssertions_[1] =
+        IRPrefab::GuiTest::pickStaleClear(30, "settled_cursor_is_current");
+    g_presentedPick.staleAssertions_[0] =
+        IRPrefab::GuiTest::pickStaleSeen("same_batch_move_press_is_stale");
+    g_presentedPick.destroyedAssertions_[0] =
+        IRPrefab::GuiTest::pickEntityEmpty("destroyed_entity_is_filtered");
     IR_LOG_INFO(
         "--- hover-parity fixture: entity {} at ({},{},{}); stacked entity {} at ({},{},{}), "
         "neighbour {} one row above ---",
@@ -2623,6 +2663,34 @@ void initHoverParityFixture() {
         kHoverParityStackedVoxelWorld.z,
         g_hoverParity.neighbourEntity_
     );
+}
+
+void onPresentedPickAssertFrame(int shotIndex) {
+    const ivec2 target = IRRender::worldPos3DToMouseScreenPx(
+        kHoverParityVoxelWorld + vec3(0.0f, 0.0f, kHoverParityBelowDiagonalZ)
+    );
+    if (shotIndex == kPresentedPickStaleShotIndex && !g_presentedPick.aimed_) {
+        g_presentedPick.aimed_ = true;
+        for (IRVideo::GuiInputEvent &event : g_presentedPick.staleEvents_) {
+            event.screenPx_ = target + ivec2(96, 0);
+        }
+    }
+    if (shotIndex == kPresentedPickDestroyedShotIndex && !g_presentedPick.destroyAimed_) {
+        g_presentedPick.destroyAimed_ = true;
+        g_presentedPick.destroyedEvents_[0].screenPx_ = target;
+    }
+    if (shotIndex == kPresentedPickDestroyedShotIndex && !g_presentedPick.destroyIssued_ &&
+        IRRender::getMouseTrixelPick().entity_ == g_hoverParity.voxelEntity_) {
+        g_presentedPick.destroyArmed_ = true;
+    }
+}
+
+void destroyPresentedPickFixtureOnUpdate() {
+    if (!g_presentedPick.destroyArmed_ || g_presentedPick.destroyIssued_) {
+        return;
+    }
+    IREntity::destroyEntity(g_hoverParity.voxelEntity_);
+    g_presentedPick.destroyIssued_ = true;
 }
 
 void aimHoverParity(HoverParityShot &shot) {
@@ -3062,9 +3130,27 @@ constexpr IRVideo::GuiTestShot kHelpOverlayGuiShots[] = {
     {{kHoverParityZoom,
       -IRMath::pos3DtoPos2DIso(kHoverParityVoxelWorld),
       0.0f,
+      "presented_pick_current_30_frames"},
+     nullptr,
+     0},
+    {{kHoverParityZoom,
+      -IRMath::pos3DtoPos2DIso(kHoverParityVoxelWorld),
+      0.0f,
+      "presented_pick_stale_same_batch"},
+     g_presentedPick.staleEvents_,
+     3},
+    {{kHoverParityZoom,
+      -IRMath::pos3DtoPos2DIso(kHoverParityVoxelWorld),
+      0.0f,
       "drag_pan_tracks_cursor"},
      g_dragPan.events_,
      4},
+    {{kHoverParityZoom,
+      -IRMath::pos3DtoPos2DIso(kHoverParityVoxelWorld),
+      0.0f,
+      "presented_pick_destroyed_entity"},
+     g_presentedPick.destroyedEvents_,
+     1},
     {{4.0f, vec2(0.0f), 0.0f, "help_overlay_open"}, kHelpOpenEvents, 2},
     {{4.0f, vec2(0.0f), 0.0f, "help_overlay_closed"}, kHelpCloseEvents, 2},
     {{4.0f, vec2(0.0f), 0.0f, "perf_hud_open"}, kPerfHudToggleEvents, 2},
@@ -3099,8 +3185,8 @@ constexpr IRVideo::GuiTestShot kHelpOverlayGuiShots[] = {
 constexpr int kNumHelpOverlayGuiShots =
     static_cast<int>(sizeof(kHelpOverlayGuiShots) / sizeof(kHelpOverlayGuiShots[0]));
 static_assert(
-    kHelpOverlayGuiShots[kDragPanShotIndex].inputs_ == g_dragPan.events_,
-    "kDragPanShotIndex must name the drag-pan shot — its aim hook keys on it"
+    kHelpOverlayGuiShots[kHelpDragPanShotIndex].inputs_ == g_dragPan.events_,
+    "kHelpDragPanShotIndex must name the drag-pan shot — its aim hook keys on it"
 );
 
 // The toggled GUI surfaces (help overlay, perf HUD) expose the same three
@@ -3706,7 +3792,10 @@ const ShotAssertions kShotAssertions[] = {
     shotAssertions(g_hoverParity.shots_[0].assertions_),
     shotAssertions(g_hoverParity.shots_[1].assertions_),
     shotAssertions(g_hoverParity.shots_[2].assertions_),
+    shotAssertions(g_presentedPick.currentAssertions_),
+    shotAssertions(g_presentedPick.staleAssertions_),
     shotAssertions(g_dragPan.assertions_),
+    shotAssertions(g_presentedPick.destroyedAssertions_),
     shotAssertions(kHelpOpenAssertions, true),
     shotAssertions(kHelpClosedAssertions),
     shotAssertions(kPerfHudOpenAssertions),
@@ -3740,7 +3829,7 @@ static_assert(
 // silently stop aiming the early menu clicks and leave them at the screen
 // corner. Identified by the events the shot carries — the label is not
 // constexpr-comparable, and kMenuOpenEvents IS what "opens the menu" means here.
-constexpr int kMenuOpenShotIndex = kDragPanShotIndex + 5;
+constexpr int kMenuOpenShotIndex = kPresentedPickDestroyedShotIndex + 5;
 constexpr bool isFirstMenuOpeningShot(int index) {
     for (int i = 0; i < index; ++i) {
         if (kHelpOverlayGuiShots[i].inputs_ == kMenuOpenEvents) {
@@ -3805,7 +3894,7 @@ struct ContinuousZoomOffCentreShot {
 };
 ContinuousZoomOffCentreShot g_continuousOffCentre;
 
-constexpr int kContinuousOffCentreShotIndex = kDragPanShotIndex + 1;
+constexpr int kContinuousOffCentreShotIndex = kContinuousDragPanShotIndex + 1;
 
 constexpr IRVideo::GuiTestShot kContinuousZoomGuiShots[] = {
     {{kContinuousGuiZoom,
@@ -3842,8 +3931,8 @@ constexpr IRVideo::GuiTestShot kContinuousZoomGuiShots[] = {
 constexpr int kNumContinuousZoomGuiShots =
     static_cast<int>(sizeof(kContinuousZoomGuiShots) / sizeof(kContinuousZoomGuiShots[0]));
 static_assert(
-    kContinuousZoomGuiShots[kDragPanShotIndex].inputs_ == g_dragPan.events_,
-    "kDragPanShotIndex must name the drag-pan shot in this table too — its aim hook keys on it"
+    kContinuousZoomGuiShots[kContinuousDragPanShotIndex].inputs_ == g_dragPan.events_,
+    "kContinuousDragPanShotIndex must name the drag-pan shot — its aim hook keys on it"
 );
 static_assert(
     kContinuousZoomGuiShots[kContinuousOffCentreShotIndex].inputs_ == g_continuousOffCentre.events_,
@@ -4231,7 +4320,8 @@ void initCullEvictScene() {
 
 void onHelpOverlayAssertFrame(int shotIndex, bool isCaptureFrame) {
     onHoverParityAssertFrame(shotIndex);
-    onDragPanAssertFrame(shotIndex);
+    onPresentedPickAssertFrame(shotIndex);
+    onDragPanAssertFrame(shotIndex, kHelpDragPanShotIndex);
     // Every live frame from the first menu shot on: the panel centers itself and
     // a dropdown's item strip exists only while expanded, so the targets have to
     // be resolved continuously rather than once at first open.
@@ -4263,7 +4353,7 @@ void onHelpOverlayAssertFrame(int shotIndex, bool isCaptureFrame) {
 
 void onContinuousZoomGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
     onHoverParityAssertFrame(shotIndex);
-    onDragPanAssertFrame(shotIndex);
+    onDragPanAssertFrame(shotIndex, kContinuousDragPanShotIndex);
     if (shotIndex == kContinuousOffCentreShotIndex) {
         // Re-aimed every live frame through the picking chain's own inverse:
         // the cursor lands on the voxel only if that inverse and the composite
@@ -4333,6 +4423,15 @@ void initSystems() {
     if (g_gatherFilterFixture) {
         updatePipeline.push_back(IRSystem::createSystem<IRSystem::REBUILD_DETACHED_VOXELS>());
         updatePipeline.push_back(IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>());
+    }
+    if (g_guiTest) {
+        updatePipeline.push_front(
+            IRSystem::createSystem<C_VoxelSetNew>(
+                "PresentedPickDestroyFixture",
+                [](const C_VoxelSetNew &) {},
+                &destroyPresentedPickFixtureOnUpdate
+            )
+        );
     }
     IRSystem::registerPipeline(IRTime::Events::UPDATE, updatePipeline);
     // Settings menu rides the INPUT pipeline: its widget chain needs
@@ -4608,7 +4707,7 @@ void initSystems() {
     } else if (g_autoWarmupFrames > 0 && g_guiTest) {
         IRVideo::GuiTestConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
-        cfg.settleFrames_ = 3;
+        cfg.settleFrames_ = 30;
         cfg.shots_ = kHelpOverlayGuiShots;
         cfg.numShots_ = kNumHelpOverlayGuiShots;
         cfg.onAssertFrame_ = &onHelpOverlayAssertFrame;
