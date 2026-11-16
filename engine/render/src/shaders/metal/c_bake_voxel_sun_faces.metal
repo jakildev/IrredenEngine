@@ -62,21 +62,33 @@ kernel void c_bake_voxel_sun_faces(
     threadgroup uint sharedRecordCounts[64];
     const uint lane = localId.x;
     if (faceFrame.admission.x == 1) {
-        if (lane == 0u) {
-            uint total = 0u;
-            for (uint group = 0u; group < uint(faceFrame.admission.y); ++group) {
-                const uint count = admissionScratch[group];
-                admissionScratch[group] = total;
-                total += count;
+        // Every lane reaches every barrier: the round count is uniform.
+        const uint groups = uint(faceFrame.admission.y);
+        uint total = 0u;
+        for (uint roundBase = 0u; roundBase < groups; roundBase += 64u) {
+            const uint group = roundBase + lane;
+            const uint count = group < groups ? admissionScratch[group] : 0u;
+            sharedRecordCounts[lane] = count;
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            for (uint offset = 1u; offset < 64u; offset <<= 1u) {
+                const uint addend = lane >= offset ? sharedRecordCounts[lane - offset] : 0u;
+                threadgroup_barrier(mem_flags::mem_threadgroup);
+                sharedRecordCounts[lane] += addend;
+                threadgroup_barrier(mem_flags::mem_threadgroup);
             }
+            if (group < groups) admissionScratch[group] = total + sharedRecordCounts[lane] - count;
+            total += sharedRecordCounts[63];
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+        }
+        if (lane == 0u) {
             const uint capacity = atomic_load_explicit(
                 &sunDepthBuf[kSourceFaceCapacityOffset], memory_order_relaxed
             );
             const uint base = atomic_fetch_add_explicit(
                 &sunDepthBuf[kSourceFaceHeaderOffset], total, memory_order_relaxed
             );
-            admissionScratch[uint(faceFrame.admission.y)] = base;
-            admissionScratch[uint(faceFrame.admission.y) + 1u] = total;
+            admissionScratch[groups] = base;
+            admissionScratch[groups + 1u] = total;
             if (total > 0u && (base >= capacity || total > capacity - base)) {
                 atomic_store_explicit(
                     &sunDepthBuf[sourceFaceHierarchyNeededIndex(capacity)], 1u,

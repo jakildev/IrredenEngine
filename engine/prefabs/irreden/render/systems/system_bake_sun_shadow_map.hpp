@@ -175,6 +175,19 @@ struct VoxelSunFaceFrame {
 };
 static_assert(sizeof(VoxelSunFaceFrame) == 64, "Voxel sun-face frame must match the shader UBO");
 
+// The count, scan and emit frames of one voxel-face cast, bound per pass with
+// bindRange. The 256-byte stride meets the largest uniform offset alignment GL
+// permits, so no device query is needed.
+struct VoxelSunFacePassFrames {
+    static constexpr std::size_t kStride = 256;
+    struct Slot {
+        VoxelSunFaceFrame frame_;
+        std::array<std::uint8_t, kStride - sizeof(VoxelSunFaceFrame)> padding_{};
+    };
+    std::array<Slot, 3> slots_{};
+};
+static_assert(sizeof(VoxelSunFacePassFrames::Slot) == VoxelSunFacePassFrames::kStride);
+
 template <> struct System<BAKE_SUN_SHADOW_MAP> {
     ShaderProgram *hierarchyProgram_ = nullptr;
     // Indexed [ordered][pass]: the unordered build supplies the root extent the
@@ -368,6 +381,11 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
 
     ShaderProgram *voxelFaceProgram_ = nullptr;
     Buffer *voxelFaceFrameBuf_ = nullptr;
+    // One buffer per voxel-face cast in a frame, indexed by the cast's ordinal.
+    // Its single whole-buffer write lands before its first encode that frame,
+    // so Metal writes it in place instead of replacing the backing per pass.
+    std::vector<Buffer *> voxelFacePassFrames_;
+    std::size_t voxelFacePassFrameCursor_ = 0;
     Buffer *voxelFaceAdmissionScratch_ = nullptr;
     Buffer *voxelIndirectBuf_ = nullptr;
     std::size_t voxelFaceAdmissionGroups_ = 0;
@@ -832,6 +850,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             sampleRecordDemand();
         }
         coverageFrameOpen_ = false;
+        voxelFacePassFrameCursor_ = 0;
     }
 
     // The allocator owns the capacity word; a fresh allocation is never encoded,
@@ -1204,6 +1223,24 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         return true;
     }
 
+    // Grows only at a new per-frame high-water mark of voxel-face casts.
+    Buffer &acquireVoxelFacePassFrames() {
+        if (voxelFacePassFrameCursor_ == voxelFacePassFrames_.size()) {
+            voxelFacePassFrames_.push_back(
+                IRRender::createNamedResource<Buffer>(
+                    "VoxelSunFacePassFrames" + std::to_string(voxelFacePassFrames_.size()),
+                    nullptr,
+                    sizeof(VoxelSunFacePassFrames),
+                    BUFFER_STORAGE_DYNAMIC,
+                    BufferTarget::UNIFORM,
+                    kBufferIndex_RevoxelizeDetachedParams
+                )
+                    .second
+            );
+        }
+        return *voxelFacePassFrames_[voxelFacePassFrameCursor_++];
+    }
+
     // Positions/colors remain resident only until the next canvas upload.
     void bakeVoxelFaces(
         int count,
@@ -1260,24 +1297,24 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         bindFogObservers();
         voxelFaceProgram_->use();
 
-        VoxelSunFaceFrame pass = params;
-        pass.admission_.x = 0;
-        voxelFaceFrameBuf_->subData(0, sizeof(pass), &pass);
-        voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
-        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-
-        pass.admission_.x = 1;
-        voxelFaceFrameBuf_->subData(0, sizeof(pass), &pass);
-        voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
-        IRRender::device()->dispatchCompute(1, 1, 1);
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-
-        pass.admission_.x = 2;
-        voxelFaceFrameBuf_->subData(0, sizeof(pass), &pass);
-        voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
-        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        VoxelSunFacePassFrames frames{};
+        for (std::size_t pass = 0; pass < frames.slots_.size(); ++pass) {
+            frames.slots_[pass].frame_ = params;
+            frames.slots_[pass].frame_.admission_.x = static_cast<int>(pass);
+        }
+        Buffer &passFrames = acquireVoxelFacePassFrames();
+        passFrames.subData(0, sizeof(frames), &frames);
+        const std::array<ivec2, 3> passGrids{grid, ivec2(1, 1), grid};
+        for (std::size_t pass = 0; pass < passGrids.size(); ++pass) {
+            passFrames.bindRange(
+                BufferTarget::UNIFORM,
+                kBufferIndex_RevoxelizeDetachedParams,
+                static_cast<std::ptrdiff_t>(pass * VoxelSunFacePassFrames::kStride),
+                sizeof(VoxelSunFaceFrame)
+            );
+            IRRender::device()->dispatchCompute(passGrids[pass].x, passGrids[pass].y, 1);
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        }
         revoxelizeParamsBuf_->bindBase(
             BufferTarget::UNIFORM,
             kBufferIndex_RevoxelizeDetachedParams
@@ -1389,6 +1426,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                                     kBufferIndex_RevoxelizeDetachedParams
         )
                                     .second;
+        p->voxelFacePassFrames_.reserve(8);
         p->voxelFaceAdmissionScratch_ = IRRender::createNamedResource<Buffer>(
                                             "VoxelSunFaceAdmissionScratch",
                                             nullptr,
