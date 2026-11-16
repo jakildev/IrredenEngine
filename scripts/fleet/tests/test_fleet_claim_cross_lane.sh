@@ -56,8 +56,35 @@ emit_issue_labels() {
     fi
 }
 
+# CLAIM_VIEW_FAIL="<claimant>:<n|always> ...": the claimant's first <n> issue
+# views (every view for `always`) fail, alternating a non-zero exit with a
+# truncated document, the two shapes of a transient GitHub read failure.
+# A claimant outside a race schedule is named `solo`.
+view_fails_now() {
+    local who="${CLAIMANT:-solo}" spec budget count=0 counter
+    for spec in ${CLAIM_VIEW_FAIL:-}; do
+        [[ "${spec%%:*}" == "$who" ]] || continue
+        budget="${spec#*:}"
+        counter="${CLAIM_STATE}.view-fails-$who"
+        [[ -f "$counter" ]] && count=$(cat "$counter")
+        [[ "$budget" == always || "$count" -lt "$budget" ]] || return 1
+        printf '%s\n' "$((count + 1))" > "$counter"
+        VIEW_FAIL_SHAPE=$((count % 2))
+        return 0
+    done
+    return 1
+}
+
 case "${1:-} ${2:-}" in
     "issue view")
+        if view_fails_now; then
+            if [[ "$VIEW_FAIL_SHAPE" -eq 0 ]]; then
+                echo "gh stub: HTTP 502 on issue view (${CLAIMANT:-solo})" >&2
+                exit 1
+            fi
+            printf '{"state":"OPEN","labels":['
+            exit 0
+        fi
         printf '{"state":"OPEN","labels":'
         emit_issue_labels
         printf ',"body":""}\n'
@@ -99,6 +126,7 @@ case "${1:-} ${2:-}" in
         printf '%s\n' "$posted" >> "$CLAIM_POST_LOG"
         emit_labels
         ;;
+    "pr view") echo OPEN ;;
     "label "*|"pr "*) ;;
 esac
 GH_STUB
@@ -117,6 +145,7 @@ assert_exit() {
 set_labels() {
     race_labels_reset "$CLAIM_STATE"
     : > "$CLAIM_POST_LOG"
+    rm -f "$CLAIM_STATE".view-fails-*
     local label
     for label in "$@"; do race_labels_add "$CLAIM_STATE" "$label"; done
 }
@@ -306,9 +335,12 @@ run_race() {
 }
 
 echo "T7 fix: independent confirmation resolves every barrier order"
+echo "    (each claimant's first live-label snapshot fails, as on hosted CI)"
+export CLAIM_VIEW_FAIL="amend:1 review:1"
 run_race amend-first
 run_race review-first
 run_race together
+unset CLAIM_VIEW_FAIL
 
 echo "T8: a lane that exits before the POST barrier breaks it with a diagnostic"
 saved_race_exit="${CLAIM_RACE_EXIT:-}"
@@ -331,6 +363,72 @@ if [[ -e "$CLAIM_RUN" ]]; then
     bad "the broken schedule leaves rendezvous state behind"
 else
     ok "the broken schedule leaves no rendezvous state behind"
+fi
+
+view_attempts() {
+    cat "$CLAIM_STATE.view-fails-$1" 2>/dev/null || echo 0
+}
+
+echo "T9 fix: every lane re-reads an incomplete live snapshot and then claims"
+t9_pr=4301
+for t9_lane in review-claim:fleet:reviewing-mac-poolA \
+        resolving-claim:fleet:resolving-mac-poolA \
+        amending-claim:$AMEND_LABEL pr-claim:fleet:claim-mac-poolA; do
+    t9_cmd="${t9_lane%%:*}" t9_label="${t9_lane#*:}"
+    set_labels
+    rc=0
+    CLAIM_VIEW_FAIL="solo:2" "$FLEET_CLAIM" "$t9_cmd" "$t9_pr" poolA \
+        >"$TMPROOT/t9.out" 2>&1 || rc=$?
+    assert_exit "$rc" 0 "$t9_cmd recovers from a failed and a truncated snapshot"
+    assert_eq "$(view_attempts solo)" "2" "$t9_cmd consumed both injected failures"
+    assert_eq "$(labels_flat)" "$t9_label" "$t9_cmd leaves exactly its own label"
+    assert_eq "$(wc -l < "$CLAIM_POST_LOG" | tr -d ' ')" "1" "$t9_cmd POSTs once"
+    "$FLEET_CLAIM" "${t9_cmd%-claim}-release" "$t9_pr" poolA >/dev/null 2>&1 || true
+    t9_pr=$((t9_pr + 1))
+done
+
+echo "T10 fix: a persistent snapshot failure is bounded and fails closed"
+rm -rf "$FLEET_AMEND_SNAPSHOTS_DIR" "$FLEET_CLAIMS_DIR"
+mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_AMEND_SNAPSHOTS_DIR"
+t10_pr=4401
+for t10_cmd in review-claim resolving-claim amending-claim pr-claim; do
+    set_labels
+    rc=0
+    CLAIM_VIEW_FAIL="solo:always" "$FLEET_CLAIM" "$t10_cmd" "$t10_pr" poolA \
+        >"$TMPROOT/t10.out" 2>&1 || rc=$?
+    assert_exit "$rc" 1 "$t10_cmd refuses an unreadable target"
+    assert_eq "$(view_attempts solo)" "$FLEET_CLAIM_ACQUIRE_RETRIES" \
+        "$t10_cmd stops after the bounded attempt budget"
+    assert_contains "$(cat "$TMPROOT/t10.out")" \
+        "refused on PR#${t10_pr}: live labels unavailable after ${FLEET_CLAIM_ACQUIRE_RETRIES} incomplete fetch attempt(s)" \
+        "$t10_cmd names the target and the incomplete fetch"
+    assert_contains "$(cat "$TMPROOT/t10.out")" "HTTP 502 on issue view (solo)" \
+        "$t10_cmd surfaces the last fetch's own error"
+    assert_eq "$(wc -l < "$CLAIM_POST_LOG" | tr -d ' ')" "0" "$t10_cmd sends no POST"
+    assert_eq "$(label_count)" "0" "$t10_cmd leaves no label"
+    t10_pr=$((t10_pr + 1))
+done
+t10_leftovers=$(cd "$TMPROOT" && find claims amend-snapshots -mindepth 1 | tr '\n' ' ')
+assert_eq "$t10_leftovers" "" "refused claims leave no liveness marker, lock, or amend record"
+
+echo "T11 fix: a racing lane that cannot read the target never reaches its POST"
+export CLAIM_VIEW_FAIL="amend:always"
+race_schedule together
+unset CLAIM_VIEW_FAIL
+assert_contains "$RACE_BROKEN" "amend exited with rc 1 before: test -e $CLAIM_RUN/arrived-amend" \
+    "the schedule names the unreadable claimant"
+assert_eq "$(race_rc amend)" 1 "the unreadable claimant fails closed"
+assert_contains "$(cat "$CLAIM_RUN/amend.out")" "live labels unavailable after" \
+    "the unreadable claimant reports the incomplete fetch"
+assert_eq "$(race_rc review)" 1 "the gated peer is released, not left waiting"
+assert_eq "$(wc -l < "$CLAIM_POST_LOG" | tr -d ' ')" "0" "neither lane POSTs"
+assert_eq "$(label_count)" "0" "no lane label survives"
+assert_eq "$(race_live_count)" 0 "no claimant outlives the schedule"
+rm -rf "$CLAIM_RUN"
+if [[ -e "$CLAIM_RUN" ]]; then
+    bad "the unreadable schedule leaves rendezvous state behind"
+else
+    ok "the unreadable schedule leaves no rendezvous state behind"
 fi
 
 summarize "fleet-claim cross-lane mutex"

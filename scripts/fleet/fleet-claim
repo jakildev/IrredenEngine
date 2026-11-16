@@ -1220,7 +1220,8 @@ _acquire_label_on() {
 #     body<TAB><base64-encoded-body>
 #   Body is base64-encoded so multi-line markdown survives a single
 #   `read` loop. Empty stdout means the fetch failed (issue not found,
-#   gh not on PATH, etc.) — the caller decides how to degrade.
+#   gh not on PATH, etc.) — the caller decides how to degrade. gh's stderr
+#   is discarded unless the caller names a file in _FETCH_ISSUE_ERR.
 fetch_issue_info() {
     local issue_num="$1"
     if ! command -v gh >/dev/null 2>&1; then
@@ -1233,7 +1234,7 @@ fetch_issue_info() {
     fi
     local json
     if ! json=$(gh issue view "$issue_num" --repo "$repo" \
-            --json state,labels,body 2>/dev/null); then
+            --json state,labels,body 2>"${_FETCH_ISSUE_ERR:-/dev/null}"); then
         return 0
     fi
     printf '%s' "$json" | python3 -c '
@@ -2614,14 +2615,34 @@ _cmd_pr_label_claim() {
 # _cross_lane_precheck <prefix> <cmd-name> <target> <agent>
 #   Return 3 when the caller already owns its exact label, 1 when a foreign
 #   excluded lane owns the target, and 0 when the caller may proceed to POST.
-#   The one live-label fetch serves both incumbent detection and the gate.
+#   The one live-label snapshot serves both incumbent detection and the gate.
+#   An incomplete snapshot (failed or unparsable fetch) is not an empty label
+#   set: it is re-read up to FLEET_CLAIM_ACQUIRE_RETRIES times, and exhaustion
+#   refuses with rc 1 before any POST. Only this read is retried — it mutates
+#   nothing.
 _cross_lane_precheck() {
     local prefix="$1" cmd_name="$2" target="$3" agent="${4:-unknown}"
     [[ "$target" =~ ^[0-9]+$ ]] || return 0
 
-    local info labels host suffix own_label
-    info=$(fetch_issue_info "$target") || true
+    local info="" labels host suffix own_label attempt err_file
+    local retries="${FLEET_CLAIM_ACQUIRE_RETRIES:-3}"
+    err_file=$(mktemp "${TMPDIR:-/tmp}/fleet-claim-view.XXXXXX") || err_file=/dev/null
+    for (( attempt = 1; attempt <= retries; attempt++ )); do
+        (( attempt > 1 )) && _acquire_jitter_sleep
+        info=$(_FETCH_ISSUE_ERR="$err_file" fetch_issue_info "$target") || true
+        [[ -n "$(_issue_info_field state "$info")" ]] && break
+        info=""
+    done
     CROSS_LANE_INFO="$info"
+    if [[ -z "$info" ]]; then
+        echo "fleet-claim ${cmd_name}: refused on PR#${target}: live labels unavailable after ${retries} incomplete fetch attempt(s); no label POSTed" >&2
+        if [[ -s "$err_file" ]]; then
+            echo "fleet-claim ${cmd_name}: last fetch error:" >&2
+            sed 's/^/    /' "$err_file" >&2
+        fi
+    fi
+    [[ "$err_file" == /dev/null ]] || rm -f "$err_file"
+    [[ -n "$info" ]] || return 1
     labels=$(_issue_info_field labels "$info")
     host=$(derive_host)
     suffix="${host}-${agent}"
