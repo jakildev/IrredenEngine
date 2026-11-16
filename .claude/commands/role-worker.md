@@ -62,7 +62,7 @@ and 3, and jump by kind (for a `game` target, `cd` into your game twin worktree 
   verified and defect-shaped, else unlabeled until the human adds `human:approved`; never
   `fleet:queued`, `fleet:task`, model, or verdict labels at filing time.
 - Editing other issues' bodies or labels; reservations are `fleet-claim` locks and
-  `fleet:claim-*` labels only (exception: the class re-tag on your own task, step 8a).
+  `fleet:claim-*` labels only (on your assigned issue: the step-8a re-tag, `fleet-issue set-field`).
 
 ## Cross-repo model
 
