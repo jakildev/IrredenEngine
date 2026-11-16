@@ -22,6 +22,10 @@ a stretch of autonomous running:
     author stamps them — CODEX.md).
   * Worktree leaks: any worktree of the fleet clones outside the pool layout,
     from `fleet-worktree-sweep` (listing only; clear them with its --prune).
+    The render watch's owned worktree under the fleet root is excluded.
+  * Is the scheduled render watch healthy? The newest control record warns
+    while red or older than three enabled intervals; a failed run warns until
+    a later status replaces it.
   * Standing alerts, empty-exit streaks / stand-down backoffs, and the
     iterations running right now. A red master workflow (the scout's
     `scout-master-ci-*` alerts) renders with its sha, run age and URL and
@@ -594,6 +598,52 @@ def collect_worktree_leaks():
     return {"leaks": leaks, "error": None}
 
 
+def collect_render_watch(state_dir, conf):
+    """Newest cached sweep and last runner status for the opt-in watch."""
+    enabled = conf.get("FLEET_RENDER_WATCH") == "1"
+    try:
+        interval = int(conf.get("FLEET_RENDER_WATCH_INTERVAL_SECS") or 6 * 60 * 60)
+    except ValueError:
+        interval = 6 * 60 * 60
+    if interval < 0:
+        interval = 6 * 60 * 60
+    preset = conf.get("FLEET_RENDER_WATCH_PRESET") or "macos-debug"
+    records = []
+    for path in (Path(state_dir) / "render-verify-controls" / preset).glob("*.json"):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+            generated = parse_ts(record.get("generated_at", ""))
+        except (OSError, ValueError, TypeError):
+            continue
+        if generated is None:
+            continue
+        if generated.tzinfo is None:
+            generated = generated.replace(tzinfo=dt.timezone.utc)
+        records.append((generated, record))
+    records.sort(key=lambda item: item[0], reverse=True)
+    newest = None
+    if records:
+        generated, record = records[0]
+        rows = record.get("rows") if isinstance(record.get("rows"), list) else []
+        newest = {
+            "commit": str(record.get("commit") or ""),
+            "generated_at": generated.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "age_s": max(0, int((now_utc() - generated).total_seconds())),
+            "row_count": len(rows),
+            "red_count": sum(row.get("verdict") == "FAIL" for row in rows
+                             if isinstance(row, dict)),
+            "tracker": record.get("tracker"),
+        }
+    try:
+        status = json.loads((Path(state_dir) / "render-watch-status.json").read_text())
+        if not isinstance(status, dict):
+            status = None
+    except (OSError, ValueError):
+        status = None
+    return {"enabled": enabled, "interval_s": interval, "preset": preset,
+            "newest": newest, "status": status}
+
+
 def collect_alerts(alerts_dir):
     now = now_utc()
     out = []
@@ -712,7 +762,7 @@ NO_OP_RATIO = 0.5
 
 
 def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts, worktrees,
-                    automerge=None):
+                    automerge=None, render_watch=None):
     w = []
     if automerge:
         if automerge["rollbacks"]:
@@ -783,6 +833,21 @@ def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts, worktree
                  "(fleet-worktree-sweep --prune clears the clean ones)")
     if worktrees["error"]:
         w.append(f"fleet-worktree-sweep failed: {worktrees['error']}")
+    if render_watch and render_watch["enabled"]:
+        status = render_watch.get("status") or {}
+        if status.get("outcome") == "failed":
+            w.append(f"render watch failed at {status.get('commit', 'unknown')[:9]}: "
+                     f"{status.get('reason', 'unknown failure')}")
+        newest = render_watch.get("newest")
+        if newest:
+            if newest["red_count"]:
+                tracker = f" tracker=#{newest['tracker']}" if newest.get("tracker") else ""
+                w.append(f"render watch red at {newest['commit'][:9]}: "
+                         f"{newest['red_count']} of {newest['row_count']} rows{tracker}")
+            if newest["age_s"] > 3 * render_watch["interval_s"]:
+                w.append(f"render watch overdue: newest {newest['commit'][:9]} is "
+                         f"{fmt_age(newest['age_s'])} old "
+                         f"(interval {render_watch['interval_s']}s)")
     return w
 
 
@@ -989,6 +1054,10 @@ def build_report(args):
                "mode": mode, "profile": profile}
     alerts = collect_alerts(alerts_dir)
     worktrees = collect_worktree_leaks()
+    watch_worktree = (fleet_dir / "render-watch" / "worktree").resolve()
+    worktrees["leaks"] = [row for row in worktrees["leaks"]
+                          if Path(row["path"]).resolve() != watch_worktree]
+    render_watch = collect_render_watch(state_dir, conf)
     report = {
         "window": {"since": since.strftime("%Y-%m-%dT%H:%M:%SZ"), "label": args.since or "boot"},
         "daemons": daemons,
@@ -1007,6 +1076,7 @@ def build_report(args):
         "streaks": collect_streaks(state_dir),
         "alerts": alerts,
         "worktree_leaks": worktrees,
+        "render_watch": render_watch,
         "github": collect_github(state_dir / "gh-accounting", since, now_utc()),
         "public_text_terms": {
             "path": str(terms_path),
@@ -1014,7 +1084,7 @@ def build_report(args):
         },
     }
     report["warnings"] = derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts,
-                                     worktrees, automerge)
+                                     worktrees, automerge, render_watch)
     return report
 
 

@@ -324,6 +324,11 @@ Parallel-agent fleet (tmux + Claude)
                                  days, and drops the label from a PR that is
                                  no longer wip; spawned by fleet-state-scout
                                  on the authoritative poller
+  fleet-render-watch --commit <origin-master-sha>
+                                 daemon-only macOS master render sweep; owns
+                                 ~/.fleet/render-watch, records the control,
+                                 and refreshes or closes one red-row tracker;
+                                 spawned by the opt-in scout lane
   fleet-rebase --auto [--dry-run]
                                  tier-0 merger: mechanical rebases of approved
                                  stacked/conflicting PRs for zero tokens;
@@ -356,6 +361,7 @@ Parallel-agent fleet (tmux + Claude)
                                  claude/codex split), trigger arms by source,
                                  the tier-0 -> LLM merger ladder, provider
                                  readiness + unstamped PRs, standing alerts,
+                                 render-watch red/failed/overdue state,
                                  iterations in flight, worktrees outside the
                                  pool layout; exit 0 OK / 1 WARN
   fleet-worktree-sweep [--json] [--no-size] [--prune [--dirty-too]]
