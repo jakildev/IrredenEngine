@@ -268,6 +268,23 @@ class Silent(Repo):
         rc, out, _ = self.run_main()
         self.assertEqual(rc, 0, out)
 
+    def test_directory_only_ignore_pattern_resolves_without_the_directory(self):
+        self.write(".gitignore", "build/\n/docs/staging/\n")
+        self.write("CLAUDE.md", "Shots stage under `docs/staging`.\n")
+        self.assertFalse((self.root / "docs/staging").exists())
+        rc, out, _ = self.run_main()
+        self.assertEqual(rc, 0, out)
+        (self.root / "docs/staging").mkdir()
+        rc, out, _ = self.run_main()
+        self.assertEqual(rc, 0, out)
+
+    def test_untracked_unignored_sibling_of_an_ignored_directory_still_dead(self):
+        self.write(".gitignore", "build/\n/docs/staging/\n")
+        self.write("CLAUDE.md", "See `docs/staging-gone`.\n")
+        rc, out, _ = self.run_main()
+        self.assertEqual(rc, 1, out)
+        self.assertEqual(len(self.finding_lines(out)), 1, out)
+
     def test_non_instruction_markdown_is_not_scanned(self):
         self.write("docs/design/notes.md", "`fleet:no-such-label` `engine/gone.hpp`\n")
         rc, out, _ = self.run_main()

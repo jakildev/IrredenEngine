@@ -461,9 +461,13 @@ def make_ignored(root):
 
     def ignored(rel):
         if rel not in cache:
-            r = subprocess.run(["git", "-C", str(root), "check-ignore", "-q", "--no-index",
-                                "--", rel], capture_output=True)
-            cache[rel] = r.returncode == 0
+            # A directory-only pattern (`/dir/`) matches a bare path only while the
+            # directory exists on disk; the trailing-slash retry makes the verdict
+            # independent of the host's working tree.
+            cache[rel] = any(
+                subprocess.run(["git", "-C", str(root), "check-ignore", "-q", "--no-index",
+                                "--", spelling], capture_output=True).returncode == 0
+                for spelling in (rel, rel.rstrip("/") + "/"))
         return cache[rel]
     return ignored
 
