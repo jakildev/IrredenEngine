@@ -81,6 +81,10 @@ case "\$1 \$2" in
         fi
         exit 0
         ;;
+    "issue view")
+        printf '{"state":"OPEN","labels":[],"body":""}\n'
+        exit 0
+        ;;
     "issue edit"|"label "*|"repo view"|"pr list"|"issue list")
         exit 0
         ;;
