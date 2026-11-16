@@ -309,8 +309,11 @@ average and maximum per call inside the window, and the calls.
 `--moving-fraction F` keeps every `1/F`-th cell dynamic under the live wave;
 `--static-cycle` thaws, moves and refreezes every hundredth cell;
 `--recolor-every-update` recolors every set each update. Under `--wave-freeze`
-the profile window opens only once every static cell has settled, so every
-frame a report covers is a settled frame; a fixture that never settles exits 3.
+the profile window opens only once every static cell has settled and, with
+static cells, no position range is queued, neither cull cache has a pending
+chunk and the light occlusion grid has no stale world box, so every frame a
+report covers is a settled frame. The `--static-cycle` capture holds its first
+shot to the same list. A fixture that never meets it exits 3.
 
 ## Split a system row with `IR_PROFILE_SCOPE`
 

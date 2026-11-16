@@ -2449,9 +2449,11 @@ bool staticFixtureSettled() {
     return staticFixtureScriptFinished() && IRPrefab::Static::stats().settling_ == 0;
 }
 
-// The profile window's start condition: settled and, for a fixture with
-// static cells, the cache debt gate 3 reads is paid. The capture fixtures
-// start on settlement alone (their gates read images).
+// The start condition of a profile window and of the static cycle's first
+// capture: settled and, for a fixture with static cells, the cache debt is
+// paid. An all-dynamic arm is held to settlement alone: its cells notify
+// their writes on every frame, so its light occlusion grid always has stale
+// world boxes.
 bool staticFixtureReady() {
     return staticFixtureSettled() && (!g_staticCells || staticCacheDebt().paid());
 }
@@ -2475,9 +2477,9 @@ void failStaticFixture(const char *what) {
 }
 
 // Once per rendered frame, at the render front. Restores the promotion cap
-// the control lifts while it spawns, and holds the capture fixtures to their
-// start condition: no entity settling and the script finished when the first
-// capture begins.
+// the control lifts while it spawns, and holds every --wave-freeze capture to
+// settlement when its first capture begins; the static cycle, the render
+// fixture, is held to its full start condition.
 void watchStaticFixture() {
     ++g_staticFixtureFrames;
     if (g_staticBudgetLifted && staticFixtureSettled()) {
@@ -2485,7 +2487,7 @@ void watchStaticFixture() {
         g_staticBudgetLifted = false;
     }
     if (g_autoWarmupFrames > 0 && g_staticFixtureFrames == g_autoWarmupFrames &&
-        !staticFixtureSettled()) {
+        !(g_staticCycle ? staticFixtureReady() : staticFixtureSettled())) {
         failStaticFixture("the first capture");
     }
 }
