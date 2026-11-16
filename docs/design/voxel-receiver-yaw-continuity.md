@@ -115,8 +115,11 @@ rounds on a busy host: they rank the alternatives and are not the cost gate.
 |---|---:|---:|---:|
 | Per-axis, zoom 4, 16 overlapping casters | 0.131 + 0.042 + 0.505 | 0.014 + 0.957 | 0.019 + 0.900 |
 | Per-axis, zoom 4, no overlap | 0.243 + 0.098 + 0.190 | 0.066 + 0.606 | not run |
-| Per-axis, zoom 4, 8 overlapping casters | 0.188 + 0.061 + 0.160 | 0.017 + 1.717 | not run |
-| Per-axis, zoom 1, 8 overlapping casters | 0.246 + 0.055 + 0.184 | 0.020 + 0.669 | not run |
+| Per-axis, zoom 4, 8 overlapping casters | 0.188 + 0.061 + 0.160 | 0.020 + 0.669 | not run |
+| Per-axis, zoom 1, 8 overlapping casters | 0.246 + 0.055 + 0.184 | 0.017 + 1.717 | not run |
+
+Steady frame means in the same rounds: 10.05 ms sampled against 9.91 ms
+continuous at zoom 4 with 8 casters, 10.14 against 10.85 ms at zoom 1.
 
 - **Continuous route as the rotating default (chosen).** It is the cardinal
   receiver's own model, so the crossing gates pass by construction, and it adds
