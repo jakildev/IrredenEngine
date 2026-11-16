@@ -1,10 +1,8 @@
 #ifndef IR_PREFAB_OCCLUSION_LAG_SOURCE_H
 #define IR_PREFAB_OCCLUSION_LAG_SOURCE_H
 
-// Frame-to-frame contract between COMPUTE_DISTANCE_HIZ and the voxel occlusion
-// cull (docs/design/voxel-occlusion-culling.md): the cull in frame N tests the
-// Hi-Z chain frame N-1 built, and the chain has no other reader. Pure policy,
-// so it runs headlessly.
+// Legacy previous-frame culling policy, retained for existing consumers.
+// The voxel raster uses a current-frame depth proof and no longer calls it.
 
 #include <irreden/ir_math.hpp>
 

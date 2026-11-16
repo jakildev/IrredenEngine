@@ -819,15 +819,9 @@ struct FrameDataVoxelToCanvas {
     // offset is unchanged. The tail lanes pack the shadow-feeder dispatch
     // partition into the 192..208 16-byte std140 stride for full-struct uploads.
     int resolveMode_ = 0;
-    // Per-voxel Hi-Z occlusion-cull gate, refining the per-chunk cull. 0 skips
-    // the compact's per-voxel test, so the default pipeline is byte-identical.
-    // Non-zero is the
-    // Hi-Z chain level count; the compact samples level 0 at each surviving
-    // voxel's canvas pixel and drops it when strictly behind the farthest visible
-    // surface. Set (in VOXEL_TO_TRIXEL_STAGE_1) only on the same states the chunk
-    // pre-pass is verified for: enabled, lag source fresh, NONE render mode,
-    // cardinal (not rotating), non-re-voxelize pool, Hi-Z chain built. Keeps the
-    // first resolveMode tail pad slot (offset 196) it shipped on.
+    // Zero for the full depth-pass compact; nonzero enables the current-frame
+    // Hi-Z refine before election and color. Valid for every subdivision mode
+    // on a world cardinal canvas, never detached, rotating or revoxelized.
     int occlusionCullMipCount_ = 0;
     // Shadow-feeder dispatch partition. The compact classifies each surviving
     // voxel as visible (inside visibleIsoBounds_) or off-screen shadow feeder,

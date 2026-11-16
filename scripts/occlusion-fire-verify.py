@@ -14,9 +14,8 @@ is vacuous, fire without identity is a cull that may be eating geometry.
 
 Fixture: ``IRPerfGrid --mode voxel_set --no-overlay --wave-amplitude 0
 --subdivision-mode none --no-sun-shadows`` — the heavily-occluded voxel_set
-scene, static, at NONE subdivision (the only regime where the per-voxel refine
-is armed) and with sun shadows off so the visible count is the on-screen
-population rather than the shadow-feeder-widened extent.
+scene, static, in NONE, FULL and POSITION_ONLY, with sun shadows off so the
+visible count is the on-screen population. Each mode must fire independently.
 
 The report parser is ``scripts/perf/compare_perf_runs.py``'s ``parse_report``
 (its ``--- Voxel cull stats ---`` scanner); this script owns no regex.
@@ -58,10 +57,12 @@ ARM_CHUNK_ONLY = "chunk_only"
 ARM_CHUNK_PER_VOXEL = "chunk+per_voxel"
 
 
-def arm_args(arm: str, extra: list[str]) -> list[str]:
+def arm_args(arm: str, extra: list[str], mode: str = "none") -> list[str]:
     """The demo args for one measurement arm: fixture + cull toggles + ``extra``."""
     toggles = CHUNK_ONLY_ARGS if arm == ARM_CHUNK_ONLY else CHUNK_PER_VOXEL_ARGS
-    return FIXTURE_ARGS + toggles + extra
+    fixture = FIXTURE_ARGS.copy()
+    fixture[fixture.index("--subdivision-mode") + 1] = mode
+    return fixture + toggles + extra
 
 
 def marginal_reduction(chunk_only_report: Path, chunk_per_voxel_report: Path
@@ -112,11 +113,11 @@ def verdict(chunk_only: float, chunk_pv: float, marginal: float,
 
 
 def _run_arm(*, arm: str, worktree: Path, report: Path, dest: Path,
-             frames: int, timeout: int, extra: list[str]) -> None:
+             frames: int, timeout: int, extra: list[str], mode: str) -> None:
     if report.exists():
         report.unlink()
     cmd = ["fleet-run", "--timeout", str(timeout), TARGET,
-           "--auto-profile", str(frames)] + arm_args(arm, extra)
+           "--auto-profile", str(frames)] + arm_args(arm, extra, mode)
     rc = verify_common.run(cmd, cwd=worktree, check=False)
     if rc != 0:
         raise SystemExit(f"[occlusion-fire-verify] {arm}: fleet-run exited {rc}")
@@ -138,6 +139,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="Per-arm fleet-run timeout in seconds (default: 180).")
     ap.add_argument("--no-build", action="store_true",
                     help="Skip `fleet-build`; assume the target is already built.")
+    ap.add_argument("--subdivision-mode", default="all",
+                    choices=("all", "none", "full", "position_only"),
+                    help="Require positive fire in every mode (default), or one mode.")
     ap.add_argument("--demo-arg", action="append", default=[], metavar="ARG",
                     help="Extra argument appended to BOTH arms (repeatable; "
                          "spell a flag-shaped value as --demo-arg=--flag). "
@@ -155,18 +159,24 @@ def main(argv: list[str] | None = None) -> int:
     exe = verify_common.find_exe(build_dir, TARGET, DEMO)
     report = exe.parent / REPORT_REL
 
+    modes = ("none", "full", "position_only") if args.subdivision_mode == "all" else (
+        args.subdivision_mode,)
+    passed = True
     with tempfile.TemporaryDirectory(prefix="occlusion-fire-") as td:
         kept = Path(td)
         dests = {ARM_CHUNK_ONLY: kept / "chunk_only.txt",
                  ARM_CHUNK_PER_VOXEL: kept / "chunk_per_voxel.txt"}
-        for arm, dest in dests.items():
-            _run_arm(arm=arm, worktree=worktree, report=report, dest=dest,
-                     frames=args.frames, timeout=args.timeout,
-                     extra=args.demo_arg)
-        chunk_only, chunk_pv, marginal = marginal_reduction(
-            dests[ARM_CHUNK_ONLY], dests[ARM_CHUNK_PER_VOXEL])
+        for mode in modes:
+            print(f"[occlusion-fire-verify] subdivision={mode}")
+            for arm, dest in dests.items():
+                _run_arm(arm=arm, worktree=worktree, report=report, dest=dest,
+                         frames=args.frames, timeout=args.timeout,
+                         extra=args.demo_arg, mode=mode)
+            chunk_only, chunk_pv, marginal = marginal_reduction(
+                dests[ARM_CHUNK_ONLY], dests[ARM_CHUNK_PER_VOXEL])
+            passed = verdict(chunk_only, chunk_pv, marginal, args.min_marginal) and passed
 
-    return 0 if verdict(chunk_only, chunk_pv, marginal, args.min_marginal) else 1
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":

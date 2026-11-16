@@ -93,11 +93,11 @@ struct C_TriangleCanvasTextures {
     // Hi-Z max-depth mip chain over textureTriangleDistances_.
     // Conceptual level 0 IS textureTriangleDistances_; these are the downsampled
     // levels 1..N (each ceil(prev / 2), R32I), holding the per-texel MAX
-    // (farthest) encoded distance over the source footprint. Produced each frame
-    // by COMPUTE_DISTANCE_HIZ and consumed NEXT frame by the chunk-occlusion
-    // pre-pass. Empty/background texels carry the 65535 sentinel — the
-    // largest encoded value — so any footprint that still sees background keeps
-    // the max at 65535 = "never occlude", the conservative direction.
+    // (farthest) encoded distance over the source footprint. Built and consumed within
+    // VOXEL_TO_TRIXEL_STAGE_1 after its full depth pass, before the election/color compact.
+    // Empty/background texels carry the 65535 sentinel — the largest encoded value — so any
+    // footprint that still sees background keeps the max at 65535 = "never occlude", the
+    // conservative direction.
     std::vector<std::pair<ResourceId, Texture2D *>> hiZMips_;
 
     // Subdivision factor this canvas actually rastered its voxel pool at this

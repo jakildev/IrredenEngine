@@ -1,24 +1,10 @@
 #ifndef SYSTEM_BUILD_DISTANCE_HIZ_H
 #define SYSTEM_BUILD_DISTANCE_HIZ_H
 
-// Hi-Z (hierarchical max-depth) distance mip-chain build. See
-// docs/design/voxel-occlusion-culling.md § Implementation sketch step 1.
-//
-// For each world canvas, downsample-max the R32I distance texture into the
-// canvas's hiZMips_ chain: one compute dispatch per level, reading the prior
-// level and writing the per-texel MAX (farthest) of its 2x2 source footprint.
-// Conceptual level 0 is the distance texture itself, so the chain holds the
-// downsampled levels 1..N. A max pyramid answers "the farthest visible surface
-// over this footprint"; next frame's chunk-occlusion pre-pass culls a
-// pool-chunk only when its nearest depth is strictly behind that max.
-//
-// Pipeline order: must run after every stage that writes trixelDistances
-// (VOXEL_TO_TRIXEL_STAGE_1, SHAPES_TO_TRIXEL) and after COMPUTE_VOXEL_AO, so the
-// distance texture is final — register it immediately after COMPUTE_VOXEL_AO.
-//
-// The voxel occlusion cull is the chain's only reader, so a frame with the cull
-// off builds nothing (IRPrefab::OcclusionCull::buildsDistanceHiZ); the cull
-// treats the frame after such a gap as stale.
+// Explicit final-distance pyramid build for existing pipeline registrations.
+// The voxel raster builds its own current-frame pyramid before election and
+// never uses this later pass as a temporal proof source. It is retained for
+// pipelines that consume final distances after shapes and AO.
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_profile.hpp>
@@ -28,6 +14,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/occlusion_lag_source.hpp>
+#include <irreden/render/distance_hiz.hpp>
 
 #include <cstddef>
 
@@ -58,25 +45,7 @@ template <> struct System<COMPUTE_DISTANCE_HIZ> {
             return;
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
-        // Level 0 is the canvas distance texture; each subsequent level reads
-        // the previous level's output (a barrier per level enforces that RAW
-        // dependency — the chain is inherently sequential).
-        const Texture2D *src = canvasTextures.getTextureDistances();
-        for (std::size_t level = 0; level < canvasTextures.hiZMips_.size(); ++level) {
-            const Texture2D *dst = canvasTextures.hiZMips_[level].second;
-            src->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
-            dst->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
-
-            const uvec2 dstSize = dst->getSize();
-            const int groupsX =
-                IRMath::divCeil(static_cast<int>(dstSize.x), kBuildDistanceHiZGroupSize);
-            const int groupsY =
-                IRMath::divCeil(static_cast<int>(dstSize.y), kBuildDistanceHiZGroupSize);
-            IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
-            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-
-            src = dst;
-        }
+        IRPrefab::OcclusionCull::detail::buildDistanceHiZ(canvasTextures, *program_);
     }
 
     void beginTick() {
