@@ -25,6 +25,7 @@
 #include <irreden/render/components/component_canvas_part.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/system/components/component_static.hpp>
+#include <irreden/system/settle_promoter.hpp>
 #include <irreden/voxel/components/component_joint.hpp>
 #include <irreden/voxel/components/component_skeleton.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -128,8 +129,7 @@ inline FreezeResult rowEligibility(
     return FreezeResult::FROZEN;
 }
 
-template <typename Component>
-std::vector<Component> *columnOrNull(IREntity::ArchetypeNode *node) {
+template <typename Component> std::vector<Component> *columnOrNull(IREntity::ArchetypeNode *node) {
     return nodeHas<Component>(node) ? &IREntity::getComponentData<Component>(node) : nullptr;
 }
 
@@ -246,10 +246,7 @@ inline void resettle(IREntity::EntityId entity) {
     if (settled) {
         IREntity::removeComponentDeferred<IRComponents::C_Settled>(entity);
     }
-    detail::stageNote(
-        entity,
-        settled ? detail::NoteKind::RESETTLED : detail::NoteKind::CHANGED
-    );
+    detail::stageNote(entity, settled ? detail::NoteKind::RESETTLED : detail::NoteKind::CHANGED);
     for (IREntity::EntityId child : IREntity::getEntityManager().getChildren(entity)) {
         resettle(child);
     }
@@ -276,7 +273,7 @@ inline void refuseSubtree(IRComponents::C_StaticState &drainState, IREntity::Ent
 // restarts its settle stamp, so no row enters the settling state carrying a
 // stamp written before its last change. A row the drain has never stamped
 // is left for the walk, which treats it as new.
-inline void applyNotes(IRComponents::C_StaticState &drainState, std::uint64_t nextRound) {
+inline void applyNotes(IRComponents::C_StaticState &drainState) {
     IREntity::EntityManager &entities = IREntity::getEntityManager();
     drainState.notes_.clear();
     entities.takeEntityNotes(drainState.notes_);
@@ -300,11 +297,11 @@ inline void applyNotes(IRComponents::C_StaticState &drainState, std::uint64_t ne
             }
             continue;
         }
-        std::uint64_t &stamp =
-            IREntity::getComponentData<IRComponents::C_Static>(node)[record->row].settleStamp_;
+        IRComponents::C_Static &row =
+            IREntity::getComponentData<IRComponents::C_Static>(node)[record->row];
         if (nodeHas(node, settledTag)) {
             // Stamped before the removal that returns it to settling.
-            stamp = nextRound;
+            IRSystem::restampSettling(row);
             entities.removeComponent<IRComponents::C_Settled>(entity);
             ++drainState.counters_.resettled_;
             continue;
@@ -312,10 +309,10 @@ inline void applyNotes(IRComponents::C_StaticState &drainState, std::uint64_t ne
         if (kind == NoteKind::RESETTLED) {
             ++drainState.counters_.resettled_;
         }
-        if (stamp == 0) {
+        if (row.settleStamp() == 0) {
             continue;
         }
-        stamp = nextRound;
+        IRSystem::restampSettling(row);
         if (kind == NoteKind::HELD) {
             ++drainState.counters_.held_;
         } else if (kind == NoteKind::CHANGED) {
@@ -333,23 +330,22 @@ inline void applyNotes(IRComponents::C_StaticState &drainState, std::uint64_t ne
         if (record == nullptr || !nodeHas(record->archetypeNode, staticTag)) {
             continue;
         }
-        std::uint64_t &stamp =
-            IREntity::getComponentData<IRComponents::C_Static>(record->archetypeNode)[record->row]
-                .settleStamp_;
-        if (stamp == 0) {
+        IRComponents::C_Static &row =
+            IREntity::getComponentData<IRComponents::C_Static>(record->archetypeNode)[record->row];
+        if (row.settleStamp() == 0) {
             continue;
         }
         if (eligibility(*record) != FreezeResult::FROZEN) {
             refuseSubtree(drainState, entity);
             continue;
         }
-        stamp = nextRound;
+        IRSystem::restampSettling(row);
     }
 }
 
 // Step 2: a global-modifier change the drain has not seen restarts every
 // settling entity at once.
-inline void raiseGlobalFloor(IRComponents::C_StaticState &drainState, std::uint64_t nextRound) {
+inline void raiseGlobalFloor(IRComponents::C_StaticState &drainState) {
     IREntity::EntityManager &entities = IREntity::getEntityManager();
     const IREntity::ComponentId globalsType =
         entities.findComponentType<IRComponents::C_GlobalModifiers>();
@@ -362,7 +358,7 @@ inline void raiseGlobalFloor(IRComponents::C_StaticState &drainState, std::uint6
     }
     if (revision != drainState.seenGlobalRevision_) {
         drainState.seenGlobalRevision_ = revision;
-        drainState.globalFloor_ = nextRound;
+        IRSystem::raiseSettleFloor();
     }
 }
 
@@ -393,10 +389,10 @@ inline void drain() {
         IREntity::singleton<IRComponents::C_StaticSettings>().promotionsPerRound_;
     IRComponents::C_StaticState &drainState = detail::state();
     const std::uint64_t roundsCompleted = IRSystem::roundsCompleted();
-    const std::uint64_t nextRound = IRSystem::roundsOpened() + 1;
 
-    detail::applyNotes(drainState, nextRound);
-    detail::raiseGlobalFloor(drainState, nextRound);
+    detail::applyNotes(drainState);
+    detail::raiseGlobalFloor(drainState);
+    const std::uint64_t settleFloor = IRSystem::settleFloor();
 
     if (drainState.budgetRound_ != roundsCompleted) {
         drainState.budgetRound_ = roundsCompleted;
@@ -431,7 +427,7 @@ inline void drain() {
         std::vector<IRComponents::C_RotationMode> *rotationModes = nullptr;
         std::vector<IRComponents::C_VoxelSetNew> *voxelSets = nullptr;
         for (int row = 0; row < node->length_; ++row) {
-            const std::uint64_t stamp = statics[row].settleStamp_;
+            const std::uint64_t stamp = statics[row].settleStamp();
             if (stamp == 0) {
                 if (!resolvedNewRowColumns) {
                     resolvedNewRowColumns = true;
@@ -446,7 +442,7 @@ inline void drain() {
                     drainState.refused_.push_back(entity);
                     continue;
                 }
-                statics[row].settleStamp_ = nextRound;
+                IRSystem::restampSettling(statics[row]);
                 if (voxelSets != nullptr) {
                     IRComponents::C_VoxelSetNew &set = (*voxelSets)[row];
                     IRPrefab::Voxel::adoptOwner(set, entity);
@@ -457,7 +453,7 @@ inline void drain() {
             if (roundsCompleted < stamp) {
                 continue;
             }
-            if (roundsCompleted < drainState.globalFloor_) {
+            if (roundsCompleted < settleFloor) {
                 heldByGlobal = true;
                 continue;
             }
@@ -510,17 +506,22 @@ inline void drain() {
             IREntity::ArchetypeNode *settledNode = entities.findCreateArchetypeNode(settledType);
             entities.reserveRows(settledNode, settledNode->length_ + reservedFor->length_);
         }
+        drainState.promoting_.clear();
         for (const IRComponents::C_StaticState::Candidate &candidate : candidates) {
-            entities.setComponent(candidate.entity_, IRComponents::C_Settled{});
+            drainState.promoting_.push_back(candidate.entity_);
         }
+        [[maybe_unused]] const std::size_t skipped =
+            IRSystem::promoteSettled(drainState.promoting_);
+        IR_ASSERT(skipped == 0, "Static::drain: promoteSettled refused {} candidates", skipped);
+        // The attaches apply at this flush.
+        IREntity::flushStructuralChanges();
         drainState.promotedThisRound_ += candidates.size();
         drainState.counters_.promoted_ += candidates.size();
         const double promotionMs =
             std::chrono::duration<double, std::milli>(Clock::now() - promotionStart).count();
-        drainState.counters_.promotionMsMax_ =
-            promotionMs > drainState.counters_.promotionMsMax_
-                ? promotionMs
-                : drainState.counters_.promotionMsMax_;
+        drainState.counters_.promotionMsMax_ = promotionMs > drainState.counters_.promotionMsMax_
+                                                   ? promotionMs
+                                                   : drainState.counters_.promotionMsMax_;
     }
 
     IREntity::flushStructuralChanges();

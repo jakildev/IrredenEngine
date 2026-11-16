@@ -430,9 +430,8 @@ inline void removeBySource(IREntity::EntityId source) {
     // walk carries the ids that needs, and only nodes holding C_Static test
     // for the change.
     const IREntity::ComponentId staticTag = IRPrefab::Static::detail::staticTagOrNull();
-    for (IREntity::ArchetypeNode *node : IREntity::queryArchetypeNodesSimple(
-             IREntity::getArchetype<IRComponents::C_Modifiers>()
-         )) {
+    for (IREntity::ArchetypeNode *node :
+         IREntity::queryArchetypeNodesSimple(IREntity::getArchetype<IRComponents::C_Modifiers>())) {
         auto &column = IREntity::getComponentData<IRComponents::C_Modifiers>(node);
         const bool isStatic = IRPrefab::Static::detail::nodeHas(node, staticTag);
         for (int row = 0; row < node->length_; ++row) {

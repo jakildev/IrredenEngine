@@ -34,6 +34,9 @@ class ArchetypeNode {
     // Whether `type_` holds a component whose `kTracksInputChanges` trait is
     // true; a parent-link change tests it.
     bool tracksInputChanges_ = false;
+    // Whether `type_` holds a component `EngineAttach` restricts; the
+    // archetype-move primitives test it.
+    bool hasRestricted_ = false;
 
     ArchetypeNode(NodeId nodeId, const Archetype &archetype);
 

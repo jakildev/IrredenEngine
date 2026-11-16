@@ -10,6 +10,8 @@
 #include <irreden/job/job_manager.hpp>
 #include <irreden/system/components/component_static.hpp>
 
+#include "../common/settle_now.hpp"
+
 #include <cstdint>
 #include <stdexcept>
 #include <vector>
@@ -84,7 +86,8 @@ class StaticPolicy : public testing::Test {
     void makePopulation() {
         m_dynamic = IREntity::createEntity(C_PolicyA{}, C_PolicyB{});
         m_settling = IREntity::createEntity(C_PolicyA{}, C_PolicyB{}, C_Static{});
-        m_settled = IREntity::createEntity(C_PolicyA{}, C_PolicyB{}, C_Static{}, C_Settled{});
+        m_settled = IREntity::createEntity(C_PolicyA{}, C_PolicyB{}, C_Static{});
+        ASSERT_EQ(IRTest::settleNow({m_settled}), 0u);
     }
 
     int visits(SystemId system) {
@@ -104,14 +107,12 @@ class StaticPolicy : public testing::Test {
 TEST_F(StaticPolicy, CreateSystemLaneFollowsTheDeclaredWriteSet) {
     makePopulation();
     int writerVisits = 0;
-    const SystemId writer = IRSystem::createSystem<C_LocalTransform>(
-        "Writer",
-        [&writerVisits](C_LocalTransform &) { ++writerVisits; }
-    );
-    const SystemId reader = IRSystem::createSystem<const C_LocalTransform>(
-        "Reader",
-        [](const C_LocalTransform &) {}
-    );
+    const SystemId writer =
+        IRSystem::createSystem<C_LocalTransform>("Writer", [&writerVisits](C_LocalTransform &) {
+            ++writerVisits;
+        });
+    const SystemId reader =
+        IRSystem::createSystem<const C_LocalTransform>("Reader", [](const C_LocalTransform &) {});
     const SystemId derivedWriter =
         IRSystem::createSystem<C_WorldTransform>("DerivedWriter", [](C_WorldTransform &) {});
     const SystemId deriving = IRSystem::createSystem<C_WorldTransform, Exclude<C_Settled>>(
@@ -184,9 +185,7 @@ TEST_F(StaticPolicy, ATypedQueryIsNeverDeriving) {
     int inputWrites = 0;
     IRSystem::executeQuery<C_LocalTransform>([&inputWrites](C_LocalTransform &) { ++inputWrites; });
     int reads = 0;
-    IRSystem::executeQuery<const C_LocalTransform>([&reads](const C_LocalTransform &) {
-        ++reads;
-    });
+    IRSystem::executeQuery<const C_LocalTransform>([&reads](const C_LocalTransform &) { ++reads; });
     int derivedWrites = 0;
     IRSystem::executeQuery<C_WorldTransform>([&derivedWrites](C_WorldTransform &) {
         ++derivedWrites;
@@ -333,10 +332,10 @@ TEST_F(StaticPolicy, ConstPackDispatchesEveryTickForm) {
             ++b.value_;
         }
     );
-    const SystemId withId = IRSystem::createSystem<const C_PolicyA>(
-        "ConstId",
-        [&ids](EntityId, const C_PolicyA &) { ++ids; }
-    );
+    const SystemId withId =
+        IRSystem::createSystem<const C_PolicyA>("ConstId", [&ids](EntityId, const C_PolicyA &) {
+            ++ids;
+        });
     const SystemId batch = IRSystem::createSystem<const C_PolicyA>(
         "ConstBatch",
         [&batchRows](
@@ -430,14 +429,10 @@ TEST_F(StaticRounds, ARoundCoversEveryDerivingGroupInPipelineOrder) {
 }
 
 void expectGroupedRoundWaitsForTheSlowerMember(IRSystem::SystemManager &systems) {
-    const SystemId fast = IRSystem::createSystem<C_PolicyA, Exclude<C_Settled>>(
-        "Fast",
-        [](C_PolicyA &) {}
-    );
-    const SystemId slow = IRSystem::createSystem<C_PolicyB, Exclude<C_Settled>>(
-        "Slow",
-        [](C_PolicyB &) {}
-    );
+    const SystemId fast =
+        IRSystem::createSystem<C_PolicyA, Exclude<C_Settled>>("Fast", [](C_PolicyA &) {});
+    const SystemId slow =
+        IRSystem::createSystem<C_PolicyB, Exclude<C_Settled>>("Slow", [](C_PolicyB &) {});
     systems.registerPipelineGroups(IRTime::Events::UPDATE, {{fast, slow}});
     systems.validateAllPipelineGroups();
     systems.setSystemCadence(slow, 2);

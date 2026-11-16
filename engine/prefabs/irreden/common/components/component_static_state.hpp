@@ -25,9 +25,8 @@ struct StaticCounters {
 /// Singleton, engine-owned: what `IRPrefab::Static::drain` carries between
 /// calls. Only the drain writes it.
 struct C_StaticState {
-    /// No entity is promoted before a round that opened after the last
-    /// global-modifier change has completed.
-    std::uint64_t globalFloor_ = 0;
+    /// The global-modifier revision the drain last raised the settle floor
+    /// for (`IRSystem::settleFloor`).
     std::uint64_t seenGlobalRevision_ = 0;
     /// The completed round the promotion budget was last charged against.
     std::uint64_t budgetRound_ = 0;
@@ -46,6 +45,7 @@ struct C_StaticState {
     };
     std::vector<IREntity::EntityId> notes_;
     std::vector<Candidate> candidates_;
+    std::vector<IREntity::EntityId> promoting_;
     std::vector<IREntity::EntityId> refused_;
     // Modifier field ids already warned about in `warnGlobalChangeMissesSettled`.
     std::vector<std::uint16_t> warnedGlobalFields_;

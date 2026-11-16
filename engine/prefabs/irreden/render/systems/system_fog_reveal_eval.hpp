@@ -312,8 +312,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
     std::vector<std::uint32_t> restampedByWorker_;
     std::uint32_t restampedVoxelsLastFrame_ = 0;
 
-    static std::vector<IREntity::ArchetypeNode *>
-    matchingNodes(IREntity::Archetype exclude = {}) {
+    static std::vector<IREntity::ArchetypeNode *> matchingNodes(IREntity::Archetype exclude = {}) {
         exclude.insert(IREntity::getComponentType<IRComponents::C_FogGhost>());
         return IREntity::queryArchetypeNodesSimple(
             IREntity::getArchetype<

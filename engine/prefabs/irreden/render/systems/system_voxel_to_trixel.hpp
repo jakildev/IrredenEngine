@@ -249,8 +249,8 @@ inline void flushStaticPositionRanges(
 }
 
 // Drain `pool.getPendingPositionRanges()` to the position SSBO as one batched
-// upload of its contiguous runs. Mirrors `C_GPUParticlePool::flushPendingSpawns`
-// — sort, coalesce, emit. Gaps between runs are never uploaded: they may hold
+// upload of its contiguous runs: coalesce in place, then emit one upload
+// range per run. Gaps between runs are never uploaded: they may hold
 // GPU-transform-owned slots. Empty list is a fast-path no-op so a static voxel
 // scene pays zero bytes/frame.
 inline void flushPendingPositionRanges(
@@ -264,31 +264,17 @@ inline void flushPendingPositionRanges(
 
     // Saturation discards later notifications, so revisit all CPU-owned slots.
     // GPU-owned positions have already been produced by the transform prepass.
-    if (ranges.size() >= C_VoxelPool::kMaxPendingPositionRanges) {
+    if (pool.positionRangesSaturated()) {
         flushStaticPositionRanges(pool, buf, pool.getLiveVoxelCount(), scratch);
         pool.clearPendingPositionRanges();
         return;
     }
 
-    std::sort(ranges.begin(), ranges.end());
+    pool.coalescePendingPositionRanges();
     scratch.clear();
-    size_t runStart = ranges.front().first;
-    size_t runEnd = runStart + ranges.front().second;
-    for (size_t i = 1; i < ranges.size(); ++i) {
-        const size_t s = ranges[i].first;
-        const size_t e = s + ranges[i].second;
-        if (s <= runEnd) {
-            // Overlapping or contiguous with the open run — extend.
-            if (e > runEnd) {
-                runEnd = e;
-            }
-            continue;
-        }
-        scratch.push_back(detail::positionUploadRange(globals, runStart, runEnd));
-        runStart = s;
-        runEnd = e;
+    for (const auto &[start, count] : ranges) {
+        scratch.push_back(detail::positionUploadRange(globals, start, start + count));
     }
-    scratch.push_back(detail::positionUploadRange(globals, runStart, runEnd));
     detail::submitPositionRanges(buf, scratch);
 
     pool.clearPendingPositionRanges();
@@ -312,26 +298,7 @@ using PendingRanges = std::vector<std::pair<std::size_t, std::size_t>>;
 // scattered slots cost more as runs than as one longer copy.
 constexpr std::size_t kMaxPoolUploadRuns = 256;
 
-// Sort @p ranges and merge, in place, entries that overlap or are separated
-// by at most @p minGap elements, each clamped to [0, limit); entries wholly
-// past the limit are dropped.
-inline void coalesceRanges(PendingRanges &ranges, std::size_t limit, std::size_t minGap) {
-    std::sort(ranges.begin(), ranges.end());
-    std::size_t out = 0;
-    for (const auto &[start, count] : ranges) {
-        if (start >= limit) {
-            break;
-        }
-        const std::size_t end = IRMath::min(start + count, limit);
-        if (out > 0 && start <= ranges[out - 1].first + ranges[out - 1].second + minGap) {
-            auto &open = ranges[out - 1];
-            open.second = IRMath::max(open.second, end - open.first);
-            continue;
-        }
-        ranges[out++] = {start, end - start};
-    }
-    ranges.resize(out);
-}
+using IRComponents::detail::coalesceRanges;
 
 // First element of [0, liveCount) whose bytes differ between @p live and
 // @p uploaded outside the sorted, coalesced @p queued ranges. Elements past
@@ -1817,14 +1784,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // moved to their own sub-rows).
         IR_PROFILE_SCOPE("voxelStage1");
         const int liveVoxelCount = voxelPool.getLiveVoxelCount();
-        // Folds the pool's cull-bound rebuilds into this frame's witness on
-        // every exit, so the slots this tick rebuilds count in its own frame.
+        // Folds the pool's cull-bound rebuilds and write notifications into
+        // this frame's witness on every exit, so the slots this tick rebuilds
+        // and the writes it consumed count in its own frame.
         struct CullRebuildWitness {
             C_VoxelPool &pool_;
             ~CullRebuildWitness() {
                 const C_VoxelPool::CullRebuildCounters rebuilt = pool_.consumeCullRebuildCounters();
                 renderRunWitness().frameCullSlots_ += rebuilt.cardinalSlots_ + rebuilt.worldSlots_;
                 renderRunWitness().frameCullWholeCacheSlots_ += rebuilt.wholeCacheSlots_;
+                renderRunWitness().frameCullWriteNotifications_ += rebuilt.writeNotifications_;
             }
         } cullRebuildWitness{voxelPool};
 

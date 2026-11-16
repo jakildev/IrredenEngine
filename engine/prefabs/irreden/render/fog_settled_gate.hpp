@@ -106,9 +106,9 @@ struct SettledGate {
     }
 
     /// Runs the system's row tick, `self.tick(entity, component...)` or
-    /// `self.tick(component...)`, over one archetype node, in chunks of `grainSize` across the worker
-    /// pool when `grainSize > 0`, serially otherwise. A settled node is
-    /// skipped unless the gate is armed. Reports the rows walked.
+    /// `self.tick(component...)`, over one archetype node, in chunks of `grainSize` across the
+    /// worker pool when `grainSize > 0`, serially otherwise. A settled node is skipped unless the
+    /// gate is armed. Reports the rows walked.
     template <typename Self, typename... Components>
     void walkNode(
         Self &self,
@@ -117,8 +117,7 @@ struct SettledGate {
         std::vector<IREntity::EntityId> &entities,
         std::vector<Components> &...columns
     ) {
-        const bool isStatic =
-            staticTag_ != IREntity::kNullComponent && type.contains(staticTag_);
+        const bool isStatic = staticTag_ != IREntity::kNullComponent && type.contains(staticTag_);
         const bool settled =
             isStatic && settledTag_ != IREntity::kNullComponent && type.contains(settledTag_);
         if (settled && !armed_) {

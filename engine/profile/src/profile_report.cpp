@@ -650,12 +650,17 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
     );
     std::fprintf(
         f,
-        "Cull bounds by cause: invalidated_slots=%llu invalidated_frames=%u "
-        "whole_cache_slots=%llu whole_cache_frames=%u\n",
-        static_cast<unsigned long long>(residents.cullSlots_ - residents.cullWholeCacheSlots_),
-        residents.cullInvalidatedFrames_,
+        "Cull bounds camera/full rebuild: slots=%llu frames=%u of %u\n",
         static_cast<unsigned long long>(residents.cullWholeCacheSlots_),
-        residents.cullWholeCacheFrames_
+        residents.cullWholeCacheFrames_,
+        residents.poolFrames_
+    );
+    std::fprintf(
+        f,
+        "Cull writes: notifications=%llu frames=%u of %u\n",
+        static_cast<unsigned long long>(residents.cullWriteNotifications_),
+        residents.cullWriteFrames_,
+        residents.poolFrames_
     );
     std::fprintf(f, "\n");
 

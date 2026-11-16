@@ -42,7 +42,11 @@ void EntityManager::cacheComponentType(std::size_t slot, ComponentId componentTy
 }
 
 void EntityManager::recordComponentTraits(
-    ComponentId componentType, StaticGuard guard, bool foreignCleared, bool tracksInputChanges
+    ComponentId componentType,
+    StaticGuard guard,
+    bool foreignCleared,
+    bool tracksInputChanges,
+    bool restricted
 ) {
     if (guard != StaticGuard::NONE) {
         m_staticGuards.emplace(componentType, guard);
@@ -52,6 +56,9 @@ void EntityManager::recordComponentTraits(
     }
     if (tracksInputChanges) {
         m_parentChainComponents.push_back(componentType);
+    }
+    if (restricted) {
+        m_restrictedComponents.push_back(componentType);
     }
 }
 
@@ -116,12 +123,18 @@ void EntityManager::handleInputChange(EntityId entity, bool withDescendants) {
         !record->archetypeNode->tracksInputChanges_) {
         return;
     }
-    // Removing a cleared component by name is not a foreign move, so the
-    // entity is logged here whether or not it carried one.
+    // A cleared component removed by name logs the entity; one that carried
+    // none is logged here, so every handled entity is logged once.
+    bool logged = false;
     for (ComponentId component : m_foreignClearedComponents) {
-        removeComponentById(entity, component);
+        if (getRecord(entity).archetypeNode->type_.contains(component)) {
+            removeComponentById(entity, component);
+            logged = true;
+        }
     }
-    m_trackedChanges.push_back(entityBits(entity));
+    if (!logged) {
+        m_trackedChanges.push_back(entityBits(entity));
+    }
     if (withDescendants) {
         handleInputChangeOfChildren(entity);
     }
@@ -208,6 +221,17 @@ void EntityManager::restoreEntitiesBatch(ArchetypeNode *node, std::span<const En
         isMainThreadForDeferred(),
         "restoreEntitiesBatch is a frame-boundary op — must run on the main thread"
     );
+    if (node->hasRestricted_) {
+        IRE_LOG_ERROR(
+            "restoreEntitiesBatch: refused archetype {}, which holds an engine-owned component",
+            makeComponentStringInternal(node->type_).c_str()
+        );
+        IR_ASSERT(
+            false,
+            "restoreEntitiesBatch into an archetype holding an engine-owned component"
+        );
+        return;
+    }
     for (const EntityId entity : entityIds) {
         const EntityId masked = entity & IR_ENTITY_ID_BITS;
         m_entityIndex.emplace(masked, EntityRecord{node, node->length_});
@@ -559,6 +583,39 @@ void EntityManager::flushStructuralChanges() {
             operation();
         }
     }
+    // Engine attaches apply last, so each is judged against every change
+    // staged before the flush. Applying one stages nothing.
+    applyPendingEngineAttaches();
+}
+
+void EntityManager::applyPendingEngineAttaches() {
+    if (m_pendingEngineAttaches.empty()) {
+        return;
+    }
+    std::vector<PendingEngineAttach> attaches = std::move(m_pendingEngineAttaches);
+    m_pendingEngineAttaches.clear();
+    m_applyingEngineAttach = true;
+    for (const PendingEngineAttach &attach : attaches) {
+        EntityRecord *record = findRecord(attach.entity_);
+        if (record == nullptr || record->archetypeNode == nullptr) {
+            continue;
+        }
+        const Archetype &type = record->archetypeNode->type_;
+        if (!type.contains(attach.companion_) || type.contains(attach.component_)) {
+            continue;
+        }
+        ArchetypeNode *toNode = moveForAddedComponent(*record, attach.component_);
+        attach.appendDefaultRow_(toNode->components_.at(attach.component_).get());
+        IR_ASSERT(
+            toNode->components_.at(attach.component_)->size() == toNode->length_,
+            "attachEngineComponentDeferred: column out of sync with archetype row count"
+        );
+    }
+    m_applyingEngineAttach = false;
+    // Hand the drained capacity back, so a steady stream of attaches does
+    // not allocate.
+    attaches.clear();
+    m_pendingEngineAttaches.swap(attaches);
 }
 
 void EntityManager::destroyAllEntities() {
@@ -665,6 +722,14 @@ void EntityManager::destroyAllExceptPreserved(const std::vector<ComponentId> &pr
 
 EntityId EntityManager::getOrCreateSingletonByComponentId(ComponentId componentType) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+    if (isRestrictedAttach(componentType)) {
+        IRE_LOG_ERROR(
+            "getOrCreateSingletonByComponentId: componentId={} is engine-owned",
+            static_cast<int>(componentType)
+        );
+        IR_ASSERT(false, "getOrCreateSingletonByComponentId with an engine-owned component");
+        return kNullEntity;
+    }
     auto it = m_singletonEntityByComponent.find(componentType);
     if (it != m_singletonEntityByComponent.end() && entityExists(it->second)) {
         return it->second;
@@ -1048,6 +1113,14 @@ void EntityManager::addComponentByIdImpl(EntityRecord &record, ComponentId compo
 
 void EntityManager::addComponentDynamic(EntityId entity, ComponentId componentType) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+    if (isRestrictedAttach(componentType)) {
+        IRE_LOG_ERROR(
+            "addComponentDynamic: componentId={} is engine-owned and cannot be attached by id",
+            static_cast<int>(componentType)
+        );
+        IR_ASSERT(false, "addComponentDynamic with an engine-owned component");
+        return;
+    }
     EntityRecord &record = getRecord(entity);
     if (record.archetypeNode->type_.contains(componentType)) {
         return;
@@ -1093,6 +1166,7 @@ int EntityManager::moveEntityByArchetype(
     if (fromNode == toNode) {
         return record.row;
     }
+    assertRestrictedMove(fromNode, toNode);
 
     IR_ASSERT(
         std::includes(fromNode->type_.begin(), fromNode->type_.end(), type.begin(), type.end()),
@@ -1130,6 +1204,11 @@ void EntityManager::removeComponentById(
     fromNode->components_[componentType]->removeDataAndPack(row);
     if (fromNode->hasForeignCleared_) {
         removeForeignClearedRows(fromNode, toNode, componentType, row, entity);
+        // Removing a cleared component by name is logged like a foreign
+        // drop, so its consumer re-judges the entity either way.
+        if (isClearedByForeignMove(componentType)) {
+            m_trackedChanges.push_back(entityBits(entity));
+        }
     }
 
     IRE_LOG_DEBUG(

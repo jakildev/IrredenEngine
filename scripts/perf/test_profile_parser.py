@@ -153,8 +153,8 @@ WITNESSED_REPORT = (
     "Transition cost: promotion_ms_max=2.250 drain_ms_max=3.500\n"
     "Position upload: bytes=1280000 max_frame_bytes=160000 frames=8 of 8\n"
     "Cull bounds: slots_rebuilt=4096 max_frame_slots=512 frames=7 of 8\n"
-    "Cull bounds by cause: invalidated_slots=1024 invalidated_frames=6 "
-    "whole_cache_slots=3072 whole_cache_frames=2\n"
+    "Cull bounds camera/full rebuild: slots=3072 frames=2 of 8\n"
+    "Cull writes: notifications=12 frames=6 of 8\n"
     "\n"
     "--- Frame times (ms, in order) ---\n"
     "102.000 32.000 21.000 20.000 19.000\n"
@@ -230,9 +230,12 @@ class RunWitnessParserTest(unittest.TestCase):
             (4096, 512, 7, 8),
         )
         self.assertEqual(
-            (residents.cull_invalidated_slots, residents.cull_invalidated_frames,
-             residents.cull_whole_cache_slots, residents.cull_whole_cache_frames),
-            (1024, 6, 3072, 2),
+            (residents.cull_whole_cache_slots, residents.cull_whole_cache_frames),
+            (3072, 2),
+        )
+        self.assertEqual(
+            (residents.cull_write_notifications, residents.cull_write_frames),
+            (12, 6),
         )
 
     def test_a_report_without_the_static_section_reads_absent_never_zero(self):
@@ -241,7 +244,7 @@ class RunWitnessParserTest(unittest.TestCase):
         self.assertIsNone(residents.settling)
         self.assertIsNone(residents.position_bytes)
         self.assertIsNone(residents.cull_max_frame_slots)
-        self.assertIsNone(residents.cull_invalidated_slots)
+        self.assertIsNone(residents.cull_write_notifications)
 
     def test_the_walked_column_is_read_and_optional(self):
         rows = (
@@ -327,8 +330,8 @@ class RunWitnessParserTest(unittest.TestCase):
             '"Transition cost: promotion_ms_max=%.3f drain_ms_max=%.3f\\n"',
             '"Position upload: bytes=%llu max_frame_bytes=%llu frames=%u of %u\\n"',
             '"Cull bounds: slots_rebuilt=%llu max_frame_slots=%llu frames=%u of %u\\n"',
-            '"Cull bounds by cause: invalidated_slots=%llu invalidated_frames=%u "',
-            '"whole_cache_slots=%llu whole_cache_frames=%u\\n"',
+            '"Cull bounds camera/full rebuild: slots=%llu frames=%u of %u\\n"',
+            '"Cull writes: notifications=%llu frames=%u of %u\\n"',
             '"%-8s %-36s %10.2f %9.3f %9.3f %9.3f %7u %10llu %10llu\\n"',
             '"Steady frame time (first %zu of %zu frames excluded):   avg=%.2fms   p50=%.2fms   "',
             '"--- Frame times (ms, in order) ---\\n"',

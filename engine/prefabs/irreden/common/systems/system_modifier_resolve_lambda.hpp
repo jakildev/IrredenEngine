@@ -18,13 +18,12 @@ template <> struct System<MODIFIER_RESOLVE_LAMBDA> {
         return createSystem<
             IRComponents::C_LambdaModifiers,
             IRComponents::C_ResolvedFields,
-            Exclude<IRComponents::C_Settled>
-        >(
+            Exclude<IRComponents::C_Settled>>(
             "ModifierResolveLambda",
-            [](IRComponents::C_LambdaModifiers &m,
-               IRComponents::C_ResolvedFields &resolved) {
+            [](IRComponents::C_LambdaModifiers &m, IRComponents::C_ResolvedFields &resolved) {
                 for (const auto &lambda : m.modifiers_) {
-                    if (!lambda.fn_) continue;
+                    if (!lambda.fn_)
+                        continue;
                     for (auto &rf : resolved.fields_) {
                         if (rf.field_ == lambda.field_) {
                             rf.value_ = lambda.fn_(rf.value_);

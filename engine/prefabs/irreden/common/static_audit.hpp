@@ -50,10 +50,8 @@ inline void auditRows(
     IRComponents::C_WorldTransform parentWorld{};
     const IREntity::EntityId parent = entities.getParentEntityFromArchetype(node->type_);
     if (parent != IREntity::kNullEntity) {
-        if (auto *world =
-                IREntity::getComponentOptional<IRComponents::C_WorldTransform>(parent).value_or(
-                    nullptr
-                )) {
+        if (auto *world = IREntity::getComponentOptional<IRComponents::C_WorldTransform>(parent)
+                              .value_or(nullptr)) {
             parentWorld = *world;
         }
     }
@@ -98,12 +96,11 @@ inline void auditRows(
             !IRPrefab::GridRotation::isIdentityTransform(worlds[row])) {
             continue;
         }
-        const IRComponents::C_VoxelPool *pool =
-            IRPrefab::VoxelPool::detail::poolForCanvas(
-                set.canvasEntity_ != IREntity::kNullEntity
-                    ? set.canvasEntity_
-                    : IRPrefab::VoxelPool::activeCanvasEntityOrNull()
-            );
+        const IRComponents::C_VoxelPool *pool = IRPrefab::VoxelPool::detail::poolForCanvas(
+            set.canvasEntity_ != IREntity::kNullEntity
+                ? set.canvasEntity_
+                : IRPrefab::VoxelPool::activeCanvasEntityOrNull()
+        );
         if (pool == nullptr) {
             continue;
         }

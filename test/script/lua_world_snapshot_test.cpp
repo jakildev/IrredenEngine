@@ -42,6 +42,8 @@
 #include <irreden/asset/chunk_header.hpp>
 #include <irreden/world/world_snapshot.hpp>
 
+#include "../common/settle_now.hpp"
+
 #include <sol/sol.hpp>
 
 #include <array>
@@ -828,7 +830,10 @@ TEST_F(LuaWorldSnapshotTest, RoundTripThroughLua) {
 TEST_F(LuaWorldSnapshotTest, RoundTripsAStaticResidentAsSettling) {
     using IRComponents::C_Settled;
     using IRComponents::C_Static;
-    const EntityId settled = m_entity_manager.createEntity(C_Static{41}, C_Settled{});
+    const EntityId settled = m_entity_manager.createEntity(C_Static{});
+    ASSERT_EQ(IRTest::settleNow({settled}), 0u);
+    ASSERT_NE(m_entity_manager.getComponent<C_Static>(settled).settleStamp(), 0u);
+    ASSERT_TRUE(m_entity_manager.getComponentOptional<C_Settled>(settled).has_value());
     const EntityId dynamic = m_entity_manager.createEntity(C_Name{"dynamic"});
 
     const std::string path = tempPath("static_resident");
@@ -839,7 +844,7 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsAStaticResidentAsSettling) {
     ASSERT_TRUE(m_entity_manager.entityExists(settled));
     const auto reloaded = m_entity_manager.getComponentOptional<C_Static>(settled);
     ASSERT_TRUE(reloaded.has_value());
-    EXPECT_EQ((*reloaded)->settleStamp_, 0u);
+    EXPECT_EQ((*reloaded)->settleStamp(), 0u);
     EXPECT_FALSE(m_entity_manager.getComponentOptional<C_Settled>(settled).has_value());
     EXPECT_FALSE(m_entity_manager.getComponentOptional<C_Static>(dynamic).has_value());
 }

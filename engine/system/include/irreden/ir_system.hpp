@@ -202,23 +202,21 @@ constexpr SystemId createSystem(
     // PartitionExcludes<Pack...>::Included whenever the pack carries no tag
     // types (proof: test/system/system_access_test.cpp). The Excluded half
     // (`Partition::Excluded`, above) still drives the exclude archetype.
-    return detail::CallCreateSystem<
-        detail::StripConst_t<detail::FilterTags_t<TickComponents...>>>::run(
-        getSystemManager(),
-        std::move(name),
-        std::move(functionTick),
-        std::move(functionBeginTick),
-        std::move(functionEndTick),
-        std::move(extraParams),
-        std::move(functionRelationTick),
-        std::move(excludeArchetype),
-        concurrency,
-        grainSize,
-        cadence,
-        offset,
-        accessDescriptor,
-        detail::writeGuardOf<TickComponents...>()
-    );
+    return detail::CallCreateSystem<detail::StripConst_t<detail::FilterTags_t<TickComponents...>>>::
+        run(getSystemManager(),
+            std::move(name),
+            std::move(functionTick),
+            std::move(functionBeginTick),
+            std::move(functionEndTick),
+            std::move(extraParams),
+            std::move(functionRelationTick),
+            std::move(excludeArchetype),
+            concurrency,
+            grainSize,
+            cadence,
+            offset,
+            accessDescriptor,
+            detail::writeGuardOf<TickComponents...>());
 }
 
 // Create a prefab system
@@ -453,10 +451,9 @@ registerSystem(std::string name, RelationParams<RelationComponents...> relationP
     auto instance = std::make_unique<SystemT>();
     SystemT *p = instance.get();
 
-    constexpr bool wholeNodeTick = detail::wholeNodeTickOf<SystemT>() ||
-                                   (detail::IsGatesSettledTag<Components>::value || ...);
-    auto tickFn =
-        detail::MakeMemberTickFn<SystemT, IncludedList>::template build<wholeNodeTick>(p);
+    constexpr bool wholeNodeTick =
+        detail::wholeNodeTickOf<SystemT>() || (detail::IsGatesSettledTag<Components>::value || ...);
+    auto tickFn = detail::MakeMemberTickFn<SystemT, IncludedList>::template build<wholeNodeTick>(p);
     auto beginFn = detail::makeMemberBeginTickFn<SystemT>(p);
     auto endFn = detail::makeMemberEndTickFn<SystemT>(p);
     auto relationFn = detail::makeMemberRelationTickFn<SystemT, RelationComponents...>(p);

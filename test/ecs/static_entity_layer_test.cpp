@@ -13,10 +13,17 @@
 // The entity-layer support for static residents
 // (docs/design/static-residents.md): the per-component guard table, the
 // cleared-by-foreign-move rule, staged entity notes and the relation hook.
+// `C_LayerSettled` stands in for `C_Settled`, which only the system layer can
+// attach: the same trait, with no attach restriction.
+
+namespace {
+struct C_LayerSettled {};
+} // namespace
+
+template <> inline constexpr bool IREntity::kClearedByForeignMove<C_LayerSettled> = true;
 
 namespace {
 
-using IRComponents::C_Settled;
 using IRComponents::C_Static;
 using IREntity::EntityId;
 using IREntity::StaticGuard;
@@ -64,53 +71,54 @@ TEST_F(StaticEntityLayer, FindComponentTypeNeverRegisters) {
 
 TEST_F(StaticEntityLayer, SettledIsDroppedByEveryMoveThatDoesNotNameIt) {
     const auto hasSettled = [](EntityId entity) {
-        return IREntity::getComponentOptional<C_Settled>(entity).has_value();
+        return IREntity::getComponentOptional<C_LayerSettled>(entity).has_value();
     };
-    const EntityId added = IREntity::createEntity(C_Static{}, C_Settled{});
+    const EntityId added = IREntity::createEntity(C_Static{}, C_LayerSettled{});
     IREntity::setComponent(added, C_LayerOther{4});
     EXPECT_FALSE(hasSettled(added));
     EXPECT_TRUE(IREntity::getComponentOptional<C_Static>(added).has_value());
     EXPECT_EQ(IREntity::getComponent<C_LayerOther>(added).value_, 4);
 
-    const EntityId removed = IREntity::createEntity(C_Static{}, C_Settled{}, C_LayerOther{5});
+    const EntityId removed = IREntity::createEntity(C_Static{}, C_LayerSettled{}, C_LayerOther{5});
     IREntity::removeComponent<C_LayerOther>(removed);
     EXPECT_FALSE(hasSettled(removed));
 
-    const EntityId deferred = IREntity::createEntity(C_Static{}, C_Settled{}, C_LayerOther{6});
+    const EntityId deferred = IREntity::createEntity(C_Static{}, C_LayerSettled{}, C_LayerOther{6});
     IREntity::removeComponentDeferred<C_LayerOther>(deferred);
     IREntity::flushStructuralChanges();
     EXPECT_FALSE(hasSettled(deferred));
 
     const EntityId parent = IREntity::createEntity();
-    const EntityId child = IREntity::createEntity(C_Static{}, C_Settled{});
+    const EntityId child = IREntity::createEntity(C_Static{}, C_LayerSettled{});
     IREntity::setParent(child, parent);
     EXPECT_FALSE(hasSettled(child));
-    IREntity::setComponent(child, C_Settled{});
+    IREntity::setComponent(child, C_LayerSettled{});
     m_entityManager.clearParent(child);
     EXPECT_FALSE(hasSettled(child));
 
     // A move that names it keeps it. A raw write through a reference moves
     // nothing and reaches no rule.
     const EntityId kept = IREntity::createEntity(C_Static{}, C_LayerOther{7});
-    IREntity::setComponent(kept, C_Settled{});
+    IREntity::setComponent(kept, C_LayerSettled{});
     EXPECT_TRUE(hasSettled(kept));
     IREntity::getComponent<C_LayerOther>(kept).value_ = 8;
     EXPECT_TRUE(hasSettled(kept));
-    IREntity::removeComponent<C_Settled>(kept);
+    IREntity::removeComponent<C_LayerSettled>(kept);
     EXPECT_FALSE(hasSettled(kept));
     EXPECT_EQ(IREntity::getComponent<C_LayerOther>(kept).value_, 8);
 }
 
 TEST_F(StaticEntityLayer, RemovingStaticDropsSettledInTheSameMove) {
-    const EntityId entity = IREntity::createEntity(C_Static{}, C_Settled{}, C_LayerOther{9});
-    const EntityId neighbour = IREntity::createEntity(C_Static{}, C_Settled{}, C_LayerOther{10});
+    const EntityId entity = IREntity::createEntity(C_Static{}, C_LayerSettled{}, C_LayerOther{9});
+    const EntityId neighbour =
+        IREntity::createEntity(C_Static{}, C_LayerSettled{}, C_LayerOther{10});
     IREntity::removeComponentDeferred<C_Static>(entity);
     IREntity::flushStructuralChanges();
     EXPECT_FALSE(IREntity::getComponentOptional<C_Static>(entity).has_value());
-    EXPECT_FALSE(IREntity::getComponentOptional<C_Settled>(entity).has_value());
+    EXPECT_FALSE(IREntity::getComponentOptional<C_LayerSettled>(entity).has_value());
     EXPECT_EQ(IREntity::getComponent<C_LayerOther>(entity).value_, 9);
     // The neighbour's row was swapped into the vacated one, column by column.
-    EXPECT_TRUE(IREntity::getComponentOptional<C_Settled>(neighbour).has_value());
+    EXPECT_TRUE(IREntity::getComponentOptional<C_LayerSettled>(neighbour).has_value());
     EXPECT_EQ(IREntity::getComponent<C_LayerOther>(neighbour).value_, 10);
 }
 
@@ -124,24 +132,25 @@ TEST_F(StaticEntityLayer, EntityNotesDrainInPushOrderAndOnlyOnce) {
     EXPECT_EQ(notes.size(), 2u);
 }
 
-TEST_F(StaticEntityLayer, AForeignMoveLogsTheEntityAndANamedOneDoesNot) {
+TEST_F(StaticEntityLayer, EveryMoveThatDropsAClearedComponentLogsTheEntity) {
     std::vector<EntityId> log;
-    const EntityId entity = IREntity::createEntity(C_Static{}, C_Settled{});
+    const EntityId entity = IREntity::createEntity(C_Static{}, C_LayerSettled{});
     IREntity::setComponent(entity, C_LayerOther{1});
     m_entityManager.takeTrackedChanges(log);
     EXPECT_EQ(log, (std::vector<EntityId>{entity}));
 
     log.clear();
-    IREntity::setComponent(entity, C_Settled{});
-    IREntity::removeComponent<C_Settled>(entity);
+    IREntity::setComponent(entity, C_LayerSettled{});
+    IREntity::removeComponent<C_LayerSettled>(entity);
     IREntity::removeComponent<C_LayerOther>(entity);
     m_entityManager.takeTrackedChanges(log);
-    EXPECT_TRUE(log.empty()) << "nothing was dropped by a move that did not name it";
+    EXPECT_EQ(log, (std::vector<EntityId>{entity}))
+        << "the removal that names it is logged; the later move drops nothing";
 }
 
 TEST_F(StaticEntityLayer, AParentChangeDropsSettledDownTheTrackedSubtreeAndLogsIt) {
-    const EntityId root = IREntity::createEntity(C_Static{}, C_Settled{});
-    const EntityId other = IREntity::createEntity(C_Static{}, C_Settled{});
+    const EntityId root = IREntity::createEntity(C_Static{}, C_LayerSettled{});
+    const EntityId other = IREntity::createEntity(C_Static{}, C_LayerSettled{});
     const EntityId child = IREntity::createEntity(C_Static{});
     const EntityId grandchild = IREntity::createEntity(C_Static{});
     const EntityId untracked = IREntity::createEntity(C_LayerOther{2});
@@ -151,13 +160,13 @@ TEST_F(StaticEntityLayer, AParentChangeDropsSettledDownTheTrackedSubtreeAndLogsI
     IREntity::setParent(untracked, child);
     IREntity::setParent(below, untracked);
     for (const EntityId entity : {child, grandchild, below}) {
-        IREntity::setComponent(entity, C_Settled{});
+        IREntity::setComponent(entity, C_LayerSettled{});
     }
     std::vector<EntityId> log;
     m_entityManager.takeTrackedChanges(log);
     log.clear();
     const auto settled = [](EntityId entity) {
-        return IREntity::getComponentOptional<C_Settled>(entity).has_value();
+        return IREntity::getComponentOptional<C_LayerSettled>(entity).has_value();
     };
 
     IREntity::setParent(child, root);
@@ -177,7 +186,7 @@ TEST_F(StaticEntityLayer, AParentChangeDropsSettledDownTheTrackedSubtreeAndLogsI
 
     // Destroying a parent handles the children that still name it.
     for (const EntityId entity : {child, grandchild}) {
-        IREntity::setComponent(entity, C_Settled{});
+        IREntity::setComponent(entity, C_LayerSettled{});
     }
     log.clear();
     m_entityManager.destroyEntity(other);
@@ -192,16 +201,16 @@ TEST_F(StaticEntityLayer, AParentChangeDropsSettledDownTheTrackedSubtreeAndLogsI
 // component, which is what the descendants compose under.
 TEST_F(StaticEntityLayer, ATypedOverwriteDropsSettledAndLogsTheEntity) {
     using IRComponents::C_LocalTransform;
-    const EntityId root = IREntity::createEntity(C_Static{}, C_Settled{}, C_LayerOther{1});
+    const EntityId root = IREntity::createEntity(C_Static{}, C_LayerSettled{}, C_LayerOther{1});
     const EntityId child = IREntity::createEntity(C_Static{}, C_LayerOther{2});
     const EntityId dynamic = IREntity::createEntity(C_LayerOther{3});
     IREntity::setParent(child, root);
-    IREntity::setComponent(child, C_Settled{});
+    IREntity::setComponent(child, C_LayerSettled{});
     std::vector<EntityId> log;
     m_entityManager.takeTrackedChanges(log);
     log.clear();
     const auto settled = [](EntityId entity) {
-        return IREntity::getComponentOptional<C_Settled>(entity).has_value();
+        return IREntity::getComponentOptional<C_LayerSettled>(entity).has_value();
     };
 
     IREntity::setComponent(dynamic, C_LayerOther{9});
@@ -223,7 +232,7 @@ TEST_F(StaticEntityLayer, ATypedOverwriteDropsSettledAndLogsTheEntity) {
     m_entityManager.takeTrackedChanges(log);
     EXPECT_EQ(log, (std::vector<EntityId>{root})) << "a settling entity is logged without a move";
 
-    IREntity::setComponent(root, C_Settled{});
+    IREntity::setComponent(root, C_LayerSettled{});
     log.clear();
     m_entityManager.takeTrackedChanges(log);
     log.clear();
@@ -238,7 +247,7 @@ TEST_F(StaticEntityLayer, ATypedOverwriteDropsSettledAndLogsTheEntity) {
     );
 
     for (const EntityId entity : {root, child}) {
-        IREntity::setComponent(entity, C_Settled{});
+        IREntity::setComponent(entity, C_LayerSettled{});
     }
     log.clear();
     m_entityManager.takeTrackedChanges(log);
@@ -248,7 +257,7 @@ TEST_F(StaticEntityLayer, ATypedOverwriteDropsSettledAndLogsTheEntity) {
     EXPECT_FALSE(settled(child));
 
     for (const EntityId entity : {root, child}) {
-        IREntity::setComponent(entity, C_Settled{});
+        IREntity::setComponent(entity, C_LayerSettled{});
     }
     IREntity::setComponentDeferred(root, C_LocalTransform{IRMath::vec3(8.0f)});
     EXPECT_TRUE(settled(root)) << "a deferred overwrite applies at the flush";
@@ -298,10 +307,10 @@ TEST_F(StaticEntityLayer, ReparentingADynamicSubtreeTracksNothing) {
 }
 
 TEST_F(StaticEntityLayer, DestroyingATreeOrTheWorldTracksNoSurvivor) {
-    const EntityId root = IREntity::createEntity(C_Static{}, C_Settled{});
-    const EntityId child = IREntity::createEntity(C_Static{}, C_Settled{});
+    const EntityId root = IREntity::createEntity(C_Static{}, C_LayerSettled{});
+    const EntityId child = IREntity::createEntity(C_Static{}, C_LayerSettled{});
     IREntity::setParent(child, root);
-    IREntity::setComponent(child, C_Settled{});
+    IREntity::setComponent(child, C_LayerSettled{});
     std::vector<EntityId> log;
     m_entityManager.takeTrackedChanges(log);
     log.clear();
@@ -309,7 +318,7 @@ TEST_F(StaticEntityLayer, DestroyingATreeOrTheWorldTracksNoSurvivor) {
     m_entityManager.takeTrackedChanges(log);
     EXPECT_TRUE(log.empty());
 
-    const EntityId secondRoot = IREntity::createEntity(C_Static{}, C_Settled{});
+    const EntityId secondRoot = IREntity::createEntity(C_Static{}, C_LayerSettled{});
     const EntityId secondChild = IREntity::createEntity(C_Static{});
     IREntity::setParent(secondChild, secondRoot);
     m_entityManager.takeTrackedChanges(log);

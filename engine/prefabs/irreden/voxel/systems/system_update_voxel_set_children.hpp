@@ -133,8 +133,7 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
     ) {
         // The archetype excludes C_Settled, so a node carrying C_Static
         // holds settling rows only.
-        const bool settling =
-            staticTag_ != IREntity::kNullComponent && type.contains(staticTag_);
+        const bool settling = staticTag_ != IREntity::kNullComponent && type.contains(staticTag_);
         const int rowCount = static_cast<int>(entities.size());
         const auto rows = [&](int rowBegin, int rowEnd) {
             if (settling) {

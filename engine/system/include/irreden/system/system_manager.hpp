@@ -444,6 +444,13 @@ class SystemManager {
         return m_roundsCompleted;
     }
 
+    /// The global-modifier floor of the static-resident transition: no
+    /// settling row is promoted before `roundsCompleted` reaches it. Only
+    /// `IRSystem::raiseSettleFloor` writes it, and never lowers it.
+    std::uint64_t settleFloor() const {
+        return m_settleFloor;
+    }
+
     /// Tests only: start both round counters at `value` and close any open
     /// round, so a test can run the transitions across a width boundary.
     void seedRoundCountersForTest(std::uint64_t value);
@@ -521,6 +528,8 @@ class SystemManager {
     bool m_derivingGroupsStale{true};
     std::uint64_t m_roundsOpened{0};
     std::uint64_t m_roundsCompleted{0};
+    std::uint64_t m_settleFloor{0};
+    friend class detail::SettlePromoter;
     bool m_roundOpen{false};
     std::size_t m_roundCursor{0};
     std::vector<SystemId> m_roundPending;
@@ -534,8 +543,9 @@ class SystemManager {
     void rebuildDerivingGroups();
     void openRoundAtPipelineStart();
     void closeRoundIfCursorPastEnd();
-    void
-    advanceRoundAfterGroup(IRTime::Events event, std::size_t groupIndex, const SystemId *dispatched, std::size_t count);
+    void advanceRoundAfterGroup(
+        IRTime::Events event, std::size_t groupIndex, const SystemId *dispatched, std::size_t count
+    );
 
     // Per-system update cadence. Parallel to m_ticks; emplaced in
     // both system-creation paths via emplaceCadenceState.

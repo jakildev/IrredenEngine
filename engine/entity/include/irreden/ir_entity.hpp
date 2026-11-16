@@ -144,6 +144,7 @@ template <typename Component, typename Function> void forEachComponent(Function 
 bool isPureComponent(ComponentId component);
 bool isClearedByForeignMove(ComponentId component);
 bool tracksInputChanges(ComponentId component);
+bool isRestrictedAttach(ComponentId component);
 bool isChildOfRelation(RelationId relation);
 NodeId getParentNodeFromRelation(RelationId relation);
 
@@ -153,7 +154,9 @@ NodeId getParentNodeFromRelation(RelationId relation);
 // a duplicate type silently appends a second row into the same column
 // (entity record points at the first, the caller's value at row+1 is
 // orphaned).
-template <typename... Components> EntityId createEntity(const Components &...components) {
+template <typename... Components>
+    requires(GenericAttachable<Components> && ...)
+EntityId createEntity(const Components &...components) {
     using LT = IRComponents::C_LocalTransform;
     using WT = IRComponents::C_WorldTransform;
     constexpr bool kHasLT = (std::is_same_v<LT, Components> || ...);
@@ -199,6 +202,7 @@ void resetGameplay();
 // TODO: Consolidate all createEntity... functions into one variable
 // param structure call. Do the same for systems.
 template <typename... Components>
+    requires(GenericAttachable<Components> && ...)
 std::vector<EntityId> createEntityBatch(int count, const Components &...components) {
     std::vector<EntityId> res;
     for (int i = 0; i < count; i++) {
@@ -212,6 +216,7 @@ void handleCreateEntityExtraParams(EntityId entity, const CreateEntityExtraParam
 // TODO: Pack vectors and send to entityManager all at once
 // TODO: Consolidate with Ext version
 template <typename... Functions>
+    requires(GenericAttachable<std::invoke_result_t<Functions &, IRMath::ivec3>> && ...)
 std::vector<EntityId>
 createEntityBatchWithFunctions(IRMath::ivec3 numEntities, Functions... functions) {
     std::vector<EntityId> res;
@@ -227,6 +232,10 @@ createEntityBatchWithFunctions(IRMath::ivec3 numEntities, Functions... functions
 
 // TODO: Pack vectors and send to entityManager all at once
 template <typename... Functions>
+    requires(
+        GenericAttachable<std::invoke_result_t<Functions &, const CreateEntityCallbackParams &>> &&
+        ...
+    )
 std::vector<EntityId> createEntityBatchWithFunctions_Ext(
     IRMath::ivec3 numEntities, const CreateEntityExtraParams &params, Functions... functions
 ) {
@@ -258,7 +267,9 @@ template <typename Component> std::optional<Component *> getComponentOptional(En
     return getEntityManager().getComponentOptional<Component>(entity);
 }
 
-template <typename Component> Component &setComponent(EntityId entity, Component component) {
+template <typename Component>
+    requires GenericAttachable<Component>
+Component &setComponent(EntityId entity, Component component) {
     return getEntityManager().setComponent(entity, component);
 }
 
@@ -271,6 +282,7 @@ template <typename Component> void removeComponentDeferred(EntityId entity) {
 }
 
 template <typename Component>
+    requires GenericAttachable<Component>
 void setComponentDeferred(EntityId entity, const Component &component) {
     getEntityManager().setComponentDeferred<Component>(entity, component);
 }
@@ -293,7 +305,9 @@ inline void flushStructuralChanges() {
 /// Singleton entities are normal ECS entities and participate in
 /// archetype iteration. A `forEachComponent<T>` that matches `T` will see
 /// the singleton row.
-template <typename Component> EntityId singletonEntity() {
+template <typename Component>
+    requires GenericAttachable<Component>
+EntityId singletonEntity() {
     return getEntityManager().template getOrCreateSingleton<Component>();
 }
 
@@ -303,7 +317,9 @@ template <typename Component> EntityId singletonEntityOrNull() {
     );
 }
 
-template <typename Component> Component &singleton() {
+template <typename Component>
+    requires GenericAttachable<Component>
+Component &singleton() {
     return getComponent<Component>(singletonEntity<Component>());
 }
 

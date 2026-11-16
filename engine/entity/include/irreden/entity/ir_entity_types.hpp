@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <set>
 #include <memory>
+#include <type_traits>
 
 #include <irreden/ir_math.hpp>
 
@@ -61,6 +62,30 @@ template <typename Component> inline constexpr bool kClearedByForeignMove = fals
 /// component with this trait, and records each id in the tracked-change log
 /// (`EntityManager::takeTrackedChanges`).
 template <typename Component> inline constexpr bool kTracksInputChanges = false;
+
+/// Whether only one engine call may attach `Component`. The primary template
+/// restricts nothing. A restricted component specializes it in its own header
+/// with `kRestricted = true`, `KeyOwner`, the one type that can construct an
+/// `EngineAttachKey<Component>`, and `Companion`, the component the entity
+/// must still carry when the attach applies. The specialization depends
+/// downward, so the entity layer names neither type.
+template <typename Component> struct EngineAttach {
+    static constexpr bool kRestricted = false;
+    using KeyOwner = void;
+    using Companion = void;
+};
+
+/// Every typed attach lane takes this constraint: a restricted component
+/// cannot be passed to it, and the call does not compile.
+template <typename Component>
+concept GenericAttachable = !EngineAttach<std::remove_cvref_t<Component>>::kRestricted;
+
+/// The key `EntityManager::attachEngineComponentDeferred` takes. Only the
+/// restricted component's `KeyOwner` can construct one.
+template <typename Component> class EngineAttachKey {
+    friend typename EngineAttach<Component>::KeyOwner;
+    EngineAttachKey() = default;
+};
 
 struct CreateEntityExtraParams {
     std::pair<Relation, EntityId> relation = {NONE, kNullEntity};

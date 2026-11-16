@@ -66,26 +66,23 @@ supply an explicit value through the typed API.
 ### Component traits and staged notes
 
 Three variable templates in `ir_entity_types.hpp`, specialized in the
-component's own header, are recorded per `ComponentId` by
-`registerComponent<T>`; a runtime-registered component gets the defaults.
+component's own header, are recorded per `ComponentId` by `registerComponent<T>`
+(runtime-registered components get the defaults); the contracts are in
+[static residents](../../docs/design/static-residents.md):
 
-- `kStaticGuard<T>` (`NONE` / `INPUT` / `DERIVED`) says how the component
-  relates to a [static resident](../../docs/design/static-residents.md);
-  the system layer reads it through `EntityManager::staticGuard(id)`.
-- `kClearedByForeignMove<T>`: the component is dropped from the destination
-  of every archetype move that does not name it (attach, detach, parent
-  change). Each node caches whether its type holds one, so other moves pay
-  one boolean test.
-- `kTracksInputChanges<T>`: a parent-link change, the parent's destruction,
-  or a `setComponent` overwrite drops the entity's cleared components inside
-  that call, and those of every descendant carrying such a component (an
-  overwrite of a guard-`NONE` component stops at the entity).
+- `kStaticGuard<T>` (`NONE` / `INPUT` / `DERIVED`), read by the system layer
+  through `EntityManager::staticGuard(id)`.
+- `kClearedByForeignMove<T>`: dropped by every archetype move that does not
+  name it. Each node caches the bit, so other moves pay one boolean test.
+- `kTracksInputChanges<T>`: a parent-link change, the parent's destruction or a
+  `setComponent` overwrite drops the cleared components down the tracked subtree.
 
-Both rules append the entity's id to the tracked-change log
-(`takeTrackedChanges`), read by one main-thread consumer.
-`findComponentType<T>()` is `getComponentType` without the lazy registration,
-and `stageEntityNote` / `takeEntityNotes` carry opaque 64-bit notes from any
-thread to that consumer.
+Every move that drops a cleared component, by name or not, logs the id for one
+main-thread consumer (`takeTrackedChanges`); `stageEntityNote` /
+`takeEntityNotes` carry opaque notes from any thread to it.
+`EngineAttach<T>` restricts attaching `T` (`C_Settled`) to
+`attachEngineComponentDeferred<T>(id, EngineAttachKey<T>)`: typed lanes require
+`GenericAttachable<T>`, by-id and restore lanes refuse, move primitives assert.
 
 ## Record lookup
 

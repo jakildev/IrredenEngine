@@ -68,6 +68,10 @@ bool tracksInputChanges(ComponentId component) {
     return getEntityManager().tracksInputChanges(component);
 }
 
+bool isRestrictedAttach(ComponentId component) {
+    return getEntityManager().isRestrictedAttach(component);
+}
+
 bool isChildOfRelation(RelationId relation) {
     return getEntityManager().isChildOfRelation(relation);
 }

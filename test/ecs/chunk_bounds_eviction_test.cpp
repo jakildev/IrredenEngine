@@ -92,8 +92,12 @@ void expectBoundsMatchOracle(C_VoxelPool &pool, int chunk, CardinalIndex ci) {
     EXPECT_FLOAT_EQ(got.minDepth_, want.minDepth_) << "chunk " << chunk << " minDepth_";
 }
 
-C_VoxelPool makeTwoChunkPool(vec3 nearPose = vec3(2, 2, 2), vec3 farPose = vec3(80, 80, 0)) {
-    C_VoxelPool pool(ivec3(16, 16, 4)); // 1024 slots = 4 chunks of capacity
+C_VoxelPool makeTwoChunkPool(
+    vec3 nearPose = vec3(2, 2, 2),
+    vec3 farPose = vec3(80, 80, 0),
+    ivec3 capacity = ivec3(16, 16, 4) // 1024 slots = 4 chunks of capacity
+) {
+    C_VoxelPool pool(capacity);
     pool.allocateVoxels(2 * kChunk);
     for (int i = 0; i < kChunk; ++i) {
         seedSlot(pool, static_cast<std::size_t>(i), nearPose, true);
@@ -645,13 +649,19 @@ TEST_F(ChunkBoundsEvictionTest, CardinalYawCardinalRoundTripAndAllCardinals) {
 TEST_F(ChunkBoundsEvictionTest, EditsAfterUploadQueueSaturationStillInvalidate) {
     const vec3 nearPose(2, 2, 2);
     const vec3 movedPose(150, -70, 9);
-    C_VoxelPool pool = makeTwoChunkPool(nearPose);
+    // Repeats coalesce, so only disjoint ranges saturate the queue: every
+    // other slot from the second chunk on, in a pool wide enough for them.
+    constexpr std::size_t kSaturatingSlots = 2 * (C_VoxelPool::kMaxPendingPositionRanges + 1);
+    C_VoxelPool pool = makeTwoChunkPool(
+        nearPose,
+        vec3(80, 80, 0),
+        ivec3(static_cast<int>(kChunk + kSaturatingSlots), 1, 1)
+    );
     pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f);
 
-    for (std::size_t i = 0; i < C_VoxelPool::kMaxPendingPositionRanges + 16; ++i) {
-        pool.queuePositionRange(static_cast<std::size_t>(kChunk), 1);
+    for (std::size_t i = kChunk; !pool.positionRangesSaturated(); i += 2) {
+        pool.queuePositionRange(i, 1);
     }
-    ASSERT_EQ(pool.getPendingPositionRanges().size(), C_VoxelPool::kMaxPendingPositionRanges);
     pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f);
 
     for (int i = 0; i < kChunk; ++i) {
@@ -875,3 +885,110 @@ TEST(VoxelUpdateSpans, EndTickInvalidatesGpuSpansWithoutUploadingThem) {
     expectBoundsMatchOracle(pool, 0, CardinalIndex::k0);
     expectBoundsMatchOracle(pool, 1, CardinalIndex::k0);
 }
+
+namespace {
+
+// ---- The write witness ----------------------------------------------------
+//
+// Gate 3 of docs/design/static-residents.md reads the position and alpha
+// write notifications the cull caches received, counted where they are
+// produced. A camera-driven rebuild of the whole cache must not hide one,
+// and must not pass for one.
+
+C_VoxelPool::CullRebuildCounters settledCounters(C_VoxelPool &pool) {
+    pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f);
+    return pool.consumeCullRebuildCounters();
+}
+
+TEST_F(ChunkBoundsEvictionTest, APositionWriteGivesANonzeroWriteWitness) {
+    C_VoxelPool pool = makeTwoChunkPool();
+    (void)settledCounters(pool);
+
+    seedSlot(pool, 3, vec3(40, 40, 0), true);
+    pool.queuePositionRange(3, 1);
+    pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f);
+    const auto counters = pool.consumeCullRebuildCounters();
+    EXPECT_EQ(counters.writeNotifications_, 1u);
+    EXPECT_EQ(counters.wholeCacheSlots_, 0u);
+}
+
+TEST_F(ChunkBoundsEvictionTest, AnAlphaOnlyWriteGivesANonzeroWriteWitness) {
+    C_VoxelPool pool = makeTwoChunkPool();
+    (void)settledCounters(pool);
+
+    pool.getColors()[kChunk + 5].color_.alpha_ = 0;
+    pool.resyncActiveMaskFromColors(kChunk + 5, 1);
+    EXPECT_TRUE(pool.getPendingPositionRanges().empty()) << "no position was written";
+    pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f);
+    const auto counters = pool.consumeCullRebuildCounters();
+    EXPECT_EQ(counters.writeNotifications_, 1u);
+}
+
+// The full cardinal rebuild absorbs and drops the chunks the writes left
+// pending; the witness still records each write.
+TEST_F(ChunkBoundsEvictionTest, WritesKeepTheirWitnessOnAFrameThatTakesTheFullCardinalRebuild) {
+    for (const bool alphaOnly : {false, true}) {
+        SCOPED_TRACE(alphaOnly);
+        C_VoxelPool pool = makeTwoChunkPool();
+        (void)settledCounters(pool);
+
+        if (alphaOnly) {
+            pool.getColors()[7].color_.alpha_ = 0;
+            pool.resyncActiveMaskFromColors(7, 1);
+        } else {
+            seedSlot(pool, 7, vec3(40, 40, 0), true);
+            pool.queuePositionRange(7, 1);
+        }
+        pool.rebuildChunkBounds(CardinalIndex::k90, false, 0.0f);
+        const auto counters = pool.consumeCullRebuildCounters();
+        EXPECT_EQ(counters.wholeCacheSlots_, static_cast<std::size_t>(2 * kChunk))
+            << "a cardinal change rebuilds the whole cache";
+        EXPECT_EQ(counters.writeNotifications_, 1u);
+        expectBoundsMatchOracle(pool, 0, CardinalIndex::k90);
+    }
+}
+
+TEST_F(ChunkBoundsEvictionTest, ACameraOnlyRebuildLeavesTheWriteWitnessAtZero) {
+    C_VoxelPool pool = makeTwoChunkPool();
+    (void)settledCounters(pool);
+
+    pool.rebuildChunkBounds(CardinalIndex::k270, true, 0.4f); // a yawing frame
+    pool.rebuildChunkBounds(CardinalIndex::k180, false, 0.0f);
+    const auto counters = pool.consumeCullRebuildCounters();
+    EXPECT_GT(counters.cardinalSlots_ + counters.worldSlots_, 0u)
+        << "the camera alone makes the cache rebuild";
+    EXPECT_GT(counters.wholeCacheSlots_, 0u);
+    EXPECT_EQ(counters.writeNotifications_, 0u);
+}
+
+} // namespace
+
+namespace {
+
+TEST_F(ChunkBoundsEvictionTest, CullDebtCountsWriteDebtUntilEachCacheConsumerPaysIt) {
+    C_VoxelPool pool = makeTwoChunkPool();
+    pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f);
+    (void)pool.refreshOldestChunkWorldBounds(4);
+    ASSERT_EQ(pool.pendingCullDebt().cardinalChunks_, 0u);
+    ASSERT_EQ(pool.pendingCullDebt().worldChunks_, 0u);
+
+    seedSlot(pool, kChunk + 2, vec3(60, 60, 0), true);
+    pool.queuePositionRange(kChunk + 2, 1);
+    EXPECT_EQ(pool.pendingCullDebt().cardinalChunks_, 1u);
+    EXPECT_EQ(pool.pendingCullDebt().worldChunks_, 1u);
+
+    pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f);
+    EXPECT_EQ(pool.pendingCullDebt().cardinalChunks_, 0u);
+    EXPECT_EQ(pool.pendingCullDebt().worldChunks_, 1u) << "the world cache has its own consumer";
+    (void)pool.refreshOldestChunkWorldBounds(4);
+    EXPECT_EQ(pool.pendingCullDebt().worldChunks_, 0u);
+
+    // A yawing frame owes the next cardinal call a whole-cache rebuild, which
+    // covers any chunk a write leaves pending for it.
+    pool.rebuildChunkBounds(CardinalIndex::k0, true, 0.4f);
+    seedSlot(pool, 1, vec3(61, 60, 0), true);
+    pool.queuePositionRange(1, 1);
+    EXPECT_EQ(pool.pendingCullDebt().cardinalChunks_, 0u);
+}
+
+} // namespace

@@ -73,8 +73,9 @@ template <> struct System<SEED_STAGED_VOXELS> {
         for (std::size_t i = 0; i < entities.size(); ++i) {
             if (voxelSets[i].attachToCanvas()) {
                 seeded_.push_back(entities[i]);
-            } else if (settling && voxelSets[i].numVoxels_ == 0 &&
-                       !voxelSets[i].pendingVoxels_.empty()) {
+            } else if (
+                settling && voxelSets[i].numVoxels_ == 0 && !voxelSets[i].pendingVoxels_.empty()
+            ) {
                 IRPrefab::Static::noteHeld(entities[i]);
             }
         }

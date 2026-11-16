@@ -863,9 +863,8 @@ inline void stepGhostLifecycle(
 }
 
 /// Whether a held ghost pose is exactly the subject's own pose.
-inline bool samePose(
-    const IRComponents::C_WorldTransform &a, const IRComponents::C_WorldTransform &b
-) {
+inline bool
+samePose(const IRComponents::C_WorldTransform &a, const IRComponents::C_WorldTransform &b) {
     return a.translation_ == b.translation_ && a.rotation_ == b.rotation_ && a.scale_ == b.scale_;
 }
 

@@ -293,10 +293,13 @@ transition step's counters at report time, the largest promotion and drain in
 milliseconds, and the voxel-pool work of every rendered frame in the window:
 bytes submitted to the position buffer and cull-bound slots rebuilt, each as
 a total, the largest single frame, and the frames that did any. `Cull bounds
-by cause` splits the slots: `invalidated` were rebuilt because a position or
-alpha write evicted their chunk, `whole_cache` by a sweep of the whole cache
-(the camera reached a cardinal yaw, the chunk count changed, or the first
-build). A yaw sweep therefore shows whole-cache frames on any scene.
+camera/full rebuild` is the part of those slots a sweep of the whole cache
+rebuilt (the camera reached a cardinal yaw, the chunk count changed, or the
+first build); a yaw sweep therefore shows such frames on any scene. A sweep
+also covers the chunks a write left pending, so no subtraction gives the
+write-driven work. `Cull writes` is that record: the position and alpha write
+notifications the cull caches received, counted where they are produced, and
+the frames that received any.
 `compare_perf_runs.parse_report(...).static_residents` exposes them. The
 transition step itself is the `staticDrain` row of `--- CPU phase timing ---`:
 average and maximum per call inside the window, and the calls.

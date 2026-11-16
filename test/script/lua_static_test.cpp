@@ -8,11 +8,15 @@
 #include <irreden/common/components/component_local_transform_lua.hpp>
 #include <irreden/common/components/component_static_lua.hpp>
 #include <irreden/common/static_residents.hpp>
+#include <irreden/render/components/component_lod_tier_override.hpp>
+#include <irreden/render/components/component_lod_tier_override_lua.hpp>
 #include <irreden/script/lua_script.hpp>
 #include <irreden/system/components/component_static.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_set_lua.hpp>
+
+#include "../common/settle_now.hpp"
 
 #include <functional>
 #include <string>
@@ -36,6 +40,7 @@ class LuaStatic : public testing::Test {
     LuaStatic() {
         m_lua.bindLuaDrivenEcs();
         m_lua.registerTypesFromTraits<C_Static, C_LocalTransform>();
+        m_lua.registerTypeFromTraits<IRComponents::C_LodTierOverride>();
     }
 
     bool runOk(const std::string &source) {
@@ -78,7 +83,7 @@ TEST_F(LuaStatic, IRStaticDrivesTheTransitions) {
     EXPECT_EQ(global<int>("staticCount"), 1);
     EXPECT_EQ(global<int>("settlingCount"), 1);
 
-    IREntity::setComponent(entity, C_Settled{});
+    ASSERT_EQ(IRTest::settleNow({entity}), 0u);
     ASSERT_TRUE(runOk("settledNow = IRStatic.isSettled(e)\nIRStatic.resettle(e)"));
     EXPECT_TRUE(global<bool>("settledNow"));
     IREntity::flushStructuralChanges();
@@ -93,7 +98,7 @@ TEST_F(LuaStatic, IRStaticDrivesTheTransitions) {
 TEST_F(LuaStatic, AnEvalSystemWritesWhatItListsUnlessItIsUnderReads) {
     IREntity::createEntity();
     IREntity::createEntity(C_Static{});
-    IREntity::createEntity(C_Static{}, C_Settled{});
+    ASSERT_EQ(IRTest::settleNow({IREntity::createEntity(C_Static{})}), 0u);
 
     ASSERT_TRUE(runOk(R"lua(
         writerRows, readerRows, readerWrote, writerWrote = 0, 0, false, false
@@ -131,7 +136,7 @@ TEST_F(LuaStatic, AnEvalSystemWritesWhatItListsUnlessItIsUnderReads) {
 TEST_F(LuaStatic, AnEvalSystemsDeclaredStaticExclusionSurvivesReclassification) {
     IREntity::createEntity();
     IREntity::createEntity(C_Static{});
-    IREntity::createEntity(C_Static{}, C_Settled{});
+    ASSERT_EQ(IRTest::settleNow({IREntity::createEntity(C_Static{})}), 0u);
     ASSERT_TRUE(runOk(R"lua(
         rows = 0
         excluding = IRSystem.registerSystem({
@@ -167,22 +172,75 @@ TEST_F(LuaStatic, LodBandPropertiesResettleASettledOwner) {
                 IRComponents::EntityAnchor::CORNER,
                 canvas
             },
-            C_Static{},
-            C_Settled{}
+            C_Static{}
         );
+        ASSERT_EQ(IRTest::settleNow({entity}), 0u);
         C_VoxelSetNew &set = IREntity::getComponent<C_VoxelSetNew>(entity);
         set.ownerEntityId_ = entity;
         set.ownerStatic_ = true;
         m_lua.lua()["bandedSet"] = std::ref(set);
         ASSERT_TRUE(runOk("bandedSet." + property + " = 0\nbandedSet = nil"));
-        EXPECT_EQ(
-            static_cast<int>(property == "lodMin" ? set.lodMin_ : set.lodMax_),
-            0
-        );
+        EXPECT_EQ(static_cast<int>(property == "lodMin" ? set.lodMin_ : set.lodMax_), 0);
         Static::drain();
         EXPECT_TRUE(Static::isStatic(entity)) << property;
         EXPECT_FALSE(Static::isSettled(entity)) << property;
     }
+}
+
+// The engine-owned boundary on the Lua lanes: C_Settled has no binding, and
+// a name that resolved anyway would reach addComponentDynamic, which refuses.
+TEST_F(LuaStatic, LuaCannotNameSettled) {
+    ASSERT_TRUE(runOk("unbound = IRComponent.C_Settled == nil"));
+    EXPECT_TRUE(global<bool>("unbound"));
+    const EntityId entity = IREntity::createEntity(C_Static{});
+    m_lua.lua()["handle"] = IRScript::LuaEntity{entity};
+    const auto result = m_lua.lua().safe_script(
+        "IREntity.addLuaComponent(handle, IRComponent.C_Settled, {})",
+        sol::script_pass_on_error
+    );
+    EXPECT_FALSE(result.valid());
+    EXPECT_FALSE(Static::isSettled(entity));
+}
+
+// The Lua C_LodTierOverride binding replaces an attached override through
+// setComponent, so it resettles the entity like the C++ overwrite.
+TEST_F(LuaStatic, TheLodOverrideBindingResettlesASettledEntity) {
+    const EntityId entity = IREntity::createEntity(
+        C_Static{},
+        IRComponents::C_LodTierOverride{IRRender::LodLevel::LOD_3}
+    );
+    ASSERT_EQ(IRTest::settleNow({entity}), 0u);
+    ASSERT_TRUE(Static::isSettled(entity));
+    m_lua.lua()["handle"] = IRScript::LuaEntity{entity};
+    ASSERT_TRUE(runOk(
+        "IREntity.addLuaComponent(handle, IRComponent.C_LodTierOverride, "
+        "{ tier = IRRender.LodLevel.LOD_0 })"
+    ));
+    EXPECT_FALSE(Static::isSettled(entity));
+    EXPECT_TRUE(Static::isStatic(entity));
+    EXPECT_EQ(
+        IREntity::getComponent<IRComponents::C_LodTierOverride>(entity).tier_,
+        IRRender::LodLevel::LOD_0
+    );
+}
+
+// setLuaField writes a Lua-typed row by id: the raw path, which no engine
+// deriving system reads, so the entity stays settled.
+TEST_F(LuaStatic, SetLuaFieldOnASettledEntityIsTheRawPath) {
+    ASSERT_TRUE(runOk("C_Charge = IRComponent.register('StaticCharge', { level = 1 })"));
+    const EntityId entity = IREntity::createEntity(C_Static{});
+    m_entity_manager.addComponentDynamic(
+        entity,
+        m_entity_manager.getComponentTypeByName("StaticCharge")
+    );
+    ASSERT_EQ(IRTest::settleNow({entity}), 0u);
+    m_lua.lua()["handle"] = IRScript::LuaEntity{entity};
+    ASSERT_TRUE(runOk(
+        "IREntity.setLuaField(handle, C_Charge, C_Charge.fields.level.index, 9)\n"
+        "level = IREntity.getLuaField(handle, C_Charge, C_Charge.fields.level.index)"
+    ));
+    EXPECT_EQ(global<int>("level"), 9);
+    EXPECT_TRUE(Static::isSettled(entity));
 }
 
 } // namespace

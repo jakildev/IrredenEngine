@@ -72,8 +72,11 @@ once `drain` has promoted it (`C_Settled`). Read the design before touching
 any of it; the short form:
 
 - `freeze` / `thaw` / `resettle` are deferred to the next structural flush
-  and safe from a worker tick. `drain` is the only promoter; `World` calls it
-  after each pipeline, and a headless test calls it where it runs pipelines.
+  and safe from a worker tick. `drain` is the only promoter, through
+  `IRSystem::promoteSettled` (`settle_promoter.hpp`), the one lane that can
+  attach `C_Settled`; `World` calls it after each pipeline, and a headless
+  test calls it where it runs pipelines (`test/common/settle_now.hpp` settles
+  an entity without them).
 - A raw write to a settled entity's inputs is stored, not derived: follow it
   with `resettle(entity)`. The engine mutators do it themselves
   (`Modifier::push*` and `setMode` thaw; voxel-set and fog setters resettle).

@@ -519,7 +519,13 @@ LoadResult loadWorld(const SaveRegistry &registry, const std::string &path) {
             if (!name.ok()) {
                 return loadFail(name.status_);
             }
-            localEntries.push_back(registry.findByName(name.value_));
+            const SaveComponentEntry *entry = registry.findByName(name.value_);
+            // An engine-owned component never loads, whatever the file
+            // names: the entity arrives without it (a C_Static row settling).
+            if (entry != nullptr && em.isRestrictedAttach(entry->componentId_)) {
+                entry = nullptr;
+            }
+            localEntries.push_back(entry);
         }
     }
     const std::uint64_t localCount = localEntries.size();

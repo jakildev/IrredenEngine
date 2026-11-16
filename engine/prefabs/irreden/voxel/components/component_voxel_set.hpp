@@ -1015,7 +1015,8 @@ struct C_VoxelSetNew {
         }
         IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [&](C_VoxelPool &pool) {
             pool.markRecordsChanged(
-                voxelStartIdx_ + static_cast<std::size_t>(first), static_cast<std::size_t>(count)
+                voxelStartIdx_ + static_cast<std::size_t>(first),
+                static_cast<std::size_t>(count)
             );
         });
         noteOwnerChanged();

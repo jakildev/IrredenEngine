@@ -80,6 +80,33 @@ struct VoxelCellGroup {
     vec3 translation_ = vec3(0.0f);
 };
 
+namespace detail {
+
+// Sort @p ranges and merge, in place, entries that overlap or are separated
+// by at most @p minGap elements, each clamped to [0, limit); entries wholly
+// past the limit are dropped.
+inline void coalesceRanges(
+    std::vector<std::pair<std::size_t, std::size_t>> &ranges, std::size_t limit, std::size_t minGap
+) {
+    std::sort(ranges.begin(), ranges.end());
+    std::size_t out = 0;
+    for (const auto &[start, count] : ranges) {
+        if (start >= limit) {
+            break;
+        }
+        const std::size_t end = IRMath::min(start + count, limit);
+        if (out > 0 && start <= ranges[out - 1].first + ranges[out - 1].second + minGap) {
+            auto &open = ranges[out - 1];
+            open.second = IRMath::max(open.second, end - open.first);
+            continue;
+        }
+        ranges[out++] = {start, end - start};
+    }
+    ranges.resize(out);
+}
+
+} // namespace detail
+
 struct C_VoxelPool {
   public:
     enum class FogCarrierPolicy : std::uint8_t {
@@ -568,6 +595,31 @@ struct C_VoxelPool {
         return m_pendingWorldChunks.size();
     }
 
+    // Cull work owed and not yet paid: chunks pending for the cardinal cache,
+    // and chunks pending for the world cache (the stale world boxes the light
+    // occlusion grid refreshes from it). A cardinal chunk an owed whole-cache
+    // rebuild will cover is the camera's debt and is not counted. O(chunks):
+    // for a fixture's warm-up check and tests, never a per-frame engine path.
+    struct CullDebt {
+        std::size_t cardinalChunks_ = 0;
+        std::size_t worldChunks_ = 0;
+    };
+
+    CullDebt pendingCullDebt() const {
+        CullDebt debt;
+        for (const std::uint8_t flags : m_chunkCullPending) {
+            debt.cardinalChunks_ += (flags & kCullPendingCardinal) != 0 ? 1u : 0u;
+            debt.worldChunks_ += (flags & kCullPendingWorld) != 0 ? 1u : 0u;
+        }
+        if (m_chunkBoundsDirty) {
+            debt.cardinalChunks_ = 0;
+        }
+        if (m_chunkWorldBoundsDirty) {
+            debt.worldChunks_ = static_cast<std::size_t>(getChunkCount());
+        }
+        return debt;
+    }
+
     // @p useContinuousYaw (smooth camera Z-yaw): while the per-axis
     // canvases are active the framebuffer scatter rasterizes voxels at their
     // CONTINUOUS yawed iso position, so the chunk-visibility gate must project
@@ -703,6 +755,16 @@ struct C_VoxelPool {
         if (count == 0) {
             return;
         }
+        // The write witness counts here, at the producer, before the chunk
+        // pending bit deduplicates the range and before a cache consumes it.
+        ++m_cullRebuildCounters.writeNotifications_;
+        markCullChunksPending(start, count);
+    }
+
+  private:
+    // The body of `markCullBoundsDirty`, kept apart so the counting entry
+    // stays small enough to inline into every set mutator.
+    void markCullChunksPending(std::size_t start, std::size_t count) {
         const std::size_t poolSize = static_cast<std::size_t>(m_voxelPoolSize);
         // Overflow-safe bounds check: `start + count` can wrap on a bad call.
         IR_ASSERT(
@@ -722,6 +784,7 @@ struct C_VoxelPool {
         }
     }
 
+  public:
     // DEPRECATED — use markCullBoundsDirty(start, count) instead.
     // Compatibility forwarder invalidating both caches over the allocated prefix.
     [[deprecated("use markCullBoundsDirty(start, count) instead")]]
@@ -745,10 +808,18 @@ struct C_VoxelPool {
         std::size_t worldSlots_ = 0;
         // The part of both slot counts rebuilt by a whole-cache sweep: a
         // cardinal change, a cardinal frame after a continuous-yaw one, a
-        // chunk-count change or the first build. The rest was rebuilt
-        // because a position or alpha write invalidated its chunk.
+        // chunk-count change or the first build. A sweep also absorbs the
+        // chunks writes left pending, so this and the write-driven work can
+        // overlap; the write witness below is the record of the writes.
         std::size_t wholeCacheSlots_ = 0;
+        // Position and alpha write notifications (`markCullBoundsDirty`
+        // calls), counted at the producer: no pending-bit dedup, queue
+        // saturation or cache rebuild can mask one.
+        std::size_t writeNotifications_ = 0;
     };
+
+    // Consume-on-read: one engine consumer per frame, VOXEL_TO_TRIXEL_STAGE_1's
+    // run witness, which every reader of the profile report shares.
 
     [[nodiscard]] CullRebuildCounters consumeCullRebuildCounters() {
         const CullRebuildCounters counters = m_cullRebuildCounters;
@@ -929,10 +1000,17 @@ struct C_VoxelPool {
         m_pendingMaskWordRanges.clear();
     }
 
-    // Catch-up updates can enqueue the same spans repeatedly. At saturation,
-    // the flusher revisits every CPU-owned slot instead of sorting fragments;
-    // GPU-transform-owned slots retain the transform prepass output.
-    static constexpr std::size_t kMaxPendingPositionRanges = 8192;
+    // Bound on the queued position ranges between two flushes. A queue that
+    // reaches it is sorted and merged in place, so repeated and overlapping
+    // notifications (catch-up updates re-queue the same spans) cost no
+    // capacity. Only a queue that still holds more than half the bound of
+    // disjoint ranges saturates: the flusher then revisits every CPU-owned
+    // slot, and GPU-transform-owned slots keep the transform prepass output.
+    static constexpr std::size_t kMaxPendingPositionRanges = std::size_t{1} << 16;
+    // The transform-index queue's consumer reads only whether it is empty
+    // (`UPDATE_VOXEL_POSITIONS_GPU` re-seeds the whole binding), so its
+    // bound is independent of the position queue's.
+    static constexpr std::size_t kMaxPendingTransformIndexRanges = 8192;
 
     // Queue a slice of position-globals to upload to the GPU position
     // SSBO on the next `flushPendingPositionRanges` call. Mirrors the
@@ -940,8 +1018,8 @@ struct C_VoxelPool {
     // mutating system (UPDATE_VOXEL_SET_CHILDREN) queues the affected
     // slice; the GPU-buffer-owning system (VOXEL_TO_TRIXEL_STAGE_1)
     // coalesces contiguous queued ranges into one batched upload.
-    // Saturating `kMaxPendingPositionRanges` switches the flusher to a
-    // scan of all CPU-owned positions — see `flushPendingPositionRanges`.
+    // Saturation switches the flusher to a scan of all CPU-owned
+    // positions — see `flushPendingPositionRanges`.
     void queuePositionRange(size_t startIdx, size_t count) {
         if (count == 0) {
             return;
@@ -949,10 +1027,40 @@ struct C_VoxelPool {
         // Invalidate before upload saturation can return: the flusher may drop
         // or coalesce ranges and runs after the chunk-mask rebuild.
         markCullBoundsDirty(startIdx, count);
-        if (m_pendingPositionRanges.size() >= kMaxPendingPositionRanges) {
+        if (m_positionRangesSaturated) {
             return;
         }
+        if (!m_pendingPositionRanges.empty()) {
+            auto &[lastStart, lastCount] = m_pendingPositionRanges.back();
+            if (startIdx >= lastStart && startIdx <= lastStart + lastCount) {
+                lastCount = IRMath::max(lastCount, startIdx + count - lastStart);
+                return;
+            }
+        }
+        if (m_pendingPositionRanges.size() >= kMaxPendingPositionRanges) {
+            coalescePendingPositionRanges();
+            if (m_pendingPositionRanges.size() > kMaxPendingPositionRanges / 2) {
+                m_positionRangesSaturated = true;
+                return;
+            }
+        }
         m_pendingPositionRanges.emplace_back(startIdx, count);
+    }
+
+    // Sort the queued position ranges and merge every overlapping or
+    // touching pair, in place. Gaps between ranges stay unqueued.
+    void coalescePendingPositionRanges() {
+        detail::coalesceRanges(
+            m_pendingPositionRanges,
+            static_cast<std::size_t>(m_voxelPoolSize),
+            0
+        );
+    }
+
+    // True once the queue held more disjoint ranges than its bound allows;
+    // the queued ranges no longer cover every write. Cleared with the queue.
+    bool positionRangesSaturated() const {
+        return m_positionRangesSaturated;
     }
 
     const std::vector<std::pair<size_t, size_t>> &getPendingPositionRanges() const {
@@ -965,6 +1073,7 @@ struct C_VoxelPool {
 
     void clearPendingPositionRanges() {
         m_pendingPositionRanges.clear();
+        m_positionRangesSaturated = false;
     }
 
     // Per-voxel GPU transform-slot index, consumed by UPDATE_VOXEL_POSITIONS_GPU
@@ -1004,7 +1113,7 @@ struct C_VoxelPool {
             m_voxelTransformIndices.begin() + startIdx + count,
             transformIndex
         );
-        if (m_pendingTransformIndexRanges.size() < kMaxPendingPositionRanges) {
+        if (m_pendingTransformIndexRanges.size() < kMaxPendingTransformIndexRanges) {
             m_pendingTransformIndexRanges.emplace_back(startIdx, count);
         }
     }
@@ -1039,7 +1148,7 @@ struct C_VoxelPool {
             );
         }
         std::copy(indices.begin(), indices.end(), m_voxelTransformIndices.begin() + startIdx);
-        if (m_pendingTransformIndexRanges.size() < kMaxPendingPositionRanges) {
+        if (m_pendingTransformIndexRanges.size() < kMaxPendingTransformIndexRanges) {
             m_pendingTransformIndexRanges.emplace_back(startIdx, indices.size());
         }
     }
@@ -1122,6 +1231,7 @@ struct C_VoxelPool {
     // VOXEL_TO_TRIXEL_STAGE_1; capacity is preserved across frames so
     // a steady-state moving scene avoids per-frame allocation.
     std::vector<std::pair<size_t, size_t>> m_pendingPositionRanges;
+    bool m_positionRangesSaturated = false;
     // Record slots and active-mask words rewritten since the last GPU flush;
     // see `queueRecordRange`. Capacity is preserved across frames.
     std::vector<std::pair<size_t, size_t>> m_pendingRecordRanges;

@@ -32,6 +32,7 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/update/components/component_periodic_idle.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
 // Systems
@@ -2418,19 +2419,56 @@ bool staticFixtureScriptFinished() {
     return !g_staticCycle || g_staticFixtureUpdates >= kStaticCycleMoveUpdate;
 }
 
+// The cache debt gate 3 reads, from each pool that owns it: queued position
+// ranges, cull chunks pending for either cache, and stale world boxes the
+// light occlusion grid has yet to refresh. Settlement can finish while this
+// is still being paid. Read at the end of a rendered frame.
+struct StaticCacheDebt {
+    std::size_t positionRanges_ = 0;
+    std::size_t cardinalChunks_ = 0;
+    std::size_t worldChunks_ = 0;
+
+    bool paid() const {
+        return positionRanges_ == 0 && cardinalChunks_ == 0 && worldChunks_ == 0;
+    }
+};
+
+StaticCacheDebt staticCacheDebt() {
+    StaticCacheDebt debt;
+    IREntity::forEachComponent<C_VoxelPool>([&debt](const C_VoxelPool &pool) {
+        const C_VoxelPool::CullDebt cull = pool.pendingCullDebt();
+        debt.positionRanges_ += pool.getPendingPositionRanges().size();
+        debt.cardinalChunks_ += cull.cardinalChunks_;
+        debt.worldChunks_ += cull.worldChunks_;
+    });
+    return debt;
+}
+
 // True once the fixture's script has run and every static cell has settled.
-bool staticFixtureReady() {
+bool staticFixtureSettled() {
     return staticFixtureScriptFinished() && IRPrefab::Static::stats().settling_ == 0;
+}
+
+// The profile window's start condition: settled and, for a fixture with
+// static cells, the cache debt gate 3 reads is paid. The capture fixtures
+// start on settlement alone (their gates read images).
+bool staticFixtureReady() {
+    return staticFixtureSettled() && (!g_staticCells || staticCacheDebt().paid());
 }
 
 void failStaticFixture(const char *what) {
     const IRPrefab::Static::Stats stats = IRPrefab::Static::stats();
+    const StaticCacheDebt debt = staticCacheDebt();
     std::fprintf(
         stderr,
-        "IRPerfGrid: static-resident fixture not ready at %s: settling=%llu updates=%d\n",
+        "IRPerfGrid: static-resident fixture not ready at %s: settling=%llu updates=%d "
+        "queued_position_ranges=%zu pending_cardinal_chunks=%zu stale_world_chunks=%zu\n",
         what,
         static_cast<unsigned long long>(stats.settling_),
-        g_staticFixtureUpdates
+        g_staticFixtureUpdates,
+        debt.positionRanges_,
+        debt.cardinalChunks_,
+        debt.worldChunks_
     );
     g_staticFixtureExitCode = 3;
     IRWindow::closeWindow();
@@ -2442,12 +2480,12 @@ void failStaticFixture(const char *what) {
 // capture begins.
 void watchStaticFixture() {
     ++g_staticFixtureFrames;
-    if (g_staticBudgetLifted && staticFixtureReady()) {
+    if (g_staticBudgetLifted && staticFixtureSettled()) {
         IREntity::singleton<C_StaticSettings>() = C_StaticSettings{};
         g_staticBudgetLifted = false;
     }
     if (g_autoWarmupFrames > 0 && g_staticFixtureFrames == g_autoWarmupFrames &&
-        !staticFixtureReady()) {
+        !staticFixtureSettled()) {
         failStaticFixture("the first capture");
     }
 }

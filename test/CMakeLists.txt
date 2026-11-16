@@ -80,6 +80,7 @@ add_executable(IrredenEngineTest
   ecs/undo_history_test.cpp
   ecs/voxel_bone_slot_seed_test.cpp
   ecs/voxel_pool_teardown_test.cpp
+  ecs/voxel_position_queue_test.cpp
   ecs/voxel_set_anchor_test.cpp
   ecs/voxel_set_edit_api_test.cpp
   ecs/sdf_bake_test.cpp

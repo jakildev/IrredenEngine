@@ -43,6 +43,7 @@
 #include <list>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 // Static residents against a whole pipeline: the cutover rules of gate 4
@@ -154,15 +155,13 @@ struct Harness {
         add(lodGate_, AFTER_LOD_GATE);
         add(IRSystem::createSystem<IRSystem::MODIFIER_DECAY>(), AFTER_MODIFIER_DECAY);
         add(IRSystem::createSystem<IRSystem::GLOBAL_MODIFIER_DECAY>(), AFTER_GLOBAL_DECAY);
-        add(
-            IRSystem::createSystem<C_ResolvedFields, Exclude<C_Settled>>(
+        add(IRSystem::createSystem<C_ResolvedFields, Exclude<C_Settled>>(
                 "TestFieldSeed",
                 [translation](C_ResolvedFields &resolved) {
                     resolved.resetVec3(translation, vec3(0.0f));
                 }
             ),
-            AFTER_FIELD_SEED
-        );
+            AFTER_FIELD_SEED);
         add(IRSystem::createSystem<IRSystem::MODIFIER_RESOLVE_GLOBAL>(), AFTER_RESOLVE);
         add(mover_, AFTER_MOVER);
         add(IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(), AFTER_PROPAGATE);
@@ -272,7 +271,7 @@ struct Harness {
         return IREntity::getComponent<C_VoxelSetNew>(entity);
     }
     std::uint64_t stamp(EntityId entity) {
-        return IREntity::getComponent<C_Static>(entity).settleStamp_;
+        return IREntity::getComponent<C_Static>(entity).settleStamp();
     }
     Static::Stats stats() {
         return Static::stats();
@@ -434,8 +433,8 @@ void expectGlobalPushHoldsPromotion(Slot slot) {
     EXPECT_GE(h.stats().counters_.heldByGlobal_, 1u);
     h.frame();
     EXPECT_TRUE(Static::isSettled(pair.entity_));
-    const vec3 resolved = IREntity::getComponent<C_ResolvedFields>(pair.entity_)
-                              .getVec3(h.translation_, vec3(0.0f));
+    const vec3 resolved =
+        IREntity::getComponent<C_ResolvedFields>(pair.entity_).getVec3(h.translation_, vec3(0.0f));
     EXPECT_EQ(resolved, kGlobalOffset) << "the promoted values include the global";
     h.expectTwin(pair, "global push");
 }
@@ -512,12 +511,13 @@ TEST(StaticWorld, AppendingADerivingSystemMidRoundDelaysPromotionUntilItHasRun) 
     h.frame();
     int visitsBeforePromotion = 0;
     h.update();
-    const SystemId late = IRSystem::createSystem<const C_WorldTransform, C_Static, Exclude<C_Settled>>(
-        "LateDeriving",
-        [&visitsBeforePromotion](const C_WorldTransform &, C_Static &) {
-            ++visitsBeforePromotion;
-        }
-    );
+    const SystemId late =
+        IRSystem::createSystem<const C_WorldTransform, C_Static, Exclude<C_Settled>>(
+            "LateDeriving",
+            [&visitsBeforePromotion](const C_WorldTransform &, C_Static &) {
+                ++visitsBeforePromotion;
+            }
+        );
     IRSystem::appendToPipeline(IRTime::Events::UPDATE, late);
     h.render();
     EXPECT_FALSE(Static::isSettled(entity)) << "the abandoned round does not promote";
@@ -560,7 +560,8 @@ TEST(StaticWorld, MutationRightAfterPromotionLeavesTheEntitySettling) {
 
 // Freeze, settle, resettle, settle, with a global push in between; returns
 // the frame on which each settle happened.
-std::vector<int> runCounterScenario(std::uint64_t seed, std::uint64_t &stampOut, std::uint64_t &floorOut) {
+std::vector<int>
+runCounterScenario(std::uint64_t seed, std::uint64_t &stampOut, std::uint64_t &floorOut) {
     Harness h;
     h.systems_.seedRoundCountersForTest(seed);
     const EntityId entity = h.makeBody(false);
@@ -584,7 +585,7 @@ std::vector<int> runCounterScenario(std::uint64_t seed, std::uint64_t &stampOut,
     h.frame();
     ++frame;
     stampOut = h.stamp(entity);
-    floorOut = IREntity::singleton<C_StaticState>().globalFloor_;
+    floorOut = IRSystem::settleFloor();
     runUntilSettled();
     return settledOn;
 }
@@ -673,11 +674,13 @@ TEST(StaticWorld, AGlobalModifierPushedAfterSettlingDoesNotReachTheEntity) {
 TEST(StaticWorld, AStaticEntitysModifierLifetimesDoNotAdvance) {
     Harness h;
     const Harness::Pair pair = h.makePair();
-    for (const EntityId entity : {pair.entity_, pair.twin_}) {
-        IREntity::getComponent<C_Modifiers>(entity).modifiersVec3_.push_back(
+    // A raw write on the static entity: `push` would thaw it. The twin takes
+    // the push, which also arms the decay pass.
+    IREntity::getComponent<C_Modifiers>(pair.entity_)
+        .modifiersVec3_.push_back(
             IRComponents::ModifierVec3{h.translation_, TransformKind::ADD, kMove, 0, 3}
         );
-    }
+    IRPrefab::Modifier::push(pair.twin_, h.translation_, TransformKind::ADD, kMove, 0, 3);
     h.frames(6);
     const auto &frozen = IREntity::getComponent<C_Modifiers>(pair.entity_).modifiersVec3_;
     ASSERT_EQ(frozen.size(), 1u) << "MODIFIER_DECAY never matches a static entity";
@@ -698,8 +701,7 @@ TEST(StaticWorld, StaticChildOfStaticParentAndDynamicChildMatchTheirTwins) {
     }
     const auto expectChildren = [&](const char *step) {
         for (const Harness::Pair &child : {staticChild, dynamicChild}) {
-            const vec3 world =
-                IREntity::getComponent<C_WorldTransform>(child.entity_).translation_;
+            const vec3 world = IREntity::getComponent<C_WorldTransform>(child.entity_).translation_;
             const vec3 twin = IREntity::getComponent<C_WorldTransform>(child.twin_).translation_;
             // The parents are four cells apart and so are the children.
             EXPECT_EQ(world + vec3(8.0f, 0.0f, 0.0f), twin) << step;
@@ -757,7 +759,11 @@ vec3 worldOf(EntityId entity) {
 // The child and grandchild sit where `parent` (or the origin) puts them,
 // and the static tree's voxels match the twin tree's.
 void expectTreeUnder(
-    Harness &h, const Tree &tree, const Tree &twin, vec3 parentWorld, vec3 twinParentWorld,
+    Harness &h,
+    const Tree &tree,
+    const Tree &twin,
+    vec3 parentWorld,
+    vec3 twinParentWorld,
     const char *step
 ) {
     EXPECT_EQ(worldOf(tree.child_), parentWorld + kChildLocal) << step;
@@ -1105,8 +1111,8 @@ struct LoopStages {
 
     void note() {
         promotedBeforeRender_ = promotedBeforeRender_ || Static::isSettled(watched_);
-        completedMovedBeforeRender_ = completedMovedBeforeRender_ ||
-                                      h_.systems_.roundsCompleted() != completedAtStart_;
+        completedMovedBeforeRender_ =
+            completedMovedBeforeRender_ || h_.systems_.roundsCompleted() != completedAtStart_;
     }
     bool shouldUpdate() {
         return dueTicks_-- > 0;
@@ -1231,7 +1237,8 @@ TEST(StaticWorld, EveryVoxelSetMutatorResettlesItsOwner) {
     const std::vector<std::pair<const char *, Mutator>> mutators = {
         {"changeVoxelColor",
          [](C_VoxelSetNew &s) { s.changeVoxelColor(ivec3(0), Color{1, 2, 3, 255}); }},
-        {"changeVoxelColorAll", [](C_VoxelSetNew &s) { s.changeVoxelColorAll(Color{4, 5, 6, 255}); }},
+        {"changeVoxelColorAll",
+         [](C_VoxelSetNew &s) { s.changeVoxelColorAll(Color{4, 5, 6, 255}); }},
         {"changeVoxelPriority", [](C_VoxelSetNew &s) { s.changeVoxelPriority(ivec3(0), 1); }},
         {"changeVoxelPriorityAll", [](C_VoxelSetNew &s) { s.changeVoxelPriorityAll(2); }},
         {"deactivateAll", [](C_VoxelSetNew &s) { s.deactivateAll(); }},
@@ -1467,7 +1474,8 @@ TEST(StaticWorld, FogSettersResettleTheSubject) {
     const std::vector<std::pair<const char *, Setter>> setters = {
         {"setHiddenPolicy",
          [](EntityId e) { Fog::setHiddenPolicy(e, IRComponents::FogHiddenPolicy::GHOST); }},
-        {"setSubjectClass", [](EntityId e) { Fog::setSubjectClass(e, Fog::FogSubjectClass::EXEMPT); }},
+        {"setSubjectClass",
+         [](EntityId e) { Fog::setSubjectClass(e, Fog::FogSubjectClass::EXEMPT); }},
         {"setEntityRevealGoverned", [](EntityId e) { Fog::setEntityRevealGoverned(e, false); }},
         {"setOverride",
          [](EntityId e) { Fog::setOverride(e, IRComponents::FogOverride::FORCE_HIDDEN); }},
@@ -1611,6 +1619,390 @@ TEST(StaticWorld, ASettledSetsLodGateFollowsTheActiveTier) {
     EXPECT_TRUE(Static::isSettled(pair.entity_));
     EXPECT_TRUE(h.set(pair.entity_).lodCulled_) << "the tier left the band";
     h.expectTwin(pair, "tier changed");
+}
+
+// ---- Gate 5: the engine-owned boundary -------------------------------------
+
+template <typename T>
+concept CreatesThroughFacade = requires(const T &value) { IREntity::createEntity(value); };
+template <typename T>
+concept CreatesThroughManager =
+    requires(IREntity::EntityManager &em, const T &value) { em.createEntity(value); };
+template <typename T>
+concept SetsThroughFacade =
+    requires(EntityId entity, const T &value) { IREntity::setComponent(entity, value); };
+template <typename T>
+concept SetsThroughManager =
+    requires(IREntity::EntityManager &em, EntityId entity, const T &value) {
+        em.setComponent(entity, value);
+    };
+template <typename T>
+concept SetsMany = requires(IREntity::EntityManager &em, EntityId entity, const T &value) {
+    em.setComponents(entity, value);
+};
+template <typename T>
+concept SetsDeferredThroughFacade =
+    requires(EntityId entity, const T &value) { IREntity::setComponentDeferred(entity, value); };
+template <typename T>
+concept SetsDeferredThroughManager =
+    requires(IREntity::EntityManager &em, EntityId entity, const T &value) {
+        em.setComponentDeferred(entity, value);
+    };
+template <typename T>
+concept InsertsReserved = requires(IREntity::EntityManager &em, EntityId entity, const T &value) {
+    em.insertReservedEntity(entity, value);
+};
+template <typename T>
+concept CreatesBatch = requires(IREntity::EntityManager &em, const std::vector<T> &values) {
+    em.createEntitiesBatch(values);
+};
+template <typename T>
+concept CreatesFacadeBatch = requires(const T &value) { IREntity::createEntityBatch(1, value); };
+template <typename T>
+concept CreatesBatchWithFunctions =
+    requires(T (*make)(ivec3)) { IREntity::createEntityBatchWithFunctions(ivec3(1), make); };
+template <typename T>
+concept IsSingleton = requires { IREntity::singleton<T>(); };
+template <typename T>
+concept IsSingletonEntity = requires { IREntity::singletonEntity<T>(); };
+template <typename T>
+concept IsManagerSingleton =
+    requires(IREntity::EntityManager &em) { em.template getOrCreateSingleton<T>(); };
+template <typename T>
+concept ReachesInsertNewComponent =
+    requires(IREntity::EntityManager &em, IREntity::EntityRecord &record, const T &value) {
+        em.insertNewComponent(record, value);
+    };
+template <typename T>
+concept ConstructsAnAttachKey = requires(IREntity::EntityManager &em, EntityId entity) {
+    em.template attachEngineComponentDeferred<T>(entity, IREntity::EngineAttachKey<T>{});
+};
+template <typename T>
+concept ReadsTheStampField = requires(T &value) { value.settleStamp_; };
+
+// Every typed lane refuses C_Settled at compile time; the same expression
+// with C_Static is the positive control.
+static_assert(!CreatesThroughFacade<C_Settled> && CreatesThroughFacade<C_Static>);
+static_assert(!CreatesThroughManager<C_Settled> && CreatesThroughManager<C_Static>);
+static_assert(!SetsThroughFacade<C_Settled> && SetsThroughFacade<C_Static>);
+static_assert(!SetsThroughManager<C_Settled> && SetsThroughManager<C_Static>);
+static_assert(!SetsMany<C_Settled> && SetsMany<C_Static>);
+static_assert(!SetsDeferredThroughFacade<C_Settled> && SetsDeferredThroughFacade<C_Static>);
+static_assert(!SetsDeferredThroughManager<C_Settled> && SetsDeferredThroughManager<C_Static>);
+static_assert(!InsertsReserved<C_Settled> && InsertsReserved<C_Static>);
+static_assert(!CreatesBatch<C_Settled> && CreatesBatch<C_Static>);
+static_assert(!CreatesFacadeBatch<C_Settled> && CreatesFacadeBatch<C_Static>);
+static_assert(!CreatesBatchWithFunctions<C_Settled> && CreatesBatchWithFunctions<C_Static>);
+static_assert(!IsSingleton<C_Settled> && IsSingleton<C_Static>);
+static_assert(!IsSingletonEntity<C_Settled> && IsSingletonEntity<C_Static>);
+static_assert(!IsManagerSingleton<C_Settled> && IsManagerSingleton<C_Static>);
+// The helper below `setComponent` is private: no component reaches it.
+static_assert(!ReachesInsertNewComponent<C_Settled> && !ReachesInsertNewComponent<C_Static>);
+// Only `SettlePromoter` constructs the key, and only a restricted component
+// has the lane.
+static_assert(!ConstructsAnAttachKey<C_Settled> && !ConstructsAnAttachKey<C_Static>);
+// The stamp is private; a copy zeroes it, a move keeps it, and no public
+// code move-assigns one row onto another.
+static_assert(!ReadsTheStampField<C_Static>);
+static_assert(!std::is_move_assignable_v<C_Static>);
+static_assert(std::is_copy_assignable_v<C_Static>);
+static_assert(std::is_nothrow_move_constructible_v<C_Static>);
+
+// An assert build raises the refusal's assert; a release build only logs.
+template <typename Call> void expectRefused(Call &&call) {
+#ifdef IR_RELEASE
+    call();
+#else
+    EXPECT_THROW(call(), std::runtime_error);
+#endif
+}
+
+TEST(StaticWorld, TheByIdLanesRefuseSettledAndTheSettlingEntityPromotesWithItsTwin) {
+    Harness h;
+    const EntityId dynamic = h.makeBody(false);
+    const EntityId settling = h.makeBody(true);
+    const EntityId twin = h.makeBody(true);
+    h.update();
+    ASSERT_FALSE(Static::isSettled(settling));
+
+    const IREntity::ComponentId settled = IREntity::getComponentType<C_Settled>();
+    for (const EntityId entity : {dynamic, settling}) {
+        const IREntity::Archetype before = h.entities_.getEntityArchetype(entity);
+        expectRefused([&] { h.entities_.addComponentDynamic(entity, settled); });
+        EXPECT_EQ(h.entities_.getEntityArchetype(entity), before);
+        EXPECT_FALSE(Static::isSettled(entity));
+    }
+    expectRefused([&] {
+        EXPECT_EQ(h.entities_.getOrCreateSingletonByComponentId(settled), IREntity::kNullEntity);
+    });
+    EXPECT_EQ(h.entities_.getSingletonByComponentIdOrNull(settled), IREntity::kNullEntity);
+
+    for (int i = 0; i < 4; ++i) {
+        h.frame();
+        EXPECT_EQ(Static::isSettled(settling), Static::isSettled(twin)) << "frame " << i;
+    }
+    EXPECT_TRUE(Static::isSettled(settling));
+    EXPECT_FALSE(Static::isStatic(dynamic));
+}
+
+TEST(StaticWorld, ARestoreIntoASettledArchetypeIsRefused) {
+    Harness h;
+    IREntity::ArchetypeNode *node =
+        h.entities_.findCreateArchetypeNode(IREntity::getArchetype<C_Static, C_Settled>());
+    ASSERT_TRUE(node->hasRestricted_);
+    const EntityId restored = h.entities_.entityIdWatermark() + 16;
+    h.entities_.advanceEntityIdWatermark(restored + 1);
+    const std::vector<EntityId> ids{restored};
+    expectRefused([&] { h.entities_.restoreEntitiesBatch(node, ids); });
+    EXPECT_EQ(node->length_, 0);
+    EXPECT_FALSE(h.entities_.entityExists(restored));
+}
+
+TEST(StaticWorld, PromoteSettledReChecksEveryRowItIsGiven) {
+    Harness h;
+    const EntityId dynamic = h.makeBody(false);
+    const EntityId early = h.makeBody(true);
+    const EntityId earlyTwin = h.makeBody(true);
+    h.update();
+    ASSERT_NE(h.stamp(early), 0u);
+
+    std::size_t refusedEarly = 0;
+    h.after(AFTER_PROPAGATE, [&] {
+        ASSERT_GT(h.stamp(early), IRSystem::roundsCompleted()) << "the round is still open";
+        const std::vector<EntityId> ids{dynamic, early};
+        refusedEarly = IRSystem::promoteSettled(ids);
+    });
+    h.update();
+    EXPECT_EQ(refusedEarly, 2u) << "a dynamic entity and a row whose round is open";
+    EXPECT_FALSE(Static::isStatic(dynamic));
+    EXPECT_FALSE(IREntity::getComponentOptional<C_Settled>(dynamic).has_value());
+    for (int i = 0; i < 4; ++i) {
+        EXPECT_EQ(Static::isSettled(early), Static::isSettled(earlyTwin)) << "frame " << i;
+        h.render();
+        h.update();
+    }
+    EXPECT_TRUE(Static::isSettled(early));
+}
+
+TEST(StaticWorld, PromoteSettledRefusesARowTheSettleFloorHolds) {
+    Harness h;
+    const EntityId held = h.makeBody(true);
+    const EntityId twin = h.makeBody(true);
+    h.update();
+
+    std::size_t refused = 0;
+    bool checked = false;
+    for (int i = 0; i < 6 && !checked; ++i) {
+        h.after(AFTER_CHILDREN, [&] {
+            if (h.stamp(held) == 0 || IRSystem::roundsCompleted() < h.stamp(held)) {
+                return;
+            }
+            IRSystem::raiseSettleFloor();
+            const std::vector<EntityId> ids{held};
+            refused = IRSystem::promoteSettled(ids);
+            checked = true;
+        });
+        h.render();
+        if (checked) {
+            EXPECT_FALSE(Static::isSettled(held)) << "the floor holds it at the drain too";
+            EXPECT_FALSE(Static::isSettled(twin));
+        }
+        h.update();
+    }
+    ASSERT_TRUE(checked);
+    EXPECT_EQ(refused, 1u);
+    for (int i = 0; i < 4; ++i) {
+        EXPECT_EQ(Static::isSettled(held), Static::isSettled(twin)) << "frame " << i;
+        h.frame();
+    }
+    EXPECT_TRUE(Static::isSettled(held));
+}
+
+TEST(StaticWorld, APromotionStagedAfterTheTagsRemovalIsDropped) {
+    Harness h;
+    const EntityId gone = h.makeBody(true);
+    h.update();
+
+    bool staged = false;
+    for (int i = 0; i < 6 && !staged; ++i) {
+        h.after(AFTER_CHILDREN, [&] {
+            if (h.stamp(gone) == 0 || IRSystem::roundsCompleted() < h.stamp(gone)) {
+                return;
+            }
+            IREntity::removeComponentDeferred<C_Static>(gone);
+            const std::vector<EntityId> ids{gone};
+            EXPECT_EQ(IRSystem::promoteSettled(ids), 0u) << "the row passes when the call runs";
+            staged = true;
+        });
+        h.render();
+        h.update();
+    }
+    ASSERT_TRUE(staged);
+    EXPECT_FALSE(Static::isStatic(gone));
+    EXPECT_FALSE(IREntity::getComponentOptional<C_Settled>(gone).has_value())
+        << "the attach is dropped at the flush: its companion is gone";
+}
+
+TEST(StaticWorld, ACopiedStaticArrivesWithAZeroStampAndWaitsForANewRound) {
+    Harness h;
+    const EntityId settled = h.makeBody(true);
+    const EntityId settling = h.makeBody(true);
+    h.frames(3);
+    ASSERT_TRUE(Static::isSettled(settled));
+    ASSERT_NE(h.stamp(settled), 0u);
+
+    const C_Static copied = IREntity::getComponent<C_Static>(settled);
+    EXPECT_EQ(copied.settleStamp(), 0u);
+
+    const EntityId created = IREntity::createEntity(copied);
+    EXPECT_EQ(h.stamp(created), 0u);
+
+    Static::resettle(settling);
+    h.entities_.flushStructuralChanges();
+    const C_Static old = IREntity::getComponent<C_Static>(settling);
+    Static::drain();
+    ASSERT_FALSE(Static::isSettled(settling));
+    IREntity::setComponent(settling, old);
+    EXPECT_EQ(h.stamp(settling), 0u) << "an old copy written back carries no stamp";
+
+    Static::drain();
+    for (const EntityId entity : {created, settling}) {
+        EXPECT_NE(h.stamp(entity), 0u) << "the drain stamps the row as new";
+        EXPECT_FALSE(Static::isSettled(entity)) << "not before a round that opens after the write";
+    }
+    h.frames(2);
+    EXPECT_TRUE(Static::isSettled(created));
+    EXPECT_TRUE(Static::isSettled(settling));
+}
+
+TEST(StaticWorld, RemovingSettledLeavesItSettlingAndRemovingStaticLeavesNeitherTag) {
+    Harness h;
+    const EntityId entity = h.makeBody(true);
+    const EntityId other = h.makeBody(true);
+    h.frames(3);
+    ASSERT_TRUE(Static::isSettled(entity));
+    const std::uint64_t stampBefore = h.stamp(entity);
+
+    IREntity::removeComponent<C_Settled>(entity);
+    EXPECT_TRUE(Static::isStatic(entity));
+    EXPECT_FALSE(Static::isSettled(entity));
+    Static::drain();
+    EXPECT_GT(h.stamp(entity), stampBefore) << "the removal is logged and restamped";
+    EXPECT_FALSE(Static::isSettled(entity));
+    h.frames(2);
+    EXPECT_TRUE(Static::isSettled(entity));
+
+    IREntity::removeComponent<C_Static>(other);
+    EXPECT_FALSE(Static::isStatic(other));
+    EXPECT_FALSE(IREntity::getComponentOptional<C_Settled>(other).has_value());
+}
+
+// ---- Gate 5: typed overwrites ----------------------------------------------
+
+TEST(StaticWorld, ATypedOverwriteOfTheLodOverrideResettlesOnlyTheRoot) {
+    for (const bool settledTree : {true, false}) {
+        SCOPED_TRACE(settledTree);
+        Harness h;
+        const Tree tree = makeTree(h, true);
+        const Tree twin = makeTree(h, false);
+        for (const EntityId entity : {tree.root_, tree.child_, twin.root_, twin.child_}) {
+            IREntity::setComponent(entity, C_LodTierOverride{LodLevel::LOD_3});
+            h.set(entity).setLodBand(LodLevel::LOD_4, LodLevel::LOD_3);
+        }
+        h.frames(3);
+        ASSERT_TRUE(Static::isSettled(tree.child_));
+        if (!settledTree) {
+            Static::resettle(tree.root_);
+            Static::resettle(tree.child_);
+            h.update();
+            h.render();
+            h.update();
+            ASSERT_FALSE(Static::isSettled(tree.root_)) << "a settling tree mid-round";
+        }
+        for (const EntityId root : {tree.root_, twin.root_}) {
+            IREntity::setComponent(root, C_LodTierOverride{LodLevel::LOD_0});
+        }
+        EXPECT_FALSE(Static::isSettled(tree.root_));
+        if (settledTree) {
+            EXPECT_TRUE(Static::isSettled(tree.child_)) << "not a pose component";
+        }
+        h.frames(3);
+        EXPECT_TRUE(Static::isSettled(tree.root_));
+        EXPECT_EQ(h.set(tree.root_).lodCulled_, h.set(twin.root_).lodCulled_);
+        EXPECT_TRUE(h.set(tree.root_).lodCulled_) << "LOD_0 is outside the band";
+        EXPECT_EQ(h.gateBits(tree.root_), h.gateBits(twin.root_));
+        EXPECT_FALSE(h.set(tree.child_).lodCulled_);
+    }
+}
+
+TEST(StaticWorld, ATypedOverwriteOfModifiersIsResolvedOnceAndDoesNotDecay) {
+    Harness h;
+    const Harness::Pair pair = h.makePair();
+    h.frames(3);
+    ASSERT_TRUE(Static::isSettled(pair.entity_));
+
+    C_Modifiers modifiers;
+    modifiers.modifiersVec3_.push_back(
+        IRComponents::ModifierVec3{h.translation_, TransformKind::ADD, kMove, 0, 3}
+    );
+    IREntity::setComponent(pair.entity_, modifiers);
+    EXPECT_FALSE(Static::isSettled(pair.entity_)) << "an overwrite resettles; it does not thaw";
+    EXPECT_TRUE(Static::isStatic(pair.entity_));
+    IRPrefab::Modifier::push(pair.twin_, h.translation_, TransformKind::ADD, kMove, 0, 3);
+
+    h.frame();
+    const vec3 resolved =
+        IREntity::getComponent<C_ResolvedFields>(pair.entity_).getVec3(h.translation_, vec3(0.0f));
+    const vec3 twinResolved =
+        IREntity::getComponent<C_ResolvedFields>(pair.twin_).getVec3(h.translation_, vec3(0.0f));
+    EXPECT_EQ(resolved, twinResolved) << "resolved like the twin's first resolve";
+    h.frames(4);
+    EXPECT_TRUE(Static::isSettled(pair.entity_));
+    const auto &held = IREntity::getComponent<C_Modifiers>(pair.entity_).modifiersVec3_;
+    ASSERT_EQ(held.size(), 1u);
+    EXPECT_EQ(held[0].ticksRemaining_, 3) << "the lifetime does not advance while static";
+}
+
+TEST(StaticWorld, TheReferenceAnOverwriteReturnsIsTheEntitysRow) {
+    Harness h;
+    const Tree tree = makeTree(h, true);
+    h.frames(3);
+    ASSERT_TRUE(Static::isSettled(tree.grandchild_));
+
+    C_LocalTransform &written =
+        IREntity::setComponent(tree.root_, IREntity::getComponent<C_LocalTransform>(tree.root_));
+    written.translation_ = vec3(7.0f, 8.0f, 9.0f);
+    EXPECT_EQ(&written, &IREntity::getComponent<C_LocalTransform>(tree.root_))
+        << "the reference is into the column the resettle moved the entity to";
+    EXPECT_EQ(IREntity::getComponent<C_LocalTransform>(tree.root_).translation_, vec3(7, 8, 9));
+}
+
+TEST(StaticWorld, AnOverwriteOnADynamicTreeLogsNothingAndMovesNoEntity) {
+    IREntity::EntityManager entities;
+    const EntityId root = IREntity::createEntity(C_LocalTransform{vec3(1.0f)});
+    std::vector<EntityId> subtree;
+    subtree.reserve(10000);
+    for (int i = 0; i < 10000; ++i) {
+        subtree.push_back(IREntity::createEntity(C_LocalTransform{vec3(static_cast<float>(i))}));
+        IREntity::setParent(
+            subtree.back(),
+            i < 100 ? root : subtree[static_cast<std::size_t>(i / 100)]
+        );
+    }
+    std::vector<IREntity::ArchetypeNode *> before;
+    for (const EntityId entity : subtree) {
+        before.push_back(entities.getRecord(entity).archetypeNode);
+    }
+    std::vector<EntityId> log;
+    entities.takeTrackedChanges(log);
+    log.clear();
+
+    IREntity::setComponent(root, C_LocalTransform{vec3(4.0f)});
+    entities.takeTrackedChanges(log);
+    EXPECT_TRUE(log.empty());
+    for (std::size_t i = 0; i < subtree.size(); ++i) {
+        ASSERT_EQ(entities.getRecord(subtree[i]).archetypeNode, before[i]) << "entity " << i;
+    }
 }
 
 } // namespace

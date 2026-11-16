@@ -111,9 +111,11 @@ STATIC_POSITION_RE = re.compile(
 STATIC_CULL_RE = re.compile(
     r"^Cull bounds: slots_rebuilt=(\d+) max_frame_slots=(\d+) frames=(\d+) of (\d+)$"
 )
-STATIC_CULL_CAUSE_RE = re.compile(
-    r"^Cull bounds by cause: invalidated_slots=(\d+) invalidated_frames=(\d+) "
-    r"whole_cache_slots=(\d+) whole_cache_frames=(\d+)$"
+STATIC_CULL_CAMERA_RE = re.compile(
+    r"^Cull bounds camera/full rebuild: slots=(\d+) frames=(\d+) of (\d+)$"
+)
+STATIC_CULL_WRITES_RE = re.compile(
+    r"^Cull writes: notifications=(\d+) frames=(\d+) of (\d+)$"
 )
 
 DEVICE_COUNTERS_SUPPORTED_RE = re.compile(r"^Supported: (0|1)$")
@@ -176,13 +178,16 @@ class StaticResidents:
     cull_slots: Optional[int] = None
     cull_max_frame_slots: Optional[int] = None
     cull_rebuild_frames: Optional[int] = None
-    # The same slots by cause: rebuilt because a position or alpha write
-    # invalidated their chunk, or by a whole-cache sweep (a cardinal camera
-    # change, a chunk-count change, the first build).
-    cull_invalidated_slots: Optional[int] = None
-    cull_invalidated_frames: Optional[int] = None
+    # Of those, the slots a whole-cache sweep rebuilt (a cardinal camera
+    # change, a chunk-count change, the first build) and the frames that ran
+    # one. A sweep also covers chunks a write left pending, so subtracting it
+    # from the total does not give the write-driven work.
     cull_whole_cache_slots: Optional[int] = None
     cull_whole_cache_frames: Optional[int] = None
+    # Position and alpha write notifications the cull caches received,
+    # counted at the producer, and the frames that received any.
+    cull_write_notifications: Optional[int] = None
+    cull_write_frames: Optional[int] = None
     # Rendered frames the pool figures cover.
     pool_frames: Optional[int] = None
 
@@ -461,11 +466,15 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
                  residents.cull_rebuild_frames, residents.pool_frames) = (
                     int(m.group(i)) for i in range(1, 5))
                 continue
-            m = STATIC_CULL_CAUSE_RE.match(s)
+            m = STATIC_CULL_CAMERA_RE.match(s)
             if m:
-                (residents.cull_invalidated_slots, residents.cull_invalidated_frames,
-                 residents.cull_whole_cache_slots, residents.cull_whole_cache_frames) = (
-                    int(m.group(i)) for i in range(1, 5))
+                (residents.cull_whole_cache_slots, residents.cull_whole_cache_frames) = (
+                    int(m.group(1)), int(m.group(2)))
+                continue
+            m = STATIC_CULL_WRITES_RE.match(s)
+            if m:
+                (residents.cull_write_notifications, residents.cull_write_frames) = (
+                    int(m.group(1)), int(m.group(2)))
         elif section == "frame_split":
             if FRAME_SPLIT_GPU_UNAVAILABLE_RE.match(s):
                 report.frame_split.gpu_unavailable = True
