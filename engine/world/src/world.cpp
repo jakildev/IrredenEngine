@@ -17,6 +17,7 @@
 
 #include <array>
 #include <chrono>
+#include <thread>
 #include <utility>
 
 namespace IREngine {
@@ -95,7 +96,8 @@ World::World(
     , m_hasHandledFirstInput{false}
     , m_maxUpdateTicksPerFrame{static_cast<uint32_t>(
           m_worldConfig["max_update_ticks_per_frame"].get_integer()
-      )} {
+      )}
+    , m_inputLatencyTestDelayMs{m_worldConfig["input_latency_test_delay_ms"].get_number()} {
     auto iconHandle = IRRender::loadImageAsync("data/images/irreden_engine_logo_v6_alpha.png");
     IRRender::setSubdivisionMode(
         static_cast<IRRender::SubdivisionMode>(m_worldConfig["subdivision_mode"].get_enum())
@@ -324,6 +326,7 @@ struct World::FrameStages {
     }
     void pollEvents() {
         world_.m_IRGLFWWindow.pollEvents();
+        world_.m_inputLatency.recordPoll(IRRender::steadyClockSeconds);
     }
     void input() {
         world_.input();
@@ -347,6 +350,11 @@ struct World::FrameStages {
         world_.update();
     }
     void render() {
+        if (world_.m_inputLatencyTestDelayMs > 0.0) {
+            std::this_thread::sleep_for(
+                std::chrono::duration<double, std::milli>(world_.m_inputLatencyTestDelayMs)
+            );
+        }
         world_.render();
     }
     bool halted() const {
@@ -406,6 +414,10 @@ void World::gameLoop(std::uint32_t exitAfterRenderFrames) {
             Clock::time_point frameStart;
             if (m_frameTimingEnabled) {
                 frameStart = Clock::now();
+                m_inputLatency.beginFrame(
+                    IRRender::device()->framesInFlight(),
+                    IRRender::steadyClockSeconds
+                );
             }
 
             FrameStages stages{*this};
@@ -514,10 +526,14 @@ void World::render() {
     IR_PROFILE_SCOPE("render");
 
     m_inputManager.advanceInputState(IRTime::Events::RENDER);
+    const uint64_t frameId = ++m_renderFrameId;
+    m_inputLatency.recordRender(frameId, IRRender::steadyClockSeconds);
+    IRRender::device()->setPresentingFrame(frameId);
     m_renderer.beginFrame();
     m_renderer.renderFrame();
     m_videoManager.render();
     m_renderer.presentFrame();
+    takeFrameCompletions();
 
     m_timeManager.endEvent<IRTime::RENDER>();
 }
@@ -529,6 +545,10 @@ int World::entityCountOverride() {
 void World::enableFrameTiming(bool enabled) {
     m_frameTimingEnabled = enabled;
     IRRender::device()->setGpuFrameTimingEnabled(enabled);
+    m_inputLatency.reset(
+        enabled && IRRender::device()->frameEndEvent() != IRRender::FrameEndEvent::NOT_MEASURED,
+        1024
+    );
     m_systemManager.setTimingEnabled(enabled);
     if (enabled) {
         m_frameTimesMs.clear();
@@ -553,6 +573,13 @@ void World::enableFrameTiming(bool enabled) {
         // reach the report without the HUD. Disabling leaves `enabled_` alone.
         IRProfile::cpuFrameHistogram().enabled_ = true;
         IRProfile::cpuFrameHistogram().resetRun();
+    }
+}
+
+void World::takeFrameCompletions() {
+    IRRender::FrameCompletion completion;
+    while (IRRender::device()->pollFrameCompletion(completion)) {
+        m_inputLatency.addCompletion(completion);
     }
 }
 
@@ -614,6 +641,8 @@ void World::buildAndWriteProfileReport() {
     report.entityCount_ = IREntity::getLiveEntityCount();
     report.archetypeCount_ = static_cast<uint32_t>(m_entityManager.getArchetypeNodes().size());
     const auto &occlusionGridTiming = IRRender::buildLightOcclusionGridTiming();
+    takeFrameCompletions();
+    report.inputLatency_ = m_inputLatency.takeSummary(IRRender::device()->frameEndEvent());
     report.cpuPhases_.push_back(
         {"BuildLightOcclusionGrid::Clear",
          occlusionGridTiming.clear_.totalMs_,

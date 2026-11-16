@@ -505,5 +505,88 @@ class DeviceCounterParserTest(unittest.TestCase):
         self.assertIsNone(report.gpu_process_peak_bytes)
 
 
+INPUT_LATENCY_SECTION = (
+    "--- Input latency ---\n"
+    "End event: gpu-complete\n"
+    "input_to_present runs from the frame's last OS-event poll to the end event; "
+    "cursor_to_present\n"
+    "from RENDER's cursor sample; submit_to_present from the frame's last commit.\n"
+    "frame_start_to_submit is the frame's CPU time, from its loop iteration's start to that "
+    "commit.\n"
+    "Steady frames: 6 (first 2 of 8 excluded) samples=5\n"
+    "input_to_present_ms: mean=12.000 p99=14.000 max=14.000\n"
+    "cursor_to_present_ms: mean=8.000 p99=10.000 max=10.000\n"
+    "frame_start_to_submit_ms: mean=4.000 p99=4.000 max=4.000\n"
+    "submit_to_present_ms: mean=2.000 p99=2.000 max=2.000\n"
+    "Frames in flight at frame start: max=0\n"
+    "End observed by the CPU after the end event: mean=0.050ms max=0.050ms; "
+    "clock mapping error <= 0.0001ms\n"
+    "\n"
+)
+INPUT_LATENCY_SERIES = (
+    "--- Input to present (ms, in order; - = no end) ---\n"
+    "100.000 100.000 10.000 12.000 - 14.000 10.000 14.000\n"
+    "\n"
+)
+
+
+class InputLatencyParserTest(unittest.TestCase):
+    def parse(self, text):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profile.txt"
+            path.write_text(text + "=== END REPORT ===\n")
+            return parse_report(path, "fixture")
+
+    def test_the_section_and_series_are_read(self):
+        latency = self.parse(INPUT_LATENCY_SECTION + INPUT_LATENCY_SERIES).input_latency
+        self.assertTrue(latency.measured)
+        self.assertEqual(latency.end_event, "gpu-complete")
+        self.assertEqual((latency.steady_frames, latency.samples), (6, 5))
+        self.assertEqual(sorted(latency.metrics), sorted(
+            ("input_to_present", "cursor_to_present", "frame_start_to_submit",
+             "submit_to_present")))
+        metric = latency.metrics["input_to_present"]
+        self.assertEqual((metric.mean, metric.p99, metric.max_), (12.0, 14.0, 14.0))
+        self.assertEqual(latency.max_frames_in_flight, 0)
+        self.assertEqual(latency.observed_lag_mean_ms, 0.05)
+        self.assertEqual(latency.clock_mapping_error_ms, 0.0001)
+        self.assertEqual(latency.series, [100.0, 100.0, 10.0, 12.0, None, 14.0, 10.0, 14.0])
+
+    def test_an_unmeasured_device_reads_not_measured_never_zero(self):
+        latency = self.parse(
+            "--- Input latency ---\nEnd event: not measured\n"
+            "Frames in flight at frame start: not measured\n\n"
+        ).input_latency
+        self.assertFalse(latency.measured)
+        self.assertIsNone(latency.max_frames_in_flight)
+        self.assertIsNone(latency.samples)
+        self.assertEqual(latency.metrics, {})
+
+    def test_a_report_without_the_section_reads_absent(self):
+        self.assertIsNone(self.parse(WITNESSED_REPORT).input_latency)
+
+    def test_the_parsed_lines_are_the_lines_the_engine_writes(self):
+        root = Path(__file__).resolve().parents[2]
+        writer = (root / "engine/profile/src/profile_report.cpp").read_text()
+        for written in (
+            '"--- Input latency ---\\n"',
+            '"End event: %s\\n"',
+            '"gpu-complete"',
+            '"presented"',
+            '"not measured"',
+            '"Steady frames: %zu (first %zu of %zu excluded) samples=%zu\\n"',
+            '"%s: mean=%.3f p99=%.3f max=%.3f\\n"',
+            '"Frames in flight at frame start: not measured\\n\\n"',
+            '"Frames in flight at frame start: max=%u\\n"',
+            '"End observed by the CPU after the end event: mean=%.3fms max=%.3fms; "',
+            '"clock mapping error <= %.4fms\\n\\n"',
+            '"--- Input to present (ms, in order; - = no end) ---\\n"',
+        ):
+            self.assertIn(written, writer)
+        for name in ("input_to_present", "cursor_to_present", "frame_start_to_submit",
+                     "submit_to_present"):
+            self.assertIn(f'"{name}_ms"', writer)
+
+
 if __name__ == "__main__":
     unittest.main()

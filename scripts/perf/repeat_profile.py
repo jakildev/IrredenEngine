@@ -62,6 +62,18 @@ RENDER_EXPERIMENT_ENV = (
 )
 
 
+# ShapeDebug timing presets; input-latency-delay-20ms.lua is sdf-off.lua plus the
+# input latency probe's positive-control sleep.
+SHAPE_TIMING_PRESETS = (
+    "configs/perf/sdf-on.lua",
+    "configs/perf/sdf-off.lua",
+    "configs/perf/input-latency-delay-20ms.lua",
+)
+SDF_WORKLOAD_CONTROLS = (
+    "--sdf-voxel-pose", "--sdf-voxel-presentation", "--sdf-voxel-density",
+    "--sdf-voxel-copies", "--sdf-voxel-blockers", "--sdf-voxel-overlap", "--sdf-voxel-motion",
+)
+
 # --glitch-test fixtures that keep the fixed pose; "none" is the unselected default.
 GLITCH_TEST_MODES = (
     "standard-off", "off", "tear", "hold", "split", "bars", "cells",
@@ -105,10 +117,13 @@ def upper_bound_95(values: list[float]) -> float | None:
 
 
 def shape_profile_arguments(demo_args: list[str]) -> dict[str, str]:
-    """Accept only the fixed-pose SDF comparison, with explicit measurements.
+    """Accept only the fixed-pose SDF comparison or the default scene, with
+    explicit measurements.
 
-    Other ShapeDebug modes can override the scene or camera. Reject them rather
-    than treating an unknown combination as a qualified comparison.
+    `--sdf-voxel-scene off` is the default (light) scene; it takes no SDF
+    workload control. Other ShapeDebug modes can override the scene or camera.
+    Reject them rather than treating an unknown combination as a qualified
+    comparison.
     --glitch-test <mode> is the one fixture selector admitted; shape_configuration
     records it so runs of different fixtures never compare.
     """
@@ -143,8 +158,12 @@ def shape_profile_arguments(demo_args: list[str]) -> dict[str, str]:
     # These snapped scales are accepted without modelling arbitrary camera clamps.
     if zoom not in (1, 2, 4, 8, 16):
         raise ValueError("ShapeDebug profiles require zoom 1, 2, 4, 8 or 16")
-    if values["--sdf-voxel-scene"] not in ("direct", "baked"):
-        raise ValueError("ShapeDebug requires the direct or baked SDF fixture")
+    if values["--sdf-voxel-scene"] not in ("off", "direct", "baked"):
+        raise ValueError("ShapeDebug requires the default scene or the direct or baked SDF fixture")
+    if values["--sdf-voxel-scene"] == "off":
+        workload = sorted(flag for flag in values if flag in SDF_WORKLOAD_CONTROLS)
+        if workload:
+            raise ValueError(f"the default scene takes no SDF workload control: {workload}")
     pose = values.get("--sdf-voxel-pose", "rest")
     presentation = values.get("--sdf-voxel-presentation", "grid")
     density = values.get("--sdf-voxel-density", "1")
@@ -157,10 +176,10 @@ def shape_profile_arguments(demo_args: list[str]) -> dict[str, str]:
         raise ValueError("Direct SDF profiles do not have occupancy presentation or density")
     if density not in ("1", "2") or copies not in ("1", "4", "16"):
         raise ValueError("ShapeDebug SDF density must be 1/2 and copies must be 1/4/16")
-    if values["--config-preset"] not in (
-        "configs/perf/sdf-on.lua", "configs/perf/sdf-off.lua",
-    ):
-        raise ValueError("ShapeDebug requires the sdf-on.lua or sdf-off.lua timing preset")
+    if values["--config-preset"] not in SHAPE_TIMING_PRESETS:
+        raise ValueError(
+            "ShapeDebug requires one of the timing presets: " + ", ".join(SHAPE_TIMING_PRESETS)
+        )
     if "--glitch-test" in values and values["--glitch-test"] not in GLITCH_TEST_MODES:
         raise ValueError(
             f"ShapeDebug --glitch-test requires one of: {', '.join(GLITCH_TEST_MODES)}"
@@ -663,6 +682,47 @@ def device_counter_lines(rows: list[CellReport]) -> list[str]:
     return lines
 
 
+INPUT_LATENCY_ROWS = (
+    "input_to_present", "cursor_to_present", "frame_start_to_submit", "submit_to_present",
+)
+
+
+def input_latency_metrics(rows: list[CellReport]) -> dict[str, list[float]]:
+    """Per-run mean and p99 of each input latency row every run measured."""
+    latencies = [row.input_latency for row in rows]
+    if not latencies or not all(latency is not None and latency.measured
+                                for latency in latencies):
+        return {}
+    metrics = {}
+    for name in INPUT_LATENCY_ROWS:
+        if all(name in latency.metrics for latency in latencies):
+            metrics[f"{name} mean"] = [latency.metrics[name].mean for latency in latencies]
+            metrics[f"{name} p99"] = [latency.metrics[name].p99 for latency in latencies]
+    return metrics
+
+
+def input_latency_lines(rows: list[CellReport]) -> list[str]:
+    """One row per run: the end event, sample coverage and frames in flight;
+    a report without the section, or a device that times no frame end, reads
+    as such rather than as zero. Nothing when no report has the section."""
+    if all(row.input_latency is None for row in rows):
+        return []
+    lines = ["", "| Run | Input latency end event | Samples / steady frames "
+             "| Max frames in flight | Clock mapping error ms |", "|---|---|---:|---:|---:|"]
+    for row in rows:
+        latency = row.input_latency
+        if latency is None:
+            lines.append(f"| {row.cell_id} | no section | n/a | n/a | n/a |")
+        elif not latency.measured:
+            lines.append(f"| {row.cell_id} | {latency.end_event} | n/a | not measured | n/a |")
+        else:
+            lines.append(f"| {row.cell_id} | {latency.end_event} "
+                         f"| {latency.samples} / {latency.steady_frames} "
+                         f"| {latency.max_frames_in_flight} "
+                         f"| {latency.clock_mapping_error_ms} |")
+    return lines
+
+
 def percentile(values: list[float], percent: int) -> float:
     """The report writer's rule: the sorted value at index n * percent / 100."""
     ordered = sorted(values)
@@ -987,9 +1047,12 @@ def main() -> int:
         "allow_unsupported_gpu_frame": args.allow_unsupported_gpu_frame,
         "runs": [],
     }
+    sdf_scene = shape_args is not None and shape_args["--sdf-voxel-scene"] != "off"
     if shape_args is not None:
         manifest["configuration_sha256"] = shape_configuration(binary, shape_args)
-        manifest["pivot_policy"] = "origin set by fixture; mode itself is not witnessed"
+        manifest["pivot_policy"] = (
+            "origin set by fixture; mode itself is not witnessed" if sdf_scene
+            else "default pivot; no explicit focus witnessed")
     report = build_dir / "creations/demos" / TARGETS[args.target] / "save_files/profile_report.txt"
     rows = []
     for index in range(1, args.repeats + 1):
@@ -1024,8 +1087,10 @@ def main() -> int:
             "engine_logged": engine_logged(log_text),
         }
         if shape_args is not None:
-            run["sdf_occupancy"] = sdf_occupancy_witness(log_text)
-            run["sdf_residency"] = sdf_residency_witness(log_text)
+            run["sdf_occupancy"] = (
+                sdf_occupancy_witness(log_text) if sdf_scene else "not an SDF scene")
+            run["sdf_residency"] = (
+                sdf_residency_witness(log_text) if sdf_scene else "not an SDF scene")
             run["configuration_unchanged"] = (
                 shape_configuration(binary, shape_args) == manifest["configuration_sha256"]
             )
@@ -1133,6 +1198,7 @@ def main() -> int:
             # An older report's stage rows are windows, not costs.
             label = f"GPU {name}" + window_label(rows)
             metrics[label] = [stage.avg_ms for stage in stages]
+    metrics.update(input_latency_metrics(rows))
     lines = ["| Measurement | Mean ms | Run min–max ms | One-sided 95% upper bound ms |",
              "|---|---:|---:|---:|"]
     for name, values in metrics.items():
@@ -1170,6 +1236,7 @@ def main() -> int:
                      f"| {pose_text(run)} "
                      f"| {run['overflow_max_entries']} / {run['overflow_max_dropped']} "
                      f"({run['overflow_samples']}) |")
+    lines.extend(input_latency_lines(rows))
     lines.extend(device_counter_lines(rows))
     (output / "summary.md").write_text("\n".join(lines) + "\n")
     print(output / "summary.md")

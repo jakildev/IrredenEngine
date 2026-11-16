@@ -9,7 +9,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from compare_perf_runs import CellReport, DeviceCounter, RunWitness
+from compare_perf_runs import (
+    INPUT_LATENCY_NOT_MEASURED,
+    CellReport,
+    DeviceCounter,
+    InputLatency,
+    LatencyMetric,
+    RunWitness,
+)
 from repeat_profile import (
     RESIDUAL_YAW_DEADBAND_RAD,
     canvas_profile_frames,
@@ -24,6 +31,8 @@ from repeat_profile import (
     host_battery_percent,
     host_load,
     host_power_source,
+    input_latency_lines,
+    input_latency_metrics,
     main,
     overflow_failure,
     percentile,
@@ -38,7 +47,7 @@ from repeat_profile import (
     witness_checks,
     yaw_pose_mismatch,
 )
-from test_profile_parser import FRAME_SPLIT_SECTION, WITNESSED_REPORT
+from test_profile_parser import FRAME_SPLIT_SECTION, INPUT_LATENCY_SECTION, WITNESSED_REPORT
 
 
 def witnessed(
@@ -308,7 +317,9 @@ class CanvasStaticPoseTest(unittest.TestCase):
                     self.assertEqual(run["zoom_min"], float(bounds.split()[0][4:]))
 
 
-class SummaryFrameSplitTest(unittest.TestCase):
+class SummaryRun:
+    """Runs main() once over a fixture report and returns its summary.md."""
+
     def summary(self, text):
         launched_ns = 1_700_000_000_000_000_000
         with tempfile.TemporaryDirectory() as temporary:
@@ -348,6 +359,8 @@ class SummaryFrameSplitTest(unittest.TestCase):
     def base_report(self):
         return WITNESSED_REPORT.replace("-135.000", "0.000").replace("maxDropped=7", "maxDropped=0")
 
+
+class SummaryFrameSplitTest(SummaryRun, unittest.TestCase):
     def test_each_row_of_the_split_is_listed_with_its_mean_and_run_range(self):
         text = self.base_report().replace(
             "--- GPU stage timing ---\n", FRAME_SPLIT_SECTION + "--- GPU stage timing ---\n"
@@ -530,6 +543,48 @@ class EngineLoggedTest(unittest.TestCase):
         self.assertTrue(engine_logged("[EngineLog] [info] Clean shutdown complete.\n"))
         self.assertTrue(engine_logged("[ClientLog] [info] Auto-profile\n"))
         self.assertFalse(engine_logged("ir-run: RESULT=CLEAN exe=IRPerfGrid exit=0\n"))
+
+
+class InputLatencySummaryTest(SummaryRun, unittest.TestCase):
+    def row(self, name, input_mean, in_flight=0, measured=True):
+        row = CellReport(cell_id=name)
+        if not measured:
+            row.input_latency = InputLatency(end_event=INPUT_LATENCY_NOT_MEASURED)
+            return row
+        row.input_latency = InputLatency(
+            end_event="gpu-complete", steady_frames=90, samples=90,
+            metrics={"input_to_present": LatencyMetric(input_mean, input_mean + 5, input_mean + 6),
+                     "submit_to_present": LatencyMetric(3.0, 4.0, 5.0)},
+            max_frames_in_flight=in_flight, clock_mapping_error_ms=0.0005,
+        )
+        return row
+
+    def test_each_measured_row_lists_its_mean_and_p99_per_run(self):
+        metrics = input_latency_metrics([self.row("run-1", 9.0), self.row("run-2", 11.0)])
+        self.assertEqual(metrics["input_to_present mean"], [9.0, 11.0])
+        self.assertEqual(metrics["input_to_present p99"], [14.0, 16.0])
+        self.assertEqual(metrics["submit_to_present mean"], [3.0, 3.0])
+        self.assertNotIn("cursor_to_present mean", metrics)
+
+    def test_an_unmeasured_run_lists_no_latency_as_zero(self):
+        rows = [self.row("run-1", 9.0), self.row("run-2", 0.0, measured=False)]
+        self.assertEqual(input_latency_metrics(rows), {})
+        text = "\n".join(input_latency_lines(rows))
+        self.assertIn("| run-1 | gpu-complete | 90 / 90 | 0 | 0.0005 |", text)
+        self.assertIn("| run-2 | not measured | n/a | not measured | n/a |", text)
+
+    def test_reports_without_the_section_add_nothing(self):
+        self.assertEqual(input_latency_lines([CellReport(cell_id="old")]), [])
+        self.assertEqual(input_latency_metrics([CellReport(cell_id="old")]), {})
+
+    def test_the_summary_carries_the_parsed_section(self):
+        text = self.base_report().replace(
+            "--- GPU stage timing ---\n", INPUT_LATENCY_SECTION + "--- GPU stage timing ---\n"
+        )
+        summary = self.summary(text)
+        self.assertIn("| input_to_present mean | 12.000 | 12.000–12.000 |", summary)
+        self.assertIn("| frame_start_to_submit p99 | 4.000 |", summary)
+        self.assertIn("| run-1 | gpu-complete | 5 / 6 | 0 | 0.0001 |", summary)
 
 
 class DeviceCounterSummaryTest(unittest.TestCase):

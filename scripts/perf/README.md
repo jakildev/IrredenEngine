@@ -278,6 +278,38 @@ without it, never zeros; `ms` and `percent` keyed by row label, `gpu_unavailable
 per term to `summary.md`. Executor: `python3 scripts/perf/test_profile_parser.py`
 and `python3 scripts/perf/test_repeat_profile.py`.
 
+## Read input-to-present latency
+
+The `--- Input latency ---` section times each rendered frame on one clock from
+the input it used to its end. `End event` names the end: `gpu-complete` (the
+Metal device, the GPU end of the frame's last command buffer) or `not measured`
+(a device that times no frame end, the OpenGL device today), which writes no
+other row. Rows cover the steady frames of the `Steady frame time` line;
+`samples` counts those whose end arrived.
+
+- `input_to_present_ms` runs from the frame's last OS-event poll. Polls happen
+  once per due fixed update, so a frame with no due update keeps an earlier
+  poll and reads up to a frame longer: at a 120 Hz frame rate and 60 Hz updates
+  the per-frame series alternates.
+- `cursor_to_present_ms` runs from RENDER's cursor sample,
+  `frame_start_to_submit_ms` from the frame's loop-iteration start to its last
+  commit (its CPU time), `submit_to_present_ms` from that commit (its GPU time).
+- `Frames in flight at frame start` is the most submitted frames still
+  unfinished when a frame began; 0 under Metal's blocking present.
+- The last line bounds the clock mapping: how long after the GPU end the CPU
+  saw it, and the error of moving the GPU's host time onto the steady clock.
+
+The `--- Input to present (ms, in order; - = no end) ---` series follows the
+update-tick series. The `input_latency_test_delay_ms` world config key sleeps
+between a frame's last poll and RENDER; `configs/perf/input-latency-delay-20ms.lua`
+is IRShapeDebug's positive control. `parse_report` exposes the section as
+`input_latency` (`None` without it; `measured` false for `not measured`), and
+`repeat_profile.py` adds each row's per-run mean and p99 plus a per-run
+coverage table. Baseline and noise bound:
+[`docs/perf/input-latency/`](../../docs/perf/input-latency/README.md). Executor:
+`python3 scripts/perf/test_profile_parser.py` and
+`fleet-run IrredenEngineTest --gtest_filter='InputLatency*'`.
+
 ## Split a system row with `IR_PROFILE_SCOPE`
 
 The `--- CPU phase timing ---` section of every cell's report lists the fixed
@@ -296,7 +328,7 @@ temporary scope, then `grep -A30 'CPU phase timing' save_files/profile_report.tx
 ## Repeat-profile an `IRShapeDebug` comparison
 
 `repeat_profile.py --target IRShapeDebug --output <dir> --repeats N -- <args>`
-runs the fixed-pose SDF comparison N times and writes `summary.md`: each
+runs the fixed-pose SDF comparison, or the default scene, N times and writes `summary.md`: each
 metric's mean and min–max over the per-run means, and a one-sided 95% upper bound
 on that mean (mean + t(0.95, N−1) · sd / √N; `n/a` at one repeat). Only these ShapeDebug
 profile arguments are accepted; any other flag fails with `unsupported ShapeDebug
@@ -308,7 +340,8 @@ without an environment prefix, which keeps display-backed Codex runs eligible
 for their narrow launcher permission.
 
 - required: `--auto-profile <frames>`, `--yaw`, `--zoom`,
-  `--sdf-voxel-scene direct|baked`, `--config-preset configs/perf/sdf-on.lua|sdf-off.lua`
+  `--sdf-voxel-scene off|direct|baked`, `--config-preset configs/perf/sdf-on.lua|sdf-off.lua|input-latency-delay-20ms.lua`.
+  `off` is the default scene and takes none of the SDF workload controls below.
 - optional workload: `--sdf-voxel-pose rest|root|parented`,
   `--sdf-voxel-presentation grid|detached|revoxelized`,
   `--sdf-voxel-density 1|2`, `--sdf-voxel-copies 1|4|16`,
@@ -338,8 +371,9 @@ selected case is timing-off. The runner then accepts a run whose report
 witnesses `Coverage: supported=0`, and records `gpu_measured: false`. GPU cost
 on OpenGL comes from the timing-on matrix. The manifest's `host_power` reads
 `pmset` on macOS and `GetSystemPowerStatus` on Windows.
-Every accepted ShapeDebug run
-must carry exactly one Release-compatible `SDF-OCCUPANCY` log witness; the
+Every accepted ShapeDebug SDF run
+must carry exactly one Release-compatible `SDF-OCCUPANCY` log witness (a
+default-scene run carries none and needs none); the
 runner retains its bake time, slot/occupied counts, dense-record bytes, exact
 bake scratch and process samples in the manifest. It also requires one
 `SDF-RESIDENCY` witness after the measured frames. `sdf_controls.py` writes a

@@ -140,6 +140,40 @@ struct DeviceCounterEntry {
     uint64_t maxPerFrame_ = 0;
 };
 
+/// The event a frame's input-to-present reading ends at. NOT_MEASURED: the
+/// render device reports no frame end, so the section holds no reading.
+enum class FrameEndEvent : uint8_t {
+    NOT_MEASURED,
+    GPU_COMPLETE,
+    PRESENTED,
+};
+
+/// One recorded frame's input-to-present reading, in milliseconds on the
+/// steady clock. `ended_` is false for a frame whose end never arrived; its
+/// times are then meaningless. `startToSubmitMs_` is the frame's CPU time, from
+/// the start of its loop iteration to its last commit; `submitToEndMs_` its GPU
+/// time. `framesInFlight_` is the submitted frames still unfinished when this
+/// frame started its CPU work.
+struct InputLatencyFrame {
+    float inputToEndMs_ = 0.0f;
+    float cursorToEndMs_ = 0.0f;
+    float startToSubmitMs_ = 0.0f;
+    float submitToEndMs_ = 0.0f;
+    /// From the end event to the CPU learning of it.
+    float endObservedLagMs_ = 0.0f;
+    uint32_t framesInFlight_ = 0;
+    bool ended_ = false;
+};
+
+/// The input latency probe's run. `frames_` runs parallel to the report's
+/// `frameTimesMs_`. `clockMappingErrorMs_` bounds the error of converting the
+/// device's end time onto the steady clock, the largest over the run.
+struct InputLatencySummary {
+    FrameEndEvent endEvent_ = FrameEndEvent::NOT_MEASURED;
+    std::vector<InputLatencyFrame> frames_;
+    double clockMappingErrorMs_ = 0.0;
+};
+
 /// Aggregated data for a profile report, populated by World at shutdown.
 struct ProfileReport {
     std::vector<float> frameTimesMs_;
@@ -164,6 +198,7 @@ struct ProfileReport {
     /// Highest process GPU allocation sampled at a frame end; 0 when unavailable.
     uint64_t gpuProcessPeakBytes_ = 0;
     std::vector<CpuPhaseEntry> cpuPhases_;
+    InputLatencySummary inputLatency_;
     VoxelCullStatsSummary voxelCullStats_;
     LightOcclusionChunkStatsSummary lightOcclusionChunkStats_;
 };

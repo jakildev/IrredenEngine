@@ -7,6 +7,7 @@
 // #include <irreden/command/command_manager.hpp>
 #include <irreden/system/system_manager.hpp>
 #include <irreden/job/job_manager.hpp>
+#include <irreden/render/input_latency.hpp>
 #include <irreden/render/render_manager.hpp>
 #include <irreden/render/rendering_rm.hpp>
 #include <irreden/ir_audio.hpp>
@@ -104,6 +105,11 @@ class World {
     std::vector<IRRender::BufferWriteStats> m_frameBufferWrites;
     IRRender::BufferWriteStats m_bufferWritesAtLastFrame;
     uint64_t m_gpuProcessPeakBytes = 0;
+    IRRender::InputLatencyAccumulator m_inputLatency;
+    // Incremented once per RENDER; the frame id the input latency probe and
+    // the render device pair a frame's end by.
+    uint64_t m_renderFrameId = 0;
+    double m_inputLatencyTestDelayMs = 0.0;
     // adding to world for user should just be attaching things to world ecs
     // entity! I have tried this before btw but wasnt ready
     // EntityHandle m_worldEngine;
@@ -111,6 +117,7 @@ class World {
     struct FrameStages;
 
     void recordDeviceCounters();
+    void takeFrameCompletions();
     void initEngineSystems();
     void initIROutputSystems();
     void initIRInputSystems();
