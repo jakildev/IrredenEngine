@@ -75,6 +75,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import fleet_alerts  # noqa: E402
 import fleet_github  # noqa: E402
+from fleet_public_text import term_file_path  # noqa: E402
 from fleet_runtime import REPO_SLUGS  # noqa: E402
 
 REPO_KEYS = {slug: key for key, slug in REPO_SLUGS.items()}
@@ -958,6 +959,7 @@ def build_report(args):
     alerts_dir = Path(os.environ.get("FLEET_ALERTS_DIR") or fleet_dir / "alerts")
     conf_path = Path(os.environ.get("FLEET_CONF") or fleet_dir / "fleet-up.conf")
     dispatch_dir = state_dir / "dispatch"
+    terms_path = term_file_path()
 
     log_lines = []
     for name in ("dispatcher.log", "fleet-rebase.log", "fleet-automerge.log", "state-scout.log"):
@@ -1007,8 +1009,8 @@ def build_report(args):
         "worktree_leaks": worktrees,
         "github": collect_github(state_dir / "gh-accounting", since, now_utc()),
         "public_text_terms": {
-            "path": str(fleet_dir / "public-text-terms"),
-            "configured": (fleet_dir / "public-text-terms").is_file(),
+            "path": str(terms_path),
+            "configured": terms_path.is_file(),
         },
     }
     report["warnings"] = derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts,

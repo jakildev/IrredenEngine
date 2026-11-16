@@ -181,6 +181,15 @@ class CrossRepo(LintCase):
                 self.assertExit(result, 1)
                 self.assertIn("PUBLIC-TEXT", result.stdout)
 
+    def test_public_text_findings_name_the_title_or_body_source(self):
+        title = self.explicit(["clean"], title="secret/FakeRepo change")
+        self.assertExit(title, 1)
+        self.assertIn("PUBLIC-TEXT foreign-repository title line 1", title.stdout)
+
+        body = self.explicit(["clean"], "secret/FakeRepo change\n")
+        self.assertExit(body, 1)
+        self.assertIn("PUBLIC-TEXT foreign-repository body line 1", body.stdout)
+
     def test_foreign_ref_is_reported_with_its_slug(self):
         result = self.explicit(["chore: x\n\ncloses someone/Other#5"])
         self.assertExit(result, 1)
