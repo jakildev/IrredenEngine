@@ -170,10 +170,22 @@ capture added.
 | `--gui-test` | 43 of 45 | 22 of 23 | 45 / 45 of 45 |
 | `--continuous-zoom-gui-test` | 10 of 10 | 5 of 5 | 5 / 5 of 5 |
 
-The two `--gui-test` pairs that differ are the perf-HUD frames, whose
-frame-time text changes from run to run. A second run of each arm differs
-from the first on the same two files, base against base and head against
-head. `--continuous-zoom-gui-test` stays at yaw 0 and never reaches the
+The two `--gui-test` pairs that differ are the perf-HUD frames: the
+`perf_hud_closed` pose-write frame, on which the HUD is still open, and the
+`perf_hud_open` capture. Every differing pixel lies in the bars of the HUD's
+frame-time graph, which plots each frame's wall-clock time. A second run of
+each arm differs from the first on the same two files, base against base and
+head against head, and only inside the graph.
+
+The graph is an opaque panel. In the 2560×1440 capture it covers x 2008–2519
+and y 1385–1417, including one antialiased row above and below, 16,896 pixels
+or 0.46% of the frame. With that rectangle zeroed in both images, both
+`perf_hud` pairs pass `render-compare.py --per-pixel-tol 0
+--threshold-max-delta 0` on two independent base/head run pairs. So the
+pose-write frame is byte-identical outside the frame-time graph, and
+`--gui-test` is 23 of 23 pose-write frames.
+
+`--continuous-zoom-gui-test` stays at yaw 0 and never reaches the
 rejection path.
 
 ## What this does not say
