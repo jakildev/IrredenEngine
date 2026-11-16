@@ -13,7 +13,7 @@
 //     for out-of-window lights seeded at the clamped window edge (the
 //     discount reproduces the exact in-window field of the distant light
 //     — computed by `gatherLightSources`). Each propagate step decrements alpha
-//     by the source's reciprocal radius; the consumer reads `rgb * alpha` so light fades
+//     by the current radius class's `stepFalloff`; the consumer reads `rgb * alpha` so light fades
 //     linearly with Manhattan distance and stops cleanly at the light's
 //     residual budget.
 //
@@ -39,21 +39,20 @@ layout(std140, binding = 23) uniform LightVolumeParams {
     ivec4 propagationOrigin;
 };
 
-layout(rgba8, binding = 0) writeonly uniform image3D lightVolume;
-// Auxiliary texture: seed writes winning `lightIndex/255` into `.r`
+layout(rgba8, binding = 0) uniform image3D lightVolume;
+// Winning-light ID texture: seed writes `lightIndex/255` into `.r`
 // (index+1 so 0 stays reserved for "no light"). The propagate pass carries
-// it for the SPOT cone factor, and writes radius/255 into `.g` only when
-// eligible radii differ.
-layout(rgba8, binding = 1) writeonly uniform image3D lightVolumeId;
+// it for the SPOT cone factor.
+layout(rgba8, binding = 1) uniform image3D lightVolumeId;
 
 const int kLightVolumeFlagHasSpot = 1;
-const int kLightVolumeFlagPerLightFalloff = 2;
 
 void main() {
-    const uint lightIndex = gl_GlobalInvocationID.x;
-    if (lightIndex >= uint(lightCount)) {
+    const uint localLightIndex = gl_GlobalInvocationID.x;
+    if (localLightIndex >= uint(lightCount)) {
         return;
     }
+    const uint lightIndex = localLightIndex + uint(propagationOrigin.w);
 
     const GPULightSource light = lights[lightIndex];
     const ivec3 worldOrigin = ivec3(light.originAndType.xyz);
@@ -70,23 +69,19 @@ void main() {
         vec3(1.0)
     );
     const float seedAlpha = clamp(light.coneAndSeedAlpha.y, 0.0, 1.0);
+    if (propagationOrigin.w > 0 && seedAlpha <= imageLoad(lightVolume, cell).a) {
+        return;
+    }
     imageStore(lightVolume, cell, vec4(emit, seedAlpha));
 
     // Winning-light ID: index+1 so 0 stays "no light". RGBA8 `.r` holds only
     // 0–255, so the 256th light (index 255 → id 256) cannot carry an ID —
     // it seeds as a plain omni sphere (id 0, no cone). A non-issue for the
     // "few dozen lights" workload; documented on C_CanvasLightVolume.
-    // Skipped when neither SPOT IDs nor per-light radii are needed.
-    if (lightVolumeWorldOrigin.w != 0) {
+    // Skipped when no SPOT was seeded.
+    if ((lightVolumeWorldOrigin.w & kLightVolumeFlagHasSpot) != 0) {
         const uint idPlusOne = lightIndex + 1u;
-        const float idNorm = (lightVolumeWorldOrigin.w & kLightVolumeFlagHasSpot) != 0 &&
-                                     idPlusOne <= 255u
-                                 ? float(idPlusOne) / 255.0
-                                 : 0.0;
-        const float radiusNorm =
-            (lightVolumeWorldOrigin.w & kLightVolumeFlagPerLightFalloff) != 0
-                ? light.directionAndRadius.w / 255.0
-                : 0.0;
-        imageStore(lightVolumeId, cell, vec4(idNorm, radiusNorm, 0.0, 0.0));
+        const float idNorm = idPlusOne <= 255u ? float(idPlusOne) / 255.0 : 0.0;
+        imageStore(lightVolumeId, cell, vec4(idNorm, 0.0, 0.0, 0.0));
     }
 }

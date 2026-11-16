@@ -257,7 +257,7 @@ TEST_F(PerCanvasLightScopeTest, GatherMaxRadiusCappedAtPropagateIterations) {
     EXPECT_EQ(maxRadius, IRRender::kLightVolumePropagateIterations);
 }
 
-TEST_F(PerCanvasLightScopeTest, GatherOnlyEnablesPerLightFalloffForDifferentRadii) {
+TEST_F(PerCanvasLightScopeTest, ScheduleUsesOnePassPerRadiusClass) {
     const IREntity::EntityId canvas = makeCanvasSentinel();
     makeLightWithRadius(vec3(-12.0f, 0.0f, 0.0f), Color{255, 0, 0, 255}, 8);
     makeLightWithRadius(vec3(12.0f, 0.0f, 0.0f), Color{0, 255, 0, 255}, 8);
@@ -267,33 +267,19 @@ TEST_F(PerCanvasLightScopeTest, GatherOnlyEnablesPerLightFalloffForDifferentRadi
     std::uint32_t eligible = 0;
     int maxRadius = 0;
     bool hasSpot = false;
-    bool hasMultipleRadii = true;
-    IRSystem::detail::gatherLightSources(
-        out,
-        canvas,
-        ivec3{0},
-        maxRadius,
-        eligible,
-        hasSpot,
-        nullptr,
-        nullptr,
-        &hasMultipleRadii
-    );
-    EXPECT_FALSE(hasMultipleRadii);
+    IRSystem::detail::gatherLightSources(out, canvas, ivec3{0}, maxRadius, eligible, hasSpot);
+    std::vector<IRRender::GPULightSource> scratch;
+    std::vector<IRRender::detail::LightVolumePropagationPass> passes;
+    IRRender::detail::lightVolumePropagationSchedule(out, ivec3(0), scratch, passes);
+    ASSERT_EQ(passes.size(), 1u);
+    EXPECT_EQ(passes[0].iterations_, 8);
 
     makeLightWithRadius(vec3(0.0f, 12.0f, 0.0f), Color{0, 0, 255, 255}, 32);
-    IRSystem::detail::gatherLightSources(
-        out,
-        canvas,
-        ivec3{0},
-        maxRadius,
-        eligible,
-        hasSpot,
-        nullptr,
-        nullptr,
-        &hasMultipleRadii
-    );
-    EXPECT_TRUE(hasMultipleRadii);
+    IRSystem::detail::gatherLightSources(out, canvas, ivec3{0}, maxRadius, eligible, hasSpot);
+    IRRender::detail::lightVolumePropagationSchedule(out, ivec3(0), scratch, passes);
+    ASSERT_EQ(passes.size(), 2u);
+    EXPECT_EQ(passes[0].iterations_, 32);
+    EXPECT_EQ(passes[1].iterations_, 8);
     EXPECT_EQ(maxRadius, 32);
 }
 

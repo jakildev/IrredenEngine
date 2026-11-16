@@ -17,10 +17,11 @@
 //      Manhattan-dilation iterations against the camera-anchored
 //      light-occlusion SSBO produced by `BUILD_LIGHT_OCCLUSION_GRID`
 //      (light cannot pass through solid voxels or SDF light blockers).
-//      Each step decrements alpha by the winning light's reciprocal radius
-//      and propagates its color, giving independent linear falloff. Frames
-//      whose eligible lights all share one radius retain the original shared
-//      `stepFalloff` path byte-for-byte. The consumer reads `rgb × alpha`
+//      Mixed-radius frames run one shared-falloff pass per radius class,
+//      widest first. Later classes seed only where their alpha is greater,
+//      so an earlier wider field cannot be masked by a narrower wavefront.
+//      Single-class frames retain the original sequence byte-for-byte. The
+//      consumer reads `rgb × alpha`
 //      so out-of-range cells contribute zero. The ping-pong textures are
 //      swapped after each iteration so the `LIGHTING_TO_TRIXEL` pass
 //      always samples the latest state via
@@ -130,7 +131,8 @@ inline GPULightSource toGpuLight(
     const C_LightSource &light,
     const ivec3 &seedCellVoxel,
     const ivec3 &trueOriginVoxel,
-    float seedAlpha
+    float seedAlpha,
+    int classRadius
 ) {
     GPULightSource gpu{};
     gpu.originAndType_ = vec4(
@@ -145,7 +147,7 @@ inline GPULightSource toGpuLight(
         static_cast<float>(light.emitColor_.blue_) / 255.0f,
         IRMath::max(0.0f, light.intensity_)
     );
-    const float radius = static_cast<float>(effectiveLightRadius(light));
+    const float radius = static_cast<float>(classRadius);
     gpu.directionAndRadius_ =
         vec4(light.direction_.x, light.direction_.y, light.direction_.z, radius);
     gpu.coneAndSeedAlpha_ = vec4(light.coneAngleDeg_, seedAlpha, 0.0f, 0.0f);
@@ -175,7 +177,7 @@ inline GPULightSource toGpuLight(
 // render-verify compares captured pixels and the light/geometry involved
 // are both world-fixed, so a pan can never flip which candidate wins.
 //
-// `maxDist` is the light's own remaining residual reach (the caller derives
+// `maxDist` is the light's radius-class remaining residual reach (the caller derives
 // it from `stepFalloff`), not a separate constant — any farther cell would
 // seed at alpha <= 0 and be dropped by the propagate pass regardless.
 inline bool relocateOccludedBoundarySeed(
@@ -246,14 +248,14 @@ inline bool relocateOccludedBoundarySeed(
 // is ≤ 0 cannot reach the window and are skipped silently; `outEligible`
 // vs the return count surfaces the drop rate on the perf HUD.
 //
-// `outMaxRadius` receives the largest `C_LightSource::radius_` across ALL
+// `outMaxRadius` receives the largest radius class across ALL
 // eligible (non-DIRECTIONAL, canvas-scoped) lights — deliberately NOT just
 // the seeded subset: the iteration superset must be camera-independent (a light
 // crossing the window boundary must not truncate another light). Capped at
 // `kLightVolumePropagateIterations`; zero when no eligible lights exist.
-// The host uses it as the propagate iteration count. `outHasMultipleRadii`
-// selects the auxiliary-radius path only when eligible effective radii differ;
-// otherwise the original shared falloff and auxiliary bytes remain unchanged.
+// The host uses it as the widest propagation pass. The frame's radius map
+// deterministically merges adjacent classes when their iteration sum would
+// exceed the per-canvas budget.
 // `outHasSpot` is set true when at least one SPOT light is actually seeded this
 // frame; it gates the consumer's winning-light-ID read so no-spot scenes stay
 // byte-identical.
@@ -269,16 +271,12 @@ inline std::uint32_t gatherLightSources(
     std::uint32_t &outEligible,
     bool &outHasSpot,
     std::vector<LightGatherRecord> *outStates = nullptr,
-    const LightOcclusionGridView *occlusion = nullptr,
-    bool *outHasMultipleRadii = nullptr
+    const LightOcclusionGridView *occlusion = nullptr
 ) {
     out.clear();
     outMaxRadius = 0;
     outEligible = 0;
     outHasSpot = false;
-    if (outHasMultipleRadii != nullptr) {
-        *outHasMultipleRadii = false;
-    }
     if (outStates != nullptr) {
         outStates->clear();
     }
@@ -290,7 +288,6 @@ inline std::uint32_t gatherLightSources(
     if (outEligible == 0) {
         return 0;
     }
-    int minRadius = kLightVolumePropagateIterations;
     for (auto *node : nodes) {
         if (!lightNodeTargetsCanvas(node, currentCanvas)) {
             continue;
@@ -301,8 +298,8 @@ inline std::uint32_t gatherLightSources(
             if (lights[i].type_ == LightType::DIRECTIONAL) {
                 continue;
             }
-            const int lightRadius = effectiveLightRadius(lights[i]);
-            minRadius = IRMath::min(minRadius, lightRadius);
+            const int effectiveRadius = effectiveLightRadius(lights[i]);
+            const int lightRadius = frame.radiusMap_.classForRadius_[effectiveRadius];
             if (out.size() >= kLightVolumeMaxSources) {
                 // Keep counting eligible lights and their radii after the GPU
                 // staging cap so dispatch bounds still cover every candidate.
@@ -330,7 +327,7 @@ inline std::uint32_t gatherLightSources(
             // light silently drops instead of fading. Relocate to the
             // nearest unoccluded cell on a window face the clamp touched
             // (never an interior cell — see `relocateOccludedBoundarySeed`);
-            // when no such cell exists within the light's own remaining
+            // when no such cell exists within the light's radius-class remaining
             // residual reach, skip the light explicitly rather than seed a
             // cell the propagate pass will never light past.
             LightGatherState state = boundaryDist == 0 ? LightGatherState::SEEDED_FULL
@@ -372,11 +369,10 @@ inline std::uint32_t gatherLightSources(
             if (outStates != nullptr) {
                 outStates->push_back({node->entities_[i], state, seedAlpha});
             }
-            out.push_back(toGpuLight(lights[i], volumeOriginVoxel + clamped, origin, seedAlpha));
+            out.push_back(
+                toGpuLight(lights[i], volumeOriginVoxel + clamped, origin, seedAlpha, lightRadius)
+            );
         }
-    }
-    if (outHasMultipleRadii != nullptr) {
-        *outHasMultipleRadii = outEligible > 1 && minRadius != outMaxRadius;
     }
     return static_cast<std::uint32_t>(out.size());
 }
@@ -428,18 +424,14 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
     Buffer *paramsBuf_ = nullptr;
     Buffer *occlusionBuf_ = nullptr;
     std::vector<GPULightSource> lightStaging_{};
+    std::vector<GPULightSource> lightScheduleScratch_{};
+    std::vector<IRRender::detail::LightVolumePropagationPass> propagationPasses_{};
     // Per-light gather outcome reused every frame and read back
     // via `lightGatherRecords()` below by a lighting demo's DOMAIN-STATE
     // emission hook (`AutoScreenshotConfig::onCaptureFrame_`) for the
     // per-shot machine-readable log line.
     std::vector<LightGatherRecord> lightGatherRecords_{};
     LightVolumeParams params_{};
-    // Adaptive iteration count for the per-frame propagate dilation
-    // chain. Recomputed at upload time from the eligible lights' max
-    // radius. Pre-initialized to the global cap so the propagate
-    // budget defaults to today's behavior if a frame ever dispatches
-    // the loop without first running the upload phase.
-    int propagateIterations_ = kLightVolumePropagateIterations;
     // Per-frame tally backing the endTick global-buffer guard. Counts
     // only canvases this system actually PROCESSES, since a canvas that takes
     // the `useCameraPositionIso_` early-return never clobbers the shared
@@ -489,7 +481,6 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
         constexpr int kClearGroupSize = 8;
         constexpr int kSeedGroupSize = 64;
         constexpr int kVolumeSize = kLightVolumeSize;
-        IRRender::detail::LightVolumeDispatch propagationDispatch;
 
         // Phase: gather + upload light SSBO.
         {
@@ -509,7 +500,6 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             int maxRadius = 0;
             std::uint32_t eligible = 0;
             bool hasSpot = false;
-            bool hasMultipleRadii = false;
             // resolved once per tick, never cached across frames —
             // params pointers are not stable across a system re-create
             // (`.claude/rules/cpp-systems.md`). `findSystem` returns
@@ -532,40 +522,43 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                 eligible,
                 hasSpot,
                 &lightGatherRecords_,
-                &occlusion,
-                &hasMultipleRadii
+                &occlusion
             );
             anyCanvasSeededSpot_ |= hasSpot;
-            // worldOriginVoxel_.w carries coherent dispatch flags. Auxiliary
-            // RGBA8 traffic is enabled only for SPOT IDs or mixed-radius data.
-            const int lightVolumeFlags = (hasSpot ? kLightVolumeFlagHasSpot : 0) |
-                                         (hasMultipleRadii ? kLightVolumeFlagPerLightFalloff : 0);
-            params_.worldOriginVoxel_ =
-                ivec4(volumeOrigin.x, volumeOrigin.y, volumeOrigin.z, lightVolumeFlags);
+            params_.worldOriginVoxel_ = ivec4(
+                volumeOrigin.x,
+                volumeOrigin.y,
+                volumeOrigin.z,
+                hasSpot ? kLightVolumeFlagHasSpot : 0
+            );
             params_.lightCount_ = static_cast<int>(count);
             {
                 auto &timing = IRRender::gpuStageTiming();
                 timing.lightsSeeded_ = count;
                 timing.lightsEligible_ = eligible;
             }
-            // Adaptive iter count: the widest eligible light defines a stable
-            // propagation superset. Mixed-radius frames carry each winning
-            // light's own falloff; shared-radius frames use this matching
-            // global step unchanged. Falls back to the global cap when no lights are
-            // present (the dispatch loop below early-outs on lightCount==0
-            // anyway, so the value is moot in that path).
-            propagateIterations_ = (maxRadius > 0) ? maxRadius : kLightVolumePropagateIterations;
-            params_.stepFalloff_ = 1.0f / static_cast<float>(propagateIterations_);
-            propagationDispatch = IRRender::detail::lightVolumePropagationDispatch(
+            IRRender::detail::lightVolumePropagationSchedule(
                 lightStaging_,
                 volumeOrigin,
-                propagateIterations_
+                lightScheduleScratch_,
+                propagationPasses_
             );
-            params_.propagationOrigin_ = ivec4(propagationDispatch.origin_, 0);
             if (count > 0) {
                 lightSourceBuf_->subData(0, sizeof(GPULightSource) * count, lightStaging_.data());
             }
-            paramsBuf_->subData(0, sizeof(LightVolumeParams), &params_);
+            if (!propagationPasses_.empty()) {
+                const auto &firstPass = propagationPasses_.front();
+                params_.stepFalloff_ = firstPass.stepFalloff_;
+                params_.propagationOrigin_ = ivec4(firstPass.dispatch_.origin_, 0);
+            } else {
+                const int fallbackRadius =
+                    maxRadius > 0 ? maxRadius : kLightVolumePropagateIterations;
+                params_.stepFalloff_ = 1.0f / static_cast<float>(fallbackRadius);
+                params_.propagationOrigin_ = ivec4(0);
+            }
+            if (propagationPasses_.empty()) {
+                paramsBuf_->subData(0, sizeof(LightVolumeParams), &params_);
+            }
         }
 
         // Phase: dispatch the GPU clear + seed + propagate
@@ -602,32 +595,25 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             IRRender::ScopedCpuPhaseTimer timer{phaseTiming.populate_};
             IR_PROFILE_BLOCK("ComputeLightVolume::Populate", IR_PROFILER_COLOR_RENDER);
 
-            // Seed pass: one thread per light, writes one
-            // bright texel into the read texture.
-            if (params_.lightCount_ > 0) {
+            lightSourceBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_LightSourceBuffer);
+            for (const auto &pass : propagationPasses_) {
+                params_.lightCount_ = static_cast<int>(pass.lightCount_);
+                params_.stepFalloff_ = pass.stepFalloff_;
+                params_.propagationOrigin_ =
+                    ivec4(pass.dispatch_.origin_, static_cast<int>(pass.lightOffset_));
+                paramsBuf_->subData(0, sizeof(LightVolumeParams), &params_);
+                paramsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
+
                 seedProgram_->use();
-                lightSourceBuf_->bindBase(
-                    BufferTarget::SHADER_STORAGE,
-                    kBufferIndex_LightSourceBuffer
-                );
                 volume.getReadTexture()
-                    ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-                // Seed writes the winning-light ID (index+1) alongside the
-                // color at each light's origin cell.
+                    ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
                 volume.getIdReadTexture()
-                    ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-                const int seedGroups = IRMath::divCeil(params_.lightCount_, kSeedGroupSize);
+                    ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+                const int seedGroups =
+                    IRMath::divCeil(static_cast<int>(pass.lightCount_), kSeedGroupSize);
                 IRRender::device()->dispatchCompute(static_cast<std::uint32_t>(seedGroups), 1u, 1u);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-            }
 
-            // Propagate dilation chain. Skipped entirely when no lights
-            // gathered for this canvas — the cleared read texture would
-            // propagate zeros and contribute nothing to LIGHTING_TO_TRIXEL.
-            // Iteration count is the adaptive value derived from the
-            // gathered lights' max radius, bounded by the
-            // global `kLightVolumePropagateIterations` cap.
-            if (params_.lightCount_ > 0) {
                 propagateProgram_->use();
                 // Light-occlusion SSBO slot 28 also aliases
                 // the sun-shadow depth map — rebind for this
@@ -643,7 +629,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                         kBufferIndex_LightOcclusionGrid
                     );
                 }
-                for (int iter = 0; iter < propagateIterations_; ++iter) {
+                for (int iter = 0; iter < pass.iterations_; ++iter) {
                     volume.getReadTexture()
                         ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
                     volume.getWriteTexture()
@@ -655,9 +641,9 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                     volume.getIdWriteTexture()
                         ->bindAsImage(3, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
                     IRRender::device()->dispatchCompute(
-                        static_cast<std::uint32_t>(propagationDispatch.groups_.x),
-                        static_cast<std::uint32_t>(propagationDispatch.groups_.y),
-                        static_cast<std::uint32_t>(propagationDispatch.groups_.z)
+                        static_cast<std::uint32_t>(pass.dispatch_.groups_.x),
+                        static_cast<std::uint32_t>(pass.dispatch_.groups_.y),
+                        static_cast<std::uint32_t>(pass.dispatch_.groups_.z)
                     );
                     IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
                     volume.swap();
@@ -716,6 +702,8 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
         // origin from the same binding.
         p->occlusionBuf_ = IRRender::getNamedResource<Buffer>("LightOcclusionGridBuffer");
         p->lightStaging_.reserve(kLightVolumeMaxSources);
+        p->lightScheduleScratch_.reserve(kLightVolumeMaxSources);
+        p->propagationPasses_.reserve(kLightVolumePropagateIterations);
         p->lightGatherRecords_.reserve(kLightVolumeMaxSources);
         IRRender::tagGpuStage(systemId, "computeLightVolume");
         return systemId;

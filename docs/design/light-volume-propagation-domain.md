@@ -1,12 +1,13 @@
 # Exact light-volume propagation domain
 
 Local lighting retains the full 128³ camera-anchored textures and the existing
-six-neighbor propagation rule. Only the dispatched region changes. This does
-not alter sun-shadow geometry, trixel reconstruction, light radius, iteration
-count, neighbor order, occlusion, or RGBA8 storage.
+six-neighbor propagation rule. This does not alter sun-shadow geometry,
+trixel reconstruction, neighbor order, occlusion, or RGBA8 storage.
 
-Let `Q` be the texel coordinates written by the seed pass and `K` the existing
-propagation count. The fixed half-open box for the entire frame is
+Let `Q` be the texel coordinates written by the seed passes and `K` the
+dispatch reach. `K` is the class radius in a single-class frame and the widest
+class radius plus one in a multi-class frame. The fixed half-open box for every
+pass in the frame is
 
 ```
 [min(Q) - K, max(Q) + K + 1) intersect [0, 128)^3
@@ -18,8 +19,8 @@ Round its lower bound down and upper bound up to the `(8, 8, 4)` threadgroup.
 and camera-anchor offset. The true light apex can differ after boundary
 clamping or occlusion-aware relocation and cannot supply this bound.
 `LightVolumeParams::propagationOrigin_` offsets invocation IDs; the existing
-volume bounds check still applies. The domain stays fixed across all `K`
-iterations, so there are no per-iteration CPU uploads.
+volume bounds check still applies. The domain stays fixed across every class's
+iterations.
 
 ## Why omitted texels are exactly zero
 
@@ -31,8 +32,9 @@ Manhattan step. Occlusion rejects candidates and cannot extend support.
 Induction puts every possible nonzero texel through iteration `K` inside the
 box above. Aligned padding adds work but removes no reachable cell.
 
-This argument uses the maximum eligible radius as the iteration count, not an
-estimate of when an individual light fades. RGBA8 rounds every iteration;
+This argument uses the widest class plus the residual-shell cell as the
+multi-class dispatch reach, not an estimate of when an individual light fades.
+RGBA8 rounds every iteration;
 black sources can still carry alpha/auxiliary data, and sources whose alpha
 rounds to zero can still carry RGB/auxiliary data. All staged sources
 participate in the bound.
@@ -41,27 +43,43 @@ Clearing only the initial read texture is insufficient: a cropped dispatch
 does not overwrite the destination's exterior, and the next swap would expose
 stale values. The nonempty path clears both color/ID pairs. With no sources,
 only the current read pair needs clearing because no propagation or swap occurs.
-Frames that need neither spotlight IDs nor mixed-radius falloff do not consume
-or propagate the auxiliary volume.
+Frames without spotlight IDs do not consume or propagate the auxiliary volume.
 
 ## Per-light falloff
 
 Each local light uploads an effective radius clamped to the 32-step global
 budget. A zero radius retains the historical 32-cell behavior. Boundary seed
-discount and occlusion-aware relocation use that same effective radius, so a
-narrow light cannot borrow reach from a wide neighbor.
+discount and occlusion-aware relocation use the radius class assigned to the
+light.
 
-When eligible effective radii differ, the seed pass stores `radius / 255` in
-the auxiliary RGBA8 volume's green channel. Propagation carries the winning
-auxiliary texel with the winning color and subtracts the decoded radius's
-reciprocal. Red remains the optional spotlight ID. The frame still dispatches
-the widest eligible radius, which is a conservative superset for every local
-wavefront.
+A frame runs one shared-falloff pass per radius class, widest first. Each pass
+seeds only its class and runs `r` iterations with `stepFalloff = 1 / r` in the
+existing color and optional spotlight-ID ping-pongs. A later class writes its
+seed only when its alpha is strictly greater than the cell's current alpha.
+Propagation then takes the maximum field without discarding an earlier,
+shallower wavefront. The auxiliary green channel stays unused.
 
-When all eligible radii match, the mixed-radius flag stays clear: the seed
-leaves green at zero and propagation subtracts the existing shared
-`stepFalloff`. This preserves shared-radius frames byte-for-byte, including
-single-light and no-light scenes.
+Every multi-class pass uses the frame-wide box grown by `r_max + 1`. The extra
+cell contains the quantized residual shell: after `r` subtractions, RGBA8 may
+retain a nonzero last-shell value for radii 27 and 30. A later class can carry
+that value one cell farther. The multi-class invariant is therefore:
+
+- no cell is darker than the brightest field produced by any class alone;
+- a cell can be brighter only on the first shell past a wider class's last
+  shell, by that shell's rounding residual minus the narrower class's step;
+- the model's maximum is 5/255, while native validation permits 6/255.
+
+At most 128 propagation iterations run per canvas per frame. If the distinct
+class radii exceed that sum, the adjacent pair with the smallest radius
+difference merges into the wider class; ties select the widest pair. The merge
+map is computed from every eligible light, so `{32, 31, 30, 29, 28}` becomes
+`{32, 30, 29, 28}` and costs 119 iterations. A merged light's seed discount
+and relocation reach use the wider class radius.
+
+A single-class frame issues the original sequence exactly: one params upload,
+one plain seed dispatch over all staged lights, `r` propagation dispatches and
+the original `r`-grown box. Single-light and shared-radius scenes are therefore
+byte-identical to the prior path.
 
 ## Correctness controls
 
@@ -71,8 +89,12 @@ versus true positions, and containment of reachable Manhattan cells.
 executes the real clear, seed and propagation kernels, starting both arms from
 the same seeded snapshot. It compares the entire volume after each iteration
 and includes poisoned destinations, moving/absent lights, boundary sources,
-mixed radii, black/quantized-alpha sources, ID transitions and independently anchored voxel
+black/quantized-alpha sources, ID transitions and independently anchored voxel
 and SDF blocker fields. Omitting the destination clear is a negative control.
+`BoundedLightVolumeMixedRadiusSchedulePreservesOverlapAfterEveryIteration`
+runs the real schedule for overlapping r32/r8 and r30/r29 fixtures, checks the
+bounded box after every residual-pair iteration, and keeps narrowest-first
+order as a negative control.
 
 The shader test qualifies native Metal. OpenGL mirrors the dispatch offset
 and parameter layout but requires its own native validation. Same-cell seed
