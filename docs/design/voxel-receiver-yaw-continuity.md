@@ -77,8 +77,9 @@ route), and fails when `enabledFor` ignores the fog pass.
 
 ## Measurements
 
-Metal, Apple M4 Max, macOS, Debug, on battery. The parent is the commit this
-change is stacked on.
+Metal, Apple M4 Max, macOS, Debug. The parent is the commit this change is
+stacked on, captured in the same session as the head. The receiver-polygon and
+alternative-cost readings were taken on battery, the rest on mains power.
 
 ### Crossing continuity
 
@@ -132,6 +133,14 @@ receivers following the face instead of stepping a whole face:
 
 Those thirteen macOS references are re-blessed from the head; the Windows and
 Linux copies of the same rows are stale until those hosts re-capture them.
+
+`light-verify` (`IRLightingEmissive`, fog-free) passes every row on both. Its
+yaw-0 rows and hover sweep read the same figures; 22 of its 24 yaw-30 and
+yaw-45 rows moved and stay inside the gate, so no baseline is re-blessed.
+
+Fog-pass pipelines are unchanged: `render-verify --target IRFogDemo` reads the
+same figures on all 66 rows, parent and head, and `IRLightingCombined
+--auto-screenshot 5` captures are byte-identical.
 
 ### Not yet measured
 
