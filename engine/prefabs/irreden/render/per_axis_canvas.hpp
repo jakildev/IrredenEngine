@@ -59,10 +59,26 @@ inline std::uint32_t readOverflowInstanceCount(const IRComponents::C_PerAxisTrix
 }
 
 // Texel size of each per-axis face store for the current main canvas.
-inline IRMath::ivec2 storeSize(float heightHeadroom = IRMath::kPerAxisStoreHeightHeadroom) {
-    return IRMath::perAxisTrixelCanvasWorstCaseSize(
-        IRMath::ivec2(IRRender::getMainCanvasSizeTrixels()),
+inline IRMath::ivec2 storeSizeForContentHeight(
+    IRMath::ivec2 cardinalExtent, float heightHeadroom = IRMath::kPerAxisStoreHeightHeadroom
+) {
+    const IRMath::ivec2 baseline =
+        IRMath::perAxisTrixelCanvasWorstCaseSize(cardinalExtent, kMinOnScreenTrixelSizePx);
+    IRMath::ivec2 grown = IRMath::perAxisTrixelCanvasWorstCaseSize(
+        cardinalExtent,
         kMinOnScreenTrixelSizePx,
+        heightHeadroom
+    );
+    // Matching the baseline parity keeps the centred face lattice on the same
+    // framebuffer pixels when retained headroom grows the allocation.
+    grown.x += (grown.x ^ baseline.x) & 1;
+    grown.y += (grown.y ^ baseline.y) & 1;
+    return grown;
+}
+
+inline IRMath::ivec2 storeSize(float heightHeadroom = IRMath::kPerAxisStoreHeightHeadroom) {
+    return storeSizeForContentHeight(
+        IRMath::ivec2(IRRender::getMainCanvasSizeTrixels()),
         heightHeadroom
     );
 }
