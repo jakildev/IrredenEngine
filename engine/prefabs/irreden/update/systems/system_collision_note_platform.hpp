@@ -155,7 +155,7 @@ inline void markContact(C_ContactEvent &event, IREntity::EntityId otherEntity, v
 template <> struct System<COLLISION_NOTE_PLATFORM> {
     static SystemId create() {
         return createSystem<
-            C_WorldTransform,
+            const C_WorldTransform,
             C_ColliderIso3DAABB,
             C_CollisionLayer,
             C_ContactEvent>(

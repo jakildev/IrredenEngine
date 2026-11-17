@@ -66,6 +66,9 @@ add_executable(IrredenEngineTest
   ecs/rotation_mode_set_test.cpp
   ecs/rotation_target_test.cpp
   ecs/sort_archetype_relational_test.cpp
+  ecs/static_entity_layer_test.cpp
+  ecs/static_resident_test.cpp
+  ecs/static_resident_world_test.cpp
   ecs/store_tie_signal_test.cpp
   ecs/voxel_set_children_render_placement_test.cpp
   ecs/parallel_spawn_test.cpp
@@ -77,6 +80,7 @@ add_executable(IrredenEngineTest
   ecs/undo_history_test.cpp
   ecs/voxel_bone_slot_seed_test.cpp
   ecs/voxel_pool_teardown_test.cpp
+  ecs/voxel_position_queue_test.cpp
   ecs/voxel_set_anchor_test.cpp
   ecs/voxel_set_edit_api_test.cpp
   ecs/sdf_bake_test.cpp
@@ -263,6 +267,7 @@ add_executable(IrredenEngineTest
   script/lua_world_transform_lua_test.cpp
   script/lua_rotation_target_lua_test.cpp
   script/lua_spin_test.cpp
+  script/lua_static_test.cpp
   script/lua_system_codegen_test.cpp
   script/prefab_api_test.cpp
   script/prefab_parts_test.cpp
@@ -274,6 +279,7 @@ add_executable(IrredenEngineTest
   script/modifier_lua_test.cpp
   system/pipeline_groups_test.cpp
   system/register_system_test.cpp
+  system/static_policy_test.cpp
   system/system_access_test.cpp
   system/system_cadence_test.cpp
   system/system_concurrency_test.cpp

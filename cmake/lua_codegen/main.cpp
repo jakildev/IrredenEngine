@@ -696,6 +696,12 @@ void registerSystemCb(
     }
 
     std::vector<std::string> excludes = readStringArray(ts, schema["excludes"], name, "excludes");
+    std::vector<std::string> reads = readStringArray(ts, schema["reads"], name, "reads");
+    for (const std::string &read : reads) {
+        if (std::find(components.begin(), components.end(), read) == components.end()) {
+            components.push_back(read);
+        }
+    }
 
     // Optional `concurrency` field. Accepts integer-typed
     // IRSystem.Concurrency.{SERIAL,PARALLEL_FOR,MAIN_THREAD}; strings
@@ -771,6 +777,7 @@ void registerSystemCb(
     rec.concurrency_ = concurrency;
     rec.components_ = std::move(components);
     rec.excludes_ = std::move(excludes);
+    rec.reads_ = std::move(reads);
     rec.sourceFile_ = std::move(file);
     rec.linedefined_ = linedefined;
     rec.lastlinedefined_ = lastlinedefined;

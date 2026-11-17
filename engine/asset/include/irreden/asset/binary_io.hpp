@@ -76,10 +76,10 @@ template <typename T> struct Result {
         return ok();
     }
 
+    // Moves `v` into place by construction, so a `T` without a public move
+    // assignment can be read.
     static Result success(T v) {
-        Result r;
-        r.value_ = std::move(v);
-        return r;
+        return Result{BinaryStatus{}, std::move(v)};
     }
     static Result error(BinaryIOError c, std::string msg) {
         Result r;

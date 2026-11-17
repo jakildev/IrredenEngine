@@ -246,7 +246,7 @@ template <> inline void bindLuaType<IRComponents::C_VoxelSetNew>(LuaScript &luaS
             return static_cast<lua_Integer>(set.lodMin_);
         },
         [](IRComponents::C_VoxelSetNew &set, sol::object value) {
-            set.lodMin_ = detail::lodEndpointFromLua(value, "lodMin");
+            set.setLodBand(detail::lodEndpointFromLua(value, "lodMin"), set.lodMax_);
         }
     );
     voxelSetType["lodMax"] = sol::property(
@@ -254,7 +254,7 @@ template <> inline void bindLuaType<IRComponents::C_VoxelSetNew>(LuaScript &luaS
             return static_cast<lua_Integer>(set.lodMax_);
         },
         [](IRComponents::C_VoxelSetNew &set, sol::object value) {
-            set.lodMax_ = detail::lodEndpointFromLua(value, "lodMax");
+            set.setLodBand(set.lodMin_, detail::lodEndpointFromLua(value, "lodMax"));
         }
     );
 

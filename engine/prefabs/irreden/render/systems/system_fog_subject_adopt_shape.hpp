@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_fog_reveal_settings.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/fog_of_war.hpp>
+#include <irreden/render/fog_settled_gate.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 
 #include <vector>
@@ -18,7 +19,8 @@
 namespace IRSystem {
 
 template <> struct System<FOG_SUBJECT_ADOPT_SHAPE> {
-    static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
+    static constexpr int kGrainSize = kDefaultGrainSize;
+    IRPrefab::Fog::SettledGate gate_;
 
     IREntity::EntityId activeCanvas_ = IREntity::kNullEntity;
     const IRComponents::C_CanvasFogOfWar *fog_ = nullptr;
@@ -47,13 +49,16 @@ template <> struct System<FOG_SUBJECT_ADOPT_SHAPE> {
             }
         }
         settings_ = IREntity::singleton<IRComponents::C_FogRevealSettings>();
+        gate_.begin(activeCanvas_, nullptr, fog_, settings_);
         const std::vector<IREntity::ArchetypeNode *> nodes = IREntity::queryArchetypeNodesSimple(
             IREntity::
                 getArchetype<IRComponents::C_WorldTransform, IRComponents::C_ShapeDescriptor>(),
-            IREntity::getArchetype<
-                IRComponents::C_FogRevealed,
-                IRComponents::C_FogField,
-                IRComponents::C_FogExempt>()
+            gate_.queryExclude(
+                IREntity::getArchetype<
+                    IRComponents::C_FogRevealed,
+                    IRComponents::C_FogField,
+                    IRComponents::C_FogExempt>()
+            )
         );
         if (fog != nullptr) {
             IRPrefab::Fog::touchShapeAnchorRegions(*fog, activeCanvas_, nodes);
@@ -86,15 +91,25 @@ template <> struct System<FOG_SUBJECT_ADOPT_SHAPE> {
         IREntity::setComponentDeferred(entity, revealed);
     }
 
+    void tick(
+        const IREntity::Archetype &type,
+        std::vector<IREntity::EntityId> &entities,
+        std::vector<IRComponents::C_WorldTransform> &worldTransforms,
+        std::vector<IRComponents::C_ShapeDescriptor> &shapes
+    ) {
+        gate_.walkNode(*this, kGrainSize, type, entities, worldTransforms, shapes);
+    }
+
     static SystemId create() {
         return registerSystem<
             FOG_SUBJECT_ADOPT_SHAPE,
-            IRComponents::C_WorldTransform,
+            const IRComponents::C_WorldTransform,
             IRComponents::C_ShapeDescriptor,
             Exclude<IRComponents::C_FogRevealed>,
             Exclude<IRComponents::C_FogField>,
             Exclude<IRComponents::C_FogExempt>,
-            ParallelSafe>("FogSubjectAdoptShape");
+            GatesSettled,
+            MainThread>("FogSubjectAdoptShape");
     }
 };
 

@@ -19,6 +19,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <typeindex>
 #include <unordered_map>
 #include <unordered_set>
@@ -528,6 +529,15 @@ class LuaScript {
             [](sol::state_view lua, IREntity::IComponentData *data, int row) -> sol::object {
             auto *typed = IREntity::castComponentDataPointer<T>(data);
             return sol::make_object(lua, std::ref(typed->dataVector[row]));
+        };
+        accessor.copyReader_ =
+            [](sol::state_view lua, IREntity::IComponentData *data, int row) -> sol::object {
+            if constexpr (std::is_copy_constructible_v<T>) {
+                auto *typed = IREntity::castComponentDataPointer<T>(data);
+                return sol::make_object(lua, T{typed->dataVector[row]});
+            } else {
+                throw sol::error{"at on a 'reads' column of a component that cannot be copied"};
+            }
         };
         accessor.replacer_ =
             [](sol::state_view, IREntity::IComponentData *data, int row, const sol::object &value) {

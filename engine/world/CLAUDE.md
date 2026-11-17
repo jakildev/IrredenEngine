@@ -35,7 +35,7 @@ streaming design: [`docs/design/world-streaming.md`](../../docs/design/world-str
   destruction point — so treat the reset as defense in depth.
 
 `gameLoop()`: `executePipeline(INPUT)` → `executePipeline(UPDATE)` while
-`TimeManager::shouldUpdate()` → `executePipeline(RENDER)` → swap + pacing.
+`TimeManager::shouldUpdate()` → `executePipeline(RENDER)` → swap + pacing; `IRPrefab::Static::drain()` follows each pipeline ([static residents](../../docs/design/static-residents.md)).
 One frame is `runMainLoopFrame` (`world/main_loop_frame.hpp`); a hand-off that lost its gpu lease stops it and the loop ([contract](../../docs/design/engine-hand-off.md)).
 
 ## Lua wiring

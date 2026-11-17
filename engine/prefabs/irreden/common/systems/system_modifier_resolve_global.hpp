@@ -18,6 +18,10 @@
 // Entities tagged with C_NoGlobalModifiers are routed away by the
 // archetype filter (Exclude<C_NoGlobalModifiers>) so they fall through
 // to MODIFIER_RESOLVE_EXEMPT instead — no per-entity branching here.
+//
+// A deriving system for static residents (docs/design/static-residents.md):
+// it excludes C_Settled, so a settled entity keeps the values resolved at
+// its last round and later global modifiers do not reach it.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_system.hpp>
@@ -64,11 +68,11 @@ namespace IRSystem {
 template <> struct System<MODIFIER_RESOLVE_GLOBAL> {
     static SystemId create() {
         return createSystem<
-            IRComponents::C_Modifiers,
+            const IRComponents::C_Modifiers,
             IRComponents::C_ResolvedFields,
-            Exclude<IRComponents::C_NoGlobalModifiers>>(
+            Exclude<IRComponents::C_NoGlobalModifiers, IRComponents::C_Settled>>(
             "ModifierResolveGlobal",
-            [](IRComponents::C_Modifiers &m, IRComponents::C_ResolvedFields &resolved) {
+            [](const IRComponents::C_Modifiers &m, IRComponents::C_ResolvedFields &resolved) {
                 const auto *globalsPtr = IRPrefab::Modifier::detail::currentGlobalModifiersPtr();
                 const auto &globals =
                     globalsPtr ? *globalsPtr : IRPrefab::Modifier::detail::emptyModifiers();

@@ -378,6 +378,55 @@ struct RenderRunWitness {
     // queued ranges, so a frozen scene reads 0 after it.
     VoxelUploadBytes recordUploads_;
     VoxelUploadBytes maskUploads_;
+    // Voxel-pool work per rendered frame: bytes submitted to the voxel
+    // position buffer; cull-bound slots rebuilt, in total and the part a
+    // whole-cache sweep (a camera or full rebuild) rebuilt; and the position
+    // and alpha write notifications the cull caches received. The `frame*`
+    // fields are the frame in progress; `closePoolFrame` folds them into
+    // the run.
+    std::uint64_t framePositionBytes_ = 0;
+    std::uint64_t frameCullSlots_ = 0;
+    std::uint64_t frameCullWholeCacheSlots_ = 0;
+    std::uint64_t frameCullWriteNotifications_ = 0;
+    std::uint64_t positionBytes_ = 0;
+    std::uint64_t maxFramePositionBytes_ = 0;
+    std::uint32_t positionUploadFrames_ = 0;
+    std::uint64_t cullSlots_ = 0;
+    std::uint64_t maxFrameCullSlots_ = 0;
+    std::uint32_t cullRebuildFrames_ = 0;
+    std::uint64_t cullWholeCacheSlots_ = 0;
+    std::uint32_t cullWholeCacheFrames_ = 0;
+    std::uint64_t cullWriteNotifications_ = 0;
+    std::uint32_t cullWriteFrames_ = 0;
+    std::uint32_t poolFrames_ = 0;
+    bool poolFrameOpen_ = false;
+
+    void openPoolFrame() {
+        closePoolFrame();
+        poolFrameOpen_ = true;
+    }
+
+    void closePoolFrame() {
+        if (!poolFrameOpen_) {
+            return;
+        }
+        poolFrameOpen_ = false;
+        ++poolFrames_;
+        positionBytes_ += framePositionBytes_;
+        maxFramePositionBytes_ = IRMath::max(maxFramePositionBytes_, framePositionBytes_);
+        positionUploadFrames_ += framePositionBytes_ != 0 ? 1u : 0u;
+        cullSlots_ += frameCullSlots_;
+        maxFrameCullSlots_ = IRMath::max(maxFrameCullSlots_, frameCullSlots_);
+        cullRebuildFrames_ += frameCullSlots_ != 0 ? 1u : 0u;
+        cullWholeCacheSlots_ += frameCullWholeCacheSlots_;
+        cullWholeCacheFrames_ += frameCullWholeCacheSlots_ != 0 ? 1u : 0u;
+        cullWriteNotifications_ += frameCullWriteNotifications_;
+        cullWriteFrames_ += frameCullWriteNotifications_ != 0 ? 1u : 0u;
+        framePositionBytes_ = 0;
+        frameCullSlots_ = 0;
+        frameCullWholeCacheSlots_ = 0;
+        frameCullWriteNotifications_ = 0;
+    }
 
     void recordPose(float yaw, float zoom, bool explicitPivot) {
         explicitPivotSamples_ += explicitPivot ? 1u : 0u;

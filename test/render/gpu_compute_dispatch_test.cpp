@@ -2270,6 +2270,17 @@ TEST_F(PositionUploadTest, ScatterCellTieCodesSurviveDepthQuantization) {
     EXPECT_EQ(values.back(), 1.0f - 1.0f / 16777216.0f);
 }
 
+// Disjoint single-slot ranges, every other slot from 0, until the position
+// queue saturates: repeats and touching ranges coalesce, so only this many
+// disjoint ranges can. The pool needs `kSaturatingSlots` of capacity.
+constexpr std::size_t kSaturatingSlots =
+    2 * (IRComponents::C_VoxelPool::kMaxPendingPositionRanges + 1);
+void saturatePositionQueue(IRComponents::C_VoxelPool &pool) {
+    for (std::size_t i = 0; !pool.positionRangesSaturated(); i += 2) {
+        pool.queuePositionRange(i, 1);
+    }
+}
+
 // Slots whose bit is set in `gpuMask` are GPU-transform-owned. A saturated
 // queue takes the static-scan path; otherwise every static slot is queued on
 // its own, so GPU-owned slots split the pending batch into disjoint runs. A
@@ -2283,13 +2294,16 @@ void expectPositionFlushPreservesGpuOwnedSlots(
     using namespace IRComponents;
     using namespace IRMath;
     constexpr std::size_t slotCount = 8;
-    constexpr std::size_t bytes = slotCount * sizeof(VoxelGpuPosition);
+    // Saturation needs a pool wide enough for that many disjoint ranges; the
+    // first `slotCount` slots carry the GPU mask and are the ones compared.
+    const std::size_t poolSlots = saturate ? kSaturatingSlots : slotCount;
+    const std::size_t bytes = poolSlots * sizeof(VoxelGpuPosition);
     constexpr std::uint8_t kGpuFill = 0x11;
     VoxelGpuPosition gpuFilled;
     std::memset(&gpuFilled, kGpuFill, sizeof(gpuFilled));
-    C_VoxelPool pool(ivec3(slotCount, 1, 1));
-    pool.allocateVoxels(slotCount);
-    std::vector<VoxelGpuPosition> seeded(slotCount, {vec3(-99.0f), 0.0f});
+    C_VoxelPool pool(ivec3(static_cast<int>(poolSlots), 1, 1));
+    pool.allocateVoxels(poolSlots);
+    std::vector<VoxelGpuPosition> seeded(poolSlots, {vec3(-99.0f), 0.0f});
     for (std::size_t i = 0; i < slotCount; ++i) {
         pool.getPositionGlobals()[i].pos_ = vec3(static_cast<float>(i + 1));
         pool.setTransformIndexForRange(i, 1, (gpuMask & (1u << i)) ? 0u : kVoxelTransformStatic);
@@ -2297,11 +2311,8 @@ void expectPositionFlushPreservesGpuOwnedSlots(
     pool.clearPendingPositionRanges();
     Buffer positions(seeded.data(), bytes, BUFFER_STORAGE_DYNAMIC);
     if (saturate) {
-        for (std::size_t i = 0; i < C_VoxelPool::kMaxPendingPositionRanges; ++i) {
-            pool.queuePositionRange(0, 1);
-        }
-        pool.queuePositionRange(slotCount - 1, 1);
-        ASSERT_EQ(pool.getPendingPositionRanges().size(), C_VoxelPool::kMaxPendingPositionRanges);
+        saturatePositionQueue(pool);
+        ASSERT_TRUE(pool.positionRangesSaturated());
     } else {
         for (std::size_t i = 0; i < slotCount; ++i) {
             if (!(gpuMask & (1u << i))) {
@@ -2310,7 +2321,7 @@ void expectPositionFlushPreservesGpuOwnedSlots(
         }
     }
 #if defined(IR_GRAPHICS_METAL)
-    const std::vector<VoxelGpuPosition> snapshotSeed(slotCount, {vec3(-7.0f), 0.0f});
+    const std::vector<VoxelGpuPosition> snapshotSeed(poolSlots, {vec3(-7.0f), 0.0f});
     Buffer snapshot(snapshotSeed.data(), bytes, BUFFER_STORAGE_DYNAMIC);
     if (queuedGpuWrite) {
         device()->fillBuffer(&positions, bytes, kGpuFill);
@@ -2330,7 +2341,7 @@ void expectPositionFlushPreservesGpuOwnedSlots(
 #if defined(IR_GRAPHICS_METAL)
     device()->finish();
 #endif
-    std::vector<VoxelGpuPosition> result(slotCount);
+    std::vector<VoxelGpuPosition> result(poolSlots);
     positions.getSubData(0, bytes, result.data());
     for (std::size_t i = 0; i < slotCount; ++i) {
         const vec3 expected = (gpuMask & (1u << i))
@@ -2365,6 +2376,51 @@ TEST_F(PositionUploadTest, SaturatedQueuePreservesGpuOwnedPositions) {
             expectPositionFlushPreservesGpuOwnedSlots(true, queuedGpuWrite, gpuMask);
         }
     }
+}
+
+// The mostly-static million's shape: one single-voxel range per moving cell,
+// scattered through a pool of settled cells. The flush submits those slots and
+// nothing else: no fallback to a whole CPU-pool upload.
+TEST_F(PositionUploadTest, TenThousandDisjointRangesSubmitOnlyTheirSlots) {
+    using namespace IRRender;
+    using namespace IRComponents;
+    using namespace IRMath;
+    constexpr std::size_t kMoving = 10000;
+    constexpr std::size_t kStride = 4;
+    constexpr std::size_t slotCount = kMoving * kStride;
+    constexpr std::size_t bytes = slotCount * sizeof(VoxelGpuPosition);
+    C_VoxelPool pool(ivec3(static_cast<int>(slotCount), 1, 1));
+    pool.allocateVoxels(slotCount);
+    for (std::size_t i = 0; i < slotCount; ++i) {
+        pool.getPositionGlobals()[i].pos_ = vec3(static_cast<float>(i + 1));
+    }
+    pool.clearPendingPositionRanges();
+    // Two catch-up updates queue every moving cell before the flush.
+    for (int update = 0; update < 2; ++update) {
+        for (std::size_t cell = 0; cell < kMoving; ++cell) {
+            pool.queuePositionRange(cell * kStride, 1);
+        }
+    }
+    ASSERT_FALSE(pool.positionRangesSaturated());
+
+    const std::vector<VoxelGpuPosition> seeded(slotCount, {vec3(-99.0f), 0.0f});
+    Buffer positions(seeded.data(), bytes, BUFFER_STORAGE_DYNAMIC);
+    std::vector<BufferUploadRange> scratch;
+    RenderRunWitness &witness = renderRunWitness();
+    const std::uint64_t bytesBefore = witness.framePositionBytes_;
+    IRSystem::flushPendingPositionRanges(pool, &positions, scratch);
+    EXPECT_EQ(witness.framePositionBytes_ - bytesBefore, kMoving * sizeof(VoxelGpuPosition));
+    witness.framePositionBytes_ = bytesBefore;
+#if defined(IR_GRAPHICS_METAL)
+    device_->finish();
+#endif
+    std::vector<VoxelGpuPosition> result(slotCount);
+    positions.getSubData(0, bytes, result.data());
+    for (std::size_t i = 0; i < slotCount; ++i) {
+        const vec3 expected = i % kStride == 0 ? pool.getPositionGlobals()[i].pos_ : vec3(-99.0f);
+        ASSERT_EQ(result[i].pos_, expected) << "slot " << i;
+    }
+    EXPECT_TRUE(pool.getPendingPositionRanges().empty());
 }
 
 TEST_F(PositionUploadTest, PendingBatchPreservesGpuOwnedGaps) {
@@ -2446,12 +2502,12 @@ TEST_F(PositionUploadTest, PositionFlushStagesOnePatchIntoAnEncodedBuffer) {
     using namespace IRRender;
     using namespace IRComponents;
     using namespace IRMath;
-    constexpr std::size_t slotCount = 256;
-    constexpr std::size_t bytes = slotCount * sizeof(VoxelGpuPosition);
     constexpr std::uint8_t kGpuFill = 0x11;
     for (const bool saturate : {false, true}) {
         SCOPED_TRACE(saturate);
-        C_VoxelPool pool(ivec3(slotCount, 1, 1));
+        const std::size_t slotCount = saturate ? kSaturatingSlots : 256;
+        const std::size_t bytes = slotCount * sizeof(VoxelGpuPosition);
+        C_VoxelPool pool(ivec3(static_cast<int>(slotCount), 1, 1));
         pool.allocateVoxels(slotCount);
         for (std::size_t i = 0; i < slotCount; ++i) {
             pool.getPositionGlobals()[i].pos_ = vec3(static_cast<float>(i + 1));
@@ -2465,9 +2521,7 @@ TEST_F(PositionUploadTest, PositionFlushStagesOnePatchIntoAnEncodedBuffer) {
         }
         pool.clearPendingPositionRanges();
         if (saturate) {
-            for (std::size_t i = 0; i < C_VoxelPool::kMaxPendingPositionRanges; ++i) {
-                pool.queuePositionRange(0, 1);
-            }
+            saturatePositionQueue(pool);
         } else {
             for (std::size_t i = 0; i < slotCount; i += 2) {
                 pool.queuePositionRange(i, 1);

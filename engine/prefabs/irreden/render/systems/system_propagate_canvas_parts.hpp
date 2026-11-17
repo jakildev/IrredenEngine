@@ -142,7 +142,7 @@ template <> struct System<PROPAGATE_CANVAS_PARTS> {
         return registerSystem<
             PROPAGATE_CANVAS_PARTS,
             IRComponents::C_VoxelSetNew,
-            IRComponents::C_WorldTransform,
+            const IRComponents::C_WorldTransform,
             IRComponents::C_RotationMode,
             IRComponents::C_CanvasPart>("PropagateCanvasParts");
     }

@@ -21,12 +21,12 @@ namespace IRSystem {
 
 template <> struct System<PERIODIC_IDLE_NOTE_BURST> {
     static SystemId create() {
-        return createSystem<C_PeriodicIdle, C_ParticleBurst, C_VoxelSetNew, C_WorldTransform>(
+        return createSystem<C_PeriodicIdle, C_ParticleBurst, C_VoxelSetNew, const C_WorldTransform>(
             "PeriodicIdleNoteBurst",
             [](C_PeriodicIdle &idle,
                C_ParticleBurst &burst,
                C_VoxelSetNew &voxelSet,
-               C_WorldTransform &worldXform) {
+               const C_WorldTransform &worldXform) {
                 if (!idle.cycleCompleted_) {
                     return;
                 }

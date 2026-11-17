@@ -20,6 +20,7 @@
 #include <irreden/common/components/component_modifiers.hpp>
 #include <irreden/common/modifier_compose.hpp>
 #include <irreden/common/modifier_field_registry.hpp>
+#include <irreden/common/static_residents.hpp>
 #include <irreden/common/systems/system_global_modifier_decay.hpp>
 #include <irreden/common/systems/system_modifier_decay.hpp>
 #include <irreden/common/systems/system_modifier_lambda_decay.hpp>
@@ -67,6 +68,12 @@ inline std::size_t fieldCount() {
     return detail::globalFieldRegistry().fieldCount();
 }
 
+// A modifier needs resolving and decaying every update, so a push or an
+// upsert that names a static target (docs/design/static-residents.md) thaws
+// it. The overloads that take `C_Modifiers &` carry no entity id and thaw
+// nothing: a registered system cannot hold that reference for a static
+// entity, and a raw reference to one is followed by `Static::resettle`.
+//
 // Push a structured modifier onto the target entity. Defensively rejects
 // kInvalidFieldId so a default-constructed Modifier{} can't slip into
 // the pipeline. Also rejects mismatched typing (pushing a scalar against
@@ -87,6 +94,7 @@ inline void push(
     auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target).value_or(nullptr);
     if (!c)
         return;
+    IRPrefab::Static::thaw(target);
     c->modifiers_.push_back(IRComponents::Modifier{field, kind, param, source, ticksRemaining});
     detail::armDecayFor(ticksRemaining);
 }
@@ -106,6 +114,7 @@ inline void push(
     auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target).value_or(nullptr);
     if (!c)
         return;
+    IRPrefab::Static::thaw(target);
     c->modifiersVec3_.push_back(
         IRComponents::ModifierVec3{field, kind, param, source, ticksRemaining}
     );
@@ -142,6 +151,7 @@ inline void push(
     auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target).value_or(nullptr);
     if (!c)
         return;
+    IRPrefab::Static::thaw(target);
     c->modifiersQuat_.push_back(
         IRComponents::ModifierQuat{field, kind, param, source, ticksRemaining}
     );
@@ -304,6 +314,8 @@ inline void pushGlobal(
         IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(nullptr);
     if (!c)
         return;
+    ++c->revision_;
+    IRPrefab::Static::detail::warnGlobalChangeMissesSettled(field);
     c->modifiers_.push_back(IRComponents::Modifier{field, kind, param, source, ticksRemaining});
 }
 
@@ -325,6 +337,8 @@ inline void pushGlobal(
         IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(nullptr);
     if (!c)
         return;
+    ++c->revision_;
+    IRPrefab::Static::detail::warnGlobalChangeMissesSettled(field);
     c->modifiersVec3_.push_back(
         IRComponents::ModifierVec3{field, kind, param, source, ticksRemaining}
     );
@@ -358,6 +372,8 @@ inline void pushGlobal(
         IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(nullptr);
     if (!c)
         return;
+    ++c->revision_;
+    IRPrefab::Static::detail::warnGlobalChangeMissesSettled(field);
     c->modifiersQuat_.push_back(
         IRComponents::ModifierQuat{field, kind, param, source, ticksRemaining}
     );
@@ -381,6 +397,7 @@ inline void pushLambda(
         IREntity::getComponentOptional<IRComponents::C_LambdaModifiers>(target).value_or(nullptr);
     if (!c)
         return;
+    IRPrefab::Static::thaw(target);
     c->modifiers_.push_back(
         IRComponents::LambdaModifier{field, std::move(fn), source, ticksRemaining}
     );
@@ -397,6 +414,7 @@ inline void pushLambda(
 // persists") still invoke this directly.
 inline void removeBySource(IREntity::EntityId source) {
     auto stripVec = [&](auto &v) {
+        const std::size_t before = v.size();
         v.erase(
             std::remove_if(
                 v.begin(),
@@ -405,23 +423,48 @@ inline void removeBySource(IREntity::EntityId source) {
             ),
             v.end()
         );
+        return v.size() != before;
     };
 
-    IREntity::forEachComponent<IRComponents::C_Modifiers>([&](IRComponents::C_Modifiers &c) {
-        stripVec(c.modifiers_);
-        stripVec(c.modifiersVec3_);
-        stripVec(c.modifiersQuat_);
-    });
+    // A static entity whose modifiers shortened is derived again; the node
+    // walk carries the ids that needs, and only nodes holding C_Static test
+    // for the change.
+    const IREntity::ComponentId staticTag = IRPrefab::Static::detail::staticTagOrNull();
+    for (IREntity::ArchetypeNode *node :
+         IREntity::queryArchetypeNodesSimple(IREntity::getArchetype<IRComponents::C_Modifiers>())) {
+        auto &column = IREntity::getComponentData<IRComponents::C_Modifiers>(node);
+        const bool isStatic = IRPrefab::Static::detail::nodeHas(node, staticTag);
+        for (int row = 0; row < node->length_; ++row) {
+            IRComponents::C_Modifiers &c = column[row];
+            bool changed = stripVec(c.modifiers_);
+            changed = stripVec(c.modifiersVec3_) || changed;
+            changed = stripVec(c.modifiersQuat_) || changed;
+            if (changed && isStatic) {
+                IRPrefab::Static::resettle(node->entities_[row]);
+            }
+        }
+    }
     IREntity::forEachComponent<IRComponents::C_GlobalModifiers>(
         [&](IRComponents::C_GlobalModifiers &c) {
-            stripVec(c.modifiers_);
-            stripVec(c.modifiersVec3_);
-            stripVec(c.modifiersQuat_);
+            bool changed = stripVec(c.modifiers_);
+            changed = stripVec(c.modifiersVec3_) || changed;
+            changed = stripVec(c.modifiersQuat_) || changed;
+            if (changed) {
+                ++c.revision_;
+            }
         }
     );
-    IREntity::forEachComponent<IRComponents::C_LambdaModifiers>(
-        [&](IRComponents::C_LambdaModifiers &c) { stripVec(c.modifiers_); }
-    );
+    for (IREntity::ArchetypeNode *node : IREntity::queryArchetypeNodesSimple(
+             IREntity::getArchetype<IRComponents::C_LambdaModifiers>()
+         )) {
+        auto &column = IREntity::getComponentData<IRComponents::C_LambdaModifiers>(node);
+        const bool isStatic = IRPrefab::Static::detail::nodeHas(node, staticTag);
+        for (int row = 0; row < node->length_; ++row) {
+            if (stripVec(column[row].modifiers_) && isStatic) {
+                IRPrefab::Static::resettle(node->entities_[row]);
+            }
+        }
+    }
 }
 
 // Direct query — composes the entity's structured modifiers (and the
@@ -516,6 +559,7 @@ inline void upsertBySource(
     auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target).value_or(nullptr);
     if (!c)
         return;
+    IRPrefab::Static::thaw(target);
     for (auto &m : c->modifiers_) {
         if (m.source_ == source && m.field_ == field && m.kind_ == kind) {
             m.param_ = param;
@@ -541,6 +585,7 @@ inline void upsertBySource(
     auto *c = IREntity::getComponentOptional<IRComponents::C_Modifiers>(target).value_or(nullptr);
     if (!c)
         return;
+    IRPrefab::Static::thaw(target);
     for (auto &m : c->modifiersVec3_) {
         if (m.source_ == source && m.field_ == field && m.kind_ == kind) {
             m.param_ = param;
@@ -569,6 +614,8 @@ inline void upsertBySourceGlobal(
         IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(nullptr);
     if (!c)
         return;
+    ++c->revision_;
+    IRPrefab::Static::detail::warnGlobalChangeMissesSettled(field);
     for (auto &m : c->modifiers_) {
         if (m.source_ == source && m.field_ == field && m.kind_ == kind) {
             m.param_ = param;
@@ -597,6 +644,8 @@ inline void upsertBySourceGlobal(
         IREntity::getComponentOptional<IRComponents::C_GlobalModifiers>(entity).value_or(nullptr);
     if (!c)
         return;
+    ++c->revision_;
+    IRPrefab::Static::detail::warnGlobalChangeMissesSettled(field);
     for (auto &m : c->modifiersVec3_) {
         if (m.source_ == source && m.field_ == field && m.kind_ == kind) {
             m.param_ = param;

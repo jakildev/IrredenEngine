@@ -283,7 +283,7 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
         );
 
         SystemId systemId =
-            registerSystem<UPDATE_VOXEL_POSITIONS_GPU, C_VoxelSetNew, C_WorldTransform>(
+            registerSystem<UPDATE_VOXEL_POSITIONS_GPU, C_VoxelSetNew, const C_WorldTransform>(
                 "UpdateVoxelPositionsGpu"
             );
         auto *p = getSystemParams<System<UPDATE_VOXEL_POSITIONS_GPU>>(systemId);

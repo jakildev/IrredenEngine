@@ -253,6 +253,9 @@ struct SystemRecord {
     Concurrency concurrency_ = Concurrency::SERIAL;  // opt-in, default SERIAL
     std::vector<std::string> components_;    // include archetype, in declared order
     std::vector<std::string> excludes_;      // exclude archetype, in declared order
+    // Components the tick only reads: emitted `const`, so the system declares
+    // no write to them. Each is also in `components_`.
+    std::vector<std::string> reads_;
     std::string sourceFile_;                 // resolved file path
     int linedefined_ = 0;
     int lastlinedefined_ = 0;

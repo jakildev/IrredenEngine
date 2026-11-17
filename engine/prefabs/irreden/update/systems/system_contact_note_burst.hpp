@@ -23,12 +23,12 @@ namespace IRSystem {
 
 template <> struct System<CONTACT_NOTE_BURST> {
     static SystemId create() {
-        return createSystem<C_ContactEvent, C_ParticleBurst, C_VoxelSetNew, C_WorldTransform>(
+        return createSystem<C_ContactEvent, C_ParticleBurst, C_VoxelSetNew, const C_WorldTransform>(
             "ContactNoteBurst",
             [](const C_ContactEvent &contact,
                C_ParticleBurst &burst,
                C_VoxelSetNew &voxelSet,
-               C_WorldTransform &worldXform) {
+               const C_WorldTransform &worldXform) {
                 if (!contact.entered_) {
                     return;
                 }

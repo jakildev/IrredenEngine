@@ -5,6 +5,7 @@
 #include <irreden/ir_constants.hpp>
 
 #include <irreden/common/components/entity_anchor.hpp>
+#include <irreden/common/static_notes.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/face_occupancy.hpp>
 #include <irreden/voxel/voxel_pool_api.hpp>
@@ -61,10 +62,20 @@ struct C_VoxelSetNew {
     // the set draws only while `renders()`.
     bool lodCulled_ = false;
 
+    // Routing hint for the mutators below: true once the static-resident
+    // transition step has adopted this set for a static owner
+    // (`ownerEntityId_`), so a mutation reports itself with
+    // `IRPrefab::Static::noteChanged`. Only that step writes it. No system
+    // reads it and no work is skipped on it; a stale `true` costs one
+    // dropped note.
+    bool ownerStatic_ = false;
+
     // Inclusive LOD band this set draws in, same semantics as
     // C_ShapeDescriptor: lodMin_ is the coarsest tier (largest index), lodMax_
     // the finest (smallest index). The defaults span every tier, so an unmarked
     // set is never gated; co-located sets on disjoint bands swap by zoom.
+    // Assigning either field on a settled static entity leaves `lodCulled_`
+    // stale until the entity is resettled; `setLodBand` does both.
     IRRender::LodLevel lodMin_ = IRRender::LodLevel::LOD_4;
     IRRender::LodLevel lodMax_ = IRRender::LodLevel::LOD_0;
 
@@ -500,6 +511,14 @@ struct C_VoxelSetNew {
         }
     }
 
+    // Change the LOD band this set draws in. `GATE_VOXEL_SETS_BY_LOD`
+    // re-derives `lodCulled_` from it on its next pass.
+    void setLodBand(IRRender::LodLevel lodMin, IRRender::LodLevel lodMax) {
+        lodMin_ = lodMin;
+        lodMax_ = lodMax;
+        noteOwnerChanged();
+    }
+
     // Every record mutator notifies, including hidden sets: visibility gates
     // active-mask writes, but bounds derive from authored alpha, the GPU
     // record buffer receives only notified ranges, and a cached copy of the
@@ -519,6 +538,7 @@ struct C_VoxelSetNew {
             pool.markCullBoundsDirty(start, static_cast<std::size_t>(count));
             pool.markRecordsChanged(start, static_cast<std::size_t>(count));
         });
+        noteOwnerChanged();
     }
 
     // Mirror one slot's record into the rotation-source snapshot, if it
@@ -580,9 +600,7 @@ struct C_VoxelSetNew {
         }
         mirrorToRotationSource(idx);
         // Priority is not a cull-bounds input; only the record range is notified.
-        IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [&](C_VoxelPool &pool) {
-            pool.markRecordsChanged(voxelStartIdx_ + static_cast<std::size_t>(idx), 1);
-        });
+        notifyRecordsChanged(idx, 1);
     }
 
     void changeVoxelPriorityAll(std::uint8_t priority) {
@@ -598,12 +616,7 @@ struct C_VoxelSetNew {
             static_cast<int>(newCount) - static_cast<int>(perTrixelPriorityVoxelCount_);
         IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount(delta, canvasEntity_);
         perTrixelPriorityVoxelCount_ = newCount;
-        if (numVoxels_ <= 0) {
-            return;
-        }
-        IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [&](C_VoxelPool &pool) {
-            pool.markRecordsChanged(voxelStartIdx_, static_cast<std::size_t>(numVoxels_));
-        });
+        notifyRecordsChanged(0, numVoxels_);
     }
 
     void deactivateAll() {
@@ -988,9 +1001,34 @@ struct C_VoxelSetNew {
         // Dropping it makes `attachToCanvas` resolve against the active canvas
         // rather than probing a destroyed entity.
         canvasEntity_ = IREntity::kNullEntity;
+        noteOwnerChanged();
     }
 
   private:
+    // The exit of a record mutator that moves no cull bound: queue the
+    // record range and tell a static owner. A mutator that changes alpha or
+    // position exits through `markPoolRecordsChanged`, which also evicts the
+    // bounds. Either way a new record mutator resettles its entity.
+    void notifyRecordsChanged(int first, int count) {
+        if (count <= 0) {
+            return;
+        }
+        IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [&](C_VoxelPool &pool) {
+            pool.markRecordsChanged(
+                voxelStartIdx_ + static_cast<std::size_t>(first),
+                static_cast<std::size_t>(count)
+            );
+        });
+        noteOwnerChanged();
+    }
+
+    // One predictable branch on a dynamic entity's set.
+    void noteOwnerChanged() {
+        if (ownerStatic_) [[unlikely]] {
+            IRPrefab::Static::noteChanged(ownerEntityId_);
+        }
+    }
+
     // Allocate a pool span on @p canvas and seed it from the dense box @p src
     // (row-major over `size_`), placing each local voxel position at
     // `origin + index`. @p origin is a `vec3`, not the authored `ivec3`
@@ -1060,6 +1098,15 @@ struct C_VoxelSetNew {
         if (IRComponents::C_VoxelPool *pool =
                 IRPrefab::VoxelPool::detail::poolForCanvas(canvasEntity_)) {
             pool->applyFogCarrierPolicy(voxels_);
+            // An owner adopted while the set was staged has no range in
+            // this pool yet.
+            if (ownerEntityId_ != IREntity::kNullEntity) {
+                pool->setEntityIdForRange(
+                    voxelStartIdx_,
+                    static_cast<std::size_t>(numVoxels_),
+                    ownerEntityId_
+                );
+            }
         }
         // Dense payload is a mix of active and inactive slots, so resync from
         // per-voxel alpha rather than the fast bulk path.

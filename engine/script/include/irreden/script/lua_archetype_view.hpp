@@ -26,9 +26,10 @@
 namespace IRScript {
 
 // Per-row reader: given a row index, return the row's value as a
-// sol::object (typically a sol::reference to T so Lua can read mutable
-// fields). Captured at registerType<T> time — one entry per C++
-// component type that has a Lua binding.
+// sol::object. Captured at registerType<T> time — one pair per C++
+// component type that has a Lua binding: `reader_` hands Lua a reference
+// to the live row, so a usertype property write lands in place;
+// `copyReader_` hands Lua a copy, so no usertype route reaches the row.
 using LuaColumnRowReader =
     std::function<sol::object(sol::state_view, IREntity::IComponentData *, int)>;
 
@@ -43,6 +44,7 @@ using LuaColumnRowReplacer =
 
 struct LuaCppColumnAccessor {
     LuaColumnRowReader reader_;
+    LuaColumnRowReader copyReader_;
     LuaColumnRowReplacer replacer_;
 };
 
@@ -54,18 +56,30 @@ struct LuaCppColumnAccessor {
 class LuaCppColumnView {
   public:
     LuaCppColumnView() = default;
+    /// `readOnly` marks a column the system declared under `reads`: `at`
+    /// returns a copy of the row, so a property write on it never reaches
+    /// the column, and `setAt` raises instead of writing.
     LuaCppColumnView(
-        IREntity::IComponentData *data, const LuaCppColumnAccessor *accessor, int length
+        IREntity::IComponentData *data,
+        const LuaCppColumnAccessor *accessor,
+        int length,
+        bool readOnly = false
     )
         : m_data{data}
         , m_accessor{accessor}
-        , m_length{length} {}
+        , m_length{length}
+        , m_readOnly{readOnly} {}
 
     sol::object at(int row, sol::this_state ts) const {
-        return m_accessor->reader_(sol::state_view{ts}, m_data, row);
+        const LuaColumnRowReader &reader =
+            m_readOnly ? m_accessor->copyReader_ : m_accessor->reader_;
+        return reader(sol::state_view{ts}, m_data, row);
     }
 
     void setAt(int row, const sol::object &value, sol::this_state ts) const {
+        if (m_readOnly) {
+            throw sol::error{"setAt on a column the system listed under 'reads'"};
+        }
         m_accessor->replacer_(sol::state_view{ts}, m_data, row, value);
     }
 
@@ -77,6 +91,7 @@ class LuaCppColumnView {
     IREntity::IComponentData *m_data = nullptr;
     const LuaCppColumnAccessor *m_accessor = nullptr;
     int m_length = 0;
+    bool m_readOnly = false;
 };
 
 // View of one Lua-defined component column inside an archetype tick.
@@ -85,9 +100,10 @@ class LuaCppColumnView {
 class LuaTypedColumnView {
   public:
     LuaTypedColumnView() = default;
-    LuaTypedColumnView(IComponentDataLuaTyped *data, int length)
+    LuaTypedColumnView(IComponentDataLuaTyped *data, int length, bool readOnly = false)
         : m_data{data}
-        , m_length{length} {}
+        , m_length{length}
+        , m_readOnly{readOnly} {}
 
     sol::object getField(int row, const std::string &fieldName, sol::this_state ts) const {
         const int fieldIdx = m_data->findFieldIndex(fieldName);
@@ -98,6 +114,9 @@ class LuaTypedColumnView {
     }
 
     void setField(int row, const std::string &fieldName, const sol::object &value) const {
+        if (m_readOnly) {
+            throw sol::error{"setField on a column the system listed under 'reads'"};
+        }
         const int fieldIdx = m_data->findFieldIndex(fieldName);
         if (fieldIdx < 0) {
             return;
@@ -110,6 +129,9 @@ class LuaTypedColumnView {
     }
 
     void setRow(int row, const sol::table &values) const {
+        if (m_readOnly) {
+            throw sol::error{"setRow on a column the system listed under 'reads'"};
+        }
         m_data->writeRowFromTable(row, values);
     }
 
@@ -120,6 +142,7 @@ class LuaTypedColumnView {
   private:
     IComponentDataLuaTyped *m_data = nullptr;
     int m_length = 0;
+    bool m_readOnly = false;
 };
 
 } // namespace IRScript

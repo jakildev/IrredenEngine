@@ -63,6 +63,27 @@ registered storage implementation's `appendDefaultRow()`; implementations
 that cannot default-construct a row must reject that path, and callers must
 supply an explicit value through the typed API.
 
+### Component traits and staged notes
+
+Three variable templates in `ir_entity_types.hpp`, specialized in the
+component's own header, are recorded per `ComponentId` by `registerComponent<T>`
+(runtime-registered components get the defaults); the contracts are in
+[static residents](../../docs/design/static-residents.md):
+
+- `kStaticGuard<T>` (`NONE` / `INPUT` / `DERIVED`), read by the system layer
+  through `EntityManager::staticGuard(id)`.
+- `kClearedByForeignMove<T>`: dropped by every archetype move that does not
+  name it. Each node caches the bit, so other moves pay one boolean test.
+- `kTracksInputChanges<T>`: a parent-link change, the parent's destruction or a
+  `setComponent` overwrite drops the cleared components down the tracked subtree.
+
+Every move that drops a cleared component, by name or not, logs the id for one
+main-thread consumer (`takeTrackedChanges`); `stageEntityNote` /
+`takeEntityNotes` carry opaque notes from any thread to it.
+`EngineAttach<T>` restricts attaching `T` (`C_Settled`) to
+`attachEngineComponentDeferred<T>(id, EngineAttachKey<T>)`: typed lanes require
+`GenericAttachable<T>`, by-id and restore lanes refuse, move primitives assert.
+
 ## Record lookup
 
 - `findRecord(id)` is the non-inserting probe for ids that may be dead or not
