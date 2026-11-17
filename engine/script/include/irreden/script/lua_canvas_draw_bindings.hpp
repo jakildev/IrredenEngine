@@ -510,22 +510,25 @@ inline void bindCanvasDraw(
         );
     };
 
-    // `path` is relative to the image base. The same file loads once: a
-    // second load returns the first handle and counts one more reference,
-    // which `releaseImage` gives back.
+    // `path` is relative to the image base, or an absolute path the script's
+    // grants hold (what the user picked in `IRDialog.open`). The same file
+    // loads once: a second load returns the first handle and counts one more
+    // reference, which `releaseImage` gives back. The grant set is a LuaScript
+    // member that outlives this closure.
+    const PathGrants *grants = &script.pathGrants();
     canvas["loadImage"] = statefulLuaFunction(
-        [canonicalImageBase, loadImage](
+        [canonicalImageBase, loadImage, grants](
             const std::string &path
         ) -> std::tuple<sol::optional<lua_Integer>, sol::optional<std::string>> {
             constexpr const char *kCaller = "IRCanvas.loadImage";
             const std::optional<std::filesystem::path> resolved =
-                IRUtility::resolveContainedPath(canonicalImageBase, path);
+                resolveReadablePath(*grants, canonicalImageBase, path);
             if (!resolved) {
                 return {
                     sol::nullopt,
                     std::string(kCaller) + ": path '" + path +
-                        "' must be relative to the image base and stay inside it (no absolute "
-                        "path, no '..', no symlink out)"
+                        "' must be relative to the image base and stay inside it (no '..', no "
+                        "symlink out), or an absolute path the user picked in IRDialog.open"
                 };
             }
             std::string error;

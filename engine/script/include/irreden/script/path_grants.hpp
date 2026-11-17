@@ -9,7 +9,7 @@
 namespace IRScript {
 
 /// The absolute paths a Lua session may read outside its base directories.
-/// A confined reader (`IRFile`, the `IRGui` image widget) resolves a
+/// A confined reader (`IRFile`, the `IRGui` and `IRCanvas` image loaders) resolves a
 /// root-relative path through `IRUtility::resolveContainedPath` and an absolute
 /// one through this set, which starts empty and which no Lua function adds to:
 /// only C++ grants, and the engine does so for exactly what the user picked in

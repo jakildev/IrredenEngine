@@ -70,7 +70,9 @@ registers its canvas under the given name. Every option key is checked
 before anything is queued, so a typo raises at the call. `loadImage` reads
 only under the binding's image base (the run directory unless
 `bindLuaCanvasDraw(imageBase)` names another), as `IRGui.makeImage` does, and
-answers `nil, reason` for a path outside it or a file it cannot decode.
+answers `nil, reason` for a path outside it or a file it cannot decode. The
+one exception is an absolute path the user picked in `IRDialog.open`
+([native file dialog](native-file-dialog.md)).
 
 ## Decisions
 

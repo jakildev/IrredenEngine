@@ -118,8 +118,8 @@ of run, a capture run included: the bug surfaces where the tests are.
 
 ### 3. A picked path is granted, not trusted
 
-Lua file access is confined. `IRFile` and the `IRGui` image widget resolve a
-path with `IRUtility::resolveContainedPath`, which refuses anything absolute
+Lua file access is confined. `IRFile`, the `IRGui` image widget and
+`IRCanvas.loadImage` resolve a path with `IRUtility::resolveContainedPath`, which refuses anything absolute
 and anything that leaves the base directory. A panel returns arbitrary
 absolute paths, so something has to carry "the user chose this" to those
 readers.
@@ -137,7 +137,8 @@ set holds it.** `PathGrants` lives on `LuaScript`:
   from `~/Pictures` does not make `~/Pictures` readable. **A picked folder
   grants its whole subtree**, which is what choosing a folder means.
 - **Grants are read-only.** `IRFile.readText`, `IRFile.mtime`, `IRFile.list`,
-  `IRGui.makeImage` and `IRGui.setImagePath` consult them;
+  `IRGui.makeImage`, `IRGui.setImagePath` and `IRCanvas.loadImage` consult
+  them;
   `IRFile.writeText` does not. A save panel would be a separate grant kind.
 - **Grants last for the session** (the `LuaScript`'s lifetime) and are not
   persisted. A creation that wants "recent files" stores the paths and asks
@@ -228,8 +229,9 @@ Rejected alternatives:
   check and the backend argument builders (`test/window/file_dialog_test.cpp`);
   the grant set (`test/script/path_grants_test.cpp`); and the Lua seam: option
   validation, the grant reaching `IRFile`, the capture-run refusal reaching
-  Lua (`test/script/lua_file_dialog_bindings_test.cpp`). The image widget's
-  grant case is in `test/script/lua_widget_image_test.cpp`.
+  Lua (`test/script/lua_file_dialog_bindings_test.cpp`). The image loaders'
+  grant cases are in `test/script/lua_widget_image_test.cpp` and
+  `test/script/lua_canvas_draw_image_test.cpp`.
 - `fleet-run --timeout 120 IRLuaWidgetsDemo --file-dialog-fixture auto --window-mode normal`
   — the real panel, by hand: it opens 30 ticks in, and the log prints
   `LUA_WIDGETS FILEDIALOG before` / `closed` with equal `frame=` / `tick=`

@@ -213,6 +213,23 @@ TEST_F(LuaCanvasDrawImageTest, APathOutsideTheImageBaseNeverReachesTheDecoder) {
     EXPECT_TRUE(m_decodedPaths.empty());
 }
 
+TEST_F(LuaCanvasDrawImageTest, AGrantedAbsolutePathLoadsAndNothingBesideItDoes) {
+    const fs::path outside = m_tree.root_ / "outside.png";
+    writeProbePng(m_tree.root_ / "beside.png");
+    m_lua.lua()["outside"] = outside.string();
+    m_lua.lua()["beside"] = (m_tree.root_ / "beside.png").string();
+    ASSERT_TRUE(m_lua.pathGrants().grantFile(outside));
+    EXPECT_TRUE(scriptSucceeds(R"lua(
+        local handle, err = IRCanvas.loadImage(outside)
+        assert(type(handle) == 'number' and handle > 0, tostring(err))
+        local refused, why = IRCanvas.loadImage(beside)
+        assert(refused == nil)
+        assert(why:find('image base', 1, true), why)
+    )lua"));
+    ASSERT_EQ(m_decodedPaths.size(), 1u);
+    EXPECT_EQ(fs::path(m_decodedPaths[0]), outside);
+}
+
 TEST_F(LuaCanvasDrawImageTest, ImageQueuesOneCommandCarryingItsOptions) {
     EXPECT_TRUE(scriptSucceeds(R"lua(
         local handle = IRCanvas.loadImage('probe.png')
