@@ -144,10 +144,34 @@ Fog-pass pipelines are unchanged: `render-verify --target IRFogDemo` reads the
 same figures on all 66 rows, parent and head, and `IRLightingCombined
 --auto-screenshot 5` captures are byte-identical.
 
+### Cost
+
+Release, default configuration on both arms (no `IR_PERAXIS_*` variable set),
+five interleaved parent/head pairs per case, every run `QUIET=guarded`. Data,
+driver and per-row tables: `docs/perf/voxel-receiver-yaw-continuity/`. Frame
+rows pass the 1.10 point gate, which is rule (i) of
+`docs/design/gpu-stage-timing-cost-model.md` § "State the noise bound":
+
+- Fog-free surface-lighting matrix (`IRCanvasStress` shadowbox, 20 cases): the
+  highest frame ratio on a case that changes route is 1.052 (per-axis, zoom 1,
+  no overlap). The highest in the whole matrix is 1.069 (steady 1.095), and it
+  is on a cardinal case whose route is the same on both arms.
+- Million control (`IRPerfGrid`, fog pass, the no-change arm): 0.969 to 1.052
+  over the six cases. Both arms register the same GPU stage set.
+
+The surface draw does cost GPU time that the paced frame hides. Per-axis, zoom
+1, no overlap: `perAxisSurfaceFb` reads 2.21 ms where the parent spent 0.26 ms
+in scatter and 0.10 ms in compute lighting. The GPU envelope goes from 3.91 to
+5.23 ms, while the frame moves only from 8.71 to 9.16 ms. With overlapping
+casters the per-axis envelope reads 0.94 to 1.05 times the parent. On the lit
+per-axis cases at base subdivision, `computeSunShadow` falls from 0.13–0.30 ms
+to 0.01–0.06 ms, and at subdivision 4 from 0.32–0.39 ms to 0.18–0.20 ms. If a
+later scene is
+GPU-bound on a large unoccluded rotating receiver, the lever is hoisting the
+per-face terms (below).
+
 ### Not yet measured
 
-- The cost gate: Release, five interleaved parent/head pairs of the million
-  control and the fog-free surface-lighting matrix under a benchmark lease.
 - OpenGL: every reading here is Metal.
 - Pipelines that register a fog pass: unchanged by stage 1. Stage 2 (#5123)
   measures them.
