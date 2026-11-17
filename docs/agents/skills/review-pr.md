@@ -164,7 +164,9 @@ When the repo defines an **acceptance grader** and the body carries `Closes
 #N`, dispatch it (Agent tool) with the PR and issue numbers — concurrently
 with step 4; it needs step 1's metadata, not your findings. It grades each
 planned criterion met / unmet / unverifiable from the PR's `## Acceptance
-evidence`. Fold the fragment in as `### Acceptance (issue #N)` and mirror
+evidence`. Fold it in as `### Acceptance (issue #N)`: the count of met
+criteria, then the grader's row for each criterion graded unmet or
+unverifiable (the met rows stay in your context, not on the page). Mirror
 every unmet criterion into the top-level `### Needs-fix` (or `###
 Blockers`) list — blocking items never live only inside the fragment. Skip
 when there is no grader, no `Closes #N`, or no planned criteria.
@@ -192,6 +194,8 @@ merging is the human's call.
 
 **Verdict:** <approve | needs-fix>   (a Blockers section rides on needs-fix)
 
+<one sentence: why this verdict>
+
 ### Blockers
 - <path:line> — <issue> — <suggested fix>
 
@@ -208,7 +212,10 @@ merging is the human's call.
 - <non-obvious good decision, if any>
 
 ### Acceptance (issue #N)
-<the acceptance grader's table, when step 4b ran>
+<from the grader's table, when step 4b ran: `7 of 7 met`, then its row for each criterion not met>
+
+### Checked
+- <what you ran or read yourself, one line each; an inherited or unread check is named here>
 
 ### Test plan the author should run before merge
 - [ ] <...>
@@ -218,6 +225,13 @@ merging is the human's call.
 ```
 
 Cite `file:line` and a concrete fix for every issue; drop empty sections.
+The `**Verdict:**` line carries the verdict word alone (the verdict wrapper
+parses it); the reason goes on the line below. A review does not restate
+the PR (`commit-and-push` `procedures/pr-body.md` § "What the page is
+for"): no paragraph describing what the change does, no row for a
+criterion that is met, no account of how the review went. An approve with
+no findings is the verdict, its sentence, the acceptance count and
+`### Checked` — about ten lines.
 The `fleet-review` marker is written only when `FLEET_DISPATCH_ID` is set
 (a dispatched fleet reviewer); an interactive human drops it. It lets the
 verdict wrapper recognise this dispatch's own review after a swept claim.

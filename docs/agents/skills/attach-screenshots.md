@@ -19,7 +19,7 @@ that needs a repo-specific value names its **delta key** in bold.
 | Delta key | What it is | Engine value |
 |---|---|---|
 | **repo** | The `gh --repo` slug / raw-URL owner-repo path. | `jakildev/IrredenEngine` |
-| **raw URL base** | The `raw.githubusercontent.com` prefix used in the emitted markdown. | `https://raw.githubusercontent.com/jakildev/IrredenEngine` |
+| **raw URL base** | The URL prefix the emitted markdown puts before `<MEDIA_SHA>/<path>`. A private repository must use `https://github.com/<owner>/<repo>/raw`: the `raw.githubusercontent.com` host answers 404 without a token, so the image shows broken on the PR page, while the `github.com` form is fetched with the viewer's own session. | `https://raw.githubusercontent.com/jakildev/IrredenEngine` |
 | **default branch** | The ref the "before" pass captures against. | `master` |
 | **default demo** | Fallback demo when the diff touches only engine render code. | `IRShapeDebug` |
 | **visual-file globs** | Paths whose change triggers this skill. | `engine/render/**`, `engine/prefabs/irreden/render/**`, `engine/render/src/shaders/**` (`.glsl`, `.metal`, `.hpp` in shaders dir), `creations/demos/*/src/**`, `creations/demos/*/main*.cpp`, any `*.glsl` / `*.metal` anywhere |
@@ -207,27 +207,50 @@ re-run after a recapture publishes again and prints the new SHA.
 
 ### 8. Emit the markdown snippet
 
+`<base>` below is `<raw URL base>/<MEDIA_SHA>/<screenshot output root>/<BRANCH>`.
+
 ```markdown
 ## Screenshots
 
-<details>
-<summary>zoom1_origin</summary>
+**zoom4_yaw45** — <one line: what to look at>
 
 | Before | After |
 |--------|-------|
-| ![](<raw URL base>/<MEDIA_SHA>/<screenshot output root>/<BRANCH>/zoom1_origin-before.png) | ![](<raw URL base>/<MEDIA_SHA>/<screenshot output root>/<BRANCH>/zoom1_origin-after.png) |
+| ![before](<base>/zoom4_yaw45-before.png) | ![after](<base>/zoom4_yaw45-after.png) |
+
+Clip: ![](<base>/<demo-name>-clip.gif)
+[full clip (mp4)](<base>/<demo-name>-clip.mp4)
+
+<details>
+<summary>9 more pairs</summary>
+
+**zoom1_origin**
+
+| Before | After |
+|--------|-------|
+| ![before](<base>/zoom1_origin-before.png) | ![after](<base>/zoom1_origin-after.png) |
+
+... (one label line and table per remaining shot)
 
 </details>
-
-Clip: ![](<raw URL base>/<MEDIA_SHA>/<screenshot output root>/<BRANCH>/<demo-name>-clip.gif)
-[full clip (mp4)](<raw URL base>/<MEDIA_SHA>/<screenshot output root>/<BRANCH>/<demo-name>-clip.mp4)
-
-... (one `<details>` block per shot label, each followed by the same Clip
-line when `CLIP_ENABLED=1`; omit the Clip line entirely when it is 0)
 ```
 
-The Clip line is unchanged (same `<demo-name>-clip.{gif,mp4}` names) whether
-step 7 composed a paired or a single-pane clip.
+- **The lead pair is visible.** Pick the shot where the change shows best
+  and put it first, outside any `<details>`, with one line saying what to
+  look at. The reader sees it without a click. An after-only capture (new
+  demo, no before arm) shows the single image.
+- **Every other pair goes in one `<details>` block**, not one block per
+  shot.
+- **A change meant to have no visual effect embeds no image.** Compare each
+  pair (`cmp -s <before> <after>`); when all match, the section is one
+  line, `No visual change: <N> of <N> pairs identical, <demo-name>`, and
+  the published pairs stay on the **media branch** as the record. When the
+  change is meant to be visible and every pair matches, the shot is wrong
+  (§ "Camera-yaw fixes need a non-cardinal shot"), not the section.
+- **Placement:** straight after the PR body's `## Summary`.
+- The Clip lines appear once, under the lead pair, when `CLIP_ENABLED=1`
+  (same `<demo-name>-clip.{gif,mp4}` names for a paired or a single-pane
+  clip); omit them when it is 0.
 
 The ref segment of every URL is `MEDIA_SHA` from step 7, already final —
 nothing downstream substitutes it. Never the **media branch** name (it
@@ -302,7 +325,7 @@ stash@{N}`, confirm with `git status`, re-invoke.
 ## Scope
 
 Single-demo capture per invocation against the repo's own demo
-directories; no pixel diffing (reviewers eyeball the pair; a repo may layer
+directories; no pixel diffing past step 8's byte-identity check (reviewers eyeball the pair; a repo may layer
 a diff tool and a pass/fail comparator on these PNGs). The **media branch**
 only grows — never rewrite, force-push or delete it, or remove another
 branch's directory there; each branch owns its own, every pinned URL

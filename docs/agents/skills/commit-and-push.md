@@ -158,8 +158,8 @@ the Write tool to the worktree-local, gitignored `.pr-body.md` and pass
 `--body-file`. `--body "$var"` is forbidden (an unset variable opens an
 empty body and nothing reports it), as is `$(cat <<'EOF' …)` (the
 shell-substitution gate) and `printf … > file` (the Bash tool blocks `>`).
-If the **screenshot skill** ran, fold its snippet in as printed — its URLs
-are already pinned to the media-branch commit that carries the captures.
+If the **screenshot skill** ran, fold its snippet in as printed, straight
+after the summary — its URLs are already pinned to the media-branch commit.
 
 Single-task common case:
 
@@ -238,8 +238,8 @@ and verify the number independently before proceeding.
   evidence` table with one row per criterion; fewer rows than criteria is
   incomplete. A criterion graded not-shipped downgrades `Closes #N` to
   `Refs #N`.
-- **Test plan** items record verification already run, written from
-  observed output; no unticked `- [ ]` boxes.
+- **Test plan** (a body with no evidence table) records verification
+  already run, written from observed output; no unticked `- [ ]` boxes.
 - **Duplicate PR.**
   ```bash
   gh pr list --repo <repo> --state open --json number,body \
