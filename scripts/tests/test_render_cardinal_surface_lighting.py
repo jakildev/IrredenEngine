@@ -402,7 +402,6 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
         systems = ROOT / "engine/prefabs/irreden/render/systems"
         producer = (systems / "system_lighting_to_trixel.hpp").read_text()
         dispatch = extract_function(producer, "dispatchOverflowLighting")
-        glsl = (shader_directory("glsl") / "c_light_overflow_faces.glsl").read_text()
         bindings = {
             name: binding
             for binding, name in glsl_image_bindings(glsl_include_closure(
