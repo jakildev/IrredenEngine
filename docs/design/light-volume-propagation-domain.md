@@ -48,9 +48,10 @@ Frames without spotlight IDs do not consume or propagate the auxiliary volume.
 ## Per-light falloff
 
 Each local light uploads an effective radius clamped to the 32-step global
-budget. A zero radius retains the historical 32-cell behavior. Boundary seed
-discount and occlusion-aware relocation use the radius class assigned to the
-light.
+budget. A zero radius is an explicit 32-cell class, so it retains the
+historical behavior only when every eligible light shares that class. Boundary
+seed discount and occlusion-aware relocation use the radius class assigned to
+the light.
 
 A frame runs one shared-falloff pass per radius class, widest first. Each pass
 seeds only its class and runs `r` iterations with `stepFalloff = 1 / r` in the

@@ -548,6 +548,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             }
             if (!propagationPasses_.empty()) {
                 const auto &firstPass = propagationPasses_.front();
+                params_.lightCount_ = static_cast<int>(firstPass.lightCount_);
                 params_.stepFalloff_ = firstPass.stepFalloff_;
                 params_.propagationOrigin_ = ivec4(firstPass.dispatch_.origin_, 0);
             } else {
@@ -556,9 +557,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                 params_.stepFalloff_ = 1.0f / static_cast<float>(fallbackRadius);
                 params_.propagationOrigin_ = ivec4(0);
             }
-            if (propagationPasses_.empty()) {
-                paramsBuf_->subData(0, sizeof(LightVolumeParams), &params_);
-            }
+            paramsBuf_->subData(0, sizeof(LightVolumeParams), &params_);
         }
 
         // Phase: dispatch the GPU clear + seed + propagate
@@ -596,13 +595,16 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             IR_PROFILE_BLOCK("ComputeLightVolume::Populate", IR_PROFILER_COLOR_RENDER);
 
             lightSourceBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_LightSourceBuffer);
-            for (const auto &pass : propagationPasses_) {
-                params_.lightCount_ = static_cast<int>(pass.lightCount_);
-                params_.stepFalloff_ = pass.stepFalloff_;
-                params_.propagationOrigin_ =
-                    ivec4(pass.dispatch_.origin_, static_cast<int>(pass.lightOffset_));
-                paramsBuf_->subData(0, sizeof(LightVolumeParams), &params_);
-                paramsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
+            for (std::size_t passIndex = 0; passIndex < propagationPasses_.size(); ++passIndex) {
+                const auto &pass = propagationPasses_[passIndex];
+                if (passIndex > 0) {
+                    params_.lightCount_ = static_cast<int>(pass.lightCount_);
+                    params_.stepFalloff_ = pass.stepFalloff_;
+                    params_.propagationOrigin_ =
+                        ivec4(pass.dispatch_.origin_, static_cast<int>(pass.lightOffset_));
+                    paramsBuf_->subData(0, sizeof(LightVolumeParams), &params_);
+                    paramsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
+                }
 
                 seedProgram_->use();
                 volume.getReadTexture()
