@@ -1480,8 +1480,9 @@ the full rotation, which is the part #1396 did not do).
   **MRT G-buffer / post-composite per-fragment** approach (the pre-implementation
   findings note below) is **rejected**: the engine keeps lighting at trixel
   resolution (hard product constraint — no fragment-rate lighting). Sun
-  visibility on voxel faces is the one exception: by default the scatter
-  fragment takes the exact query at its own point on the face
+  visibility on voxel faces is the one exception: by default, on a pipeline
+  without a fog pass, the scatter fragment takes the exact query at its own
+  point on the face
   ([voxel receiver yaw continuity](voxel-receiver-yaw-continuity.md)). The two
   cross-canvas maps stay **world-space and SHARED** — the sun-shadow depth SSBO
   and the 128³ light volume are sampled by world-pos reconstructed per-axis

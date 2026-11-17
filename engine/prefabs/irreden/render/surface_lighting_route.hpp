@@ -77,8 +77,10 @@ inline Route resolveRoute(
     }
     const C_PerAxisSurfaceLighting *surfaceLighting =
         IREntity::singletonOrNull<C_PerAxisSurfaceLighting>();
-    const bool surfaceLightingEnabled = surfaceLighting != nullptr && surfaceLighting->enabled_;
     const bool fogPassRegistered = findSystem(FOG_TO_TRIXEL) != kNullSystemId;
+    const bool surfaceLightingEnabled =
+        surfaceLighting != nullptr &&
+        IRPrefab::PerAxisSurfaceLighting::enabledFor(*surfaceLighting, fogPassRegistered);
     const bool cardinalCandidate =
         worldSurfaceLightingEligible && mainVoxelPool_ != nullptr &&
         (perAxisCanvases_ == nullptr || !perAxisCanvases_->isAllocated());

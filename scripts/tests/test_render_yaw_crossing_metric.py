@@ -52,8 +52,9 @@ class YawCrossingMetricTest(unittest.TestCase):
             self.write_frame(offset, range(10, edge), **kwargs)
 
     def run_cli(self, *args):
+        """Grades the whole synthetic frame; the receiver-top region needs the fixture's size."""
         result = subprocess.run(
-            [sys.executable, str(SCRIPT), "grade", str(self.root), *args],
+            [sys.executable, str(SCRIPT), "grade", str(self.root), "--region", "frame", *args],
             capture_output=True, text=True)
         lines = result.stdout.splitlines()
         return result.returncode, json.loads(lines[0]), lines[1:]
@@ -118,6 +119,14 @@ class YawCrossingMetricTest(unittest.TestCase):
             capture_output=True, text=True)
         self.assertEqual(result.returncode, 2)
         self.assertIn("yaw_+2.png", json.loads(result.stdout)["error"])
+
+    def test_receiver_region_rejects_a_frame_of_another_size(self):
+        self.write_edges([20, 21, 22, 23, 24])
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "grade", str(self.root)],
+            capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("fixture requires 2560x1440", json.loads(result.stdout)["error"])
 
     def test_yaws_wrap_below_the_cardinal(self):
         self.assertAlmostEqual(metric.yaw_radians(0.0, 0.25, -1), math.radians(359.75))

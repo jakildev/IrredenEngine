@@ -16,12 +16,28 @@ Both call `worldSurfaceLighting`, which varies only sun visibility across a
 face. Ambient occlusion, the local-light sample and the material are taken once
 per face on either side of the crossing.
 
-The switch is `C_PerAxisSurfaceLighting::enabled_`, on by default.
-`IR_PERAXIS_SURFACE_LIGHTING=0` (or `IRPrefab::PerAxisSurfaceLighting::setEnabled(false)`)
-selects the per-face sampled receiver: while rotating, one query at the face
-centre (`perAxisSunShadowFactor`) whose result the lighting kernel applies to
-the whole face. That receiver is kept for comparisons and as the fallback
-below; it is not the default anywhere the surface routes are eligible.
+The switch is `C_PerAxisSurfaceLighting::enabled_`, unset by default. Unset,
+it is on for a pipeline that does not register `FOG_TO_TRIXEL` and off for one
+that does (`IRPrefab::PerAxisSurfaceLighting::enabledFor`). An explicit value
+applies to every pipeline: `IR_PERAXIS_SURFACE_LIGHTING=1` or `setEnabled(true)`
+admits the surface routes on a fog-pass pipeline as well, and
+`IR_PERAXIS_SURFACE_LIGHTING=0` or `setEnabled(false)` selects the per-face
+sampled receiver everywhere: while rotating, one query at the face centre
+(`perAxisSunShadowFactor`) whose result the lighting kernel applies to the
+whole face. That receiver is kept for comparisons and as the fallback below.
+
+## Staged plan
+
+The default is one model on pipelines **without** a fog pass. That is stage 1.
+A pipeline that registers `FOG_TO_TRIXEL` keeps the compute default at both yaw
+classes (one query per stored micro-face at cardinal, one per base-resolution
+face while rotating) until stage 2,
+[#5123](https://github.com/jakildev/IrredenEngine/issues/5123), flips it with
+its own moved-row inventory, `light-verify` re-bless and million-control cost
+gate. The fog-pass demos (`perf_grid`, `lua_perf_grid`, `fog_demo`,
+`random_voxels`, `skeletal_demo`, `chunk_streaming_smoke`, `scene_reset`,
+`persist_roundtrip`, `reposition_stress`, `IRLightingCombined`,
+`IRCanvasStress --fog-reveal`) therefore render as they did before stage 1.
 
 The per-axis design's earlier resolution, "no fragment-rate lighting", is
 superseded for sun visibility on voxel faces: the query is geometric and exact
@@ -41,6 +57,7 @@ classes:
 | The main canvas lacks AO, sun-shadow or light-volume resources, or the pipeline has no `COMPUTE_SUN_SHADOW` / `TRIXEL_TO_FRAMEBUFFER` | Incomplete lighting pipeline |
 | A fog pass is registered and a source is line-of-sight gated | The gated source keeps its compute march |
 | A fog pass is registered and a glitch subject is active | The composite does not fog the glitch presentation |
+| A fog pass is registered and the switch is unset | Stage 1 default; stage 2 (#5123) removes it |
 | The switch is off | Comparison arm |
 
 Without a fog pass, an active cardinal glitch subject keeps the continuous
@@ -52,8 +69,11 @@ the fallbacks. Fog composes once: in the composite on the surface routes
 
 Route tests: `scripts/tests/test_render_per_axis_surface_lighting.py`,
 `scripts/tests/test_render_cardinal_surface_lighting.py` and the
-`SurfaceFogRoute.*` / `PerAxisSurfaceLightingTest.*` cases in
-`test/render/per_axis_surface_lighting_test.cpp`.
+`SurfaceFogRoute.*` / `PerAxisSurfaceLightingTest.*` /
+`PerAxisSurfaceLightingDefault.*` cases in
+`test/render/per_axis_surface_lighting_test.cpp`. Each harness runs the switch
+unset on a fog-pass pipeline (compute fallback) and on a fog-free one (surface
+route), and fails when `enabledFor` ignores the fog pass.
 
 ## Measurements
 
@@ -100,13 +120,8 @@ four cardinal yaws pass with the switch unset, `0` and `1`.
 - The cost gate: Release, five interleaved parent/head pairs of the million
   control and the fog-free surface-lighting matrix under a benchmark lease.
 - OpenGL: every reading here is Metal.
-- Pipelines that register a fog pass: with the switch on by default they no
-  longer fall back to compute lighting. A main canvas with fog and no
-  line-of-sight source or active glitch subject composes fog in the composite
-  (`SurfaceFogRoute::COMPOSE`); a main canvas without fog takes the surface
-  routes unfogged. Either way the cardinal frame there moves as well, from one
-  query per stored micro-face to one per fragment. The rows that move and the
-  million control's frame rows have not been re-read.
+- Pipelines that register a fog pass: unchanged by stage 1. Stage 2 (#5123)
+  measures them.
 
 ### Alternatives measured
 

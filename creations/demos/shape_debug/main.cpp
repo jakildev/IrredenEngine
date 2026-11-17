@@ -1593,8 +1593,8 @@ void registerCliArgs() {
     args.flag("--no-local-lights", "Disable local lights for lighting isolation");
     args.flag(
         "--surface-lighting",
-        "Force continuous per-axis surface lighting on (the default; overrides "
-        "IR_PERAXIS_SURFACE_LIGHTING=0)"
+        "Force continuous per-axis surface lighting on (the default without a fog "
+        "pass; overrides IR_PERAXIS_SURFACE_LIGHTING=0)"
     );
     args.flag("--depth-color", "Tint each voxel by local iso-depth (front=red, back=blue)");
     args.flag("--checkerboard", "Tint alternating voxels darker (flickers; off by default)");

@@ -59,7 +59,7 @@ void require(bool okay,const char* label){
  if(!okay){std::fprintf(stderr,"%s\n",label);std::exit(1);}
 }
 struct C_TrixelCanvasRenderBehavior {bool useCameraPositionIso_=true;} behavior;
-struct C_PerAxisSurfaceLighting {bool enabled_=true;} surfaceLighting;
+struct C_PerAxisSurfaceLighting {std::optional<bool> enabled_=true;} surfaceLighting;
 bool hasBehavior=true;
 namespace IREntity {
 template<class T> T* singletonOrNull(){return &surfaceLighting;}
@@ -119,7 +119,7 @@ void select(int entity){
 
 CHECKS = r"""
 int main(){
- for(int bad=-1;bad<19;++bad){
+ for(int bad=-1;bad<21;++bad){
   mainCanvasTextures_=mainVoxelPool_=mainCanvasAO_=mainCanvasSunShadow_=mainCanvasLightVolume_=&resource;
   perAxisCanvases_=nullptr;axes.allocated=true;
   systems[0]=systems[1]=true;systems[2]=systems[3]=false;
@@ -141,9 +141,12 @@ int main(){
   if(bad==10)IRRender::overlay=DebugOverlayMode::OTHER;
   if(bad==11)IRRender::depthDebug=true;if(bad==12)behavior.useCameraPositionIso_=false;
   if(bad==13)hasBehavior=false;
+  // Unset, the switch admits the route only without a fog pass.
+  if(bad==19){systems[2]=true;surfaceLighting.enabled_.reset();}
+  if(bad==20)surfaceLighting.enabled_.reset();
   producer.cardinalSurfaceLightingEligible_=producer.cardinalSurfaceLightingReady_=true;
   producer.begin();consume();
-  const bool eligible=bad<0||bad==9||bad==16||bad==17||bad==18;
+  const bool eligible=bad<0||bad==9||bad==16||bad==17||bad==18||bad==20;
   require(producer.cardinalSurfaceLightingEligible_==eligible,"producer eligibility");
   require(!cardinalLightingEnabled_,"begin resets readiness before main tick");
   producer.tick(2);consume();require(!cardinalLightingEnabled_,"secondary tick cannot publish");

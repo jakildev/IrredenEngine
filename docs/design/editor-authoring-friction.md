@@ -1051,7 +1051,8 @@ alone.
 
 The editor enables continuous voxel surface lighting by default; an explicit
 `IR_PERAXIS_SURFACE_LIGHTING=0` retains the coarse comparison path. Other creations
-keep their existing default. `IRCanvasStress` uses an analytical SDF floor by
+take it by default when they register no fog pass
+([voxel receiver yaw continuity](voxel-receiver-yaw-continuity.md)). `IRCanvasStress` uses an analytical SDF floor by
 default, so that floor already receives fragment-level shadows independently of
 the voxel setting. Its smaller default zoom also makes voxel-face stepping less
 visible. Adding its legacy per-axis screen-depth resolver to the editor would

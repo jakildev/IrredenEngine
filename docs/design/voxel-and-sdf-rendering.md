@@ -124,8 +124,10 @@ timing on/off. `--suite baseline` preserves the original 16-case reproduction;
 `--case` supports bounded smoke and cross-host slices.
 
 For sun-only receiver comparisons, add `--no-ao --no-local-lights`; the isolated
-scene honors both. `--surface-lighting` enables the existing experimental
-continuous per-axis receiver. It changes where an eligible face samples lighting,
+scene honors both. `--surface-lighting` forces the continuous per-axis
+receiver on, the default on a pipeline without a fog pass
+([voxel receiver yaw continuity](voxel-receiver-yaw-continuity.md)), over an
+ambient `IR_PERAXIS_SURFACE_LIGHTING=0`. It changes where an eligible face samples lighting,
 not its caster geometry, and cardinal/fog/debug paths keep their existing
 eligibility rules. Face-center sampling can turn a narrow real opening between
 two projected solids into an isolated lit cell. The

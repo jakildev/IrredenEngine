@@ -807,8 +807,9 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // A/B kill switch for the lit-vs-albedo overflow screenshots + GPU delta.
         p->overflowLightingDisabled_ = std::getenv("IR_OVERFLOW_LIGHTING_DISABLE") != nullptr;
         const char *surfaceLighting = std::getenv("IR_PERAXIS_SURFACE_LIGHTING");
-        // Creates the switch singleton here, on the main thread. `0` selects the
-        // per-face sampled receiver for comparisons; `1` states the default.
+        // Creates the switch singleton here, on the main thread. `0` forces the
+        // per-face sampled receiver and compute fog lighting, `1` the surface
+        // routes; anything else leaves the switch unset (`enabledFor`).
         IRPrefab::PerAxisSurfaceLighting::state();
         if (surfaceLighting != nullptr &&
             (surfaceLighting[0] == '0' || surfaceLighting[0] == '1') &&
