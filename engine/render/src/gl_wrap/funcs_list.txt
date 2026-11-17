@@ -67,6 +67,7 @@ glGetActiveUniformBlockiv
 glGetAttribLocation
 glGetCompressedTexImage
 glGetError
+glGetInteger64v
 glGetIntegerv
 glGetProgramBinary
 glGetProgramInfoLog

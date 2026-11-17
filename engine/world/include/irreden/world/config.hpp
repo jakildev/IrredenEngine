@@ -244,6 +244,13 @@ class WorldConfig {
             "input_latency_test_delay_ms",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::NUMBER>>(0.0)
         );
+        // Measurement-only: how many presented frames may still be executing
+        // when present() returns (0 serializes CPU and GPU, at most 2). No
+        // creation sets it; a perf preset selects an arm.
+        m_config.addEntry(
+            "max_frames_in_flight",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(1)
+        );
         m_config.addEntry(
             "presented_pick_previous_completed_test_fault",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false)

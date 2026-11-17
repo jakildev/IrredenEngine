@@ -54,6 +54,20 @@ class OpenGLRenderDevice final : public RenderDevice {
         };
     }
 
+    // Frame ends are the per-frame fence queries' own GPU timestamps, so the
+    // probe adds no query and no wait. Frames presented before arming are
+    // still queued and are never reported.
+    void setGpuFrameTimingEnabled(bool enabled) override {
+        RenderDevice::setGpuFrameTimingEnabled(enabled);
+        m_frameCompletions.reset(enabled, FrameEndEvent::GPU_COMPLETE);
+        m_firstProbedSerial = m_submissions.submissionSerial();
+    }
+
+    void setMaxFramesInFlight(std::uint32_t maxFramesInFlight) override {
+        m_maxFramesInFlight =
+            IRMath::min<std::size_t>(maxFramesInFlight, detail::kMaxSelectableSubmissionsInFlight);
+    }
+
     void beginFrame() override {}
 
     void present() override {
@@ -66,7 +80,7 @@ class OpenGLRenderDevice final : public RenderDevice {
             IRWindow::getWindow().swapBuffers();
         }
         m_submissions
-            .throttle(detail::kMaxPresentedSubmissionsInFlight, isFenceAvailable, waitForFence);
+            .throttle(m_maxFramesInFlight, isFenceAvailable, waitForFence, reportRetiredFrame());
     }
 
     // OFFSCREEN window mode: an engine-owned framebuffer stands in for the
@@ -344,7 +358,7 @@ class OpenGLRenderDevice final : public RenderDevice {
 
     void finish() override {
         ENG_API->glFinish();
-        m_submissions.completeAll();
+        m_submissions.completeAll(reportRetiredFrame());
     }
 
     std::uint64_t submissionSerial() const override {
@@ -352,7 +366,7 @@ class OpenGLRenderDevice final : public RenderDevice {
     }
 
     std::uint64_t completedSubmissionSerial() override {
-        return m_submissions.pollCompleted(isFenceAvailable);
+        return m_submissions.pollCompleted(isFenceAvailable, reportRetiredFrame());
     }
 
     GpuTimestampHandle createTimestampPair() override {
@@ -438,8 +452,59 @@ class OpenGLRenderDevice final : public RenderDevice {
         if (query == 0) {
             ENG_API->glGenQueries(1, &query);
         }
+        m_frameCompletions.submitted(steadyClockSeconds);
         ENG_API->glQueryCounter(query, GL_TIMESTAMP);
         m_submissions.endSubmission(query);
+    }
+
+    // Called only for a fence whose submission has finished, so reading its
+    // result does not block.
+    void reportFrameEnd(GLuint query, std::uint64_t serial) {
+        if (!m_frameCompletions.enabled() || serial < m_firstProbedSerial) {
+            return;
+        }
+        GLuint64 endNs = 0;
+        ENG_API->glGetQueryObjectui64v(query, GL_QUERY_RESULT, &endNs);
+        const GlClockOffset offset = glClockOffset();
+        m_frameCompletions.finished(
+            static_cast<double>(endNs) * 1e-9 + offset.glToSteadySeconds_,
+            offset.steadyNowSeconds_,
+            offset.errorSeconds_,
+            endNs != 0
+        );
+    }
+
+    struct FrameEndReporter {
+        OpenGLRenderDevice *device_;
+        void operator()(GLuint query, std::uint64_t serial) const {
+            device_->reportFrameEnd(query, serial);
+        }
+    };
+
+    FrameEndReporter reportRetiredFrame() {
+        return {this};
+    }
+
+    struct GlClockOffset {
+        double glToSteadySeconds_ = 0.0;
+        double steadyNowSeconds_ = 0.0;
+        double errorSeconds_ = 0.0;
+    };
+
+    // The GL clock's current time, read between two steady-clock reads; half
+    // their gap bounds the offset's error. Reading GL_TIMESTAMP does not wait
+    // for queued commands.
+    static GlClockOffset glClockOffset() {
+        GLint64 glNowNs = 0;
+        const double steadyBefore = steadyClockSeconds();
+        ENG_API->glGetInteger64v(GL_TIMESTAMP, &glNowNs);
+        const double steadyAfter = steadyClockSeconds();
+        const double steadyMid = 0.5 * (steadyBefore + steadyAfter);
+        return {
+            .glToSteadySeconds_ = steadyMid - static_cast<double>(glNowNs) * 1e-9,
+            .steadyNowSeconds_ = steadyAfter,
+            .errorSeconds_ = 0.5 * (steadyAfter - steadyBefore),
+        };
     }
 
     static bool isFenceAvailable(GLuint query) {
@@ -456,6 +521,8 @@ class OpenGLRenderDevice final : public RenderDevice {
     }
 
     detail::GpuSubmissionFences<GLuint> m_submissions;
+    std::size_t m_maxFramesInFlight = detail::kMaxPresentedSubmissionsInFlight;
+    std::uint64_t m_firstProbedSerial = 0;
     GpuTimestampHandle m_nextTimestampHandle = 1;
     std::unordered_map<GpuTimestampHandle, OpenGLTimestampPair> m_timestamps;
     mutable bool m_checkedNvxMemoryInfo = false;

@@ -1,6 +1,6 @@
 // IRRender::detail::GpuSubmissionFences is the OpenGL device's submission
 // lifecycle: present() fences each frame, then blocks on the oldest fence
-// until at most kMaxPresentedSubmissionsInFlight frames are unfinished. A fake
+// until at most the selected bound of frames are unfinished. A fake
 // fence stands in for the GL timestamp query: the test decides which
 // submissions the "GPU" has finished and records every blocking wait.
 
@@ -8,18 +8,22 @@
 
 #include <irreden/render/gpu_submission_fences.hpp>
 
+#include <cstdint>
 #include <set>
+#include <utility>
 #include <vector>
 
 namespace {
 
 using IRRender::detail::GpuSubmissionFences;
 using IRRender::detail::kMaxPresentedSubmissionsInFlight;
+using IRRender::detail::kMaxSelectableSubmissionsInFlight;
 
 struct FakeGpu {
     std::set<int> finished_;
     std::vector<int> waits_;
     int nextFence_ = 100;
+    std::size_t bound_ = 2;
 
     auto available() {
         return [this](int fence) { return finished_.count(fence) != 0; };
@@ -39,15 +43,16 @@ struct FakeGpu {
         // Re-issuing a query makes it unavailable until the new frame finishes.
         finished_.erase(fence);
         fences.endSubmission(fence);
-        fences.throttle(kMaxPresentedSubmissionsInFlight, available(), wait());
+        fences.throttle(bound_, available(), wait());
         return fence;
     }
 };
 
-TEST(GpuSubmissionFences, TheCpuRunsTwoPresentedFramesAhead) {
-    // Pinned: raising it re-opens the multi-frame driver stall, lowering it
-    // starves the GPU between frames.
-    EXPECT_EQ(kMaxPresentedSubmissionsInFlight, 2u);
+TEST(GpuSubmissionFences, TheCpuRunsOnePresentedFrameAhead) {
+    // Pinned: raising it ages the input of every GPU-bound frame, lowering it
+    // serializes CPU and GPU.
+    EXPECT_EQ(kMaxPresentedSubmissionsInFlight, 1u);
+    EXPECT_EQ(kMaxSelectableSubmissionsInFlight, 2u);
 }
 
 TEST(GpuSubmissionFences, ThirdUnfinishedPresentBlocksOnTheOldestFrame) {
@@ -104,10 +109,100 @@ TEST(GpuSubmissionFences, AStalledGpuHoldsTheCpuAtTheBoundEveryFrame) {
     FakeGpu gpu;
     for (int frame = 0; frame < 10; ++frame) {
         gpu.present(fences);
-        EXPECT_LE(fences.inFlight(), kMaxPresentedSubmissionsInFlight);
+        EXPECT_LE(fences.inFlight(), gpu.bound_);
     }
     EXPECT_EQ(gpu.waits_.size(), 8u);
     EXPECT_EQ(fences.completedSerial(), 8u);
+}
+
+TEST(GpuSubmissionFences, BoundOneBlocksTheSecondUnfinishedPresentOnThePreviousFrame) {
+    GpuSubmissionFences<int> fences;
+    FakeGpu gpu;
+    gpu.bound_ = kMaxPresentedSubmissionsInFlight;
+
+    const int first = gpu.present(fences);
+    EXPECT_TRUE(gpu.waits_.empty());
+    EXPECT_EQ(fences.inFlight(), 1u);
+    EXPECT_EQ(fences.completedSerial(), 0u);
+
+    const int second = gpu.present(fences);
+    ASSERT_EQ(gpu.waits_.size(), 1u);
+    EXPECT_EQ(gpu.waits_[0], first);
+    EXPECT_EQ(fences.inFlight(), 1u);
+    EXPECT_EQ(fences.completedSerial(), 1u);
+
+    // The waited fence is reused, and the third present waits on the second.
+    EXPECT_EQ(gpu.present(fences), first);
+    ASSERT_EQ(gpu.waits_.size(), 2u);
+    EXPECT_EQ(gpu.waits_[1], second);
+    EXPECT_EQ(fences.completedSerial(), 2u);
+}
+
+TEST(GpuSubmissionFences, BoundOneNeedsNoWaitWhenThePreviousFrameFinished) {
+    GpuSubmissionFences<int> fences;
+    FakeGpu gpu;
+    gpu.bound_ = 1;
+    for (int frame = 0; frame < 5; ++frame) {
+        gpu.finished_.insert(gpu.present(fences));
+    }
+    EXPECT_TRUE(gpu.waits_.empty());
+    EXPECT_EQ(fences.inFlight(), 1u);
+    EXPECT_EQ(fences.completedSerial(), 4u);
+}
+
+TEST(GpuSubmissionFences, BoundZeroWaitsForEveryPresentedFrame) {
+    GpuSubmissionFences<int> fences;
+    FakeGpu gpu;
+    gpu.bound_ = 0;
+    const int first = gpu.present(fences);
+    for (int frame = 1; frame <= 4; ++frame) {
+        const int fence = frame == 1 ? first : gpu.present(fences);
+        // One query serves every frame: each is retired before the next is fenced.
+        EXPECT_EQ(fence, first);
+        ASSERT_EQ(gpu.waits_.size(), static_cast<std::size_t>(frame));
+        EXPECT_EQ(gpu.waits_.back(), fence);
+        EXPECT_EQ(fences.inFlight(), 0u);
+        EXPECT_EQ(fences.completedSerial(), static_cast<std::uint64_t>(frame));
+    }
+}
+
+struct RetiredLog {
+    std::vector<std::pair<int, std::uint64_t>> *log_;
+    void operator()(int fence, std::uint64_t serial) const {
+        log_->push_back({fence, serial});
+    }
+};
+
+TEST(GpuSubmissionFences, EveryRetiringPathReportsEachSubmissionOnceInOrder) {
+    GpuSubmissionFences<int> fences;
+    std::vector<std::pair<int, std::uint64_t>> log;
+    const RetiredLog retired{&log};
+    std::set<int> finished;
+    const auto available = [&finished](int fence) { return finished.count(fence) != 0; };
+    std::vector<int> waits;
+    const auto wait = [&waits](int fence) { waits.push_back(fence); };
+
+    fences.endSubmission(10);
+    fences.endSubmission(11);
+    fences.endSubmission(12);
+    fences.endSubmission(13);
+
+    finished.insert(10);
+    EXPECT_EQ(fences.pollCompleted(available, retired), 1u);
+    fences.throttle(2, available, wait, retired);
+    EXPECT_EQ(waits, std::vector<int>({11}));
+    fences.completeAll(retired);
+
+    const std::vector<std::pair<int, std::uint64_t>> expected{
+        {10, 1}, {11, 2}, {12, 3}, {13, 4}
+    };
+    EXPECT_EQ(log, expected);
+    EXPECT_EQ(fences.completedSerial(), 5u);
+
+    // Retirement is reported once: nothing is left to report.
+    fences.pollCompleted(available, retired);
+    fences.completeAll(retired);
+    EXPECT_EQ(log.size(), 4u);
 }
 
 TEST(GpuSubmissionFences, CompletionRetiresInSubmissionOrder) {

@@ -108,6 +108,9 @@ World::World(
     IRRender::setGuiScale(m_worldConfig["gui_scale"].get_integer());
     IRPrefab::GuiCanvas::setPixelated(m_worldConfig["gui_pixelated"].get_boolean());
     IRRender::setHoveredTrixelVisible(m_worldConfig["hovered_trixel_visible"].get_boolean());
+    IRRender::device()->setMaxFramesInFlight(static_cast<uint32_t>(
+        IRMath::max(m_worldConfig["max_frames_in_flight"].get_integer(), 0)
+    ));
     m_renderer.setPresentedPickPreviousCompletedFault(
         m_worldConfig["presented_pick_previous_completed_test_fault"].get_boolean()
     );
