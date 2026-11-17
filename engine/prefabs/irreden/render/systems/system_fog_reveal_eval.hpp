@@ -24,6 +24,8 @@
 
 namespace IRSystem {
 
+inline constexpr std::uint32_t kFogRevealWindowEntityShift = 12;
+
 namespace detail {
 
 inline void applyFogGateToPool(
@@ -311,6 +313,8 @@ template <> struct System<FOG_REVEAL_EVAL> {
     IRJob::WorkerBlockQueue<IRPrefab::Fog::StampedRecords> stamped_;
     std::vector<std::uint32_t> restampedByWorker_;
     std::uint32_t restampedVoxelsLastFrame_ = 0;
+    std::vector<std::uint32_t> evaluatedByWorker_;
+    std::uint32_t evaluatedSubjectsLastUpdate_ = 0;
 
     static std::vector<IREntity::ArchetypeNode *> matchingNodes(IREntity::Archetype exclude = {}) {
         exclude.insert(IREntity::getComponentType<IRComponents::C_FogGhost>());
@@ -354,8 +358,11 @@ template <> struct System<FOG_REVEAL_EVAL> {
         losRoutes_.begin(observers_, los_);
         settings_ = IREntity::singleton<IRComponents::C_FogRevealSettings>();
         settings_.staggerPeriod_ = IRMath::max(settings_.staggerPeriod_, std::uint32_t{1});
+        settings_.windowPeriod_ = IRMath::max(settings_.windowPeriod_, std::uint32_t{1});
         ++frameCounter_;
-        gate_.begin(activeCanvas_, activePool_, fog_, settings_);
+        const std::uint32_t effectiveCadence =
+            settings_.windowPeriod_ > 1u ? settings_.windowPeriod_ : settings_.staggerPeriod_;
+        gate_.begin(activeCanvas_, activePool_, fog_, settings_, effectiveCadence, true);
 
         const std::vector<IREntity::ArchetypeNode *> nodes = matchingNodes(gate_.queryExclude());
         std::size_t population = 0;
@@ -369,6 +376,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
         }
         const std::size_t slots = static_cast<std::size_t>(IRJob::workerCount()) + 1u;
         restampedByWorker_.assign(slots, 0u);
+        evaluatedByWorker_.assign(slots, 0u);
     }
 
     float verdict(IRMath::vec3 worldPosition, std::uint32_t channels) {
@@ -400,16 +408,32 @@ template <> struct System<FOG_REVEAL_EVAL> {
         const IRComponents::C_WorldTransform &worldTransform,
         IRComponents::C_VoxelSetNew &voxelSet
     ) {
+        const bool windowed = settings_.windowPeriod_ > 1u;
+        if (windowed && !gate_.nodeSettling_ &&
+            revealed.override_ == IRComponents::FogOverride::NONE &&
+            ((static_cast<std::uint64_t>(entity) >> kFogRevealWindowEntityShift) + frameCounter_) %
+                    settings_.windowPeriod_ !=
+                0u) {
+            return;
+        }
         if (!IRPrefab::Fog::isOnFogCanvas(voxelSet, activeCanvas_)) {
+            const auto slot = static_cast<std::size_t>(IRJob::workerId());
+            if (slot < evaluatedByWorker_.size()) {
+                ++evaluatedByWorker_[slot];
+            }
             if (!voxelSet.visible_ || voxelSet.ghostHeld_) {
                 pending_.push(PendingTransition{&voxelSet, nullptr, true, false});
             }
             return;
         }
         const bool fogGatesAgree = voxelSet.visible_ == revealed.shown_ && !voxelSet.ghostHeld_;
-        if (revealed.override_ == IRComponents::FogOverride::NONE && fogGatesAgree &&
+        if (!windowed && revealed.override_ == IRComponents::FogOverride::NONE && fogGatesAgree &&
             !gate_.nodeSettling_ && (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
             return;
+        }
+        const auto evaluatedSlot = static_cast<std::size_t>(IRJob::workerId());
+        if (evaluatedSlot < evaluatedByWorker_.size()) {
+            ++evaluatedByWorker_[evaluatedSlot];
         }
 
         bool shown = revealed.shown_;
@@ -457,6 +481,10 @@ template <> struct System<FOG_REVEAL_EVAL> {
         restampedVoxelsLastFrame_ = 0;
         for (std::uint32_t count : restampedByWorker_) {
             restampedVoxelsLastFrame_ += count;
+        }
+        evaluatedSubjectsLastUpdate_ = 0;
+        for (std::uint32_t count : evaluatedByWorker_) {
+            evaluatedSubjectsLastUpdate_ += count;
         }
         stamped_.forEach(IRPrefab::Fog::queueStamped);
         pending_.forEach([](const PendingTransition &transition) {

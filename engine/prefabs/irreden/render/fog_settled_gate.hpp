@@ -12,8 +12,8 @@
 // before.
 //
 // The gate arms when a world-scoped input of the verdict changed since the
-// system's last dispatch, and stays armed for `staggerPeriod_` consecutive
-// dispatches so every staggered row is visited once:
+// system's last dispatch, and stays armed for the evaluator's effective
+// cadence so every staggered or windowed row is visited once:
 //
 //   field cells, vision sources, published line of sight
 //       -> C_CanvasFogOfWar::revision_
@@ -67,18 +67,30 @@ struct SettledGate {
         const IRComponents::C_CanvasFogOfWar *fog,
         const IRComponents::C_FogRevealSettings &settings
     ) {
+        begin(activeCanvas, pool, fog, settings, settings.staggerPeriod_, false);
+    }
+
+    void begin(
+        IREntity::EntityId activeCanvas,
+        const IRComponents::C_VoxelPool *pool,
+        const IRComponents::C_CanvasFogOfWar *fog,
+        const IRComponents::C_FogRevealSettings &settings,
+        std::uint32_t effectiveCadence,
+        bool tracksWindowPeriod
+    ) {
         IREntity::EntityManager &entities = IREntity::getEntityManager();
         staticTag_ = entities.findComponentType<IRComponents::C_Static>();
         settledTag_ = entities.findComponentType<IRComponents::C_Settled>();
         const std::uint64_t revision = fog != nullptr ? fog->revision_ : 0;
         const bool fogAttached = fog != nullptr;
         const WorldField *field = fog != nullptr ? fog->field_.get() : nullptr;
-        const bool changed = !primed_ || revision != seenRevision_ || field != seenField_ ||
-                             fogAttached != seenFogAttached_ || activeCanvas != seenCanvas_ ||
-                             pool != seenPool_ ||
-                             settings.showThreshold_ != seenSettings_.showThreshold_ ||
-                             settings.hideThreshold_ != seenSettings_.hideThreshold_ ||
-                             settings.staggerPeriod_ != seenSettings_.staggerPeriod_;
+        const bool changed =
+            !primed_ || revision != seenRevision_ || field != seenField_ ||
+            fogAttached != seenFogAttached_ || activeCanvas != seenCanvas_ || pool != seenPool_ ||
+            settings.showThreshold_ != seenSettings_.showThreshold_ ||
+            settings.hideThreshold_ != seenSettings_.hideThreshold_ ||
+            settings.staggerPeriod_ != seenSettings_.staggerPeriod_ ||
+            (tracksWindowPeriod && settings.windowPeriod_ != seenSettings_.windowPeriod_);
         if (changed) {
             primed_ = true;
             seenRevision_ = revision;
@@ -87,7 +99,7 @@ struct SettledGate {
             seenCanvas_ = activeCanvas;
             seenPool_ = pool;
             seenSettings_ = settings;
-            armedDispatchesLeft_ = IRMath::max(settings.staggerPeriod_, std::uint32_t{1});
+            armedDispatchesLeft_ = IRMath::max(effectiveCadence, std::uint32_t{1});
         }
         armed_ = armedDispatchesLeft_ > 0;
         if (armed_) {

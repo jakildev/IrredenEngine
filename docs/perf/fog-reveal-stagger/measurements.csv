@@ -1,0 +1,10 @@
+arm,round,fog_reveal_eval_mean_ms,evaluated_subjects_mean,update_calls,updates_per_frame,frame_mean_ms,result,quiet
+window1,1,1.791,1000000.0,839,2.797,47.33,CLEAN,guarded
+window4,1,0.574,249999.4,765,2.550,43.14,CLEAN,guarded
+window1,2,1.689,1000000.0,834,2.780,47.00,CLEAN,guarded
+window4,2,0.629,249999.4,775,2.583,43.74,CLEAN,guarded
+window1,3,1.886,1000000.0,900,3.000,50.79,CLEAN,guarded
+window4,3,0.674,250017.3,817,2.723,46.08,CLEAN,guarded
+window16,1,0.335,62542.2,829,2.763,46.76,CLEAN,guarded
+strided4,1,1.853,250000.0,907,3.023,51.18,CLEAN,guarded
+strided16,1,1.773,62500.0,885,2.950,49.95,CLEAN,guarded

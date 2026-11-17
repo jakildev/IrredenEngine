@@ -148,6 +148,8 @@ struct PerfGridSettings {
     bool waveOffscreen_ = false;
     float initialZoom_ = 0.5f;
     float initialYaw_ = 0.0f;
+    int fogStaggerPeriod_ = 1;
+    int fogWindowPeriod_ = 1;
     // Subdivision — config/preset-settable; CLI overrides both.
     // Only applied if explicit_ is true so the engine's built-in default
     // is undisturbed when neither config nor CLI specifies these.
@@ -183,6 +185,10 @@ struct CliOverrides {
     IRRender::SubdivisionMode subdivisionMode_ = IRRender::SubdivisionMode::FULL;
     bool baseSubdivisionsSet_ = false;
     int baseSubdivisions_ = 1;
+    bool fogStaggerPeriodSet_ = false;
+    int fogStaggerPeriod_ = 1;
+    bool fogWindowPeriodSet_ = false;
+    int fogWindowPeriod_ = 1;
     std::string configPreset_; // path from --config-preset, empty if absent
     // `--depth-probe X,Y`: per-frame composite-depth readback + log at
     // main-framebuffer texture pixel (X,Y), top-left origin (framebuffer-texture
@@ -708,6 +714,8 @@ void applyFogRevealSurface() {
 IRSystem::SystemId g_fogRevealEvalId = IRSystem::kNullSystemId;
 AutoProfileStat g_autoProfileRestamp;
 std::uint32_t g_autoProfileRestampMax = 0;
+AutoProfileStat g_autoProfileFogEvaluated;
+std::uint32_t g_autoProfileFogEvaluatedMax = 0;
 
 void driveFogRevealSweep() {
     const float turn = static_cast<float>(g_fogSweepFrame++) / kFogSweepRingRadius;
@@ -800,6 +808,8 @@ void applyPerfGridTable(sol::table perfGrid) {
     readLuaValue(perfGrid, "wave_amplitude", g_settings.waveAmplitude_);
     readLuaValue(perfGrid, "wave_period_seconds", g_settings.wavePeriodSeconds_);
     readLuaValue(perfGrid, "wave_offscreen", g_settings.waveOffscreen_);
+    readLuaValue(perfGrid, "fog_stagger_period", g_settings.fogStaggerPeriod_);
+    readLuaValue(perfGrid, "fog_window_period", g_settings.fogWindowPeriod_);
     // zoom, subdivision_mode, and base_subdivisions are also settable from
     // config.lua and preset files (not just CLI flags).
     readLuaValue(perfGrid, "zoom", g_settings.initialZoom_);
@@ -876,6 +886,12 @@ void applyCliOverrides() {
     if (g_cliOverrides.baseSubdivisionsSet_) {
         g_settings.baseSubdivisions_ = g_cliOverrides.baseSubdivisions_;
         g_settings.baseSubdivisionsExplicit_ = true;
+    }
+    if (g_cliOverrides.fogStaggerPeriodSet_) {
+        g_settings.fogStaggerPeriod_ = g_cliOverrides.fogStaggerPeriod_;
+    }
+    if (g_cliOverrides.fogWindowPeriodSet_) {
+        g_settings.fogWindowPeriod_ = g_cliOverrides.fogWindowPeriod_;
     }
 }
 
@@ -1060,6 +1076,8 @@ void registerCliArgs() {
     );
     args.string("--subdivision-mode", "Trixel subdivision: none | position_only | full", "full");
     args.integer("--base-subdivisions", "Base trixel subdivision count", 1);
+    args.integer("--fog-stagger-period", "Fog BODY strided evaluation period", 1);
+    args.integer("--fog-window-period", "Fog BODY contiguous-block window period", 1);
     args.string("--depth-probe", "Per-frame composite-depth readback at framebuffer pixel X,Y", "");
     args.flag(
         "--sun-face-index-probe",
@@ -1231,6 +1249,20 @@ void readCliArgs() {
             g_cliOverrides.baseSubdivisionsSet_ = true;
         }
     }
+    if (args.wasProvided("--fog-stagger-period")) {
+        const int period = args.getInt("--fog-stagger-period");
+        if (period > 0) {
+            g_cliOverrides.fogStaggerPeriod_ = period;
+            g_cliOverrides.fogStaggerPeriodSet_ = true;
+        }
+    }
+    if (args.wasProvided("--fog-window-period")) {
+        const int period = args.getInt("--fog-window-period");
+        if (period > 0) {
+            g_cliOverrides.fogWindowPeriod_ = period;
+            g_cliOverrides.fogWindowPeriodSet_ = true;
+        }
+    }
     if (args.wasProvided("--depth-probe")) {
         // `--depth-probe X,Y`: IRArgs has no pair type, so the comma
         // split lives demo-side (shared IRPrefab::DepthProbe::parsePixelArg).
@@ -1250,6 +1282,8 @@ void validateSettings() {
     g_settings.gridSize_ = IRMath::max(1, g_settings.gridSize_);
     g_settings.spacing_ = IRMath::max(0.25f, g_settings.spacing_);
     g_settings.wavePeriodSeconds_ = IRMath::max(0.1f, g_settings.wavePeriodSeconds_);
+    g_settings.fogStaggerPeriod_ = IRMath::max(1, g_settings.fogStaggerPeriod_);
+    g_settings.fogWindowPeriod_ = IRMath::max(1, g_settings.fogWindowPeriod_);
 
     const int poolEdge = IRRender::VoxelPoolConfig::getEdge();
     if (g_settings.mode_ == PerfGridMode::VoxelSet && g_settings.gridSize_ > poolEdge) {
@@ -1931,6 +1965,10 @@ int main(int argc, char **argv) {
     initCommands();
     initEntities();
 
+    auto &fogRevealSettings = IREntity::singleton<IRComponents::C_FogRevealSettings>();
+    fogRevealSettings.staggerPeriod_ = static_cast<std::uint32_t>(g_settings.fogStaggerPeriod_);
+    fogRevealSettings.windowPeriod_ = static_cast<std::uint32_t>(g_settings.fogWindowPeriod_);
+
     if (g_occlusionCull) {
         IRRender::setVoxelOcclusionCullEnabled(true);
         IR_LOG_INFO(
@@ -2217,6 +2255,10 @@ void initSystems() {
                     const std::uint32_t restamped = reveal->restampedVoxelsLastFrame_;
                     g_autoProfileRestamp.add(static_cast<double>(restamped));
                     g_autoProfileRestampMax = IRMath::max(g_autoProfileRestampMax, restamped);
+                    const std::uint32_t evaluated = reveal->evaluatedSubjectsLastUpdate_;
+                    g_autoProfileFogEvaluated.add(static_cast<double>(evaluated));
+                    g_autoProfileFogEvaluatedMax =
+                        IRMath::max(g_autoProfileFogEvaluatedMax, evaluated);
                 }
                 if (g_autoProfileCount >= g_autoProfileFrames) {
                     IR_LOG_INFO("Auto-profile: {} frames collected, exiting", g_autoProfileFrames);
@@ -2259,6 +2301,13 @@ void initSystems() {
                         g_autoProfileRestamp.stddev(),
                         g_autoProfileRestampMax,
                         g_autoProfileRestamp.count_
+                    );
+                    std::printf(
+                        "FOG-EVALUATED subjects=%.1f sd=%.1f max=%u n=%u\n",
+                        g_autoProfileFogEvaluated.mean(),
+                        g_autoProfileFogEvaluated.stddev(),
+                        g_autoProfileFogEvaluatedMax,
+                        g_autoProfileFogEvaluated.count_
                     );
                     for (std::size_t i = 0; i < kAutoProfileCpuScopeCount; ++i) {
                         IR_LOG_INFO(
