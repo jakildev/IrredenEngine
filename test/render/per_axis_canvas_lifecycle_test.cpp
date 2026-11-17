@@ -34,6 +34,72 @@ TEST(PerAxisCanvasLifecycle, ScratchRegionsAreAdjacentAlignedAndDisjoint) {
     }
 }
 
+// The occluder pyramid's atlas: every level's rectangle lies inside the atlas,
+// no two overlap, and each covers its framebuffer in blocks of 2^level pixels,
+// partial blocks included.
+TEST(PerAxisCanvasLifecycle, OccluderPyramidLevelsTileTheAtlasWithoutOverlap) {
+    using Store = IRComponents::PerAxisCanvasStore;
+    for (const IRMath::ivec2 target : {
+             IRMath::ivec2(1, 1),
+             IRMath::ivec2(33, 1),
+             IRMath::ivec2(1, 97),
+             IRMath::ivec2(64, 64),
+             IRMath::ivec2(77, 45),
+             IRMath::ivec2(1284, 722),
+             IRMath::ivec2(3840, 2160),
+         }) {
+        const IRMath::ivec2 atlas = Store::occluderAtlasSize(target);
+        for (int level = 1; level <= Store::kOccluderLevels; ++level) {
+            const IRMath::ivec2 origin = Store::occluderLevelOrigin(level, target);
+            const IRMath::ivec2 extent = Store::occluderLevelSize(level, target);
+            EXPECT_EQ(extent.x, (target.x + (1 << level) - 1) >> level);
+            EXPECT_EQ(extent.y, (target.y + (1 << level) - 1) >> level);
+            EXPECT_GE(origin.x, 0);
+            EXPECT_GE(origin.y, 0);
+            EXPECT_LE(origin.x + extent.x, atlas.x) << target.x << "x" << target.y << " L" << level;
+            EXPECT_LE(origin.y + extent.y, atlas.y) << target.x << "x" << target.y << " L" << level;
+            for (int other = level + 1; other <= Store::kOccluderLevels; ++other) {
+                const IRMath::ivec2 otherOrigin = Store::occluderLevelOrigin(other, target);
+                const IRMath::ivec2 otherExtent = Store::occluderLevelSize(other, target);
+                const bool apartX = origin.x + extent.x <= otherOrigin.x ||
+                                    otherOrigin.x + otherExtent.x <= origin.x;
+                const bool apartY = origin.y + extent.y <= otherOrigin.y ||
+                                    otherOrigin.y + otherExtent.y <= origin.y;
+                EXPECT_TRUE(apartX || apartY) << "levels " << level << " and " << other;
+            }
+        }
+    }
+}
+
+TEST(PerAxisCanvasLifecycle, ScatterPlacementAppliesEveryFieldTheVertexStagePlacesWith) {
+    IRComponents::PerAxisScatterPlacement placement;
+    placement.mpMatrix_ = IRMath::mat4(3.0f);
+    placement.cameraViewRotation_ = IRMath::vec4(0.1f, 0.2f, 0.3f, 0.9f);
+    placement.visibleFaceIds_ = IRMath::ivec4(1, 2, 4, 0);
+    placement.perAxisStoreFrame_ = IRMath::ivec4(640, 500, 3, 0);
+    placement.perAxisBase_ = IRMath::ivec2(17, -9);
+    placement.visualYaw_ = 0.75f;
+    placement.effectiveSubdivisions_ = 4.0f;
+
+    IRRender::FrameDataTrixelToFramebuffer frame{};
+    frame.distanceOffset_ = 77;
+    frame.effectiveSubdivisionsForHover_ = IRMath::vec2(1.0f, 5.0f);
+    placement.applyTo(frame);
+    EXPECT_EQ(frame.mpMatrix_, placement.mpMatrix_);
+    EXPECT_EQ(frame.cameraViewRotation_, placement.cameraViewRotation_);
+    EXPECT_EQ(frame.visibleFaceIds_, placement.visibleFaceIds_);
+    EXPECT_EQ(frame.perAxisStoreFrame_, placement.perAxisStoreFrame_);
+    EXPECT_EQ(frame.perAxisBase_, placement.perAxisBase_);
+    EXPECT_EQ(frame.visualYaw_, placement.visualYaw_);
+    EXPECT_EQ(frame.distanceOffset_, 0);
+    EXPECT_EQ(frame.effectiveSubdivisionsForHover_, IRMath::vec2(4.0f, 0.0f));
+
+    IRComponents::PerAxisScatterPlacement moved = placement;
+    EXPECT_EQ(moved, placement);
+    moved.mpMatrix_[3][0] += 1.0f;
+    EXPECT_NE(moved, placement);
+}
+
 TEST(PerAxisCanvasLifecycle, ScratchUniformUsesTheOwnedRegionOffsets) {
     IRComponents::PerAxisCanvasStore store;
     store.ctrlBaseUints_ = 128;

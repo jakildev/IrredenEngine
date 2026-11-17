@@ -386,6 +386,10 @@ IRSystem::SystemId createGuiTestSystem(const GuiTestConfig &config) {
                     shot.numInputs_
                 );
                 applyShotCameraState(shot.render_, state->cameraCycle_);
+                if (state->config_.capturePoseWriteFrame_) {
+                    IR_LOG_INFO("GuiTest pose-write capture: {}", shot.render_.label_);
+                    IRVideo::requestScreenshot();
+                }
                 state->shotFrame_ = 0;
                 return;
             }

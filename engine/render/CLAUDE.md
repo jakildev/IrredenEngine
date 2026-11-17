@@ -149,9 +149,9 @@ Changes without a visual effect need no captures.
   and the [detached-face-normal contract](../../docs/design/detached-face-normals.md).
 - Continuous-yaw GRID rendering uses three face-local canvases plus a
   forward-scatter composite. The camera-yaw path rasterizes exact finite
-  face quads; its overflow lane retains every exposed cardinal-store loser
-  for framebuffer depth arbitration, with no face-origin visibility mask.
-  Its ordering and capacity constraints live in the
+  face quads; its overflow lane retains each exposed cardinal-store loser
+  the cell-path depth does not hide over its whole footprint, not its origin.
+  Its ordering, capacity and occluder rules live in the
   [per-axis design](../../docs/design/per-axis-trixel-canvas-rotation.md).
 - A per-axis consumer recovering an absolute world position applies the
   encoded sub-cell fraction: receivers use `perAxisCellToWorld3DSubCell`; the

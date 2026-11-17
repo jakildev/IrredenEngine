@@ -731,20 +731,20 @@ TEST(FogCrossSectionShaderParity, OverflowFogClassEncodingIsIdenticalAcrossBacke
         glslStage,
         "const uint fogClassByte",
         "const uint fogClassByte",
-        ";\n            overflowAppendTap"
+        ";\n        overflowAppendTap"
     );
     const std::string metalAppend = extractSpan(
         metalStage,
         "const uint fogClassByte",
         "const uint fogClassByte",
-        ";\n            overflowAppendTap"
+        ";\n        overflowAppendTap"
     );
     ASSERT_FALSE(glslAppend.empty()) << "overflow fog class append not found in GLSL";
     ASSERT_FALSE(metalAppend.empty()) << "overflow fog class append not found in MSL";
     EXPECT_EQ(normalizeKernelMath(glslAppend), normalizeKernelMath(metalAppend));
     EXPECT_NE(
         glslAppend.find(
-            "encodeFogOverflowClassByte(\n                fogWholeBodyExempt, "
+            "encodeFogOverflowClassByte(\n            fogWholeBodyExempt, "
             "(voxels[voxelIndex].reserved >> 4u) & 0xFFu"
         ),
         std::string::npos

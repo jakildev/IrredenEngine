@@ -7,22 +7,32 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-// Shared stage-1 compute body: an include fragment, not a standalone shader. Three wrappers
+// Shared stage-1 compute body: an include fragment, not a standalone shader. Four wrappers
 // compile it:
 //   c_voxel_to_trixel_stage_1.glsl        → FEEDER 0, ELECTION 0 = visible dispatch
 //   c_voxel_to_trixel_stage_1_feeder.glsl → FEEDER 1, ELECTION 0 = shadow-feeder dispatch
 //   c_voxel_to_trixel_stage_1_winner_resolve.glsl
 //                                         → FEEDER 0, ELECTION 1 = cardinal
 //     winner-election dispatch
+//   c_voxel_to_trixel_stage_1_overflow_append.glsl
+//                                         → FEEDER 0, ELECTION 0, OVERFLOW_APPEND 1 =
+//     per-axis overflow append
 // Each wrapper defines IR_FEEDER_PASS, IR_STORE_WINNER_ELECTION and IR_VOXEL_FOG_GRID_BINDING,
 // then includes, in this order: ir_iso_common.glsl, ir_constants.glsl,
-// ir_voxel_face_select.glsl, this body. The body carries no `#include` of its own because its
+// ir_voxel_face_select.glsl, this body. The append wrapper also defines IR_OVERFLOW_APPEND and
+// includes ir_per_axis_face_footprint.glsl and ir_per_axis_occlusion.glsl ahead of the body.
+// The body carries no `#include` of its own because its
 // prerequisite chain is macro-parameterized (ir_voxel_face_select.glsl reads
 // IR_VOXEL_FOG_GRID_BINDING; this body reads IR_FEEDER_PASS / IR_STORE_WINNER_ELECTION), and a
 // self-include could resolve a macro-consuming file above the wrapper's `#define`.
-// Variant-only code sits under `#if IR_FEEDER_PASS` / `#if IR_STORE_WINNER_ELECTION` so the
-// visible kernel compiles with both variants' branches textually absent: a runtime uniform
-// branch would be predicated on every invocation of the hottest kernel.
+// Variant-only code sits under `#if IR_FEEDER_PASS` / `#if IR_STORE_WINNER_ELECTION` /
+// `#if IR_OVERFLOW_APPEND` so the visible kernel compiles with the variants' branches textually
+// absent: a runtime uniform branch would be predicated on every invocation of the hottest
+// kernel.
+
+#ifndef IR_OVERFLOW_APPEND
+#define IR_OVERFLOW_APPEND 0
+#endif
 
 // local_size_z MUST equal kStageMicroSlicesPerGroup (ir_constants.glsl). It stays a literal
 // because a compute-shader layout qualifier needs a literal on every GL driver; the shared
@@ -95,8 +105,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // winner, atomicMin the face's run-stable voxel pool index into the
     // per-cell winner scratch — so stage 2's color/entity-id tap admits
     // exactly one of the equal-key faces (the minimum index). 3 = the overflow
-    // append. Only ever non-zero during the per-axis dispatches
-    // (perAxisRoute != 0).
+    // append, which is its own compiled variant and does not read this field.
+    // Only ever non-zero during the per-axis dispatches (perAxisRoute != 0).
     uniform int resolveMode;
     // Per-voxel Hi-Z occlusion-cull gate, read by the compact only — declared
     // here so the feeder lanes land at their real std140 offsets (200/204)
@@ -115,10 +125,11 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform int feederSubCap;
     uniform int feederPassTailBase;
     // Overflow scratch layout: region base offsets (in uints) into the unified
-    // binding-28 scratch + the entry cap. .x is reserved by the current CPU
-    // allocation, .y = ctrl block (draw args + counters), .z = overflow entries,
-    // .w = entry cap. Region 0 holds winner ids. std140 offset 208 mirrors
-    // FrameDataVoxelToCanvas::overflowScratchLayout_. Read at resolveMode 3.
+    // binding-28 scratch + the entry cap. .x is non-zero while this frame's
+    // occluder pyramid is bound for the append, .y = ctrl block (draw args +
+    // counters), .z = overflow entries, .w = entry cap. Region 0 holds winner
+    // ids. std140 offset 208 mirrors
+    // FrameDataVoxelToCanvas::overflowScratchLayout_. Read by the append.
     uniform ivec4 overflowScratchLayout;
     uniform ivec4 overflowSortStep;
     uniform vec4 detachedViewToWorld;
@@ -212,17 +223,21 @@ void resolveWinnerTap(const ivec2 canvasPixel, const int voxelDistance, const ui
     atomicMin(perAxisWinnerIds[cell], voxelIndex);
 }
 
-// resolveMode == 3: overflow append. Every exposed face that loses its
-// cardinal store cell is retained for finite-quad rasterization and the
-// framebuffer depth test. Entries carry the exact (cardinal cell,
-// encoded distance) pair the store would have written plus the raw colorPacked,
-// so the scatter's overflow branch reuses the per-cell recovery bit-for-bit.
+#if IR_OVERFLOW_APPEND
+// Overflow append. An exposed face that loses its cardinal store cell is
+// retained for finite-quad rasterization and the framebuffer depth test,
+// unless the occluder prepass proves no sample of its footprint can pass that
+// test. Entries carry the exact (cardinal cell, encoded distance) pair the
+// store would have written plus the raw colorPacked, so the scatter's overflow
+// branch reuses the per-cell recovery bit-for-bit.
+//
+// Control-block words past the draw arguments: 5 = entries dropped at the cap,
+// 6 = faces rejected with no sample in their footprint, 7 = faces rejected
+// behind the occluder prepass. A rejected face is never counted as dropped.
 void overflowAppendTap(
     const ivec2 perAxisBase, const ivec3 facePos, const int voxelDistance, const uint colorPacked,
     const bool isCutFace, const uint voxelIndex
 ) {
-    // A face-origin depth sample cannot prove occlusion of the finite quad.
-    // Keep cardinal losers for the framebuffer depth test.
     const ivec2 cardPix = perAxisBase + pos3DtoPos2DIso(facePos);
     // Off-canvas cardinal key never stored (writeDistanceTap dropped it) and is
     // outside the worst-case-sized render domain — mirror the silent drop.
@@ -231,6 +246,18 @@ void overflowAppendTap(
         return; // this face IS (or ties) the settled winner — the cell path draws it
     }
     const uint ctrlBase = uint(overflowScratchLayout.y);
+    if (overflowScratchLayout.x != 0) {
+        // The whole footprint is tested: a face-origin sample cannot prove
+        // occlusion of the finite quad.
+        const PerAxisScatterView view = perAxisScatterView(canvasSizePixels);
+        const int occlusion = perAxisFaceOcclusion(
+            perAxisFaceFootprint(cardPix, voxelDistance, view), ivec2(view.framebufferSize)
+        );
+        if (occlusion != kFaceMayOwnPixel) {
+            atomicAdd(perAxisWinnerIds[ctrlBase + (occlusion == kFaceUnsampled ? 6u : 7u)], 1u);
+            return;
+        }
+    }
     const uint idx = atomicAdd(perAxisWinnerIds[ctrlBase + 1u], 1u);
     if (idx >= uint(overflowScratchLayout.w)) {
         // Cap hit: pair the add back off so instanceCount settles at exactly
@@ -248,6 +275,7 @@ void overflowAppendTap(
     perAxisWinnerIds[entryBase + 2u] = uint(voxelDistance);
     perAxisWinnerIds[entryBase + 3u] = voxelIndex;
 }
+#endif
 
 // Emit a face's 2x3 trixel block through the deformation matrix D.
 // Super-samples by D's magnification to fill the face with no forward-
@@ -539,17 +567,17 @@ void main() {
             perAxisStoreFacePos(
                 voxelPosition, faceId, slot, axis, riserFlip, perAxisStoreFrame.z, voxelDistance
             );
-        if (resolveMode == 3) {
-            // Each record reconstructs the whole face, not one of its two trixels.
-            if (any(notEqual(ivec2(gl_LocalInvocationID.xy), faceOffset_2x3(slot, 0)))) return;
-            const uint fogClassByte = encodeFogOverflowClassByte(
-                fogWholeBodyExempt, (voxels[voxelIndex].reserved >> 4u) & 0xFFu
-            );
-            const uint overflowColor =
-                (voxels[voxelIndex].colorPacked & 0x00FFFFFFu) | (fogClassByte << 24u);
-            overflowAppendTap(perAxisBase, facePos, voxelDistance, overflowColor, sel.isCutFace, voxelIndex);
-            return;
-        }
+#if IR_OVERFLOW_APPEND
+        // Each record reconstructs the whole face, not one of its two trixels.
+        if (any(notEqual(ivec2(gl_LocalInvocationID.xy), faceOffset_2x3(slot, 0)))) return;
+        const uint fogClassByte = encodeFogOverflowClassByte(
+            fogWholeBodyExempt, (voxels[voxelIndex].reserved >> 4u) & 0xFFu
+        );
+        const uint overflowColor =
+            (voxels[voxelIndex].colorPacked & 0x00FFFFFFu) | (fogClassByte << 24u);
+        overflowAppendTap(perAxisBase, facePos, voxelDistance, overflowColor, sel.isCutFace, voxelIndex);
+        return;
+#else
         // Equal keys arise from perAxisStoreFacePos's 4-bit frac quantization —
         // the winner election here is what keeps the stage-2 color tap
         // deterministic among them.
@@ -559,6 +587,7 @@ void main() {
         }
         writeDistanceTap(perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance);
         return;
+#endif
     }
 
     if (voxelRenderOptions.x == 0) {
