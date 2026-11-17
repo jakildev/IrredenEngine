@@ -167,6 +167,9 @@ class WatchRun(unittest.TestCase):
     def control(self):
         return self.state / "render-verify-controls" / "macos-debug" / f"{COMMIT}.json"
 
+    def status(self):
+        return self.state / "render-watch-status.json"
+
     def test_red_without_tracker_files_once_and_caches_the_tracker_number(self):
         gh = RecordingGh()
         with self.patched(gh, self.sweep()):
@@ -200,10 +203,34 @@ class WatchRun(unittest.TestCase):
     def test_unreadable_lookup_writes_no_tracker_or_control(self):
         gh = RecordingGh(lookup_rc=1)
         with self.patched(gh, self.sweep()):
-            with self.assertRaises(watch.WatchError):
-                watch.run_watch(COMMIT)
+            self.assertEqual(watch.main(["--commit", COMMIT]), 1)
         self.assertEqual([call[1] for call in gh.calls], ["list"])
         self.assertFalse(self.control().exists())
+        status = json.loads(self.status().read_text())
+        self.assertEqual(status["outcome"], "failed")
+        self.assertIn("tracker lookup failed", status["reason"])
+
+    def test_worktree_failure_writes_failed_status(self):
+        gh = RecordingGh()
+        with self.patched(gh, self.sweep()), \
+             patch.object(watch, "_prepare_worktree",
+                          side_effect=watch.WatchError("render-watch worktree is dirty")):
+            self.assertEqual(watch.main(["--commit", COMMIT]), 1)
+        self.assertEqual(gh.calls, [])
+        self.assertFalse(self.control().exists())
+        status = json.loads(self.status().read_text())
+        self.assertEqual(status["outcome"], "failed")
+        self.assertEqual(status["reason"], "render-watch worktree is dirty")
+
+    def test_live_lock_does_not_overwrite_status(self):
+        self.state.mkdir(parents=True)
+        self.status().write_text('{"outcome": "running"}\n')
+        lock = self.state / "render-watch.lock"
+        lock.write_text(json.dumps({"pid": os.getpid()}))
+        with environment(FLEET_DIR=self.root, FLEET_STATE_DIR=self.state,
+                         FLEET_RENDER_WATCH_ROOT=self.root / "watch"):
+            self.assertEqual(watch.main(["--commit", COMMIT]), 1)
+        self.assertEqual(json.loads(self.status().read_text()), {"outcome": "running"})
 
     def test_no_display_or_timeout_stores_no_record_and_leaves_tracker_untouched(self):
         for label, sweep in {
@@ -217,7 +244,7 @@ class WatchRun(unittest.TestCase):
                     self.assertEqual(watch.run_watch(COMMIT), 1)
                 self.assertEqual(gh.calls, [])
                 self.assertFalse(self.control().exists())
-                status = json.loads((self.state / "render-watch-status.json").read_text())
+                status = json.loads(self.status().read_text())
                 self.assertEqual(status["outcome"], "failed")
 
 

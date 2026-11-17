@@ -29,6 +29,10 @@ class WatchError(RuntimeError):
     pass
 
 
+class WatchAlreadyRunning(WatchError):
+    pass
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -115,7 +119,7 @@ def _single_sweep_lock():
             except (OSError, ValueError, TypeError):
                 pid = 0
             if _pid_alive(pid):
-                raise WatchError(f"sweep already running under pid {pid}")
+                raise WatchAlreadyRunning(f"sweep already running under pid {pid}")
             path.unlink(missing_ok=True)
             continue
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
@@ -399,9 +403,14 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--commit", required=True, help="exact origin/master commit to sweep")
     args = parser.parse_args(argv)
+    started = time.monotonic()
     try:
         return run_watch(args.commit)
+    except WatchAlreadyRunning as exc:
+        print(f"fleet-render-watch: {exc}", file=sys.stderr)
+        return 1
     except WatchError as exc:
+        _status(commit=args.commit, outcome="failed", started=started, reason=str(exc))
         print(f"fleet-render-watch: {exc}", file=sys.stderr)
         return 1
 
