@@ -47,3 +47,42 @@ Selected one-pixel re-query, dirty head b87eea04a, Debug quick matrix:
 
 Both cells completed. This is a hot-path smoke measurement, not the five-pair
 Release million control, so it does not by itself qualify criteria 4 and 5.
+
+Selected one-pixel re-query final performance, Apple M4 Max, macOS/Metal,
+Release, stage profiling off, guarded benchmark lease, 2026-11-17.
+
+Parent: e5c0ce71386f4cad2a3e65d24c6b395caa05ab4d
+Head:   de4a33ffa4e1f97f8f8b928f70db9843cf98e7a8
+Method: five interleaved parent/head pairs for each #4998 baseline scene.
+        All 30 retained runs report QUIET=guarded and RESULT=CLEAN.
+
+Mean head - parent deltas across the five pairs:
+
+scene       frame mean  GPU command-buffer span  input-to-present mean  input-to-present p99
+light         -0.010              +0.029                 -0.310                 -0.371
+million       +0.004              +0.002                 +0.010                 -0.007
+CPU-bound     +0.508              +0.062                 +0.100                 -0.466
+
+Pairwise absolute frame means, parent/head:
+- light: 8.460/8.450, 8.470/8.510, 8.470/8.480, 8.470/8.410,
+  8.500/8.470 ms.
+- million: 18.250/18.210, 18.190/18.250, 18.230/18.190,
+  18.170/18.210, 18.210/18.210 ms.
+- CPU-bound: 17.750/18.980, 17.930/18.300, 18.640/17.950,
+  17.580/17.990, 17.410/18.630 ms.
+
+Verdict:
+- Criterion 4 passes. The light, million and CPU-bound input-to-present mean
+  deltas are -0.310, +0.010 and +0.100 ms, inside their locked spreads of
+  1.098, 0.118 and 0.140 ms. The p99 deltas are -0.371, -0.007 and
+  -0.466 ms, inside 1.700, 0.361 and 2.119 ms.
+- Criterion 5 passes at the million control. Frame mean moves +0.004 ms
+  against the locked 0.160 ms spread. GPU command-buffer span moves +0.002 ms;
+  the parent arm spans 17.609-17.625 ms, so its measured spread is 0.016 ms.
+- The CPU-bound frame row is outside its historical frame spread, but criterion
+  5 names the million control and criterion 4 grades only input-to-present for
+  all three baseline scenes. It is retained here rather than presented as a
+  criterion-5 result.
+
+The first parent attempt was excluded after the quiet guard reported a breach;
+the successful replacement pair above was rerun after the competing pane parked.

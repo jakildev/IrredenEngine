@@ -22,6 +22,7 @@ The parent renderer is `e5c0ce71386f4cad2a3e65d24c6b395caa05ab4d`.
 | Editor `face_pick`, default view | 12/14; both `pick_matches_render` probes read texels=0 | Same two failures and identical readings |
 | Editor legacy controls | Not repeated on parent | `face_pick` 14/14; `part_gizmo_reach` 24/24 |
 | Rejected whole-frame Release performance | Five paired controls | Frame +0.292 ms, GPU +0.271 ms, input-to-present +0.290 ms; rejected |
+| Selected re-query Release performance | Five interleaved pairs in each of three baseline scenes | Criterion 4 passes all scenes; million frame +0.004 ms and GPU span +0.002 ms, criterion 5 passes |
 
 [Parent cursor](parent-cursor.txt), [head cursor](head-cursor.txt),
 [fault](older-frame-fault.txt), [rotation](rotation.txt),
