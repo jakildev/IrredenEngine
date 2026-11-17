@@ -415,6 +415,9 @@ void VideoManager::toggleCapture() {
     config.source_height_ = sourceResolution.y;
     config.target_fps_ = m_targetFps;
     config.video_bitrate_ = videoBitrate;
+    // A fixed-step capture's simulation waits on the render loop, so a slow
+    // encoder may stall it and lose nothing; a wall-clock capture may not.
+    config.block_when_queue_full_ = isAutoCaptureActive() && isAutoCaptureFixedStep();
     config.capture_audio_input_ = m_captureAudioInput;
     config.audio_input_device_name_ = m_audioInputDeviceName;
     config.audio_sample_rate_ = recordingAudioSampleRate();

@@ -4,6 +4,7 @@
 #include <irreden/audio/ir_audio_types.hpp>
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -42,6 +43,12 @@ struct VideoRecorderConfig {
     /// Target output frame rate. Frames submitted faster than this are dropped;
     /// slower submission causes the output to run short.
     int target_fps_ = 60;
+    /// What a full encoder queue does to @c submitVideoFrame. False: the oldest
+    /// queued frame is given up and the clip keeps its timing with that frame
+    /// missing, which suits a capture paced by the wall clock. True: the call
+    /// waits for the encoder, so every submitted frame is in the clip; only a
+    /// capture whose simulation does not run on the wall clock can afford it.
+    bool block_when_queue_full_ = false;
     /// Video bitrate in bits/s (default 8 Mbps — good for 1080p gameplay at 60 fps).
     int video_bitrate_ = 8'000'000;
 
@@ -83,6 +90,10 @@ struct VideoRecorderConfig {
 /// @endcode
 class VideoRecorder {
   public:
+    /// Frames the encoder queue holds before @c submitVideoFrame waits or gives
+    /// the oldest one up.
+    static constexpr std::size_t kMaxQueuedVideoFrames = 8;
+
     VideoRecorder();
     ~VideoRecorder();
 
@@ -99,8 +110,9 @@ class VideoRecorder {
 
     /// @{
     /// @name Frame submission
-    /// Submit a raw RGBA8 frame. Both overloads are non-blocking on the calling thread —
-    /// encoding happens on an internal FFmpeg thread.
+    /// Submit a raw RGBA8 frame. Encoding happens on an internal FFmpeg thread; the
+    /// call returns at once unless @c VideoRecorderConfig::block_when_queue_full_ is set
+    /// and the encoder's queue is full.
     /// @param rgbaData    Pointer to RGBA pixel data; must remain valid until the call returns.
     /// @param strideBytes Byte width of one row (typically @c width * 4).
     /// @return @c false if encoding failed; check @c getLastError().
@@ -131,19 +143,30 @@ class VideoRecorder {
     [[nodiscard]] bool isRecording() const;
     /// Total number of video frames submitted since the last @c start call.
     [[nodiscard]] std::uint64_t getVideoFrameCount() const;
+    /// How many of those frames a full encoder queue gave up. Always zero with
+    /// @c VideoRecorderConfig::block_when_queue_full_.
+    [[nodiscard]] std::uint64_t getDroppedVideoFrameCount() const;
     /// Last error string set by FFmpeg on a failed @c start or @c submitVideoFrame.
     [[nodiscard]] const std::string &getLastError() const;
     /// @}
+
+    /// Test seam: while held, the encoder thread takes no frame, so the queue
+    /// fills at a known count whatever the host's encode speed. @c stop drains
+    /// the queue through a hold. No-op when not recording.
+    void holdEncoderForTesting(bool held);
 
   private:
     // Atomic because `stop()` clears it from VideoManager's async finalize
     // thread while the main thread polls `isRecording()` between frames.
     std::atomic<bool> m_isRecording = false;
     std::uint64_t m_videoFrameCount = 0;
+    std::uint64_t m_droppedVideoFrameCount = 0;
     std::string m_lastError;
 
     struct FFmpegState;
     FFmpegState *m_state = nullptr;
+
+    bool enqueueFrame(std::vector<std::uint8_t> &&frame);
 };
 
 } // namespace IRVideo
