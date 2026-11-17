@@ -36,8 +36,8 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "ir_lighting_frame_data.glsl"
 
-// Prefix of FrameDataVoxelToCanvas (binding 7) through overflowScratchLayout_
-// (offset 208). Only the fields this pass reads are named; every other field is
+// Prefix of FrameDataVoxelToCanvas (binding 7) through perAxisStoreFrame_
+// (offset 256). Only the fields this pass reads are named; every other field is
 // padded so the std140 offsets stay in lockstep with the C++ struct and the
 // c_lighting_to_trixel.glsl declaration this mirrors.
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
@@ -46,7 +46,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     ivec2 voxelRenderOptions;
     ivec2 _voxelDispatchGrid;
     int   _voxelCount;
-    int   _perAxisRoute;
+    int   perAxisRoute;
     ivec2 canvasSizePixels;
     ivec2 _cullIsoMin;
     ivec2 _cullIsoMax;
@@ -94,8 +94,9 @@ layout(r32i, binding = 12) readonly uniform iimage2D perAxisDistancesZ;
 // Slot 28 is held by the sun-depth map this pass samples, so the scratch is
 // bound here at kBufferIndex_OverflowLightingScratch (a buffer slot dead during
 // LIGHTING_TO_TRIXEL). Whole-buffer bind; region offsets come from
-// overflowScratchLayout (all in uints). Entry i: 3 uints at
-// overflowScratchLayout.z + i*3 = {packedCardCell, colorPacked, encodedDist};
+// overflowScratchLayout (all in uints). Entry i: 4 uints at
+// overflowScratchLayout.z + i*4 = {packedCardCell, colorPacked, encodedDist,
+// packed voxel index and AO};
 // live entry count = scratch[overflowScratchLayout.y + 1] (ctrl instanceCount).
 layout(std430, binding = 8) buffer OverflowLightingScratch {
     uint overflowScratch[];

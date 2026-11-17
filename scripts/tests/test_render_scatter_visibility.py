@@ -95,7 +95,7 @@ struct Input {
     vec2 quadParam{.5f,.5f},position{2.5f,1.5f},depthSlope{0,0};
     ivec3 visibilityExtent{4,3,1};
     vec3 faceOrigin{0,0,0};int faceId=0;ivec2 ownerPixel{-1,-1};ivec2 overflowEntityId{7,9};
-    float depth=.25f,cellTieOffset=0;
+    float overflowAO=.75f,depth=.25f,cellTieOffset=0;
 };
 struct Discard {};
 void discard_fragment(){throw Discard{};}
@@ -308,7 +308,8 @@ def conditional_block(source):
 def fragment_body(source, suffix):
     body = host(function_body(source, "main" if suffix == "glsl" else "IR_PER_AXIS_FRAGMENT_NAME"))
     fields = ("Color", "QuadParam", "Depth", "DepthSlope", "CellTieOffset",
-              "VisibilityExtent", "FaceOrigin", "FaceId", "OwnerPixel", "OverflowEntityId")
+              "VisibilityExtent", "FaceOrigin", "FaceId", "OwnerPixel", "OverflowEntityId",
+              "OverflowAO")
     for field in sorted(fields, key=len, reverse=True):
         body = body.replace("v" + field, "in." + field[0].lower() + field[1:])
     body = body.replace("in.visibilityExtent.xy",

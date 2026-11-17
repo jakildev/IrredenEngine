@@ -20,8 +20,10 @@ SHADERS = (
 )
 
 HOST = r"""
+#include <algorithm>
 #include <cstdio>
 using uint = unsigned;
+float clamp(float value,float low,float high){return std::clamp(value,low,high);}
 struct vec2 { float x, y; };
 struct ivec2 {
     int x, y;
@@ -101,8 +103,10 @@ int main() {
        perAxisWinnerIds[321]!=0x22222222u || perAxisWinnerIds[322]!=101u ||
        perAxisWinnerIds[324]!=(0x00080008u|kOverflowCutFaceBit) ||
        perAxisWinnerIds[325]!=0x33333333u || perAxisWinnerIds[326]!=102u ||
-       perAxisWinnerIds[323]!=17u ||
-       perAxisWinnerIds[327]!=17u) return 3;
+       overflowVoxelIndex(perAxisWinnerIds[323])!=17u ||
+       overflowVoxelIndex(perAxisWinnerIds[327])!=17u ||
+       overflowAO(perAxisWinnerIds[323])!=1.f ||
+       overflowAO(perAxisWinnerIds[327])!=1.f) return 3;
     if(overflowEntryCell(perAxisWinnerIds[324])!=0x00080008u ||
        !overflowEntryIsCutFace(perAxisWinnerIds[324])) return 6;
     append(face,103,0x44444444u); // cap reports, count stays capped
@@ -159,12 +163,15 @@ def adapter(source, metal):
         function = re.sub(r"\b(?:constant|device)\s+", "", function)
     folder = ROOT / "engine/render/src/shaders" / ("metal" if metal else "")
     common = (folder / ("ir_iso_common.metal" if metal else "ir_iso_common.glsl")).read_text()
-    flag = re.search(r"(?:const|constant) uint kOverflowCutFaceBit = [^;]+;", common).group()
-    flag = flag.replace("constant", "const")
+    constants = "\n".join(re.search(
+        r"(?:const|constant) uint " + name + r" = [^;]+;", common).group()
+        for name in ("kOverflowCutFaceBit", "kOverflowVoxelIndexMask"))
+    constants = constants.replace("constant", "const")
     key = "\n".join(functions(common, name) for name in (
-        "packOverflowEntryCell", "overflowEntryCell", "overflowEntryIsCutFace"))
+        "packOverflowEntryCell", "overflowEntryCell", "overflowEntryIsCutFace",
+        "packOverflowVoxelAO", "overflowVoxelIndex", "overflowAO"))
     key = re.sub(r"\bint2\b", "ivec2", key)
-    return (HOST + flag + key + "\n" + ("#define METAL_ADAPTER\n" if metal else "")
+    return (HOST + constants + key + "\n" + ("#define METAL_ADAPTER\n" if metal else "")
             + function + CHECKS)
 
 

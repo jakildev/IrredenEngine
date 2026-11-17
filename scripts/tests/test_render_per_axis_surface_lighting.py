@@ -81,7 +81,7 @@ int main(int argc,char** argv){
                 if(!same(capturedLocalPosition,expectedLocal)){
                     std::fprintf(stderr,"preserved local-light origin\n");return 4;
                 }
-                if(capturedAO!=(overflow?1.f:ao)||aoReads!=(overflow?0:1)||
+                if(capturedAO!=(overflow?face.overflowAO:ao)||aoReads!=(overflow?0:1)||
                    (!overflow&&(aoPixel.x!=cell.x||aoPixel.y!=cell.y))){
                     std::fprintf(stderr,"AO owner and overflow\n");return 5;
                 }
@@ -103,7 +103,7 @@ def beauty_controls(source):
     if match is None:
         raise ValueError("missing fragment surface lighting branch")
     body = host(match[1]).replace("uint2(", "ivec2(")
-    for field in ("faceOrigin", "faceId", "ownerPixel"):
+    for field in ("faceOrigin", "faceId", "ownerPixel", "overflowAO"):
         body = body.replace("in." + field, "face." + field)
         body = body.replace("v" + field[0].upper() + field[1:], "face." + field)
     for shader, adapter in (("in.quadParam", "quadParam"), ("vQuadParam", "quadParam"),
@@ -207,9 +207,10 @@ struct Producer {
     const int *mainCanvasTextures_=nullptr,*mainCanvasAO_=nullptr;
     const int *mainCanvasSunShadow_=nullptr,*mainCanvasLightVolume_=nullptr;
     const int *mainVoxelPool_=nullptr;
-    int perAxisCanvasEntity_=7,dispatches=0;
+    int perAxisCanvasEntity_=7,dispatches=0,overflowDispatches=0;
     Program* program_;
     void dispatchPerAxisLighting(Axes&,int,int,int){++dispatches;}
+    void dispatchOverflowLighting(Axes&,bool){++overflowDispatches;}
 """
 
 ROUTING_CASES = r"""
@@ -278,7 +279,10 @@ int main(){
         if(IREntity::hasBehavior)producer.tick(7,&resource);
         const bool active=on(1)&&on(2)&&on(12)&&on(13);
         const int expectedDispatch=active&&!expectedEligible?1:0;
-        if(producer.dispatches!=expectedDispatch || program.calls!=expectedDispatch){
+        const int expectedOverflow=active&&expectedEligible?1:0;
+        if(producer.dispatches!=expectedDispatch ||
+           producer.overflowDispatches!=expectedOverflow ||
+           program.calls!=expectedDispatch+expectedOverflow){
             std::fprintf(stderr,"compute albedo preservation\n");return 5;
         }
         if(producer.perAxisSurfaceLightingReady_!=expectedEligible ||
