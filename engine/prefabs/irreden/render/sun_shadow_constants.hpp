@@ -96,6 +96,32 @@ shadowFeederViewport(const IRMath::IsoBounds2D &visible, const ShadowFeederParam
     );
 }
 
+// The viewport the sun-face chunk mask tests against. A caster outside the
+// raster viewport but inside the sun's throw still shades visible pixels, so
+// the mask follows the sun-swept viewport. Chunk bounds and the sweep must use
+// the same view frame: cardinal yaw keeps exact quarter-turn values, while
+// continuous yaw and spatial view transform the sun into the projection frame.
+inline IRMath::IsoBounds2D sunFaceMaskViewport(
+    const IRMath::IsoBounds2D &visible,
+    const ShadowFeederParams &params,
+    IRMath::CardinalIndex cardinalIndex,
+    bool useContinuousYaw,
+    float visualYaw
+) {
+    IRMath::vec3 sunDir = params.sunDir_;
+    if (params.spatialView_) {
+        sunDir = params.viewSunDir_;
+    } else if (useContinuousYaw) {
+        sunDir = IRMath::rotateVectorByQuat(
+            sunDir,
+            IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), -visualYaw)
+        );
+    } else {
+        sunDir = IRMath::rotateCardinalZ(sunDir, cardinalIndex);
+    }
+    return IRMath::shadowFeederIsoBounds(visible, sunDir, params.sweepDistance_);
+}
+
 // The shared frozen-or-live cull viewport at @p margin, widened to the
 // shadow-feeder AABB so off-screen casters within shadow range still feed the
 // sun-depth bake (see IRMath::shadowFeederIsoBounds). Pass the once-per-frame
@@ -111,15 +137,6 @@ inline IRMath::IsoBounds2D shadowFeederCullViewport(
     int margin, const ShadowFeederParams &params, const IRRender::CullViewportState &cull
 ) {
     return shadowFeederViewport(cull.isoViewport(margin), params);
-}
-
-// The viewport the sun-face chunk mask tests against. A caster outside the
-// raster viewport but inside the sun's throw still shades visible pixels, so
-// the mask follows the sun-swept viewport from @p params
-// (frameShadowFeederParams()), never the raster viewport.
-inline IRMath::IsoBounds2D
-sunFaceMaskViewport(const IRMath::IsoBounds2D &rasterViewport, const ShadowFeederParams &params) {
-    return shadowFeederViewport(rasterViewport, params);
 }
 
 // True when the shadow-feeder sweep widens @p visible into a NON-EMPTY

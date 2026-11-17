@@ -144,8 +144,13 @@ TEST_F(ChunkBoundsEvictionTest, SunFaceMaskAdmitsCasterInsideShadowThrow) {
     IRPrefab::SunShadow::ShadowFeederParams params;
     params.sunDir_ = sunDirection;
     params.sweepDistance_ = IRPrefab::SunShadow::kSunShadowMaxDistance;
-    const IsoBounds2D sunFaceViewport =
-        IRPrefab::SunShadow::sunFaceMaskViewport(rasterViewport, params);
+    const IsoBounds2D sunFaceViewport = IRPrefab::SunShadow::sunFaceMaskViewport(
+        rasterViewport,
+        params,
+        CardinalIndex::k0,
+        false,
+        0.0f
+    );
     const vec2 casterIso = (sunFaceViewport.min_ + rasterViewport.min_) * 0.5f;
     ASSERT_TRUE(sunFaceViewport.contains(casterIso));
     ASSERT_FALSE(rasterViewport.contains(casterIso));
@@ -156,6 +161,84 @@ TEST_F(ChunkBoundsEvictionTest, SunFaceMaskAdmitsCasterInsideShadowThrow) {
 
     EXPECT_EQ(rasterMask, 0u);
     EXPECT_EQ(sunFaceMask, 1u);
+}
+
+TEST_F(ChunkBoundsEvictionTest, SunFaceMaskRotatesShadowThrowWithCardinalRasterYaw) {
+    const IsoBounds2D rasterViewport{vec2(-4.0f), vec2(4.0f)};
+    IRPrefab::SunShadow::ShadowFeederParams params;
+    params.sunDir_ = vec3(-0.3f, -0.2f, -0.93f);
+    params.sweepDistance_ = IRPrefab::SunShadow::kSunShadowMaxDistance;
+
+    const IsoBounds2D yaw0Viewport = IRPrefab::SunShadow::sunFaceMaskViewport(
+        rasterViewport,
+        params,
+        CardinalIndex::k0,
+        false,
+        0.0f
+    );
+    const IsoBounds2D yaw90Viewport = IRPrefab::SunShadow::sunFaceMaskViewport(
+        rasterViewport,
+        params,
+        CardinalIndex::k90,
+        false,
+        IRMath::kHalfPi
+    );
+    const vec2 casterIso(0.0f, (yaw0Viewport.min_.y + yaw90Viewport.min_.y) * 0.5f);
+    ASSERT_FALSE(yaw0Viewport.contains(casterIso));
+    ASSERT_TRUE(yaw90Viewport.contains(casterIso));
+
+    const vec3 casterView = IRMath::isoPixelToPos3D(casterIso, 0.0f);
+    const vec3 casterWorld = IRMath::rotateCardinalZInv(casterView, CardinalIndex::k90);
+    C_VoxelPool pool = makeTwoChunkPool(casterWorld);
+    const auto mask = IRSystem::buildChunkVisibilityMask(pool, yaw90Viewport, CardinalIndex::k90);
+
+    EXPECT_EQ(mask[0], 1u);
+
+    const vec2 beyondThrowIso(0.0f, yaw90Viewport.min_.y - 8.0f);
+    const vec3 beyondThrowView = IRMath::isoPixelToPos3D(beyondThrowIso, 0.0f);
+    const vec3 beyondThrowWorld = IRMath::rotateCardinalZInv(beyondThrowView, CardinalIndex::k90);
+    C_VoxelPool beyondThrowPool = makeTwoChunkPool(beyondThrowWorld);
+    const auto beyondThrowMask =
+        IRSystem::buildChunkVisibilityMask(beyondThrowPool, yaw90Viewport, CardinalIndex::k90);
+
+    EXPECT_EQ(beyondThrowMask[0], 0u);
+}
+
+TEST_F(ChunkBoundsEvictionTest, SunFaceMaskUsesContinuousAndSpatialViewFrames) {
+    const IsoBounds2D rasterViewport{vec2(-4.0f), vec2(4.0f)};
+    IRPrefab::SunShadow::ShadowFeederParams params;
+    params.sunDir_ = vec3(-0.3f, -0.2f, -0.93f);
+    params.sweepDistance_ = IRPrefab::SunShadow::kSunShadowMaxDistance;
+    const float visualYaw = 0.37f;
+    const vec3 yawedSun = IRMath::rotateVectorByQuat(
+        params.sunDir_,
+        IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), -visualYaw)
+    );
+    const IsoBounds2D expectedYaw =
+        IRMath::shadowFeederIsoBounds(rasterViewport, yawedSun, params.sweepDistance_);
+    const IsoBounds2D actualYaw = IRPrefab::SunShadow::sunFaceMaskViewport(
+        rasterViewport,
+        params,
+        CardinalIndex::k0,
+        true,
+        visualYaw
+    );
+    EXPECT_EQ(actualYaw.min_, expectedYaw.min_);
+    EXPECT_EQ(actualYaw.max_, expectedYaw.max_);
+
+    params.spatialView_ = true;
+    params.viewSunDir_ = vec3(0.4f, -0.1f, -0.91f);
+    const IsoBounds2D expectedSpatial =
+        IRMath::shadowFeederIsoBounds(rasterViewport, params.viewSunDir_, params.sweepDistance_);
+    const IsoBounds2D actualSpatial = IRPrefab::SunShadow::sunFaceMaskViewport(
+        rasterViewport,
+        params,
+        CardinalIndex::k180,
+        true,
+        visualYaw
+    );
+    EXPECT_EQ(actualSpatial.min_, expectedSpatial.min_);
+    EXPECT_EQ(actualSpatial.max_, expectedSpatial.max_);
 }
 
 TEST_F(ChunkBoundsEvictionTest, SpatialViewportCullsOffscreenChunksAtEveryDepth) {
