@@ -51,8 +51,12 @@ fi
 # disagree with what the dispatcher actually evaluates.
 USAGE_STALE_SECONDS="${FLEET_DISPATCHER_USAGE_STALE_SECONDS:-3600}"
 RESET_GRACE_SECONDS="${FLEET_DISPATCHER_RESET_GRACE_SECONDS:-600}"
+USAGE_RETEST_SECONDS="${FLEET_DISPATCHER_USAGE_RETEST_SECONDS:-21600}"
 LIMIT_DELAY="${FLEET_DISPATCHER_LIMIT_DELAY:-900}"
 POLL_INTERVAL_SECONDS="${FLEET_DISPATCHER_INTERVAL:-10}"
+if ! [[ "$USAGE_RETEST_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+    USAGE_RETEST_SECONDS=21600
+fi
 
 JSON=0
 case "${1:-}" in
@@ -100,6 +104,7 @@ fleet-dispatcher, which reads them the same way):
   FLEET_DISPATCHER_USAGE_GATE         global threshold override
   FLEET_DISPATCHER_USAGE_SCOPE_<TYPE> fable|opus|sonnet|haiku|account
   FLEET_DISPATCHER_USAGE_STALE_SECONDS  default 3600
+  FLEET_DISPATCHER_USAGE_RETEST_SECONDS default 21600 (6 hours)
   FLEET_DISPATCHER_RESET_GRACE_SECONDS  default 600
   FLEET_DISPATCHER_LIMIT_DELAY        default 900
   FLEET_DISPATCHER_INTERVAL           default 10
@@ -133,7 +138,7 @@ if [[ -n "${FLEET_GH_APP_ID:-}" && -n "${FLEET_GH_APP_INSTALLATION_ID:-}" \
     fi
 fi
 
-export USAGE_DIR RATE_LIMIT_DIR USAGE_STALE_SECONDS RESET_GRACE_SECONDS \
+export USAGE_DIR RATE_LIMIT_DIR USAGE_STALE_SECONDS RESET_GRACE_SECONDS USAGE_RETEST_SECONDS \
        LIMIT_DELAY POLL_INTERVAL_SECONDS JSON GATE_APP_CONFIGURED GATE_APP_TOKEN
 
 QUIET_WINDOW_JSON='{"state":"off","leases":[],"busy":0,"parked":0}'
@@ -163,11 +168,13 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 import fleet_github
 from fleet_github_identity import LANES, quota_gate, user_environment
+from fleet_usage_retest import format_age, retest_status
 
 usage_dir = pathlib.Path(os.environ["USAGE_DIR"])
 ratelimit_dir = pathlib.Path(os.environ["RATE_LIMIT_DIR"])
 stale_s = int(os.environ.get("USAGE_STALE_SECONDS", "3600"))
 reset_grace_s = int(os.environ.get("RESET_GRACE_SECONDS", "600"))
+retest_s = int(os.environ.get("USAGE_RETEST_SECONDS", "21600"))
 limit_delay = int(os.environ.get("LIMIT_DELAY", "900"))
 poll_s = int(os.environ.get("POLL_INTERVAL_SECONDS", "10"))
 emit_json = os.environ.get("JSON") == "1"
@@ -291,7 +298,7 @@ def fmt_duration(seconds):
     return f"{h}h {m}m" if m else f"{h}h"
 
 
-now = int(time.time())
+now = int(os.environ.get("FLEET_USAGE_NOW", time.time()))
 
 # --- Usage gate -----------------------------------------------------------
 
@@ -356,6 +363,7 @@ if usage_dir.is_dir():
 
         active = not is_stale and not is_past
         breaching = active and (util_f >= thr or rejected)
+        retest = retest_status(usage_dir, path.name, data, now, retest_s)
 
         obs = {
             "rateLimitType": rl_type,
@@ -377,6 +385,10 @@ if usage_dir.is_dir():
             # when the grace pad was introduced.
             "past_reset": is_past,
             "breaching": breaching,
+            "record": path.name,
+            "ageSeconds": retest.age_seconds,
+            "retest": retest.state,
+            "retestEligible": retest.eligible,
             # GitHub pools only (fleet-state-scout's sample_github_rate_limit);
             # Anthropic observations never carry these. None lets the display
             # code fall back to a percent-only rendering if they're absent.
@@ -508,6 +520,7 @@ if emit_json:
         },
         "limit_delay_seconds": limit_delay,
         "usage_stale_seconds": stale_s,
+        "usage_retest_seconds": retest_s,
         "reset_grace_seconds": reset_grace_s,
         "poll_interval_seconds": poll_s,
         "now": now,
@@ -553,10 +566,17 @@ else:
         status_part = " REJECTED" if o.get("status") == "rejected" else ""
         scope_part = f" scope={o['scope']}" if o["scope"] != "account" else ""
         model_part = f" seen-by={o['model']}" if o.get("model") else ""
+        age_part = (f" observed={format_age(o.get('ageSeconds'))} ago"
+                    if o.get("ageSeconds") is not None else " observed=unknown")
+        remedy = ""
+        if (o["breaching"] and o.get("ageSeconds") is not None
+                and o["ageSeconds"] >= retest_s):
+            remedy = (f" clear='fleet-up --reset-usage {o['rateLimitType']}'"
+                      f" retest={o['retest']}")
         return (
             f"  {prefix:<10} {o['rateLimitType']}{status_part} "
             f"util={pct}% {threshold_text}{suffix}{scope_part}{model_part}"
-            f"{resets_part}{eta}"
+            f"{resets_part}{eta}{age_part}{remedy}"
         )
 
     def thr_text(o, cmp):

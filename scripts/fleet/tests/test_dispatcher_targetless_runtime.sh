@@ -204,4 +204,21 @@ assert_contains "$(<"$SEND_LOG")" \
   "Codex design answerer uses the target-less launch at the fable class"
 open_gate
 
+echo "T12: a stale model-scoped breach admits one real launch and stamps its lease"
+RETEST_NOW=2000000000
+printf '{"rateLimitType":"seven_day_opus","utilization":1,"resetsAt":%s,"observed_at":%s,"status":"rejected"}\n' \
+  "$((RETEST_NOW + 86400))" "$((RETEST_NOW - 21601))" \
+  > "$FLEET_STATE_DIR/usage/seven_day_opus.rejected.json"
+out=$(tick epic-steward "" FLEET_RUNTIMES= FLEET_USAGE_NOW="$RETEST_NOW")
+assert_contains "$out" "dispatching epic-steward -> %1 runtime=claude" \
+  "the stale model window admits one Claude launch"
+dispatch_record=$(<"$FLEET_STATE_DIR/dispatch/pane-1.json")
+assert_contains "$dispatch_record" '"usage_retest_record":"seven_day_opus.rejected.json"' \
+  "the launch record carries the retest lease"
+out=$(tick epic-steward "" FLEET_RUNTIMES= FLEET_USAGE_NOW="$RETEST_NOW")
+assert_absent "$out" "dispatching epic-steward" "a second launch in the interval stays held"
+assert_contains "$out" "claude-quota-closed" "the held retest reports the quota gate"
+rm -f "$FLEET_STATE_DIR/usage/seven_day_opus.rejected.json"
+rm -rf "$FLEET_STATE_DIR/usage/.retest"
+
 summarize "target-less runtime dispatcher tests"

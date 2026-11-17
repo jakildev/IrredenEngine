@@ -542,6 +542,86 @@ check_absent "$("$GATE_STATUS_TOOL")" "CLOSED for opus" \
 rm -f "$FLEET_STATE_DIR/usage"/*.json
 healthy_github
 
+echo "T29: an interval-old future-reset breach advertises one retest and an operator remedy"
+FIXED_NOW=2000000000
+FIXED_RESET=$((FIXED_NOW + 86400))
+FIXED_OBSERVED=$((FIXED_NOW - 21601))
+rm -f "$FLEET_STATE_DIR/usage"/*.json
+rm -rf "$FLEET_STATE_DIR/usage/.retest"
+printf '{"rateLimitType":"five_hour","utilization":1,"resetsAt":%s,"observed_at":%s,"status":"rejected"}\n' \
+    "$FIXED_RESET" "$FIXED_OBSERVED" > "$FLEET_STATE_DIR/usage/five_hour.rejected.json"
+status=$(FLEET_USAGE_NOW="$FIXED_NOW" "$DISPATCHER" --gate-status claude)
+check_contains "$status" "observed=6h ago" "dispatcher line states the observation age"
+check_contains "$status" "clear='fleet-up --reset-usage five_hour'" \
+    "dispatcher line names the targeted clearing command"
+check_contains "$status" "retest=available" "the stale breach is eligible for a retest"
+gate_text=$(FLEET_USAGE_NOW="$FIXED_NOW" "$GATE_STATUS_TOOL")
+check_contains "$gate_text" "observed=6h ago" "gate-status uses the injected clock for age"
+check_contains "$gate_text" "clear='fleet-up --reset-usage five_hour'" \
+    "gate-status names the same targeted remedy"
+
+echo "T30: acquiring the retest holds every later launch in the interval"
+if lease=$(FLEET_USAGE_NOW="$FIXED_NOW" "$DISPATCHER" --usage-retest-acquire claude pane-test 2>&1); then
+    IFS=$'\t' read -r lease_record lease_observed lease_started lease_token <<< "$lease"
+    assert_starts_with "$lease_record" "five_hour.rejected.json" "the stale record is acquired"
+    if second=$(FLEET_USAGE_NOW="$FIXED_NOW" "$DISPATCHER" --usage-retest-acquire claude pane-other 2>&1); then
+        FAIL=$((FAIL + 1)); echo "  FAIL: a second retest launched in the same interval: $second"
+    else
+        PASS=$((PASS + 1)); echo "  ok: a second launch stays held"
+    fi
+    check_contains "$(FLEET_USAGE_NOW="$FIXED_NOW" "$DISPATCHER" --gate-status claude)" \
+        "retest=held" "the held state is visible"
+
+    echo "T31: a retest ending without a fresh event clears only its record"
+    printf '{"rateLimitType":"seven_day","utilization":0.2,"resetsAt":%s,"observed_at":%s}\n' \
+        "$FIXED_RESET" "$FIXED_NOW" > "$FLEET_STATE_DIR/usage/seven_day.json"
+    finish=$($DISPATCHER --usage-retest-finish "$lease_record" "$lease_observed" "$lease_started" "$lease_token")
+    assert_starts_with "$finish" "cleared" "unchanged observation is cleared"
+    [[ ! -e "$FLEET_STATE_DIR/usage/$lease_record" && -e "$FLEET_STATE_DIR/usage/seven_day.json" ]] \
+        && { PASS=$((PASS + 1)); echo "  ok: unrelated usage records remain"; } \
+        || { FAIL=$((FAIL + 1)); echo "  FAIL: targeted finish changed the wrong records"; }
+
+    echo "T32: a fresh rejection from the retest re-closes and restarts the interval"
+    printf '{"rateLimitType":"five_hour","utilization":1,"resetsAt":%s,"observed_at":%s,"status":"rejected"}\n' \
+        "$FIXED_RESET" "$FIXED_OBSERVED" > "$FLEET_STATE_DIR/usage/five_hour.rejected.json"
+    lease=$(FLEET_USAGE_NOW="$FIXED_NOW" "$DISPATCHER" --usage-retest-acquire claude pane-test)
+    IFS=$'\t' read -r lease_record lease_observed lease_started lease_token <<< "$lease"
+    printf '{"rateLimitType":"five_hour","utilization":1,"resetsAt":%s,"observed_at":%s,"status":"rejected"}\n' \
+        "$FIXED_RESET" "$((FIXED_NOW + 30))" > "$FLEET_STATE_DIR/usage/five_hour.rejected.json"
+    finish=$($DISPATCHER --usage-retest-finish "$lease_record" "$lease_observed" "$lease_started" "$lease_token")
+    assert_starts_with "$finish" "refreshed" "a newer event preserves the breach"
+    fresh_status=$(FLEET_USAGE_NOW="$((FIXED_NOW + 30))" "$DISPATCHER" --gate-status claude)
+    check_contains "$fresh_status" "observed=0s ago" "the new event resets the age"
+    check_absent "$fresh_status" "retest=available" "a fresh breach cannot immediately retest"
+
+    echo "T33: after one full interval the refreshed breach can retest once again"
+    later=$((FIXED_NOW + 30 + 21600))
+    check_contains "$(FLEET_USAGE_NOW="$later" "$DISPATCHER" --gate-status claude)" \
+        "retest=available" "the restarted interval eventually expires"
+else
+    FAIL=$((FAIL + 4))
+    echo "  FAIL: stale-breach retest acquisition unavailable: $lease"
+    echo "  FAIL: could not prove the one-launch interval hold"
+    echo "  FAIL: could not prove healthy retest clearing"
+    echo "  FAIL: could not prove fresh-breach interval restart"
+fi
+
+echo "T34: a fresh breach on the same scope prevents a stale record's retest"
+rm -f "$FLEET_STATE_DIR/usage"/*.json
+rm -rf "$FLEET_STATE_DIR/usage/.retest"
+printf '{"rateLimitType":"five_hour","utilization":1,"resetsAt":%s,"observed_at":%s,"status":"rejected"}\n' \
+    "$FIXED_RESET" "$FIXED_OBSERVED" > "$FLEET_STATE_DIR/usage/five_hour.rejected.json"
+printf '{"rateLimitType":"seven_day","utilization":0.96,"resetsAt":%s,"observed_at":%s}\n' \
+    "$FIXED_RESET" "$FIXED_NOW" > "$FLEET_STATE_DIR/usage/seven_day.json"
+blocked_status=$(FLEET_USAGE_NOW="$FIXED_NOW" "$DISPATCHER" --gate-status claude)
+check_contains "$blocked_status" "retest=blocked-by-other-breach" \
+    "a fresh account breach keeps the stale retest closed"
+if FLEET_USAGE_NOW="$FIXED_NOW" "$DISPATCHER" --usage-retest-acquire claude pane-test >/dev/null 2>&1; then
+    FAIL=$((FAIL + 1)); echo "  FAIL: stale record bypassed a fresh breach"
+else
+    PASS=$((PASS + 1)); echo "  ok: no retest is acquired while another breach is fresh"
+fi
+
 echo
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ "$FAIL" -eq 0 ]]
