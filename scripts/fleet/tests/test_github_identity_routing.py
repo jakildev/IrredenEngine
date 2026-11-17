@@ -17,6 +17,7 @@ from unittest.mock import patch
 SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
 import fleet_gh_fallback as fallback  # noqa: E402
+from fleet_github_identity import current_identity  # noqa: E402
 
 
 class Routing(unittest.TestCase):
@@ -152,7 +153,7 @@ printf '%s\\n' "$FLEET_DISPATCH_ID"
     def dispatch_loop_command(self):
         source = (SCRIPTS / "fleet-dispatcher").read_text()
         functions = []
-        for name in ("usage_gate_open", "main"):
+        for name in ("usage_gate_route_open", "usage_gate_open", "main"):
             match = re.search(rf"^{name}\(\) \{{\n.*?^\}}", source, re.M | re.S)
             self.assertIsNotNone(match, name)
             functions.append(match.group())
@@ -291,7 +292,6 @@ main
         from test_scout_degraded_fetch import _mod, _ScoutTickHarness
 
         charged = {}
-        real_popen = subprocess.Popen
 
         def spawn(argv, *args, **kwargs):
             words = [str(word) for word in argv]
@@ -303,14 +303,11 @@ main
                 lane = "queue-ingest"
             if any(word.endswith("fleet-pr-stamp") for word in words):
                 lane = "pr-stamp-backfill"
-            with patch.object(subprocess, "Popen", real_popen):
-                proc = subprocess.run(
-                    [shutil.which("bash") or "bash", str(self.bin / "gh"), "api", "user"],
-                    env=kwargs.get("env"), capture_output=True, text=True, timeout=10)
-            charged[lane] = proc.stdout.strip()
+            charged[lane] = current_identity(kwargs.get("env"))
 
         with patch.dict(os.environ, {**self.env, "FLEET_GH_IDENTITY": "app"}, clear=True), \
-                patch.object(_mod, "USAGE_DIR", self.usage):
+                patch.object(_mod, "USAGE_DIR", self.usage), \
+                patch.object(_mod, "STATE_DIR", self.root / "state"):
             _ScoutTickHarness()._tick(str(self.root), ["issue-1"], False, [], popen=spawn)
         self.assertEqual(charged, {lane: "app" for lane in
                                   ("cleanup", "reconcile", "stalled-sweep", "queue-ingest",
