@@ -26,16 +26,19 @@ sample inverse is `g = floor(sample / P)`,
 
 `ir_voxel_dispatch` owns the slice domain and lane recovery in each shader
 backend. Cardinal visible lists use effective subdivision squared; the feeder
-uses its capped edge squared; per-axis lists use one stored sample per face.
-The compact finalizer and both voxel stages use the same domain helper. Feeder
-list indexing remains reversed and per-axis list bindings remain independent.
-No CPU count readback or extra dispatch is needed to select the packing.
+uses its capped edge squared. The compact finalizer and both voxel stages use
+the same domain helper. Feeder list indexing remains reversed. Per-axis lists
+are not on this lattice: their kernels launch one invocation per list entry in
+1-D groups of `kPerAxisEntriesPerGroup`, through `perAxisDispatchDims` (the
+compact's writer) and `perAxisDispatchEntry` (each per-axis kernel's decoder),
+and their list bindings remain independent. No CPU count readback or extra
+dispatch is needed to select the packing.
 
 `test_render_voxel_dispatch_packing.py` executes the actual compact finalizer,
-writer, helpers and consumer prefixes as scalar C++ adapters for both backends.
-It checks distinct visible/feeder/axis counts, all modes and axis routes, density
-clamping, non-divisor densities, empty lists, partial groups and the 1024-group
-row boundary. Mutations remove index strides and guards or select the wrong
+writers, helpers and consumer prefixes as scalar C++ adapters for both backends.
+It checks distinct visible/feeder/axis counts, all modes, density clamping,
+non-divisor densities, empty lists, partial groups and the 1024-group row
+boundary, and exact-once per-axis entry coverage across that boundary. Mutations remove index strides and guards or select the wrong
 list count/sample domain; the controls must reject each one. Native rendering
 remains necessary: these scalar adapters do not execute the raster or GPU memory
 ordering, and equivalent coverage alone does not establish visual correctness.

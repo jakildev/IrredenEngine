@@ -7,8 +7,16 @@
 //     guard textually absent)
 //   c_voxel_to_trixel_stage_2_winner.metal → ELECTION 1, kernel name
 //     c_voxel_to_trixel_stage_2_winner (the cardinal winner-guarded dispatch)
-// The body is kept include-free to mirror the GLSL twin's wrapper-supplied
-// chain.
+//   c_voxel_to_trixel_stage_2_per_axis.metal → PER_AXIS 1, kernel name
+//     c_voxel_to_trixel_stage_2_per_axis (the per-axis colour pass, one
+//     invocation per list entry, guarded by the per-axis election)
+// The general wrappers compile with the per-axis pass textually absent; the
+// per-axis wrapper compiles with every cardinal and detached path absent. The
+// body is kept include-free to mirror the GLSL twin's wrapper-supplied chain.
+
+#ifndef IR_PER_AXIS_PASS
+#define IR_PER_AXIS_PASS 0
+#endif
 
 // The depth re-test reads the image-atomic scratch buffer (atomic_load) rather
 // than the R32I texture: stage 1's atomic writes land in that scratch.
@@ -47,18 +55,18 @@ inline void writeColorTap(
     triangleCanvasEntityIds.write(uint4(packedEntityId, 0u, 0u), pixel);
 }
 
+#if IR_PER_AXIS_PASS
 // Per-axis color tap with the deterministic-winner guard. The depth re-test
 // alone admits every face whose encoded key ties the settled winner (equal
 // keys arise from the 4-bit frac quantization on the per-axis store), and the
 // non-atomic texture write then makes the color/entity-id planes
 // last-writer-wins — GPU-scheduling-dependent, so they would vary run-to-run
 // at a fixed pose. The winner scratch (resolved between the stages by stage
-// 1's resolveMode dispatch) holds the minimum run-stable voxel pool index
-// among the tied faces; requiring `voxelIndex == winner` admits exactly one
-// writer. The cardinal paths of the default compile use the plain
-// writeColorTap — their integer iso key is a bijection of CELLS, and
-// displaced-voxel cell collisions dispatch the ELECTION variant
-// (writeColorTapCardinalWinner) instead of carrying a guard here.
+// 1's per-axis election dispatch) holds the minimum run-stable voxel pool
+// index among the tied faces; requiring `voxelIndex == winner` admits exactly
+// one writer. The cardinal paths use the plain writeColorTap — their integer
+// iso key is a bijection of CELLS, and displaced-voxel cell collisions
+// dispatch the ELECTION variant (writeColorTapCardinalWinner).
 inline void writeColorTapPerAxis(
     int2 canvasPixel,
     int voxelDistance,
@@ -87,6 +95,7 @@ inline void writeColorTapPerAxis(
         triangleCanvasEntityIds
     );
 }
+#endif
 
 #if IR_STORE_WINNER_ELECTION
 // Cardinal colour tap with the deterministic-winner guard — the single-canvas
@@ -129,6 +138,7 @@ inline void writeColorTapCardinalWinner(
 }
 #endif
 
+#if !IR_PER_AXIS_PASS
 // Emit a face's 2x3 trixel block through the deformation matrix D; only a
 // detached canvas super-samples (n up to 6).
 // Under IR_STORE_WINNER_ELECTION every tap routes through the winner guard;
@@ -230,6 +240,7 @@ inline void emitDeformedFace(
         }
     }
 }
+#endif
 
 // 12 B per voxel — must match C_Voxel layout in
 // engine/prefabs/irreden/voxel/components/component_voxel.hpp.
@@ -261,8 +272,13 @@ kernel void IR_STAGE2_KERNEL_NAME(
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId3 [[thread_position_in_threadgroup]]
 ) {
+#if IR_PER_AXIS_PASS
+    const uint compactedIdx =
+        perAxisDispatchEntry(groupId.xy, indirectParams.numGroupsX, localId3.x);
+    if (compactedIdx >= indirectParams.visibleCount) return;
+#else
     const int microSliceCount = voxelDispatchMicroSliceCount(
-        frameData.voxelRenderOptions.x, frameData.voxelRenderOptions.y, frameData.perAxisRoute);
+        frameData.voxelRenderOptions.x, frameData.voxelRenderOptions.y);
     const uint2 dispatchLane = voxelDispatchLane(
         groupId.x + groupId.y * indirectParams.numGroupsX,
         groupId.z, localId3.z, uint(microSliceCount));
@@ -270,6 +286,7 @@ kernel void IR_STAGE2_KERNEL_NAME(
     if (compactedIdx >= indirectParams.visibleCount) return;
     const int zIdx = int(dispatchLane.y);
     if (zIdx >= microSliceCount) return;
+#endif
 
     const uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const float4 voxelPosition = positions[voxelIndex];
@@ -277,11 +294,17 @@ kernel void IR_STAGE2_KERNEL_NAME(
     if (voxelColor.a == 0.0) {
         return;
     }
+#if IR_PER_AXIS_PASS
+    const int axis = frameData.perAxisRoute - 1;
+    const int slot = perAxisVisibleSlot(frameData.visibleFaceIds, axis);
+    const int faceSelectRoute = frameData.perAxisRoute;
+#else
     const uint2 localId = localId3.xy;
     const int slot = localIDToFace_2x3(localId);
+    const int faceSelectRoute = 0;
+#endif
     int faceId = frameData.visibleFaceIds[slot];
 
-    const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     const int2 canvasSize = frameData.canvasSizePixels;
     // Pack the per-voxel priority tier (low 2 bits of Voxel.reserved) into
     // the top 2 bits of the stored entity id via the shared carrier chokepoint.
@@ -291,7 +314,6 @@ kernel void IR_STAGE2_KERNEL_NAME(
         encodeEntityIdWithPriority(entityIds[voxelIndex], voxels[voxelIndex].reserved & 0x3u);
 
     const bool reVoxelize = frameData.visibleFaceIds.w != 0;
-    const bool dilateRevox = frameData.visibleFaceIds.w == 1;
 
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
 
@@ -305,14 +327,13 @@ kernel void IR_STAGE2_KERNEL_NAME(
     const VoxelFaceSelect sel = selectVoxelFace(
         canvasFogOfWar, fogObservers, faceId, reVoxelize,
         voxels[voxelIndex].reserved, flagsByte, voxelPosition,
-        frameData.perAxisRoute, frameData.isDetachedCanvas,
+        faceSelectRoute, frameData.isDetachedCanvas,
         frameData.detachedWorldReceive, frameData.detachedViewToWorld,
         frameData.fogCeilingEnabled.x
     );
     if (!sel.keepFace) return;
     faceId = sel.faceId;
     const int riserFlip = sel.riserFlip;
-    const bool bothPolaritiesExposed = sel.bothPolaritiesExposed;
     // A face kept ONLY by the fog cut rule is the interior cross-section wall —
     // fold the flag into the id (bit 29) AFTER the priority encode (which strips
     // it via kEntityIdHighWordMask) so LIGHTING_TO_TRIXEL force-lights it.
@@ -326,6 +347,32 @@ kernel void IR_STAGE2_KERNEL_NAME(
         (voxels[voxelIndex].reserved & (1u << 3u)) != 0u,
         (voxels[voxelIndex].reserved >> 4u) & 0xFFu
     );
+
+#if IR_PER_AXIS_PASS
+    // Mirrors stage 1's per-axis geometry exactly so the color/entity-id tap
+    // lands on the same single store cell + depth the distance tap did: the
+    // cell and key derive through the SAME shared helper and the one
+    // perAxisStoreFrame. The store holds one cell per face; the framebuffer
+    // scatter reconstructs the deformed face quad. The own-column fog clip is
+    // not repeated: stage 1 dropped those faces' distances and election, so the
+    // winner guard rejects them.
+    if ((faceId >> 1) != axis) return;
+    const int2 perAxisBase = frameData.perAxisStoreFrame.xy;
+    int voxelDistance;
+    const int3 facePos =
+        perAxisStoreFacePos(
+            voxelPosition, faceId, slot, axis, riserFlip, frameData.perAxisStoreFrame.z,
+            voxelDistance
+        );
+    writeColorTapPerAxis(
+        perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelColor,
+        packedEntityId, voxelIndex, canvasSize, distanceScratch, perAxisWinnerIds,
+        triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
+    );
+#else
+    const bool bothPolaritiesExposed = sel.bothPolaritiesExposed;
+    const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
+    const bool dilateRevox = frameData.visibleFaceIds.w == 1;
 
     // Per-slot 2x2 deformation matrix packed column-major: `.xy` = column 0,
     // `.zw` = column 1.
@@ -386,36 +433,6 @@ kernel void IR_STAGE2_KERNEL_NAME(
         frameData.faceDeform[slot].xy,
         frameData.faceDeform[slot].zw
     );
-
-    // Per-axis routing — mirrors stage 1's geometry exactly so the
-    // color/entity-id tap lands on the same single center cell. The store holds
-    // one cell per face center; the framebuffer scatter reconstructs the
-    // deformed face quad.
-    if (frameData.perAxisRoute != 0) {
-        const int axis = frameData.perAxisRoute - 1;
-        if ((faceId >> 1) != axis) return;
-        // Store-frame iso store — mirrors stage 1's key. Color tap lands on the
-        // same store cell + depth the distance tap did, so the per-axis depth
-        // re-test paints the occlusion winner. Both read the one
-        // perAxisStoreFrame.
-        const int2 perAxisBase = frameData.perAxisStoreFrame.xy;
-        // Store at BASE (world-unit) resolution regardless of effSub —
-        // on the subdivided path only the z=0 invocation writes. The cell + key
-        // derive through the SAME shared helper stage 1's taps used.
-        if (frameData.voxelRenderOptions.x != 0 && zIdx != 0) return;
-        int voxelDistance;
-        const int3 facePos =
-            perAxisStoreFacePos(
-                voxelPosition, faceId, slot, axis, riserFlip, frameData.perAxisStoreFrame.z,
-                voxelDistance
-            );
-        writeColorTapPerAxis(
-            perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelColor,
-            packedEntityId, voxelIndex, canvasSize, distanceScratch, perAxisWinnerIds,
-            triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
-        );
-        return;
-    }
 
     if (frameData.isDetachedCanvas <= 0.5 && frameData.residualYaw == 0.0) {
         packedEntityId = encodeEntityIdCardinalVoxel(packedEntityId);
@@ -606,4 +623,5 @@ kernel void IR_STAGE2_KERNEL_NAME(
 #endif
         );
     }
+#endif
 }
