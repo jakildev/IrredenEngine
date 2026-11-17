@@ -115,6 +115,24 @@ and 0 excess pixels outside the one-pixel band, on the per-axis surface route
 (they read 18 to 32 missing and 638 to 650 excess on the sampled route). The
 four cardinal yaws pass with the switch unset, `0` and `1`.
 
+### Moved rows
+
+`render-verify` for `IRShapeDebug` and `IRCanvasStress`, head against a
+same-session parent run on the same macOS references: every row whose camera
+holds a cardinal yaw reads the same figures on both. The rows that moved are
+rotating-camera frames, and the difference is the shadow edge on voxel
+receivers following the face instead of stepping a whole face:
+
+- `IRShapeDebug`: `zoom4_yaw45_inter_cardinal`, `zoom4_pan16_yaw45_pivot`
+  (also under the two glitch-off passes), `sdf_voxel_pose_yaw45`,
+  `sdf_voxel_pose_zoom2` (root and parented passes) and
+  `lod_scene_medium_yaw45`.
+- `IRCanvasStress`: the six default shots and `compare_yaw0` /
+  `compare_yaw_q`, all taken with the camera auto-rotating.
+
+Those thirteen macOS references are re-blessed from the head; the Windows and
+Linux copies of the same rows are stale until those hosts re-capture them.
+
 ### Not yet measured
 
 - The cost gate: Release, five interleaved parent/head pairs of the million
