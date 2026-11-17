@@ -3,10 +3,10 @@
 Captures the main framebuffer as presented (or a specific canvas) to disk as
 PNG screenshots or mp4 video via FFmpeg. All screen-capture code in the
 engine funnels through `VideoManager`. A recording or canvas screenshot reads
-the glitch pass's output on a tick it drew one, else the composite, so a clip
+`IRPrefab::PresentedFrame::mainColor()`: the last screen pass's output (post effects, else glitch) on a tick one drew, else the composite, so a clip
 carries the screen post effects; `video_capture_post_effects = false` records
 the composite and WARNs at every recording start
-([design](../../docs/design/glitch-pass.md#recording)).
+([glitch](../../docs/design/glitch-pass.md#recording), [post effects](../../docs/design/post-effects.md)).
 
 ## Entry point
 

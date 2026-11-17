@@ -276,6 +276,8 @@ template <> struct System<PERF_STATS_OVERLAY> {
             return "FB-SCREEN";
         if (name == "framebufferGlitch")
             return "FB-GLITCH";
+        if (name == "framebufferPostEffects")
+            return "FB-POST";
         if (name == "trixelGlitch")
             return "TRIXEL-GLITCH";
         if (name == "trixelGlitchPerAxis")

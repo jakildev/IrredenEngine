@@ -12,7 +12,7 @@
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
-#include <irreden/render/glitch.hpp>
+#include <irreden/render/presented_frame.hpp>
 
 #include "video_backend.hpp"
 
@@ -398,12 +398,15 @@ void VideoManager::toggleCapture() {
     );
     if (m_capturePostEffects) {
         IRE_LOG_INFO(
-            "Recording the presented image: screen post effects (the glitch pass) are in the clip."
+            "Recording the presented image: screen post effects (the glitch and post-effects "
+            "passes) are in the clip."
         );
     } else {
         IRE_LOG_WARN(
             "Recording the RAW COMPOSITE: video_capture_post_effects = false, so screen post "
-            "effects (the glitch pass) are LEFT OUT of this clip and it will not match the screen."
+            "effects (the glitch and post-effects passes) are LEFT OUT of this clip and it will "
+            "not "
+            "match the screen."
         );
     }
 
@@ -576,7 +579,7 @@ const IRRender::Texture2D &
 VideoManager::presentedMainColor(const IRComponents::C_TrixelCanvasFramebuffer &framebuffer) const {
     return *captureSource(
         m_capturePostEffects,
-        IRPrefab::Glitch::presentedMainColorOrNull(),
+        IRPrefab::PresentedFrame::mainColor().color_,
         &framebuffer.getTextureColor()
     );
 }

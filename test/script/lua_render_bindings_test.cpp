@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/glitch.hpp>
 #include <irreden/render/glitch_subject.hpp>
+#include <irreden/render/post_effects.hpp>
 #include <irreden/render/active_canvas.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_render_bindings.hpp>
@@ -420,6 +421,185 @@ TEST_F(LuaRenderBindingsTest, GlitchSubjectRejectsBadInputWithoutChangingState) 
         EXPECT_EQ(after->spill_, 2) << call;
         EXPECT_FALSE(after->depthEnabled_) << call;
     }
+}
+
+// ---- framebuffer post effects -------------------------------------------------
+
+TEST_F(LuaRenderBindingsTest, PostEffectsSurfaceBound) {
+    EXPECT_TRUE(isFunction("IRRender.setPostEffects"));
+    EXPECT_TRUE(isFunction("IRRender.postEffects"));
+}
+
+TEST_F(LuaRenderBindingsTest, BloomBlendIsAnIntegerTableOfTheCppEnum) {
+    auto result = m_lua.lua().safe_script(
+        "return IRRender.BloomBlend.ADD, IRRender.BloomBlend.SCREEN, IRRender.BloomBlend.MULTIPLY",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_EQ(result.get<int>(0), static_cast<int>(IRComponents::BloomBlend::ADD));
+    EXPECT_EQ(result.get<int>(1), static_cast<int>(IRComponents::BloomBlend::SCREEN));
+    EXPECT_EQ(result.get<sol::object>(2).get_type(), sol::type::lua_nil) << "a typo reads nil";
+}
+
+TEST_F(LuaRenderBindingsTest, PostEffectsReadsTheOffDefaultsWithoutCreatingState) {
+    auto result = m_lua.lua().safe_script(
+        R"lua(
+        local p = IRRender.postEffects()
+        return p.bloom, p.blur, p.grade, p.bloomThreshold, p.bloomKnee, p.bloomIntensity,
+               p.bloomScatter, p.bloomLevels, p.bloomBlend == IRRender.BloomBlend.ADD,
+               p.blurRadius, p.exposure, p.saturation, p.contrast,
+               p.lift.r, p.lift.g, p.lift.b, p.gamma.r, p.gamma.g, p.gamma.b,
+               p.gain.r, p.gain.g, p.gain.b
+        )lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_FALSE(result.get<bool>(0));
+    EXPECT_FALSE(result.get<bool>(1));
+    EXPECT_FALSE(result.get<bool>(2));
+    EXPECT_FLOAT_EQ(result.get<float>(3), 0.7f);
+    EXPECT_FLOAT_EQ(result.get<float>(4), 0.2f);
+    EXPECT_FLOAT_EQ(result.get<float>(5), 1.0f);
+    EXPECT_FLOAT_EQ(result.get<float>(6), 0.7f);
+    EXPECT_EQ(result.get<int>(7), 5);
+    EXPECT_TRUE(result.get<bool>(8));
+    EXPECT_FLOAT_EQ(result.get<float>(9), 2.0f);
+    EXPECT_FLOAT_EQ(result.get<float>(10), 0.0f);
+    EXPECT_FLOAT_EQ(result.get<float>(11), 1.0f);
+    EXPECT_FLOAT_EQ(result.get<float>(12), 1.0f);
+    for (int lift = 13; lift <= 15; ++lift) {
+        EXPECT_FLOAT_EQ(result.get<float>(lift), 0.0f) << lift;
+    }
+    for (int unit = 16; unit <= 21; ++unit) {
+        EXPECT_FLOAT_EQ(result.get<float>(unit), 1.0f) << unit;
+    }
+    EXPECT_EQ(IRPrefab::PostEffects::stateOrNull(), nullptr);
+}
+
+TEST_F(LuaRenderBindingsTest, PostEffectsPartialUpdateKeepsOmittedKeys) {
+    auto result = m_lua.lua().safe_script(
+        R"lua(
+        IRRender.setPostEffects{ bloom = true, bloomThreshold = 0.5, bloomKnee = 0.25,
+                                 bloomIntensity = 2, bloomScatter = 0.5, bloomLevels = 3,
+                                 bloomBlend = IRRender.BloomBlend.SCREEN,
+                                 blur = true, blurRadius = 8,
+                                 grade = true, exposure = -1.5, saturation = 0.5, contrast = 1.25,
+                                 lift = 0.125, gamma = { r = 2, g = 1, b = 0.5 },
+                                 gain = { 1.5, 1, 0.25 } }
+        IRRender.setPostEffects{ bloom = false, blurRadius = 4 }
+        local p = IRRender.postEffects()
+        return p.bloom, p.blur, p.grade, p.bloomThreshold, p.bloomKnee, p.bloomIntensity,
+               p.bloomScatter, p.bloomLevels, p.bloomBlend == IRRender.BloomBlend.SCREEN,
+               p.blurRadius, p.exposure, p.saturation, p.contrast,
+               p.lift.r, p.lift.g, p.lift.b, p.gamma.r, p.gamma.g, p.gamma.b,
+               p.gain.r, p.gain.g, p.gain.b
+        )lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_FALSE(result.get<bool>(0)) << "the second call switched bloom off";
+    EXPECT_TRUE(result.get<bool>(1));
+    EXPECT_TRUE(result.get<bool>(2));
+    EXPECT_FLOAT_EQ(result.get<float>(3), 0.5f) << "a switched-off effect keeps its parameters";
+    EXPECT_FLOAT_EQ(result.get<float>(4), 0.25f);
+    EXPECT_FLOAT_EQ(result.get<float>(5), 2.0f);
+    EXPECT_FLOAT_EQ(result.get<float>(6), 0.5f);
+    EXPECT_EQ(result.get<int>(7), 3);
+    EXPECT_TRUE(result.get<bool>(8));
+    EXPECT_FLOAT_EQ(result.get<float>(9), 4.0f);
+    EXPECT_FLOAT_EQ(result.get<float>(10), -1.5f);
+    EXPECT_FLOAT_EQ(result.get<float>(11), 0.5f);
+    EXPECT_FLOAT_EQ(result.get<float>(12), 1.25f);
+    for (int lift = 13; lift <= 15; ++lift) {
+        EXPECT_FLOAT_EQ(result.get<float>(lift), 0.125f) << "a number sets all three channels";
+    }
+    EXPECT_FLOAT_EQ(result.get<float>(16), 2.0f);
+    EXPECT_FLOAT_EQ(result.get<float>(17), 1.0f);
+    EXPECT_FLOAT_EQ(result.get<float>(18), 0.5f);
+    EXPECT_FLOAT_EQ(result.get<float>(19), 1.5f);
+    EXPECT_FLOAT_EQ(result.get<float>(20), 1.0f);
+    EXPECT_FLOAT_EQ(result.get<float>(21), 0.25f);
+
+    const IRComponents::C_PostEffectsState *state = IRPrefab::PostEffects::stateOrNull();
+    ASSERT_NE(state, nullptr);
+    EXPECT_EQ(state->bloomBlend_, IRComponents::BloomBlend::SCREEN);
+    EXPECT_EQ(state->gain_, IRMath::vec3(1.5f, 1.0f, 0.25f));
+    EXPECT_TRUE(IRPrefab::PostEffects::isEnabled(*state));
+}
+
+// Every rejected call raises before any field changes.
+TEST_F(LuaRenderBindingsTest, PostEffectsRejectsBadInputWithoutChangingState) {
+    auto setup = m_lua.lua().safe_script(
+        "IRRender.setPostEffects{ grade = true, saturation = 1.5, gain = { 1.1, 1, 0.9 }, "
+        "blurRadius = 3, bloomLevels = 4 }",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(setup.valid()) << setup.get<sol::error>().what();
+    const IRComponents::C_PostEffectsState before = *IRPrefab::PostEffects::stateOrNull();
+
+    for (const char *call : {
+             "IRRender.setPostEffects()",
+             "IRRender.setPostEffects(1)",
+             "IRRender.setPostEffects{ blom = true }",
+             "IRRender.setPostEffects{ [1] = true }",
+             "IRRender.setPostEffects{ bloom = 1 }",
+             "IRRender.setPostEffects{ blur = 'on' }",
+             "IRRender.setPostEffects{ grade = false, saturation = 'vivid' }",
+             "IRRender.setPostEffects{ saturation = 0, bloomThreshold = 1.5 }",
+             "IRRender.setPostEffects{ saturation = 0, bloomKnee = -0.1 }",
+             "IRRender.setPostEffects{ saturation = 0, bloomIntensity = 9 }",
+             "IRRender.setPostEffects{ saturation = 0, bloomScatter = 0/0 }",
+             "IRRender.setPostEffects{ saturation = 0, bloomLevels = 0 }",
+             "IRRender.setPostEffects{ saturation = 0, bloomLevels = 7 }",
+             "IRRender.setPostEffects{ saturation = 0, bloomLevels = 2.5 }",
+             "IRRender.setPostEffects{ saturation = 0, bloomBlend = 'SCREEN' }",
+             "IRRender.setPostEffects{ saturation = 0, bloomBlend = 2 }",
+             "IRRender.setPostEffects{ saturation = 0, bloomBlend = 0.5 }",
+             "IRRender.setPostEffects{ saturation = 0, blurRadius = 33 }",
+             "IRRender.setPostEffects{ saturation = 0, blurRadius = -1 }",
+             "IRRender.setPostEffects{ saturation = 0, blurRadius = math.huge }",
+             "IRRender.setPostEffects{ saturation = 0, exposure = 9 }",
+             "IRRender.setPostEffects{ saturation = 0, contrast = 5 }",
+             "IRRender.setPostEffects{ saturation = 4.5 }",
+             "IRRender.setPostEffects{ saturation = 0, lift = 2 }",
+             "IRRender.setPostEffects{ saturation = 0, lift = 'warm' }",
+             "IRRender.setPostEffects{ saturation = 0, gamma = 0 }",
+             "IRRender.setPostEffects{ saturation = 0, gamma = { r = 1, g = 1 } }",
+             "IRRender.setPostEffects{ saturation = 0, gamma = { 1, 1, 1, 1 } }",
+             "IRRender.setPostEffects{ saturation = 0, gamma = { r = 1, g = 1, b = 1, a = 1 } }",
+             "IRRender.setPostEffects{ saturation = 0, gain = { 1, 1, 9 } }",
+             "IRRender.setPostEffects{ saturation = 0, gain = { r = 1, g = 'x', b = 1 } }",
+             "IRRender.setPostEffects{ saturation = 0, gain = {} }",
+         }) {
+        auto result = m_lua.lua().safe_script(call, sol::script_pass_on_error);
+        EXPECT_FALSE(result.valid()) << call << " did not raise";
+        const IRComponents::C_PostEffectsState after = *IRPrefab::PostEffects::stateOrNull();
+        EXPECT_EQ(after.gradeEnabled_, before.gradeEnabled_) << call;
+        EXPECT_EQ(after.bloomEnabled_, before.bloomEnabled_) << call;
+        EXPECT_EQ(after.blurEnabled_, before.blurEnabled_) << call;
+        EXPECT_FLOAT_EQ(after.saturation_, before.saturation_) << call;
+        EXPECT_FLOAT_EQ(after.blurRadius_, before.blurRadius_) << call;
+        EXPECT_EQ(after.bloomLevels_, before.bloomLevels_) << call;
+        EXPECT_EQ(after.bloomBlend_, before.bloomBlend_) << call;
+        EXPECT_EQ(after.lift_, before.lift_) << call;
+        EXPECT_EQ(after.gamma_, before.gamma_) << call;
+        EXPECT_EQ(after.gain_, before.gain_) << call;
+    }
+}
+
+// The error names the IRRender.BloomBlend table, so a string caller learns
+// what to pass instead.
+TEST_F(LuaRenderBindingsTest, PostEffectsBlendErrorNamesTheEnumTable) {
+    auto result = m_lua.lua().safe_script(
+        "IRRender.setPostEffects{ bloomBlend = 'ADD' }",
+        sol::script_pass_on_error
+    );
+    ASSERT_FALSE(result.valid());
+    EXPECT_NE(
+        std::string(result.get<sol::error>().what()).find("IRRender.BloomBlend.ADD"),
+        std::string::npos
+    );
+    EXPECT_EQ(IRPrefab::PostEffects::stateOrNull(), nullptr);
 }
 
 // ---- colorFromLua (shared Lua → IRMath::Color helper) ---------------------

@@ -1456,11 +1456,14 @@ constexpr std::uint32_t kBufferIndex_GlobalConstantsGLSL = 1;
 constexpr std::uint32_t kBufferIndex_FramebufferFrameDataUniform = 2;
 constexpr std::uint32_t kFramebufferFrameDataUniformBufferSize = sizeof(FrameDataFramebuffer);
 // Slot 2 is a transient alias shared by the screen passes that read it:
-// FRAMEBUFFER_TO_SCREEN, FRAMEBUFFER_GLITCH and GUI_CANVAS_TO_SCREEN each
+// FRAMEBUFFER_TO_SCREEN, FRAMEBUFFER_GLITCH, FRAMEBUFFER_POST_EFFECTS and
+// GUI_CANVAS_TO_SCREEN each
 // re-assert their own UBO on the slot immediately before drawing.
 constexpr std::uint32_t kBufferIndex_GuiCanvasToScreenFrameData =
     kBufferIndex_FramebufferFrameDataUniform;
 constexpr std::uint32_t kBufferIndex_FramebufferGlitchFrameData =
+    kBufferIndex_FramebufferFrameDataUniform;
+constexpr std::uint32_t kBufferIndex_FramebufferPostEffectsFrameData =
     kBufferIndex_FramebufferFrameDataUniform;
 constexpr std::uint32_t kBufferIndex_FrameDataUniformIsoTriangles = 3;
 // Slot 4 was previously unused; the GPU light-volume seed pass reads

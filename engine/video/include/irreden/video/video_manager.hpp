@@ -54,8 +54,8 @@ class VideoManager {
     /// `resolveCaptureOutputResolution` for the even/floor-of-2 rounding
     /// applied at recording start.
     void configureCaptureOutputResolution(int width, int height);
-    /// Whether a recording reads the presented image (screen post effects,
-    /// the glitch pass, included) or the raw composite. Default true; false
+    /// Whether a recording reads the presented image (the glitch and
+    /// post-effects passes included) or the raw composite. Default true; false
     /// is announced at every recording start, since the clip then differs
     /// from the screen.
     void configureCapturePostEffects(bool enabled);

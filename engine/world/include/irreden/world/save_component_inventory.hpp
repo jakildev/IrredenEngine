@@ -108,6 +108,7 @@
 #include <irreden/render/components/component_per_axis_surface_lighting.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_perf_hud.hpp>
+#include <irreden/render/components/component_post_effects_state.hpp>
 #include <irreden/render/components/component_render_cache.hpp>
 #include <irreden/render/components/component_screen_space_marker.hpp>
 #include <irreden/render/components/component_settings_menu.hpp>
@@ -493,6 +494,9 @@ IR_SAVE_OPT_OUT(IRComponents::C_PerAxisSurfaceLighting)
 // every run; a snapshot taken mid-glitch must not glitch a session that never
 // turned it on.
 IR_SAVE_OPT_OUT(IRComponents::C_GlitchState)
+// C_PostEffectsState: OPT-OUT — same reasoning as C_GlitchState: bloom, blur
+// and grade settings are a presentation effect the creation drives every run.
+IR_SAVE_OPT_OUT(IRComponents::C_PostEffectsState)
 // C_CanvasDrawQueue: OPT-OUT — one frame's queued canvas draws, re-issued by
 // the creation every frame; a snapshot never holds a frame in flight.
 IR_SAVE_OPT_OUT(IRComponents::C_CanvasDrawQueue)
@@ -736,6 +740,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_PerfHudState,
     IRComponents::C_PerAxisSurfaceLighting,
     IRComponents::C_GlitchState,
+    IRComponents::C_PostEffectsState,
     IRComponents::C_CanvasDrawQueue,
     IRComponents::C_CanvasDrawImages,
     IRComponents::C_CanvasDrawLayer,

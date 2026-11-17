@@ -14,6 +14,19 @@ const char *const kFileFragFramebufferToScreen = "shaders/f_framebuffer_to_scree
 // tick/hash/band math in ir_glitch_common.{glsl,metal}).
 const char *const kFileVertFramebufferGlitch = "shaders/v_framebuffer_glitch.glsl";
 const char *const kFileFragFramebufferGlitch = "shaders/f_framebuffer_glitch.glsl";
+// Bloom, blur and colour grade over the presented main framebuffer. One
+// vertex stage serves every pass; each fragment is its own Metal file
+// (metal/post_effects*.metal), sharing ir_post_effects_common.{glsl,metal}.
+const char *const kFileVertPostEffects = "shaders/v_post_effects.glsl";
+const char *const kFileFragPostEffects = "shaders/f_post_effects.glsl";
+const char *const kFileFragPostEffectsBlurHorizontal =
+    "shaders/f_post_effects_blur_horizontal.glsl";
+const char *const kFileFragPostEffectsBlurVertical = "shaders/f_post_effects_blur_vertical.glsl";
+const char *const kFileFragPostEffectsBloomPrefilter =
+    "shaders/f_post_effects_bloom_prefilter.glsl";
+const char *const kFileFragPostEffectsBloomDownsample =
+    "shaders/f_post_effects_bloom_downsample.glsl";
+const char *const kFileFragPostEffectsBloomUpsample = "shaders/f_post_effects_bloom_upsample.glsl";
 // Canvas-space subject glitch over the main canvas planes (Metal mirror in
 // metal/c_trixel_glitch.metal; shared ABI in ir_glitch_common.{glsl,metal}).
 const char *const kFileCompTrixelGlitch = "shaders/c_trixel_glitch.glsl";

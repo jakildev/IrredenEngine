@@ -34,6 +34,8 @@
 #include <irreden/render/glitch_subject.hpp>
 #include <irreden/render/help_overlay.hpp>
 #include <irreden/render/perf_hud.hpp>
+#include <irreden/render/post_effects.hpp>
+#include <irreden/render/presented_frame.hpp>
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/settings_menu.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
@@ -307,14 +309,14 @@ class ScreenBlitRecordingEncoder final : public IRSystem::ScreenBlitEncoder {
     ) override {
         m_log.push_back(isMainFramebuffer ? "blit:drawMainFramebuffer" : "blit:drawFramebuffer");
     }
-    // The output pointer is null here: a recording glitch encoder allocates
-    // no image, so only the publication proves the blit's choice.
-    void drawGlitchOutput(
+    // The output pointer is null here: a recording pass encoder allocates no
+    // image, so only the publication proves the blit's choice.
+    void drawPresentedOutput(
         const IRComponents::C_TrixelCanvasFramebuffer &, const IRRender::Texture2D *, IRMath::vec3
     ) override {
-        EXPECT_TRUE(IRPrefab::Glitch::outputPublishedForCurrentRenderTick())
-            << "the blit presents the glitch output only on a tick the pass drew it";
-        m_log.push_back("blit:drawGlitchOutput");
+        EXPECT_FALSE(IRPrefab::PresentedFrame::mainColor().isComposite())
+            << "the blit presents a pass's output only on a tick that pass drew it";
+        m_log.push_back("blit:drawPresentedOutput");
     }
 
   private:
@@ -481,12 +483,12 @@ TEST_F(GlitchScheduleProbeTest, EnabledFrameDrawsTheOutputOnceAndTheBlitPresents
             "glitch:bindAndClearOutput",
             "glitch:drawOutput",
             "blit:beginScreen",
-            "blit:drawGlitchOutput"
+            "blit:drawPresentedOutput"
         })
     ) << "first use allocates the images and seeds the history, then clears and draws the "
          "output once; the blit presents that output, not the composite";
     EXPECT_TRUE(IRPrefab::Glitch::outputPublishedForCurrentRenderTick());
-    EXPECT_TRUE(m_blit->glitchPublished_);
+    EXPECT_EQ(m_blit->presented_.source_, IRPrefab::PresentedFrame::Source::GLITCH);
     EXPECT_EQ(m_blit->ordinaryBlitCount_, 0u);
     EXPECT_EQ(m_blit->glitchOutputBlitCount_, 1u);
     EXPECT_EQ(m_encoder.liveImages_, 1);
@@ -499,7 +501,7 @@ TEST_F(GlitchScheduleProbeTest, EnabledFrameDrawsTheOutputOnceAndTheBlitPresents
             "glitch:bindAndClearOutput",
             "glitch:drawOutput",
             "blit:beginScreen",
-            "blit:drawGlitchOutput"
+            "blit:drawPresentedOutput"
         })
     ) << "the same hold tick reuses the images and the snapshot";
 
@@ -516,7 +518,7 @@ TEST_F(GlitchScheduleProbeTest, EnabledFrameDrawsTheOutputOnceAndTheBlitPresents
             "glitch:bindAndClearOutput",
             "glitch:drawOutput",
             "blit:beginScreen",
-            "blit:drawGlitchOutput"
+            "blit:drawPresentedOutput"
         })
     ) << "a new hold tick re-snapshots into the same image";
 
@@ -563,7 +565,7 @@ TEST_F(GlitchScheduleProbeTest, ResizeWithdrawsPublicationAndReplacesTheImages) 
             "glitch:bindAndClearOutput",
             "glitch:drawOutput",
             "blit:beginScreen",
-            "blit:drawGlitchOutput"
+            "blit:drawPresentedOutput"
         })
     );
     EXPECT_EQ(m_glitch->historyCopyCount_, 2u);
@@ -573,7 +575,7 @@ TEST_F(GlitchScheduleProbeTest, ResizeWithdrawsPublicationAndReplacesTheImages) 
 TEST_F(GlitchScheduleProbeTest, OffFrameLeavesTheCompositeToTheOrdinaryBlit) {
     EXPECT_EQ(renderFrame(), (RenderOpLog{"blit:beginScreen", "blit:drawMainFramebuffer"}))
         << "with no glitch state the blit clears and draws the main framebuffer once";
-    EXPECT_FALSE(m_blit->glitchPublished_);
+    EXPECT_TRUE(m_blit->presented_.isComposite());
     EXPECT_EQ(m_blit->ordinaryBlitCount_, 1u);
     EXPECT_EQ(m_encoder.liveImages_, 0) << "an unused pass allocates nothing";
 
@@ -586,7 +588,7 @@ TEST_F(GlitchScheduleProbeTest, OffFrameLeavesTheCompositeToTheOrdinaryBlit) {
     EXPECT_EQ(renderFrame(), (RenderOpLog{"blit:beginScreen", "blit:drawMainFramebuffer"}))
         << "an off tick encodes no glitch work; the blit draws the composite once";
     EXPECT_FALSE(IRPrefab::Glitch::outputPublishedForCurrentRenderTick());
-    EXPECT_FALSE(m_blit->glitchPublished_);
+    EXPECT_TRUE(m_blit->presented_.isComposite());
     EXPECT_EQ(m_blit->ordinaryBlitCount_, 2u);
     EXPECT_EQ(m_glitch->frameDraws_, 0);
     EXPECT_EQ(m_glitch->frameHistoryCopies_, 0);
@@ -601,12 +603,355 @@ TEST_F(GlitchScheduleProbeTest, OffFrameLeavesTheCompositeToTheOrdinaryBlit) {
             "glitch:bindAndClearOutput",
             "glitch:drawOutput",
             "blit:beginScreen",
-            "blit:drawGlitchOutput"
+            "blit:drawPresentedOutput"
         })
     ) << "the snapshot from before the off tick is stale";
     EXPECT_EQ(m_encoder.liveImages_, 1);
     EXPECT_EQ(m_blit->ordinaryBlitCount_, 2u);
     EXPECT_EQ(m_blit->glitchOutputBlitCount_, 2u);
+}
+
+// ---- FRAMEBUFFER_POST_EFFECTS -------------------------------------------------
+//
+// The post-effects pass's real `beginTick` and `encodeFrame` run against a
+// recording encoder beside the glitch pass and the blit, in pipeline order, so
+// one log holds every image allocation, the single frame-data upload, each
+// blur, bloom and resolve draw, and which image the blit presented.
+
+using PostEffectsSystem = IRSystem::System<IRSystem::FRAMEBUFFER_POST_EFFECTS>;
+
+IRSystem::SystemId registerPostEffectsParamsOnly() {
+    return IRSystem::registerSystem<
+        IRSystem::FRAMEBUFFER_POST_EFFECTS,
+        IRComponents::C_TrixelCanvasFramebuffer,
+        IRComponents::C_Name>("FramebufferPostEffects");
+}
+
+class PostEffectsRecordingEncoder final : public IRSystem::PostEffectsEncoder {
+  public:
+    explicit PostEffectsRecordingEncoder(RenderOpLog &log)
+        : m_log{log} {}
+
+    void destroyImages() override {
+        EXPECT_FALSE(IRPrefab::PostEffects::outputPublishedForCurrentRenderTick())
+            << "the publication must be withdrawn before its images are replaced";
+        m_log.push_back("post:destroyImages");
+        hasOutput_ = hasBlur_ = hasBloom_ = false;
+    }
+    void createOutput(IRMath::ivec2 size) override {
+        EXPECT_FALSE(hasOutput_);
+        m_log.push_back("post:createOutput");
+        hasOutput_ = true;
+        imageSize_ = size;
+    }
+    void createBlurImages(IRMath::ivec2 size) override {
+        EXPECT_FALSE(hasBlur_);
+        EXPECT_EQ(size, imageSize_);
+        m_log.push_back("post:createBlurImages");
+        hasBlur_ = true;
+    }
+    void createBloomImages(IRMath::ivec2 size) override {
+        EXPECT_FALSE(hasBloom_);
+        EXPECT_EQ(size, imageSize_);
+        m_log.push_back("post:createBloomImages");
+        hasBloom_ = true;
+    }
+    void uploadFrameData(const IRSystem::FrameDataPostEffects &frameData) override {
+        EXPECT_EQ(frameData.mvpMatrix_, IRSystem::detail::framebufferSelfMvp(imageSize_))
+            << "every pass covers its target with the self mvp";
+        m_log.push_back("post:uploadFrameData");
+        ++uploads_;
+    }
+    void drawPass(
+        IRSystem::PostEffectsPass pass, int level, const IRPrefab::PostEffects::FramePlan &plan
+    ) override {
+        EXPECT_FALSE(IRPrefab::PostEffects::outputPublishedForCurrentRenderTick())
+            << "the pass must not publish before its resolve";
+        EXPECT_TRUE(hasOutput_);
+        switch (pass) {
+        case IRSystem::PostEffectsPass::BLUR_HORIZONTAL:
+            EXPECT_TRUE(hasBlur_ && plan.blur_);
+            m_log.push_back("post:blurHorizontal");
+            return;
+        case IRSystem::PostEffectsPass::BLUR_VERTICAL:
+            EXPECT_TRUE(hasBlur_ && plan.blur_);
+            m_log.push_back("post:blurVertical");
+            return;
+        case IRSystem::PostEffectsPass::BLOOM_PREFILTER:
+            EXPECT_TRUE(hasBloom_ && plan.bloom_);
+            EXPECT_EQ(level, 0);
+            m_log.push_back("post:bloomPrefilter");
+            return;
+        case IRSystem::PostEffectsPass::BLOOM_DOWNSAMPLE:
+            EXPECT_TRUE(hasBloom_ && plan.bloom_);
+            m_log.push_back("post:bloomDownsample:" + std::to_string(level));
+            return;
+        case IRSystem::PostEffectsPass::BLOOM_UPSAMPLE:
+            EXPECT_TRUE(hasBloom_ && plan.bloom_);
+            m_log.push_back("post:bloomUpsample:" + std::to_string(level));
+            return;
+        case IRSystem::PostEffectsPass::RESOLVE:
+            m_log.push_back("post:resolve");
+            return;
+        }
+    }
+
+    bool hasOutput_ = false;
+    bool hasBlur_ = false;
+    bool hasBloom_ = false;
+    int uploads_ = 0;
+    IRMath::ivec2 imageSize_{0};
+
+  private:
+    RenderOpLog &m_log;
+};
+
+class PostEffectsScheduleProbeTest : public GlitchScheduleProbeTest {
+  protected:
+    PostEffectsScheduleProbeTest()
+        : m_postEncoder{m_log} {
+        m_post = IRSystem::getSystemParams<PostEffectsSystem>(registerPostEffectsParamsOnly());
+    }
+
+    // One RENDER tick of the three screen passes in pipeline order: glitch,
+    // post effects, blit. An off pass runs its real `tick`, which must return
+    // before resolving anything.
+    RenderOpLog renderPostFrame(IRMath::ivec2 framebufferSize = kProbeFramebufferSize) {
+        m_log.clear();
+        advanceRenderTick();
+        m_glitch->beginTick();
+        if (m_glitch->enabledThisFrame_) {
+            m_glitch->encodeFrame(m_encoder, framebufferSize, kProbeTrixelStep);
+        } else {
+            m_glitch->tick(m_offscreenFramebuffer, m_mainName);
+        }
+        m_post->beginTick();
+        if (m_post->plan_.enabled()) {
+            m_post->encodeFrame(m_postEncoder, framebufferSize);
+        } else {
+            m_post->tick(m_offscreenFramebuffer, m_mainName);
+        }
+        runBlit();
+        return m_log;
+    }
+
+    static IRComponents::C_PostEffectsState &state() {
+        return IREntity::singleton<IRComponents::C_PostEffectsState>();
+    }
+
+    PostEffectsRecordingEncoder m_postEncoder;
+    PostEffectsSystem *m_post = nullptr;
+};
+
+TEST_F(PostEffectsScheduleProbeTest, OffFrameDoesNoWorkAndZeroesItsTimingRow) {
+    IRRender::gpuStageTiming().framebufferPostEffectsMs_ = 0.42f;
+    EXPECT_EQ(renderPostFrame(), (RenderOpLog{"blit:beginScreen", "blit:drawMainFramebuffer"}))
+        << "with no state the blit clears and draws the composite once";
+    EXPECT_FLOAT_EQ(IRRender::gpuStageTiming().framebufferPostEffectsMs_, 0.0f);
+
+    // A state whose switches are all off, parameters set, is still off.
+    state().blurRadius_ = 12.0f;
+    state().bloomIntensity_ = 4.0f;
+    state().saturation_ = 0.0f;
+    IRRender::gpuStageTiming().framebufferPostEffectsMs_ = 0.42f;
+    EXPECT_EQ(renderPostFrame(), (RenderOpLog{"blit:beginScreen", "blit:drawMainFramebuffer"}));
+    EXPECT_FLOAT_EQ(IRRender::gpuStageTiming().framebufferPostEffectsMs_, 0.0f);
+    EXPECT_FALSE(IRPrefab::PostEffects::outputPublishedForCurrentRenderTick());
+    EXPECT_TRUE(m_blit->presented_.isComposite());
+    EXPECT_EQ(m_post->frameDraws_, 0);
+    EXPECT_EQ(m_post->drawCount_, 0u);
+    EXPECT_EQ(m_postEncoder.uploads_, 0);
+    EXPECT_FALSE(m_postEncoder.hasOutput_) << "an off pass allocates nothing";
+    EXPECT_EQ(m_blit->ordinaryBlitCount_, 2u);
+}
+
+TEST_F(PostEffectsScheduleProbeTest, GradeAloneIsOneUploadAndOneResolve) {
+    state().gradeEnabled_ = true;
+    EXPECT_EQ(
+        renderPostFrame(),
+        (RenderOpLog{
+            "post:createOutput",
+            "post:uploadFrameData",
+            "post:resolve",
+            "blit:beginScreen",
+            "blit:drawPresentedOutput"
+        })
+    );
+    EXPECT_TRUE(IRPrefab::PostEffects::outputPublishedForCurrentRenderTick());
+    EXPECT_EQ(m_blit->presented_.source_, IRPrefab::PresentedFrame::Source::POST_EFFECTS);
+    EXPECT_EQ(m_blit->postEffectsOutputBlitCount_, 1u);
+    EXPECT_EQ(m_blit->glitchOutputBlitCount_, 0u);
+    EXPECT_EQ(m_blit->ordinaryBlitCount_, 0u);
+    EXPECT_EQ(m_post->frameDraws_, 1);
+
+    // The next frame reuses the output and uploads again: nothing is cached
+    // between frames.
+    EXPECT_EQ(
+        renderPostFrame(),
+        (RenderOpLog{
+            "post:uploadFrameData",
+            "post:resolve",
+            "blit:beginScreen",
+            "blit:drawPresentedOutput"
+        })
+    );
+    EXPECT_EQ(m_postEncoder.uploads_, 2);
+}
+
+TEST_F(PostEffectsScheduleProbeTest, EveryEffectDrawsBlurThenTheBloomChainThenTheResolve) {
+    state().blurEnabled_ = true;
+    state().bloomEnabled_ = true;
+    state().bloomLevels_ = 4;
+    state().gradeEnabled_ = true;
+    EXPECT_EQ(
+        renderPostFrame(),
+        (RenderOpLog{
+            "post:createOutput",
+            "post:createBlurImages",
+            "post:createBloomImages",
+            "post:uploadFrameData",
+            "post:blurHorizontal",
+            "post:blurVertical",
+            "post:bloomPrefilter",
+            "post:bloomDownsample:1",
+            "post:bloomDownsample:2",
+            "post:bloomDownsample:3",
+            "post:bloomUpsample:2",
+            "post:bloomUpsample:1",
+            "post:bloomUpsample:0",
+            "post:resolve",
+            "blit:beginScreen",
+            "blit:drawPresentedOutput"
+        })
+    );
+    EXPECT_EQ(m_post->frameDraws_, 10);
+    EXPECT_EQ(m_postEncoder.uploads_, 1) << "one frame-data upload serves every draw";
+}
+
+TEST_F(PostEffectsScheduleProbeTest, OneBloomLevelHasNoUpsample) {
+    state().bloomEnabled_ = true;
+    state().bloomLevels_ = 1;
+    EXPECT_EQ(
+        renderPostFrame(),
+        (RenderOpLog{
+            "post:createOutput",
+            "post:createBloomImages",
+            "post:uploadFrameData",
+            "post:bloomPrefilter",
+            "post:resolve",
+            "blit:beginScreen",
+            "blit:drawPresentedOutput"
+        })
+    );
+}
+
+TEST_F(PostEffectsScheduleProbeTest, ImagesAreCreatedOnFirstUseAndKeptWhileAnEffectIsOff) {
+    state().gradeEnabled_ = true;
+    renderPostFrame();
+    EXPECT_FALSE(m_postEncoder.hasBlur_);
+    EXPECT_FALSE(m_postEncoder.hasBloom_);
+
+    state().blurEnabled_ = true;
+    EXPECT_EQ(
+        renderPostFrame(),
+        (RenderOpLog{
+            "post:createBlurImages",
+            "post:uploadFrameData",
+            "post:blurHorizontal",
+            "post:blurVertical",
+            "post:resolve",
+            "blit:beginScreen",
+            "blit:drawPresentedOutput"
+        })
+    );
+
+    // Off and on again: the blur images survived the off frames.
+    state().blurEnabled_ = false;
+    renderPostFrame();
+    state().blurEnabled_ = true;
+    EXPECT_EQ(
+        renderPostFrame(),
+        (RenderOpLog{
+            "post:uploadFrameData",
+            "post:blurHorizontal",
+            "post:blurVertical",
+            "post:resolve",
+            "blit:beginScreen",
+            "blit:drawPresentedOutput"
+        })
+    );
+}
+
+TEST_F(PostEffectsScheduleProbeTest, ResizeWithdrawsPublicationAndReplacesTheImagesInUse) {
+    state().blurEnabled_ = true;
+    state().bloomEnabled_ = true;
+    state().bloomLevels_ = 1;
+    renderPostFrame();
+    ASSERT_TRUE(IRPrefab::PostEffects::outputPublishedForCurrentRenderTick());
+
+    // Same RENDER tick, new size: the publication is withdrawn before the
+    // images are replaced, and only the effects still on get new ones.
+    state().bloomEnabled_ = false;
+    m_log.clear();
+    m_post->beginTick();
+    m_post->encodeFrame(m_postEncoder, IRMath::ivec2(640, 360));
+    EXPECT_EQ(
+        m_log,
+        (RenderOpLog{
+            "post:destroyImages",
+            "post:createOutput",
+            "post:createBlurImages",
+            "post:uploadFrameData",
+            "post:blurHorizontal",
+            "post:blurVertical",
+            "post:resolve"
+        })
+    );
+    EXPECT_EQ(m_postEncoder.imageSize_, IRMath::ivec2(640, 360));
+    EXPECT_FALSE(m_postEncoder.hasBloom_);
+    EXPECT_TRUE(IRPrefab::PostEffects::outputPublishedForCurrentRenderTick());
+}
+
+TEST_F(PostEffectsScheduleProbeTest, PublicationHoldsForTheCurrentRenderTickOnly) {
+    state().gradeEnabled_ = true;
+    renderPostFrame();
+    ASSERT_TRUE(IRPrefab::PostEffects::outputPublishedForCurrentRenderTick());
+    advanceRenderTick();
+    EXPECT_FALSE(IRPrefab::PostEffects::outputPublishedForCurrentRenderTick())
+        << "a stale publication must not present last tick's output";
+    EXPECT_TRUE(IRPrefab::PresentedFrame::mainColor().isComposite());
+}
+
+// The documented order: the glitch draws from the composite, the post effects
+// from the glitch output, and the blit presents the post output.
+TEST_F(PostEffectsScheduleProbeTest, RunsAfterTheGlitchAndIsTheImagePresented) {
+    enableHoldGlitch();
+    state().gradeEnabled_ = true;
+    EXPECT_EQ(
+        renderPostFrame(),
+        (RenderOpLog{
+            "glitch:createImages",
+            "glitch:copyHistory",
+            "glitch:bindAndClearOutput",
+            "glitch:drawOutput",
+            "post:createOutput",
+            "post:uploadFrameData",
+            "post:resolve",
+            "blit:beginScreen",
+            "blit:drawPresentedOutput"
+        })
+    );
+    EXPECT_TRUE(IRPrefab::Glitch::outputPublishedForCurrentRenderTick());
+    EXPECT_EQ(m_blit->presented_.source_, IRPrefab::PresentedFrame::Source::POST_EFFECTS);
+    EXPECT_EQ(m_blit->postEffectsOutputBlitCount_, 1u);
+    EXPECT_EQ(m_blit->glitchOutputBlitCount_, 0u);
+
+    // With the post effects off the glitch output is presented again.
+    state().gradeEnabled_ = false;
+    renderPostFrame();
+    EXPECT_EQ(m_blit->presented_.source_, IRPrefab::PresentedFrame::Source::GLITCH);
+    EXPECT_EQ(m_blit->glitchOutputBlitCount_, 1u);
+    EXPECT_EQ(m_blit->postEffectsOutputBlitCount_, 1u);
 }
 
 // ---- TRIXEL_GLITCH ------------------------------------------------------------

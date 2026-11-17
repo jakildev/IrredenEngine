@@ -140,6 +140,7 @@ add_executable(IrredenEngineTest
   render/gl_api_loader_test.cpp
   render/glitch_math_test.cpp
   render/trixel_glitch_math_test.cpp
+  render/post_effects_test.cpp
   render/gizmo_drag_reset_test.cpp
   render/gizmo_ring_orientation_test.cpp
   render/gizmo_view_clearance_test.cpp
