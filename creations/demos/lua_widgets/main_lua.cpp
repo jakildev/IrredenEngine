@@ -71,6 +71,16 @@
 // resumes, so `fleet-run IRLuaWidgetsDemo --hand-off-fixture auto` proves the
 // round trip unattended. Outside ir-run the call logs one notice and returns
 // ok=false, supported=false.
+//
+// File-dialog fixture (opt-in; absent, the demo is unchanged):
+// `--file-dialog-fixture button` adds OPEN FILES and OPEN FOLDER buttons whose
+// onClick calls `IRDialog.open` and logs `LUA_WIDGETS FILEDIALOG before` /
+// `closed` with the render frame, engine tick, status and each picked path
+// read back through `IRFile`. `auto` also opens the files panel 30 ticks in
+// and closes the window 30 ticks after it returns. The panel needs a person:
+// `fleet-run --timeout 120 IRLuaWidgetsDemo --file-dialog-fixture auto
+// --window-mode normal`. Without `--window-mode normal` an unattended launch
+// is refused (status=REFUSED) and nothing opens.
 
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_entity.hpp>
@@ -1307,6 +1317,12 @@ int main(int argc, char **argv) {
         {"off", "button", "auto"},
         "off"
     );
+    IREngine::args().enumValue(
+        "--file-dialog-fixture",
+        "Add the IRDialog.open fixture: off | button | auto",
+        {"off", "button", "auto"},
+        "off"
+    );
     registerLuaBindings();
     IREngine::init(argc, argv, "config.lua");
     if (IREngine::args().getEnum("--hand-off-fixture") != "off") {
@@ -1360,6 +1376,13 @@ void registerLuaBindings() {
         lua["IRTest"]["onPollFired"] = []() { IRLuaWidgets::g_pollWasClickedSeen = true; };
         lua["IRTest"]["handOffFixture"] = []() {
             return IREngine::args().getEnum("--hand-off-fixture");
+        };
+        if (IREngine::args().getEnum("--file-dialog-fixture") != "off") {
+            script.bindLuaFiles();
+            script.bindLuaFileDialog();
+        }
+        lua["IRTest"]["fileDialogFixture"] = []() {
+            return IREngine::args().getEnum("--file-dialog-fixture");
         };
         lua["IRTest"]["engineTick"] = []() { return static_cast<lua_Integer>(IRTime::tick()); };
         lua["IRTest"]["closeWindow"] = []() { IRWindow::closeWindow(); };

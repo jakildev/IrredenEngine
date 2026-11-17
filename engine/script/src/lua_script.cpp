@@ -19,6 +19,7 @@
 #include <irreden/script/lua_hierarchy_bindings.hpp>
 #include <irreden/script/lua_enum_def.hpp>
 #include <irreden/script/lua_file_bindings.hpp>
+#include <irreden/script/lua_file_dialog_bindings.hpp>
 #include <irreden/script/lua_modifier_bindings.hpp>
 #include <irreden/script/lua_persistence_bindings.hpp>
 #include <irreden/script/lua_pipeline_bindings.hpp>
@@ -1059,6 +1060,10 @@ void LuaScript::bindLuaFiles() {
 
 void LuaScript::bindLuaFiles(const std::filesystem::path &root) {
     detail::bindFiles(*this, root);
+}
+
+void LuaScript::bindLuaFileDialog() {
+    detail::bindFileDialog(*this);
 }
 
 void LuaScript::bindLuaCatalog(const std::filesystem::path &toolRoot) {

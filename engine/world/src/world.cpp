@@ -164,6 +164,9 @@ World::World(
     // prunes no names — only destroyAllExceptPreserved does), leaving a stale
     // name -> dead-id entry that asserts on the next getEntityByName.
     IREntity::singleton<IRComponents::C_EntityEventHandlers>();
+    m_fileDialogPanel = [this](const IRWindow::FileDialogRequest &request) {
+        return IRWindow::platformOpenFileDialog(m_IRGLFWWindow.getRawWindow(), request);
+    };
     IR_PROFILE_MAIN_THREAD;
     IRE_LOG_INFO("Initalized game world");
 }
@@ -274,6 +277,9 @@ void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings
         []() { return IRJob::isMainThread(); }
     );
     bindToolSpawnLua(m_lua, m_toolService, []() { return IRJob::isMainThread(); });
+    m_lua.setFileDialogInvoker([this](const IRWindow::FileDialogRequest &request) {
+        return openFileDialog(request);
+    });
 
     for (const auto &bind : bindings) {
         bind(m_lua);
@@ -321,6 +327,49 @@ std::expected<ToolHandle, std::string> World::spawnTool(const ToolSpawnRequest &
 
 void World::setHandOffPlatform(std::unique_ptr<HandOffPlatform> platform) {
     m_handOffPlatform = std::move(platform);
+}
+
+IRWindow::FileDialogResult World::openFileDialog(const IRWindow::FileDialogRequest &request) {
+    IRWindow::FileDialogHost host;
+    host.onMainThread_ = IRJob::isMainThread();
+    host.captureRun_ = m_captureRunRequested || IRVideo::isAutoCaptureActive();
+    host.windowMode_ = m_IRGLFWWindow.getWindowMode();
+
+    bool shown = false;
+    IRWindow::FileDialogPanel panel;
+    if (m_fileDialogPanel) {
+        panel = [this, &shown](const IRWindow::FileDialogRequest &normalized) {
+            shown = true;
+            IRE_LOG_INFO("File dialog: opening ('{}')", normalized.title_);
+            return m_fileDialogPanel(normalized);
+        };
+    }
+    const IRWindow::FileDialogResult result = IRWindow::runFileDialog(request, host, panel);
+    if (shown) {
+        // The panel parked the main thread mid-frame: without the re-baseline
+        // its whole lifetime would arrive as UPDATE catch-up and one RENDER
+        // delta.
+        m_timeManager.resumeAfterSuspend();
+    }
+    if (result.status_ == IRWindow::FileDialogStatus::ACCEPTED) {
+        IRE_LOG_INFO("File dialog: accepted {} path(s)", result.paths_.size());
+    } else {
+        IRE_LOG_INFO(
+            "File dialog: {}{}{}",
+            IRWindow::fileDialogStatusName(result.status_),
+            result.error_.empty() ? "" : ": ",
+            result.error_
+        );
+    }
+    return result;
+}
+
+void World::setFileDialogPanel(IRWindow::FileDialogPanel panel) {
+    m_fileDialogPanel = std::move(panel);
+}
+
+void World::setCaptureRunRequested(bool requested) {
+    m_captureRunRequested = requested;
 }
 
 struct World::FrameStages {

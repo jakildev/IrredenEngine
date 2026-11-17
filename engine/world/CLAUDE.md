@@ -36,7 +36,7 @@ streaming design: [`docs/design/world-streaming.md`](../../docs/design/world-str
 
 `gameLoop()`: `executePipeline(INPUT)` → `executePipeline(UPDATE)` while
 `TimeManager::shouldUpdate()` → `executePipeline(RENDER)` → swap + pacing; `IRPrefab::Static::drain()` follows each pipeline ([static residents](../../docs/design/static-residents.md)).
-One frame is `runMainLoopFrame` (`world/main_loop_frame.hpp`); a hand-off that lost its gpu lease stops it and the loop ([contract](../../docs/design/engine-hand-off.md)).
+One frame is `runMainLoopFrame` (`world/main_loop_frame.hpp`); a hand-off that lost its gpu lease stops it and the loop ([contract](../../docs/design/engine-hand-off.md)). `World::openFileDialog` parks the main thread mid-frame the same way and re-baselines the clock on return ([contract](../../docs/design/native-file-dialog.md)).
 
 ## Lua wiring
 

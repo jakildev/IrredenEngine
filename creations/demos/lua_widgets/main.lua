@@ -288,3 +288,73 @@ if handOffMode ~= "off" then
         }))
     end
 end
+
+-- File-dialog fixture (--file-dialog-fixture button|auto; absent, nothing below
+-- runs). OPEN FILES / OPEN FOLDER show the native open panel and print what
+-- came back, then read each pick through IRFile: a picked file's byte count, a
+-- picked folder's entry count. Equal frame / tick readings across the
+-- before / closed pair show the loop did not iterate while the panel was open.
+local fileDialogMode = IRTest.fileDialogFixture()
+if fileDialogMode ~= "off" then
+    local statusNames = {}
+    for name, value in pairs(IRDialog.Status) do
+        statusNames[value] = name
+    end
+    local frames = 0
+    local function markers(phase)
+        return "LUA_WIDGETS FILEDIALOG " .. phase .. " frame=" .. frames .. " tick=" .. IRTest.engineTick()
+    end
+    local function open(mode, title, filters)
+        print(markers("before"))
+        local r = IRDialog.open{ mode = mode, title = title, filters = filters }
+        print(markers("closed") .. " status=" .. statusNames[r.status] .. " paths=" .. #r.paths ..
+              " error=" .. tostring(r.error))
+        for i, path in ipairs(r.paths) do
+            if mode == IRDialog.Mode.OPEN_FOLDER then
+                local entries = IRFile.list(path)
+                print("LUA_WIDGETS FILEDIALOG path[" .. i .. "]=" .. path ..
+                      " entries=" .. (entries and #entries or "unreadable"))
+            else
+                local text = IRFile.readText(path)
+                print("LUA_WIDGETS FILEDIALOG path[" .. i .. "]=" .. path ..
+                      " bytes=" .. (text and #text or "unreadable"))
+            end
+        end
+        return r
+    end
+    local function openFiles()
+        return open(IRDialog.Mode.OPEN_FILES, "Choose files", {
+            { name = "Images", extensions = { "png", "jpg", "jpeg" } },
+            { name = "All files", extensions = { "*" } },
+        })
+    end
+    IRGui.makeButton(520, 620, 240, 36, "OPEN FILES", function() openFiles() end)
+    IRGui.makeButton(520, 664, 240, 36, "OPEN FOLDER", function()
+        open(IRDialog.Mode.OPEN_FOLDER, "Choose a folder")
+    end)
+
+    local C_FileDialogClock = IRComponent.register("LuaWidgetsFileDialogClock", { n = 0 })
+    IREntity.singleton(C_FileDialogClock)
+    IRSystem.appendSystem(IRTime.RENDER, IRSystem.registerSystem({
+        name = "LuaWidgetsFileDialogFrames",
+        components = { C_FileDialogClock },
+        tick = function() frames = frames + 1 end,
+    }))
+    if fileDialogMode == "auto" then
+        local ticks, closedAt = 0, nil
+        IRSystem.appendSystem(IRTime.INPUT, IRSystem.registerSystem({
+            name = "LuaWidgetsFileDialogAuto",
+            components = { C_FileDialogClock },
+            tick = function()
+                ticks = ticks + 1
+                if ticks == 30 then
+                    openFiles()
+                    closedAt = ticks
+                elseif closedAt ~= nil and ticks == closedAt + 30 then
+                    print(markers("closing"))
+                    IRTest.closeWindow()
+                end
+            end,
+        }))
+    end
+end

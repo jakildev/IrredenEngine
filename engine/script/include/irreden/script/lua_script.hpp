@@ -13,6 +13,7 @@
 #include <irreden/script/lua_archetype_view.hpp>
 #include <irreden/script/lua_binding_traits.hpp>
 #include <irreden/script/lua_component_data.hpp>
+#include <irreden/script/path_grants.hpp>
 
 #include <cstddef>
 #include <filesystem>
@@ -24,6 +25,11 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+namespace IRWindow {
+struct FileDialogRequest;
+struct FileDialogResult;
+} // namespace IRWindow
 
 namespace IRScript {
 
@@ -114,10 +120,35 @@ class LuaScript {
     void bindLuaCanvasDraw();
     void bindLuaCanvasDraw(const std::filesystem::path &imageBase);
 
-    // Bind root-relative text file access. Absolute paths and paths that
-    // resolve outside the root are rejected. The no-arg form uses the run directory.
+    // Bind root-relative text file access. Paths that resolve outside the
+    // root are rejected; an absolute path is readable (never writable) only
+    // when pathGrants() holds it. The no-arg form uses the run directory.
     void bindLuaFiles();
     void bindLuaFiles(const std::filesystem::path &root);
+
+    // Bind the opt-in native open panel as the `IRDialog` table: `open{...}`,
+    // `Mode`, `Status`. Extends an existing IRDialog table and rejects a
+    // non-table collision. Every path the user picks is granted to this
+    // script's confined readers. See engine/script/CLAUDE.md "Engine service
+    // bindings" and docs/design/native-file-dialog.md.
+    void bindLuaFileDialog();
+
+    // What `IRDialog.open` calls to show the panel. `World` installs the
+    // engine's; without one the call returns UNSUPPORTED.
+    using FileDialogInvoker =
+        std::function<IRWindow::FileDialogResult(const IRWindow::FileDialogRequest &)>;
+    void setFileDialogInvoker(FileDialogInvoker invoker) {
+        m_fileDialogInvoker = std::move(invoker);
+    }
+    const FileDialogInvoker &fileDialogInvoker() const {
+        return m_fileDialogInvoker;
+    }
+
+    // The absolute paths this script's confined readers accept. Only C++
+    // adds to it; `IRDialog.open` does so for what the user picked.
+    PathGrants &pathGrants() {
+        return m_pathGrants;
+    }
 
     // Bind creation and asset discovery under a trusted checkout root.
     // Lua paths are relative to this root and cannot escape it.
@@ -463,6 +494,9 @@ class LuaScript {
     // C++ type → Lua name of every usertype `registerType` registered, so a
     // refused repeat can hand back the existing registration.
     std::unordered_map<std::type_index, std::string> m_usertypeLuaNames;
+
+    PathGrants m_pathGrants;
+    FileDialogInvoker m_fileDialogInvoker;
 
     // Declared last so it destructs first: lua_close() runs before any
     // closure-captured map (m_prefabSystemIds etc.) is gone. Mirrors the

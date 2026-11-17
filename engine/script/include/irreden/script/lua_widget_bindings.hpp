@@ -205,18 +205,22 @@ inline float finiteNumber(const sol::object &value, const char *caller, const ch
 // An image path from Lua, resolved inside @p imageBase, which must already be
 // canonical. IRGui is an engine-wide table, so the image widget must not become
 // a host-file read for whatever script calls it: a path that
-// `IRUtility::resolveContainedPath` refuses raises before the file is opened.
-// The widget gets the resolved path, never the Lua string.
+// `IRUtility::resolveContainedPath` refuses raises before the file is opened,
+// unless it is an absolute path @p grants holds (what the user picked in
+// `IRDialog.open`). The widget gets the resolved path, never the Lua string.
 inline std::string containedImagePath(
-    const std::filesystem::path &imageBase, const std::string &path, const char *caller
+    const PathGrants &grants,
+    const std::filesystem::path &imageBase,
+    const std::string &path,
+    const char *caller
 ) {
     const std::optional<std::filesystem::path> resolved =
-        IRUtility::resolveContainedPath(imageBase, path);
+        resolveReadablePath(grants, imageBase, path);
     if (!resolved) {
         throw sol::error{
             std::string(caller) + ": path '" + path +
-            "' must be relative to the image base and stay inside it (no absolute path, "
-            "no '..', no symlink out)"
+            "' must be relative to the image base and stay inside it (no '..', no symlink "
+            "out), or an absolute path the user picked in IRDialog.open"
         };
     }
     return resolved->string();
@@ -381,22 +385,25 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
     // builds the widget, drawn as a placeholder hatch; `imageError` then
     // returns the reason, naming the path. Drawing needs WIDGET_RENDER_IMAGE
     // in RENDER.
+    // The grant set is a LuaScript member that outlives these closures.
+    const PathGrants *grants = &script.pathGrants();
     gui["makeImage"] =
-        [canonicalImageBase](int x, int y, int w, int h, const std::string &path) -> lua_Integer {
+        [canonicalImageBase,
+         grants](int x, int y, int w, int h, const std::string &path) -> lua_Integer {
         if (w <= 0 || h <= 0) {
             throw sol::error{"IRGui.makeImage: w and h must be positive"};
         }
         return static_cast<lua_Integer>(IRPrefab::Widget::makeImage(
             IRMath::ivec2(x, y),
             IRMath::ivec2(w, h),
-            containedImagePath(canonicalImageBase, path, "IRGui.makeImage")
+            containedImagePath(*grants, canonicalImageBase, path, "IRGui.makeImage")
         ));
     };
-    gui["setImagePath"] = [canonicalImageBase](lua_Integer id, const std::string &path) {
+    gui["setImagePath"] = [canonicalImageBase, grants](lua_Integer id, const std::string &path) {
         requireWidget<IRComponents::C_WidgetImage>(id, "IRGui.setImagePath", "makeImage widget");
         IRPrefab::Widget::setImagePath(
             static_cast<IREntity::EntityId>(id),
-            containedImagePath(canonicalImageBase, path, "IRGui.setImagePath")
+            containedImagePath(*grants, canonicalImageBase, path, "IRGui.setImagePath")
         );
     };
     gui["imageError"] = [](lua_Integer id) -> sol::optional<std::string> {

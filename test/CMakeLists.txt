@@ -259,6 +259,8 @@ add_executable(IrredenEngineTest
   script/lua_engine_hand_off_test.cpp
   script/lua_spawn_tool_test.cpp
   script/lua_file_bindings_test.cpp
+  script/lua_file_dialog_bindings_test.cpp
+  script/path_grants_test.cpp
   script/lua_script_get_table_test.cpp
   script/lua_viewport_bindings_test.cpp
   script/lua_canvas_draw_bindings_test.cpp
@@ -307,6 +309,7 @@ add_executable(IrredenEngineTest
   video/capture_source_test.cpp
   window/window_mode_test.cpp
   window/close_guard_test.cpp
+  window/file_dialog_test.cpp
   world/chunk_coord_test.cpp
   world/chunk_membership_migration_test.cpp
   world/chunk_persistence_test.cpp

@@ -1,6 +1,7 @@
 #ifndef WORLD_H
 #define WORLD_H
 
+#include <irreden/window/file_dialog.hpp>
 #include <irreden/window/ir_glfw_window.hpp>
 #include <irreden/input/input_manager.hpp>
 #include <irreden/ir_command.hpp>
@@ -55,6 +56,17 @@ class World {
     /// another update or render.
     HandOffResult handOff(const HandOffRequest &request);
     void setHandOffPlatform(std::unique_ptr<HandOffPlatform> platform);
+    /// Blocks the main thread in the native open panel
+    /// (`IREngine::openFileDialog`, docs/design/native-file-dialog.md). No
+    /// update or render runs while it is open; the loop clock is re-baselined
+    /// when it closes. Refused without showing anything in a capture run,
+    /// outside `WindowMode::NORMAL` and off the main thread.
+    IRWindow::FileDialogResult openFileDialog(const IRWindow::FileDialogRequest &request);
+    /// Replaces the native panel; an empty one makes every call UNSUPPORTED.
+    void setFileDialogPanel(IRWindow::FileDialogPanel panel);
+    /// Marks the run as a capture run from its command line, before any
+    /// capture system has armed.
+    void setCaptureRunRequested(bool requested);
     void setToolRoot(const std::filesystem::path &root);
     std::optional<std::filesystem::path> toolRoot() const;
     std::expected<void, std::string> selectToolRoot(std::string_view id);
@@ -94,6 +106,8 @@ class World {
     uint32_t m_maxUpdateTicksPerFrame = 8;
     std::unique_ptr<HandOffPlatform> m_handOffPlatform;
     bool m_handOffLeaseLost = false;
+    IRWindow::FileDialogPanel m_fileDialogPanel;
+    bool m_captureRunRequested = false;
 
     // Agent-readable profiling: frame timing accumulation
     bool m_frameTimingEnabled = false;
