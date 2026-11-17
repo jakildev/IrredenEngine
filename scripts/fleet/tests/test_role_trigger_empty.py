@@ -354,6 +354,54 @@ def _needs_plan(n):
     return {"kind": "needs_plan", "repo": "engine", "issue": n}
 
 
+class EpicStewardUnapprovedBackrefStaysQuiet(RoleTriggerTempCase):
+    """An unapproved back-ref is the held-adopt shape: the steward correctly
+    writes nothing, so no wake may re-arm it however stale the seen file."""
+
+    ROLE = "epic-steward"
+
+    def _state(self, approved):
+        return {"repos": {"engine": {
+            "epics": [{"number": 10, "title": "epic", "labels": ["fleet:epic"],
+                       "updatedAt": "2026-06-10T00:00:00Z",
+                       "checklist": [{"number": 11, "checked": False,
+                                      "closed": False}],
+                       "managed": False, "filing": False}],
+            "epic_backrefs": [{"number": 14, "title": "late child",
+                               "epics": [10], "approved": approved}],
+            "prs": [],
+        }}}
+
+    def _backdate(self, role):
+        stale = time.time() - _mod.ROLE_TRIGGER_REARM_SECONDS - 1
+        os.utime(_mod.SEEN_DIR / role, (stale, stale))
+
+    def test_unapproved_back_ref_writes_no_trigger_past_the_rearm_floor(self):
+        projection = _mod.project_epic_steward(self._state(approved=False))
+        self.assertEqual(projection, [])
+        # Seen file holds the pre-fix loop's hash (the adopt item) and is
+        # older than the floor — the exact state that re-armed every 30 min.
+        held = _mod.project_epic_steward(self._state(approved=True))
+        _mod.update_role_trigger(self.ROLE, held)
+        (_mod.TRIGGERS_DIR / self.ROLE).unlink()
+        self._backdate(self.ROLE)
+
+        self.assertFalse(_mod.update_role_trigger(self.ROLE, projection))
+        self.assertFalse((_mod.TRIGGERS_DIR / self.ROLE).exists())
+        # Settled on the empty hash: a later stale pass stays quiet too.
+        self._backdate(self.ROLE)
+        self.assertFalse(_mod.update_role_trigger(self.ROLE, projection))
+        self.assertFalse((_mod.TRIGGERS_DIR / self.ROLE).exists())
+
+    def test_approval_arriving_fires_the_trigger(self):
+        _mod.update_role_trigger(
+            self.ROLE, _mod.project_epic_steward(self._state(approved=False)))
+        self._backdate(self.ROLE)
+        self.assertTrue(_mod.update_role_trigger(
+            self.ROLE, _mod.project_epic_steward(self._state(approved=True))))
+        self.assertTrue((_mod.TRIGGERS_DIR / self.ROLE).exists())
+
+
 class UpdateRoleTriggerPerKind(unittest.TestCase):
     """Per-sub-lane suppression for union projections.
 

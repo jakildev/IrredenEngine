@@ -212,10 +212,15 @@ Trigger: a checklist child is closed but unticked.
 
 ### Flow c — adoption
 
-Trigger: an open issue's body declares membership in the umbrella but it is
-absent from the checklist — found by the scout's label-blind body back-ref
-scan (`epic_backrefs`), so an unlabeled follow-up is visible. While any
-adopt item is pending for an umbrella, its `closeout` trigger is withheld.
+Trigger: an open issue's body declares membership in the umbrella, it is
+absent from the checklist, and it carries `human:approved` or
+`fleet:agent-approved` — found by the scout's label-blind body back-ref scan
+(`epic_backrefs`), so an unlabeled follow-up is visible to the scan but
+raises no `adopt` trigger until it is approved (§ Escalation rules); the
+approval label arriving is the re-fire edge. The `adoptable` slice lists
+unapproved candidates too, each with `"approved": false`. While any adopt
+candidate, approved or not, is pending for an umbrella, its `closeout`
+trigger is withheld.
 An unmanaged umbrella with an empty checklist is withheld during the scout's
 900-second filing window; once the window passes, the normal heal-on-first-
 claim path applies.

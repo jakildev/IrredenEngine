@@ -59,7 +59,7 @@ section grows a field — that is the omission this table exists to close.
 | `closed_fleet_queued` | `number` | closed `fleet:queued` issues, newest 100 |
 | `recent_merged_prs` | `number, title, headRefName, baseRefName, mergedAt` | newest 30 merges by `mergedAt` (any PR number), from up to 3 newest-updated closed pages; a cap hit writes `${FLEET_ALERTS_DIR:-~/.fleet/alerts}/state-scout-recent-merged-<owner>-<repo>` while it holds |
 | `epics` | `number, title, labels, updatedAt, checklist, managed` | open `fleet:epic` issues, one REST page (100) |
-| `epic_backrefs` | `number, title, epics` | open issues (any labels) whose body declares epic membership (`fleet_epic_membership.py`), from up to 10 REST pages (1000 issues + PRs); a cap hit writes `${FLEET_ALERTS_DIR:-~/.fleet/alerts}/state-scout-epic-backrefs-<owner>-<repo>` while it holds |
+| `epic_backrefs` | `number, title, epics, approved` | open issues (any labels) whose body declares epic membership (`fleet_epic_membership.py`), from up to 10 REST pages (1000 issues + PRs); a cap hit writes `${FLEET_ALERTS_DIR:-~/.fleet/alerts}/state-scout-epic-backrefs-<owner>-<repo>` while it holds |
 | `tasks.open` / `tasks.in_progress` | `status, title, summary, id, model, effort, labels, owner, area, blocked_by, blocked, has_open_blocker, needs_gl_host, needs_host, backend_symmetric, issue, updatedAt` | open `fleet:queued` issues minus `fleet:needs-human`/`fleet:plan-review`/`fleet:gated`, up to 200 (2 REST pages) |
 | `tasks.done` | `id` | one record per `closed_fleet_queued` entry — same 100-item cap, not an independent population |
 | `tasks.plan_gated` | bare issue numbers, not issue-shaped records | same pre-filter population as `tasks.open`/`tasks.in_progress` |

@@ -1709,15 +1709,23 @@ def fetch_epics(repo, now=None):
 # truncation, warned escalate-then-quiet.
 EPIC_BACKREFS_PER_PAGE = 100
 EPIC_BACKREFS_MAX_PAGES = 10
+# Labels that count as approval for an epic back-ref: the same pair
+# fetch_human_approved ingests.
+_EPIC_ADOPT_APPROVAL_LABELS = frozenset({"human:approved",
+                                         "fleet:agent-approved"})
 
 
 def fetch_epic_backrefs(repo):
     # Every open issue that declares epic membership, reduced at fetch time to
-    # {number, title, epics} — bodies never reach state.json. Label-blind on
-    # purpose: a follow-up filed unlabeled (the TASK-FILING.md default) still
-    # declares its umbrella, and a label-filtered read cannot see it. PRs are
-    # dropped before parsing: their bodies carry prose back-refs that are not
-    # membership declarations.
+    # {number, title, epics, approved} — bodies never reach state.json.
+    # Label-blind on purpose: a follow-up filed unlabeled (the TASK-FILING.md
+    # default) still declares its umbrella, and a label-filtered read cannot
+    # see it. `approved` is the one bit the labels contribute: true when the
+    # issue carries human:approved or fleet:agent-approved (the pair
+    # fetch_human_approved treats as approval), so the steward's adopt trigger
+    # can wait for the verdict the protocol requires. PRs are dropped before
+    # parsing: their bodies carry prose back-refs that are not membership
+    # declarations.
     raw = _rest_list(repo, "issues", {"state": "open"},
                      per_page=EPIC_BACKREFS_PER_PAGE,
                      max_pages=EPIC_BACKREFS_MAX_PAGES)
@@ -1733,9 +1741,13 @@ def fetch_epic_backrefs(repo):
             continue
         epics = epic_refs(issue.get("body"))
         if epics:
+            names = {label.get("name") if isinstance(label, dict) else label
+                     for label in issue.get("labels") or []}
             backrefs.append({"number": issue.get("number", 0),
                              "title": issue.get("title", "") or "",
-                             "epics": epics})
+                             "epics": epics,
+                             "approved": bool(
+                                 names & _EPIC_ADOPT_APPROVAL_LABELS)})
     backrefs.sort(key=lambda issue: issue["number"])
     return backrefs
 
@@ -4366,10 +4378,14 @@ def _epic_design_prs(repo_key, repo_state):
 
 
 def _epic_adopt_candidates(repo_state):
-    """[{issue, epic, title}] for open issues whose body declares membership
-    in an open epic whose checklist lacks them, one per (issue, umbrella)
-    pair. Read from the label-blind `epic_backrefs` scan, so an unlabeled
-    child is visible. A ref to a closed or non-epic umbrella emits nothing —
+    """[{issue, epic, title, approved}] for open issues whose body declares
+    membership in an open epic whose checklist lacks them, one per (issue,
+    umbrella) pair. Read from the label-blind `epic_backrefs` scan, so an
+    unlabeled child is visible; `approved` carries its human:approved /
+    fleet:agent-approved bit (absent reads as false). Every candidate is
+    returned, approved or not — callers decide what an unapproved one gates
+    (project_epic_steward withholds its adopt trigger but still counts it
+    against closeout). A ref to a closed or non-epic umbrella emits nothing —
     there is no checklist to adopt into."""
     epics = repo_state.get("epics", [])
     if not epics:
@@ -4387,7 +4403,8 @@ def _epic_adopt_candidates(repo_state):
             if number in member_sets[umbrella]:
                 continue
             out.append({"issue": number, "epic": umbrella,
-                        "title": issue.get("title", "")})
+                        "title": issue.get("title", ""),
+                        "approved": bool(issue.get("approved", False))})
     return out
 
 
@@ -4412,17 +4429,22 @@ def project_epic_steward(state):
                    nothing (no perma-trigger).
     - rollup     — unchecked checklist child that is closed; gone when the
                    steward ticks the box.
-    - adopt      — open issue whose body declares membership in #U (the
-                   label-blind `epic_backrefs` scan) absent from that
-                   umbrella's checklist; gone when appended.
+    - adopt      — APPROVED open issue (human:approved or
+                   fleet:agent-approved) whose body declares membership in #U
+                   (the label-blind `epic_backrefs` scan) absent from that
+                   umbrella's checklist; gone when appended. An unapproved
+                   back-ref emits nothing: flow c adopts only after approval,
+                   and a held adopt would re-arm a no-op steward every
+                   rearm window. Approval flips the record's `approved` bit,
+                   which is the re-fire edge.
     - design     — op=triage: fleet:design-blocked PR branch-matched to a
                    checklist child; gone on design-unblock/design-propose.
                    op=distribute: fleet:design-proposed PR whose umbrella
                    dropped fleet:steward-proposal; gone on design-unblock.
     - closeout   — checklist non-empty and every child closed, umbrella
-                   open, and no adopt item for it (an open unadopted
-                   back-ref means the epic is not done); gone when the
-                   umbrella closes.
+                   open, and no adopt candidate for it, approved or not (an
+                   open unadopted back-ref means the epic is not done); gone
+                   when the umbrella closes.
 
     An umbrella parked on the human (_EPIC_PARKED_LABELS) emits no closeout
     item: the steward has already audited it and recorded the park, so
@@ -4459,6 +4481,8 @@ def project_epic_steward(state):
                 items.append({"kind": "closeout", "repo": repo,
                               "epic": number})
         for cand in adopt:
+            if not cand["approved"]:
+                continue
             items.append({"kind": "adopt", "repo": repo,
                           "epic": cand["epic"], "issue": cand["issue"]})
         for pr, umbrella, _child, op in _epic_design_prs(repo, repo_state):
@@ -4865,7 +4889,10 @@ def slice_epic_steward(state):
       checklist child, repo-tagged, annotated with `epic`, `child`, and `op`
       (`triage` / `distribute` / null while the proposal is still pending).
     - `adoptable` — open issues whose body declares membership in an open
-      umbrella whose checklist lacks them (the `epic_backrefs` scan).
+      umbrella whose checklist lacks them (the `epic_backrefs` scan), each
+      with its `approved` bit. Unapproved candidates are listed too, so a
+      steward dispatched on another trigger still sees the pending one; only
+      the approved ones carry an `adopt` trigger.
     - `triggers` — the projector's items verbatim, so the role's startup
       reads pending work by flow without recomputing the hash inputs.
     """

@@ -78,8 +78,9 @@ def _task(num, *, summary="task", in_progress=False, blocked_by="(none)"):
     }
 
 
-def _backref(num, *epics, title="task"):
-    return {"number": num, "title": title, "epics": list(epics)}
+def _backref(num, *epics, title="task", approved=True):
+    return {"number": num, "title": title, "epics": list(epics),
+            "approved": approved}
 
 
 def _state(*, epics=None, prs=None, tasks_open=None, tasks_in_progress=None,
@@ -216,6 +217,66 @@ class AdoptOp(unittest.TestCase):
         self.assertEqual(project_epic_steward(after), [])
 
 
+class UnapprovedBackref(unittest.TestCase):
+    """An unapproved back-ref is held by the protocol (flow c adopts after
+    approval), so it must not raise an `adopt` trigger: a held trigger
+    re-arms a no-op steward every rearm window."""
+
+    _ALL_CLOSED = [_entry(11, checked=True, closed=True)]
+
+    def _unapproved_state(self, checklist=None):
+        return _state(
+            epics=[_epic(10, checklist=checklist or [_entry(11)])],
+            epic_backrefs=[_backref(14, 10, approved=False)])
+
+    def test_unapproved_back_ref_emits_no_adopt_and_projection_is_empty(self):
+        self.assertEqual(project_epic_steward(self._unapproved_state()), [])
+
+    def test_human_approved_back_ref_emits_adopt(self):
+        # Fetch-level approval -> record bit -> adopt item.
+        with patch.object(_mod, "_rest_list", return_value=[
+                {"number": 14, "title": "t", "body": "**Part of epic:** #10\n",
+                 "labels": [{"name": "human:approved"}]}]), \
+                patch.object(_mod, "_note_page_cap"):
+            backrefs = _mod.fetch_epic_backrefs("jakildev/IrredenEngine")
+        items = project_epic_steward(_state(
+            epics=[_epic(10, checklist=[_entry(11)])], epic_backrefs=backrefs))
+        self.assertEqual(items, [{"kind": "adopt", "repo": "engine",
+                                  "epic": 10, "issue": 14}])
+
+    def test_agent_approved_back_ref_emits_adopt(self):
+        with patch.object(_mod, "_rest_list", return_value=[
+                {"number": 14, "title": "t", "body": "**Part of epic:** #10\n",
+                 "labels": [{"name": "fleet:agent-approved"}]}]), \
+                patch.object(_mod, "_note_page_cap"):
+            backrefs = _mod.fetch_epic_backrefs("jakildev/IrredenEngine")
+        items = project_epic_steward(_state(
+            epics=[_epic(10, checklist=[_entry(11)])], epic_backrefs=backrefs))
+        self.assertEqual(items, [{"kind": "adopt", "repo": "engine",
+                                  "epic": 10, "issue": 14}])
+
+    def test_approval_changes_the_hash(self):
+        # The re-fire edge: the verdict label arriving flips the hash.
+        before = self._unapproved_state()
+        after = _state(epics=[_epic(10, checklist=[_entry(11)])],
+                       epic_backrefs=[_backref(14, 10, approved=True)])
+        self.assertNotEqual(_hash(before), _hash(after))
+
+    def test_unapproved_back_ref_still_withholds_closeout(self):
+        # Every checklist child closed, one declared member unadopted and
+        # unapproved: the epic is not done, so no closeout and no adopt.
+        self.assertEqual(
+            project_epic_steward(self._unapproved_state(self._ALL_CLOSED)),
+            [])
+
+    def test_slice_lists_unapproved_candidate_with_its_bit(self):
+        out = slice_epic_steward(self._unapproved_state())
+        self.assertEqual(out["adoptable"],
+                         [{"issue": 14, "epic": 10, "title": "task",
+                           "approved": False, "repo": "engine"}])
+        self.assertEqual(out["triggers"], [])
+
+
 class EpicFetch(unittest.TestCase):
     def test_filing_window_marks_only_recent_unmanaged_empty_epics(self):
         raw_epics = [
@@ -287,7 +348,7 @@ class BackrefScan(unittest.TestCase):
              "body": "No membership line; mentions #10 in prose.\n"},
         ])
         self.assertEqual(out, [{"number": 14, "title": "late child",
-                                "epics": [10]}])
+                                "epics": [10], "approved": False}])
 
     def test_variant_spelling_and_pr_bodies(self):
         out = self._fetch([
@@ -297,12 +358,13 @@ class BackrefScan(unittest.TestCase):
              "body": "**Part of epic:** #10\n"},
         ])
         self.assertEqual(out, [{"number": 16, "title": "legacy",
-                                "epics": [10, 20]}])
+                                "epics": [10, 20], "approved": False}])
 
     def test_bodies_never_reach_the_record(self):
         out = self._fetch([{"number": 14, "title": "t", "labels": ["x"],
                             "body": "**Part of epic:** #10\n"}])
-        self.assertEqual(set(out[0]), {"number", "title", "epics"})
+        self.assertEqual(set(out[0]),
+                         {"number", "title", "epics", "approved"})
 
     def test_hard_failure_is_none(self):
         with patch.object(_mod, "_rest_list", return_value=None):
@@ -693,7 +755,7 @@ class Slice(unittest.TestCase):
 
         self.assertEqual(out["adoptable"],
                          [{"issue": 14, "epic": 10, "title": "late child",
-                           "repo": "engine"}])
+                           "approved": True, "repo": "engine"}])
 
     def test_triggers_mirror_projector(self):
         state = self._state()

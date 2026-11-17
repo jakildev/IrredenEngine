@@ -38,7 +38,8 @@ _SAMPLE_TASK_QUEUE = {
     "done": [],
 }
 
-_SAMPLE_BACKREF = {"number": 98, "title": "late child", "epics": [7]}
+_SAMPLE_BACKREF = {"number": 98, "title": "late child", "epics": [7],
+                   "approved": False}
 
 
 class TestScoutDegradedFetch(unittest.TestCase):
