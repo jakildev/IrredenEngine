@@ -173,6 +173,10 @@ struct VideoRecorder::FFmpegState {
 
     std::mutex queueMutex;
     std::condition_variable queueCv;
+    // Signalled when the worker takes a frame, for a submitter waiting on a
+    // full queue.
+    std::condition_variable queueSpaceCv;
+    bool blockWhenQueueFull = false;
     std::deque<std::vector<std::uint8_t>> frameQueue;
     std::deque<AudioChunk> audioQueue;
     std::vector<std::vector<std::uint8_t>> freeFramePool;
@@ -198,6 +202,7 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
     stop();
     m_lastError.clear();
     m_videoFrameCount = 0;
+    m_droppedVideoFrameCount = 0;
 
     if (config.width_ <= 0 || config.height_ <= 0 || config.target_fps_ <= 0) {
         m_lastError =
@@ -448,6 +453,7 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
     state->videoFrame->height = config.height_;
     state->sourceStrideBytes = srcW * 4;
     state->sourceHeight = srcH;
+    state->blockWhenQueueFull = config.block_when_queue_full_;
 
     result = av_frame_get_buffer(state->videoFrame, 32);
     if (result < 0) {
@@ -475,6 +481,7 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
             state->workerError = errorMessage;
             state->stopRequested = true;
             state->queueCv.notify_all();
+            state->queueSpaceCv.notify_all();
         };
 
         auto writeEncodedPackets =
@@ -534,6 +541,7 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
                 if (!processAudioChunk && !state->frameQueue.empty()) {
                     frameBuffer = std::move(state->frameQueue.front());
                     state->frameQueue.pop_front();
+                    state->queueSpaceCv.notify_one();
                     if (state->droppedVideoFrames > 0) {
                         state->nextVideoPts += state->droppedVideoFrames;
                         state->droppedVideoFrames = 0;
@@ -721,6 +729,7 @@ void VideoRecorder::stop() {
             std::lock_guard<std::mutex> lock(state->queueMutex);
             state->stopRequested = true;
             state->queueCv.notify_all();
+            state->queueSpaceCv.notify_all();
         }
         if (state->workerThread.joinable()) {
             state->workerThread.join();
@@ -732,6 +741,14 @@ void VideoRecorder::stop() {
                 m_lastError = state->workerError;
                 IRE_LOG_ERROR("VideoRecorder async encode error: {}", m_lastError.c_str());
             }
+        }
+        if (m_droppedVideoFrameCount > 0) {
+            IRE_LOG_WARN(
+                "Video capture gave up {} of {} frames: the encoder fell behind the frames "
+                "submitted to it. The clip keeps its length with those frames missing.",
+                m_droppedVideoFrameCount,
+                m_videoFrameCount
+            );
         }
 
         if (state->formatContext != nullptr) {
@@ -795,6 +812,46 @@ void VideoRecorder::stop() {
     m_isRecording = false;
 }
 
+// Hands one frame to the encoder thread. A full queue either waits for the
+// worker to take a frame or gives up its oldest one; the worker advances the
+// pts past a given-up frame, so the clip keeps its timing.
+bool VideoRecorder::enqueueFrame(std::vector<std::uint8_t> &&frame) {
+#if !IR_VIDEO_HAS_FFMPEG
+    (void)frame;
+    return false;
+#else
+    FFmpegState *state = m_state;
+    {
+        std::unique_lock<std::mutex> lock(state->queueMutex);
+        if (state->blockWhenQueueFull) {
+            state->queueSpaceCv.wait(lock, [state]() {
+                return state->encodeFailed || state->stopRequested ||
+                       state->frameQueue.size() < state->maxQueuedFrames;
+            });
+        }
+        if (state->encodeFailed) {
+            m_lastError = state->workerError;
+            return false;
+        }
+        if (state->stopRequested) {
+            m_lastError = "Recorder is stopping and cannot accept new frames.";
+            return false;
+        }
+
+        if (state->frameQueue.size() >= state->maxQueuedFrames) {
+            state->frameQueue.pop_front();
+            ++state->droppedVideoFrames;
+            ++m_droppedVideoFrameCount;
+        }
+        state->frameQueue.push_back(std::move(frame));
+    }
+    state->queueCv.notify_one();
+
+    ++m_videoFrameCount;
+    return true;
+#endif
+}
+
 bool VideoRecorder::submitVideoFrame(const std::uint8_t *rgbaData, int strideBytes) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_VIDEO);
     if (!m_isRecording) {
@@ -828,27 +885,7 @@ bool VideoRecorder::submitVideoFrame(const std::uint8_t *rgbaData, int strideByt
     std::vector<std::uint8_t> frame(frameBytes);
     std::memcpy(frame.data(), rgbaData, frameBytes);
 
-    {
-        std::lock_guard<std::mutex> lock(state->queueMutex);
-        if (state->encodeFailed) {
-            m_lastError = state->workerError;
-            return false;
-        }
-        if (state->stopRequested) {
-            m_lastError = "Recorder is stopping and cannot accept new frames.";
-            return false;
-        }
-
-        if (state->frameQueue.size() >= state->maxQueuedFrames) {
-            state->frameQueue.pop_front();
-            ++state->droppedVideoFrames;
-        }
-        state->frameQueue.push_back(std::move(frame));
-    }
-    state->queueCv.notify_one();
-
-    ++m_videoFrameCount;
-    return true;
+    return enqueueFrame(std::move(frame));
 #endif
 }
 
@@ -877,27 +914,7 @@ bool VideoRecorder::submitVideoFrame(std::vector<std::uint8_t> &&frameData) {
         return false;
     }
 
-    {
-        std::lock_guard<std::mutex> lock(state->queueMutex);
-        if (state->encodeFailed) {
-            m_lastError = state->workerError;
-            return false;
-        }
-        if (state->stopRequested) {
-            m_lastError = "Recorder is stopping and cannot accept new frames.";
-            return false;
-        }
-
-        if (state->frameQueue.size() >= state->maxQueuedFrames) {
-            state->frameQueue.pop_front();
-            ++state->droppedVideoFrames;
-        }
-        state->frameQueue.push_back(std::move(frameData));
-    }
-    state->queueCv.notify_one();
-
-    ++m_videoFrameCount;
-    return true;
+    return enqueueFrame(std::move(frameData));
 #endif
 }
 
@@ -1049,6 +1066,10 @@ bool VideoRecorder::isRecording() const {
 
 std::uint64_t VideoRecorder::getVideoFrameCount() const {
     return m_videoFrameCount;
+}
+
+std::uint64_t VideoRecorder::getDroppedVideoFrameCount() const {
+    return m_droppedVideoFrameCount;
 }
 
 const std::string &VideoRecorder::getLastError() const {

@@ -168,11 +168,11 @@ the clip twin of `--auto-screenshot`: read `autoRecordFrames()` in `main.cpp`
 form; `canvas_stress` and `shape_debug` are the reference callers). The
 system warms up 10 frames, starts via the toggle path, captures `frames`
 UPDATE ticks, then stops one RENDER pass after the tick boundary so the
-stop-before-capture order drops no in-window frame. It normally selects the
-deterministic one-tick-per-render fixed step. `AutoRecordConfig::realTime_`,
-`--auto-record-realtime`, or an armed audio input selects the wall-clock
-accumulator; an armed screenshot or GUI test overrides that for determinism.
-Each start logs the pacing reason. A failed recorder exits clean with no clip.
+stop-before-capture order drops no in-window frame. Pacing is one tick per
+render, stalled by a full encoder queue, unless `AutoRecordConfig::realTime_`,
+`--auto-record-realtime` or an armed audio input picks the wall clock, where a
+full queue drops frames (counted at stop); an armed screenshot or GUI test
+forces fixed-step. A start logs its pacing; a failed one exits clean, no clip.
 `ir-run` treats the arg as a self-terminating GPU verb (`RESULT=CLEAN`).
 
 Clip size: `video_capture_output_width` / `_height` (config keys, default 0
