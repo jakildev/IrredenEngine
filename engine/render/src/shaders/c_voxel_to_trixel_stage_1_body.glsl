@@ -141,6 +141,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // live; face selection's one-uniform ceiling gate.
     // FrameDataVoxelToCanvas::fogCeilingEnabled_ (offset 272).
     uniform ivec4 fogCeilingEnabled;
+    uniform vec4 cameraViewRotation;
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {

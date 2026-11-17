@@ -114,6 +114,16 @@ class StoreDropCounterTest(unittest.TestCase):
                 wrong_slot = adapter(source, shader.suffix == ".metal").replace("+ 8u", "+ 7u")
                 self.assertNotEqual(run_host(wrong_slot).returncode, 0)
 
+    def test_glsl_visibility_inputs_match_frame_data_tail(self):
+        source = SHADERS[0].read_text()
+        frame_data = source.split("uniform FrameDataVoxelToTrixel {", 1)[1].split("};", 1)[0]
+        self.assertIn("uniform ivec4 fogCeilingEnabled;", frame_data)
+        self.assertIn("uniform vec4 cameraViewRotation;", frame_data)
+        self.assertLess(
+            frame_data.index("uniform ivec4 fogCeilingEnabled;"),
+            frame_data.index("uniform vec4 cameraViewRotation;"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
