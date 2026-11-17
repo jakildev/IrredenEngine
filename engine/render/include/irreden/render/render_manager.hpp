@@ -234,10 +234,12 @@ class RenderManager {
     struct PresentedPickProducer {
         std::uint64_t frameId_ = 0;
         ivec2 cursorPixel_{};
+        PresentedPickMapping mapping_{};
     };
     static constexpr int kMaxPresentedPickSlots = 8;
     detail::GpuReadbackRing<PresentedPickProducer, kMaxPresentedPickSlots> m_presentedPickRing;
     std::array<Buffer *, kMaxPresentedPickSlots> m_presentedPickBuffers{};
+    std::array<std::size_t, kMaxPresentedPickSlots> m_presentedPickBufferBytes{};
     PresentedPickHistory m_presentedPickHistory;
     std::uint64_t m_lastStalePickInputTick = 0;
     std::uint64_t m_stalePickInputTicks = 0;

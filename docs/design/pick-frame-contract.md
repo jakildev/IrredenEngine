@@ -1,32 +1,50 @@
 # Pick frame contract
 
-The GPU hover buffer describes the trixel under the cursor sampled for one rendered frame. It is
-not an answer for the cursor at the time an INPUT handler later asks for a pick.
+The GPU produces a pick image for each rendered main framebuffer. INPUT addresses the newest
+completed image at its event cursor, using that image's presentation mapping. Moving and pressing
+in one input batch therefore selects the visible owner at the new cursor without waiting for
+another GPU submission.
 
 ## Record
 
-Each `TRIXEL_TO_FRAMEBUFFER` pass publishes a GPU-timeline copy after its final hover writer. The
-copy is tagged with:
+Each `TRIXEL_TO_FRAMEBUFFER` pass clears a buffer on the GPU, writes its pick image during the
+existing composite, and publishes a GPU-timeline copy after its final writer. The copy is tagged
+with:
 
 - the rendered frame id;
-- the main-framebuffer cursor pixel used by that frame; and
+- the main-framebuffer cursor pixel used by that frame;
+- window-point scale, framebuffer translation, output scale and framebuffer dimensions; and
 - the submission serial that contains the copy.
 
 The CPU serves only slots whose submission serial has completed. If several slots become readable
-together, the record with the greatest frame id wins. A full ring drops its oldest pending slot;
-the read path never waits for room and never maps the live buffer a queued submission can still
-write.
+together, the record with the greatest frame id wins. The two newest completed images leave the
+writable ring and remain pinned in history; eviction returns their buffers to the ring. A full
+ring drops its oldest pending slot. GPU copies remain ordered, and the read path never waits for
+room or reads the live buffer a queued submission can still write.
+
+The buffer contains a 32-byte `HoveredEntityIdLayout` prefix for the rendered cursor, followed by
+one record per framebuffer pixel in raster order. The prefix preserves the existing shader hover
+highlight. Gather uses the same GPU helper for the prefix and image records: raw texel identity,
+alpha at least 0.1, non-null identity and depth less than or equal to the stored pick depth.
+Scatter retains its RG32UI attachment and depth-tested writer. Its resolve captures each pixel's
+scatter owner and depth, then accepts that owner only when the final framebuffer depth is bitwise
+identical. These are GPU rules; the CPU performs address mapping and entity-lifetime filtering.
 
 ## INPUT result
 
-`IRRender::getMouseTrixelPick()` returns the most recent completed record. Its entity is cleared if
-that id has since been destroyed or marked for deletion. Entity ids are monotonic, so a surviving
-record cannot alias a later entity.
+`IRRender::getMouseTrixelPick()` maps the INPUT cursor through the completed record's mapping and
+reads one 32-byte record. A cursor outside the image returns no entity without reading a pixel.
+The framebuffer's raster Y is inverted from the top-origin window cursor on both backends. The
+result's entity is cleared if that id has since been destroyed or marked for deletion. Entity ids
+are monotonic, so a surviving record cannot alias a later entity.
 
-The result is stale when its recorded cursor and the current INPUT cursor occupy different
-main-framebuffer pixels. Staleness is reported without suppressing the entity: hover and click
-dispatch retain their existing behaviour while the profile report counts stale INPUT ticks once
-per tick, regardless of how many consumers ask for the pick.
+The result records the addressed pixel and is not cursor-stale. The profile's stale INPUT tick
+counter remains a regression witness. The previous-completed-frame fault switch still selects
+the older image, so frame identity assertions remain independent of cursor correctness.
+
+Detached entity canvases do not write the main-framebuffer pick image. They retain their authored
+world hitboxes and priority/depth arbitration in `ENTITY_HOVER_DETECT`; GUI hitboxes retain their
+existing precedence. This change does not turn detached canvas texels into voxel picks.
 
 ## Backend boundary
 
@@ -35,5 +53,29 @@ OpenGL and Metal share this contract through `submissionSerial()` and
 shared storage does not make an uncommitted command buffer visible to the CPU, and OpenGL may keep
 multiple submitted frames in flight.
 
-The 32-byte `HoveredEntityIdLayout`, its binding, GPU writers, per-frame reset, and visible hover
-highlight are unchanged.
+The 32-byte record layout and binding 14 remain shared by both backends. The live allocation and
+each readback allocation occupy `32 * (1 + width * height)` bytes. History retains two completed
+images in addition to the live image and pending ring slots. No full-image CPU copy is required.
+The additional GPU clear, per-pixel writes, scatter resolves and readback copy require measured
+performance qualification; functional correctness alone does not qualify this design.
+
+## Prototype qualification
+
+This implementation has not been selected as a performance-qualified design. The
+[measurement record](../perf/event-cursor-pick/README.md) distinguishes passing functional checks
+from outstanding gates. At a 1282 by 722 framebuffer, each allocation is 29,619,360 bytes;
+the live image, two retained images and one pending copy total 118,477,440 bytes. The bounded
+eight-slot ring plus two retained images and the live image can reach 325,812,960 bytes at that
+size. These are allocation calculations, not GPU timing measurements.
+
+The full-frame buffer preserves the composite's existing GPU hover rule and avoids adding an
+attachment to every gather pipeline. It has a larger record than a compact ID-plus-depth image,
+because each pixel retains the scatter owner's depth witness. The existing RG32UI scatter
+attachment remains the sole rotating geometry ID writer. The retained data proposal is recorded
+on [the rotating-owner issue](https://github.com/jakildev/IrredenEngine/issues/4820#issuecomment-6943352858).
+
+Copying canvas textures and evaluating their hover rule on the CPU is excluded by the task's
+single-owner constraint. A one-pixel GPU re-query remains a viable alternative to measure; it
+needs retained sources and deferred dispatch. Neither its dispatch delay nor the full-frame
+buffer's per-frame cost has been qualified here. This prototype adds no dispatch queue or
+explicit GPU wait, but that alone is not evidence that input-to-present latency stays flat.

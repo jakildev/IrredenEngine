@@ -49,7 +49,6 @@ namespace IRSystem {
 template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     Buffer *frameDataBuf_ = nullptr;
     Buffer *hoveredIdBuf_ = nullptr;
-    Buffer *hoveredIdResetBuf_ = nullptr;
     ShaderProgram *program_ = nullptr;
     ShaderProgram *shapeProbeProgram_ = nullptr;
     Buffer *shapeProbeFrameBuf_ = nullptr;
@@ -148,6 +147,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     IRRender::GatherFilterDiagnostic gatherFilterDiagnostic_ =
         IRRender::GatherFilterDiagnostic::NEAREST;
     ShaderProgram *hoverResolveProgram_ = nullptr;
+    ShaderProgram *pickClearProgram_ = nullptr;
+    ivec2 pickImageSize_{0};
     bool scatterHoverPending_ = false;
     // IR_PERAXIS_OVERFLOW_CENSUS=1: after each scatter draw, count the overflow
     // records that own a framebuffer pixel into the run witness. The readback
@@ -210,7 +211,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         frameData.frameData_.mouseFramebufferPixel_ = IRRender::mouseMainFramebufferPixel();
         frameData.updateFrameData(frameDataBuf_);
         hoverResolveProgram_->use();
-        IRRender::device()->dispatchCompute(1, 1, 1);
+        const auto size = frameData.frameData_.presentedPickSize_;
+        const ivec2 grid = voxelDispatchGridForCount(IRMath::divCeil(size.x * size.y + 1, 64));
+        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         framebuffer.bindFramebuffer();
         program_->use();
@@ -357,6 +360,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             textureSize
         );
 
+        frameData.frameData_.presentedPickEnabled_ = behavior.mouseHoverEnabled_ ? 1 : 0;
         if (!behavior.mouseHoverEnabled_) {
             frameData.frameData_.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
             frameData.frameData_.effectiveSubdivisionsForHover_ = vec2(1.0f);
@@ -880,17 +884,6 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
 
     void beginTick() {
         scatterHoverPending_ = false;
-        {
-            IR_PROFILE_SCOPE("ttf_hover_reset");
-            // A CPU write here would wait for last frame's composite, which
-            // still owns the buffer on the GPU; the copy queues behind it.
-            IRRender::resetBufferFromSeed(
-                hoveredIdResetBuf_,
-                hoveredIdBuf_,
-                0,
-                sizeof(HoveredEntityIdLayout)
-            );
-        }
 
         guiCanvasOnScreen_ = IRPrefab::GuiCanvas::compositesOnScreen() ? IRRender::getCanvas("gui")
                                                                        : IREntity::kNullEntity;
@@ -1010,6 +1003,24 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         program_->use();
         quadVao_->bind();
         auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+        auto &pickFrame = IREntity::getComponent<C_FrameDataTrixelToFramebuffer>("mainFramebuffer");
+        const ivec2 pickSize = framebuffer.getResolutionPlusBuffer();
+        if (pickImageSize_ != pickSize) {
+            pickImageSize_ = pickSize;
+            hoveredIdBuf_->resize(
+                (1 + static_cast<std::size_t>(pickSize.x) * pickSize.y) *
+                sizeof(HoveredEntityIdLayout)
+            );
+        }
+        hoveredIdBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_HoveredEntityId);
+        pickFrame.frameData_.presentedPickSize_ = pickSize;
+        pickFrame.updateFrameData(frameDataBuf_);
+        pickClearProgram_->use();
+        const ivec2 pickGrid =
+            voxelDispatchGridForCount(IRMath::divCeil(pickSize.x * pickSize.y + 1, 64));
+        IRRender::device()->dispatchCompute(pickGrid.x, pickGrid.y, 1);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        program_->use();
         if (visibilityPrepassEnabled_ && scatterLightingEnabled_) {
             ensurePerAxisVisibilityBuffer(framebuffer.getResolutionPlusBuffer());
         }
@@ -1095,12 +1106,6 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_HoveredEntityId
         );
-        IRRender::createNamedResource<Buffer>(
-            "HoveredEntityIdReset",
-            &initData,
-            sizeof(initData),
-            BUFFER_STORAGE_NONE
-        );
 
         // Exclude detached per-entity canvases: those are composited at the
         // owning entity's iso position by ENTITY_CANVAS_TO_FRAMEBUFFER. Without
@@ -1114,7 +1119,11 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         auto *sys = getSystemParams<System<TRIXEL_TO_FRAMEBUFFER>>(id);
         sys->frameDataBuf_ = IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
         sys->hoveredIdBuf_ = IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
-        sys->hoveredIdResetBuf_ = IRRender::getNamedResource<Buffer>("HoveredEntityIdReset");
+        sys->pickClearProgram_ =
+            IRRender::createNamedResource<ShaderProgram>(
+                "PresentedPickClear",
+                std::vector{ShaderStage{kFileCompPresentedPickClear, ShaderType::COMPUTE}}
+            ).second;
         sys->program_ = IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
         sys->cardinalLightingProgram_ =
             IRRender::getNamedResource<ShaderProgram>("CanvasCardinalLightingProgram");

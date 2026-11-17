@@ -1,0 +1,89 @@
+Job: 20261117T091523Z-gui-verify-6dfd97
+[fleet-jobs] display: 1 online CoreGraphics display(s), awake=1, NSScreen=1
++ fleet-run --timeout 120 IRShapeDebug --auto-screenshot 10 --gui-test --config-preset configs/presented-pick-previous.lua
+[2026-11-17 01:15:25.350] [ClientLog] [info] GUI-ASSERT shot=0 label=hover_parity_above_diagonal kind=HOVERED_ENTITY_ID target=488 name=hover_id_above_diagonal_is_raw_texel result=PASS actual=hovered=488
+[2026-11-17 01:15:25.350] [ClientLog] [info] CaptureCamera: label=hover_parity_above_diagonal yaw=0 zoom=(16,16) effectiveIso=(0,-80) subdivisions=1 gameResolution=(1280,720)
+[2026-11-17 01:15:25.766] [ClientLog] [info] GUI-ASSERT shot=1 label=hover_parity_below_diagonal kind=HOVERED_ENTITY_ID target=488 name=hover_id_below_diagonal_is_voxel result=PASS actual=hovered=488
+[2026-11-17 01:15:25.766] [ClientLog] [info] CaptureCamera: label=hover_parity_below_diagonal yaw=0 zoom=(16,16) effectiveIso=(0,-80) subdivisions=1 gameResolution=(1280,720)
+[2026-11-17 01:15:26.173] [ClientLog] [info] GUI-ASSERT shot=2 label=hover_parity_row_above_occupied kind=HOVERED_ENTITY_ID target=489 name=hover_id_row_above_occupied_is_stable result=PASS actual=hovered=489,489,489
+[2026-11-17 01:15:26.173] [ClientLog] [info] CaptureCamera: label=hover_parity_row_above_occupied yaw=0 zoom=(16,16) effectiveIso=(0,-96) subdivisions=1 gameResolution=(1280,720)
+[2026-11-17 01:15:26.566] [ClientLog] [info] GUI-ASSERT shot=3 label=presented_pick_current_30_frames kind=PICK_FRAME_CURRENT target=0 name=newest_completed_pick_frame result=FAIL actual=current=0/30
+[2026-11-17 01:15:26.566] [ClientLog] [info] GUI-ASSERT shot=3 label=presented_pick_current_30_frames kind=PICK_STALE_CLEAR target=0 name=settled_cursor_is_current result=PASS actual=current=30/30
+[2026-11-17 01:15:26.566] [ClientLog] [info] CaptureCamera: label=presented_pick_current_30_frames yaw=0 zoom=(16,16) effectiveIso=(0,-80) subdivisions=16 gameResolution=(1280,720)
+[2026-11-17 01:15:27.007] [ClientLog] [info] GUI-ASSERT shot=4 label=presented_pick_stale_same_batch kind=PICK_STALE_CLEAR target=0 name=same_batch_move_press_is_current result=PASS actual=current=3/3
+[2026-11-17 01:15:27.007] [ClientLog] [info] GUI-ASSERT shot=4 label=presented_pick_stale_same_batch kind=PREDICATE target=0 name=same_batch_click_and_hover_target_b result=PASS actual=clicked=491 hover-at-click=491 expected=491 frame=153 stale=false
+[2026-11-17 01:15:27.007] [ClientLog] [info] GUI-ASSERT shot=4 label=presented_pick_stale_same_batch kind=PREDICATE target=0 name=event_cursor_stale_input_ticks result=PASS actual=stale-input-ticks=0
+[2026-11-17 01:15:27.007] [ClientLog] [info] CaptureCamera: label=presented_pick_stale_same_batch yaw=0 zoom=(16,16) effectiveIso=(0,-80) subdivisions=16 gameResolution=(1280,720)
+[2026-11-17 01:15:27.493] [ClientLog] [info] GUI-ASSERT shot=5 label=presented_pick_rotated_same_batch kind=PICK_STALE_CLEAR target=0 name=same_batch_move_press_is_current result=PASS actual=current=3/3
+[2026-11-17 01:15:27.493] [ClientLog] [info] GUI-ASSERT shot=5 label=presented_pick_rotated_same_batch kind=PREDICATE target=0 name=same_batch_click_and_hover_target_b result=PASS actual=clicked=491 hover-at-click=491 expected=491 frame=192 stale=false
+[2026-11-17 01:15:27.493] [ClientLog] [info] GUI-ASSERT shot=5 label=presented_pick_rotated_same_batch kind=PREDICATE target=0 name=event_cursor_stale_input_ticks result=PASS actual=stale-input-ticks=0
+[2026-11-17 01:15:27.493] [ClientLog] [info] CaptureCamera: label=presented_pick_rotated_same_batch yaw=0.3499999 zoom=(16,16) effectiveIso=(-27.431816,-75.14981) subdivisions=16 gameResolution=(1280,720)
+[2026-11-17 01:15:27.889] [ClientLog] [info] GUI-ASSERT shot=6 label=presented_pick_cardinal_after_rotation kind=PICK_FRAME_CURRENT target=0 name=newest_completed_pick_frame result=FAIL actual=current=0/30
+[2026-11-17 01:15:27.889] [ClientLog] [info] GUI-ASSERT shot=6 label=presented_pick_cardinal_after_rotation kind=PICK_STALE_CLEAR target=0 name=settled_cursor_is_current result=PASS actual=current=30/30
+[2026-11-17 01:15:27.889] [ClientLog] [info] CaptureCamera: label=presented_pick_cardinal_after_rotation yaw=0 zoom=(16,16) effectiveIso=(0,-80) subdivisions=16 gameResolution=(1280,720)
+[2026-11-17 01:15:28.331] [ClientLog] [info] GUI-ASSERT shot=7 label=drag_pan_tracks_cursor kind=HOVERED_ENTITY_ID target=488 name=hover_id_follows_drag_pan result=PASS actual=hovered=488,488
+[2026-11-17 01:15:28.331] [ClientLog] [info] CaptureCamera: label=drag_pan_tracks_cursor yaw=0 zoom=(16,16) effectiveIso=(5,-74) subdivisions=16 gameResolution=(1280,720)
+[2026-11-17 01:15:28.742] [ClientLog] [info] GUI-ASSERT shot=8 label=presented_pick_destroyed_entity kind=PICK_ENTITY_EMPTY target=0 name=destroyed_entity_is_filtered result=PASS actual=entity=0
+[2026-11-17 01:15:28.742] [ClientLog] [info] CaptureCamera: label=presented_pick_destroyed_entity yaw=0 zoom=(16,16) effectiveIso=(0,-80) subdivisions=16 gameResolution=(1280,720)
+[2026-11-17 01:15:29.158] [ClientLog] [info] GUI-ASSERT shot=9 label=help_overlay_open kind=PREDICATE target=0 name=overlay_visible result=PASS actual=visible
+[2026-11-17 01:15:29.158] [ClientLog] [info] GUI-ASSERT shot=9 label=help_overlay_open kind=PREDICATE target=0 name=glyphs_batched result=PASS actual=872
+[2026-11-17 01:15:29.158] [ClientLog] [info] GUI-ASSERT shot=9 label=help_overlay_open kind=PREDICATE target=0 name=camera_entry_described result=PASS actual=found
+[2026-11-17 01:15:29.158] [ClientLog] [info] GUI-ASSERT shot=9 label=help_overlay_open kind=PREDICATE target=0 name=overlay_bounds_inside_canvas result=PASS actual=panel=4,6+608x233 canvas=642x722
+[2026-11-17 01:15:29.158] [ClientLog] [info] GUI-ASSERT shot=9 label=help_overlay_open kind=PREDICATE target=0 name=first_command_row_on_frame result=PASS actual=text_px=8436 band=44,78+1688x23 target=2560x1440
+[2026-11-17 01:15:29.158] [ClientLog] [info] CaptureCamera: label=help_overlay_open yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:29.565] [ClientLog] [info] GUI-ASSERT shot=10 label=help_overlay_closed kind=PREDICATE target=0 name=overlay_hidden result=PASS actual=hidden
+[2026-11-17 01:15:29.565] [ClientLog] [info] GUI-ASSERT shot=10 label=help_overlay_closed kind=PREDICATE target=0 name=no_glyphs_batched result=PASS actual=0
+[2026-11-17 01:15:29.565] [ClientLog] [info] CaptureCamera: label=help_overlay_closed yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:29.970] [ClientLog] [info] GUI-ASSERT shot=11 label=perf_hud_open kind=PREDICATE target=0 name=perf_hud_visible result=PASS actual=visible
+[2026-11-17 01:15:29.970] [ClientLog] [info] GUI-ASSERT shot=11 label=perf_hud_open kind=PREDICATE target=0 name=perf_hud_glyphs_batched result=PASS actual=28
+[2026-11-17 01:15:29.970] [ClientLog] [info] GUI-ASSERT shot=11 label=perf_hud_open kind=PREDICATE target=0 name=perf_hud_lines_formatted result=PASS actual=FPS 92 MIN 8 MS 8.3 DROP 3
+[2026-11-17 01:15:29.970] [ClientLog] [info] GUI-ASSERT shot=11 label=perf_hud_open kind=PREDICATE target=0 name=perf_hud_bounds_inside_canvas result=PASS actual=panel=497,661+140x53 canvas=642x722
+[2026-11-17 01:15:29.970] [ClientLog] [info] CaptureCamera: label=perf_hud_open yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:30.377] [ClientLog] [info] GUI-ASSERT shot=12 label=perf_hud_closed kind=PREDICATE target=0 name=perf_hud_hidden result=PASS actual=hidden
+[2026-11-17 01:15:30.377] [ClientLog] [info] GUI-ASSERT shot=12 label=perf_hud_closed kind=PREDICATE target=0 name=perf_hud_no_glyphs_batched result=PASS actual=0
+[2026-11-17 01:15:30.377] [ClientLog] [info] CaptureCamera: label=perf_hud_closed yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:30.783] [ClientLog] [info] GUI-ASSERT shot=13 label=settings_menu_open kind=PREDICATE target=0 name=menu_open result=PASS actual=open
+[2026-11-17 01:15:30.783] [ClientLog] [info] GUI-ASSERT shot=13 label=settings_menu_open kind=PREDICATE target=0 name=rows_spawned result=PASS actual=5
+[2026-11-17 01:15:30.783] [ClientLog] [info] GUI-ASSERT shot=13 label=settings_menu_open kind=PREDICATE target=0 name=settings_rows_inside_panel result=PASS actual=stacked=0 panel=131,233+380x256 row0-control=303,271+196x24 row1-control=303,301+196x24 row2-control=143,331+356x24 row3-control=143,361+356x24 row4-control=143,391+356x24 row0-label=143,277+110x11 row1-label=143,307+102x11
+[2026-11-17 01:15:30.783] [ClientLog] [info] CaptureCamera: label=settings_menu_open yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:31.191] [ClientLog] [info] GUI-ASSERT shot=14 label=settings_menu_hover_idle kind=PREDICATE target=0 name=row_pixel_idle_sampled result=PASS actual=rgb=(40,44,56) px=600,804
+[2026-11-17 01:15:31.191] [ClientLog] [info] CaptureCamera: label=settings_menu_hover_idle yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:31.613] [ClientLog] [info] GUI-ASSERT shot=15 label=settings_menu_hover_row kind=PREDICATE target=0 name=row_pixel_repaints_under_cursor result=PASS actual=rgb=(60,68,88) idle=(40,44,56) px=600,804
+[2026-11-17 01:15:31.613] [ClientLog] [info] CaptureCamera: label=settings_menu_hover_row yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:32.033] [ClientLog] [info] GUI-ASSERT shot=16 label=settings_menu_pause_on kind=PREDICATE target=0 name=checkbox_checked result=PASS actual=checked
+[2026-11-17 01:15:32.033] [ClientLog] [info] GUI-ASSERT shot=16 label=settings_menu_pause_on kind=PREDICATE target=0 name=sim_paused result=PASS actual=paused
+[2026-11-17 01:15:32.033] [ClientLog] [info] CaptureCamera: label=settings_menu_pause_on yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:32.452] [ClientLog] [info] GUI-ASSERT shot=17 label=settings_menu_pause_off kind=PREDICATE target=0 name=checkbox_unchecked result=PASS actual=unchecked
+[2026-11-17 01:15:32.452] [ClientLog] [info] GUI-ASSERT shot=17 label=settings_menu_pause_off kind=PREDICATE target=0 name=sim_running result=PASS actual=running
+[2026-11-17 01:15:32.452] [ClientLog] [info] CaptureCamera: label=settings_menu_pause_off yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:32.866] [ClientLog] [info] GUI-ASSERT shot=18 label=settings_menu_checkerboard_on kind=PREDICATE target=0 name=pause_still_off result=PASS actual=unchecked
+[2026-11-17 01:15:32.866] [ClientLog] [info] GUI-ASSERT shot=18 label=settings_menu_checkerboard_on kind=PREDICATE target=0 name=shapes_checkerboard_flagged result=PASS actual=21/21 flagged
+[2026-11-17 01:15:32.866] [ClientLog] [info] CaptureCamera: label=settings_menu_checkerboard_on yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:33.307] [ClientLog] [info] GUI-ASSERT shot=19 label=settings_menu_pivot_before kind=PREDICATE target=0 name=pivot_default result=PASS actual=pivot=1
+[2026-11-17 01:15:33.307] [ClientLog] [info] GUI-ASSERT shot=19 label=settings_menu_pivot_before kind=PREDICATE target=0 name=pivot_dropdown_collapsed result=PASS actual=collapsed
+[2026-11-17 01:15:33.307] [ClientLog] [info] CaptureCamera: label=settings_menu_pivot_before yaw=0.78539824 zoom=(4,4) effectiveIso=(15.084943,3.1241922) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:33.731] [ClientLog] [info] GUI-ASSERT shot=20 label=settings_menu_pivot_expand kind=PREDICATE target=0 name=pivot_dropdown_expanded result=PASS actual=expanded
+[2026-11-17 01:15:33.731] [ClientLog] [info] GUI-ASSERT shot=20 label=settings_menu_pivot_expand kind=PREDICATE target=0 name=pivot_unchanged_by_expand result=PASS actual=pivot=1
+[2026-11-17 01:15:33.731] [ClientLog] [info] CaptureCamera: label=settings_menu_pivot_expand yaw=0.78539824 zoom=(4,4) effectiveIso=(15.084943,3.1241922) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:34.156] [ClientLog] [info] GUI-ASSERT shot=21 label=settings_menu_pivot_origin kind=PREDICATE target=0 name=pivot_dropdown_origin result=PASS actual=index=0
+[2026-11-17 01:15:34.156] [ClientLog] [info] GUI-ASSERT shot=21 label=settings_menu_pivot_origin kind=PREDICATE target=0 name=pivot_mode_origin result=PASS actual=pivot=0
+[2026-11-17 01:15:34.156] [ClientLog] [info] GUI-ASSERT shot=21 label=settings_menu_pivot_origin kind=PREDICATE target=0 name=pivot_dropdown_collapsed result=PASS actual=collapsed
+[2026-11-17 01:15:34.156] [ClientLog] [info] CaptureCamera: label=settings_menu_pivot_origin yaw=0.78539824 zoom=(4,4) effectiveIso=(16,16) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:34.554] [ClientLog] [info] GUI-ASSERT shot=22 label=settings_menu_overlay_before kind=PREDICATE target=0 name=overlay_default result=PASS actual=overlay=0
+[2026-11-17 01:15:34.554] [ClientLog] [info] CaptureCamera: label=settings_menu_overlay_before yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:34.970] [ClientLog] [info] GUI-ASSERT shot=23 label=settings_menu_overlay_expand kind=PREDICATE target=0 name=overlay_dropdown_expanded result=PASS actual=expanded
+[2026-11-17 01:15:34.970] [ClientLog] [info] CaptureCamera: label=settings_menu_overlay_expand yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:35.397] [ClientLog] [info] GUI-ASSERT shot=24 label=settings_menu_overlay_ao kind=PREDICATE target=0 name=overlay_dropdown_ao result=PASS actual=index=1
+[2026-11-17 01:15:35.397] [ClientLog] [info] GUI-ASSERT shot=24 label=settings_menu_overlay_ao kind=PREDICATE target=0 name=overlay_mode_ao result=PASS actual=overlay=1
+[2026-11-17 01:15:35.397] [ClientLog] [info] CaptureCamera: label=settings_menu_overlay_ao yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:35.805] [ClientLog] [info] GUI-ASSERT shot=25 label=settings_menu_closed kind=PREDICATE target=0 name=menu_closed result=PASS actual=closed
+[2026-11-17 01:15:35.805] [ClientLog] [info] GUI-ASSERT shot=25 label=settings_menu_closed kind=PREDICATE target=0 name=rows_destroyed result=PASS actual=0
+[2026-11-17 01:15:35.805] [ClientLog] [info] CaptureCamera: label=settings_menu_closed yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:36.212] [ClientLog] [info] GUI-ASSERT shot=26 label=settings_menu_reopened kind=PREDICATE target=0 name=menu_reopened result=PASS actual=open
+[2026-11-17 01:15:36.212] [ClientLog] [info] GUI-ASSERT shot=26 label=settings_menu_reopened kind=PREDICATE target=0 name=rows_respawned result=PASS actual=5
+[2026-11-17 01:15:36.212] [ClientLog] [info] GUI-ASSERT shot=26 label=settings_menu_reopened kind=PREDICATE target=0 name=pivot_reseeded_from_getter result=PASS actual=index=0
+[2026-11-17 01:15:36.212] [ClientLog] [info] CaptureCamera: label=settings_menu_reopened yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 01:15:36.378] [ClientLog] [info] GUI-ASSERT shot=27 label=settings_menu_quit kind=PREDICATE target=0 name=quit_requested_close result=PASS actual=close-requested
+ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[gui-verify] 54/56 assertions passed
+fleet-jobs: 20261117T091523Z-gui-verify-6dfd97 failed exit=1

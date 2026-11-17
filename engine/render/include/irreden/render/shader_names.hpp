@@ -188,6 +188,7 @@ const char *const kFileCompChunkOcclusionCull = "shaders/c_chunk_occlusion_cull.
 const char *const kFileCompResolvePerAxisScreenDepth =
     "shaders/c_resolve_per_axis_screen_depth.glsl";
 const char *const kFileCompPerAxisHoverResolve = "shaders/c_peraxis_hover_resolve.glsl";
+const char *const kFileCompPresentedPickClear = "shaders/c_presented_pick_clear.glsl";
 // Diagnostic count of overflow-lane records that own a framebuffer pixel, run
 // against the finished scatter composite. Metal mirror in
 // metal/c_per_axis_overflow_census.metal.

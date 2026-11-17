@@ -1,0 +1,8 @@
+Job: 20261117T093849Z-gui-verify-0221c8
+[fleet-jobs] display: 1 online CoreGraphics display(s), awake=1, NSScreen=1
++ fleet-run --timeout 120 IRCanvasStress --auto-screenshot 10 --gui-session hover_canary
+[2026-11-17 01:38:52.892] [ClientLog] [info] GUI-ASSERT shot=0 label=hover_canary kind=PREDICATE target=0 name=detached_owner_from_padding_band result=PASS actual=hovered=439 expected=439
+[2026-11-17 01:38:52.892] [ClientLog] [info] CaptureCamera: label=hover_canary yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+[gui-verify] 1/1 assertions passed
+fleet-jobs: 20261117T093849Z-gui-verify-0221c8 succeeded exit=0

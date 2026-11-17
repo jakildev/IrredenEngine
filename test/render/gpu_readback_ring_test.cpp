@@ -126,6 +126,72 @@ TEST(PresentedPick, NewestCompletedFrameWinsEvenWhenSlotsDrainOutOfFrameOrder) {
     EXPECT_EQ(history.served(true)->frameId_, 11u);
 }
 
+TEST(PresentedPick, HistoryReturnsOnlyTheImageItNoLongerServes) {
+    IRRender::PresentedPickHistory history;
+    IRRender::PresentedPickRecord record;
+    record.frameId_ = 3;
+    EXPECT_EQ(history.accept(record).frameId_, 0u);
+    record.frameId_ = 1;
+    EXPECT_EQ(history.accept(record).frameId_, 0u);
+    record.frameId_ = 2;
+    EXPECT_EQ(history.accept(record).frameId_, 1u);
+    EXPECT_EQ(history.served(false)->frameId_, 3u);
+    EXPECT_EQ(history.served(true)->frameId_, 2u);
+    record.frameId_ = 4;
+    EXPECT_EQ(history.accept(record).frameId_, 2u);
+    EXPECT_EQ(history.served(true)->frameId_, 3u);
+    record.frameId_ = 1;
+    EXPECT_EQ(history.accept(record).frameId_, 1u);
+    EXPECT_EQ(history.served(false)->frameId_, 4u);
+    EXPECT_EQ(history.served(true)->frameId_, 3u);
+}
+
+TEST(PresentedPick, EventCursorAddressesTheCompletedImageWithItsOwnProjection) {
+    IRRender::PresentedPickRecord record;
+    record.frameId_ = 41;
+    record.cursorPixel_ = {0, 0};
+    record.layout_.entityId_ = {11, 0};
+    record.mapping_ = {{2.0f, 2.0f}, {20.0f, 30.0f}, {2.0f, 2.0f}, {4, 2}};
+    int reads = 0;
+    const auto result = IRRender::resolvePresentedPickAtCursor(
+        &record,
+        IRMath::vec2(11.0f, 15.0f),
+        [&](std::size_t index) {
+            ++reads;
+            EXPECT_EQ(index, 4u);
+            IRRender::HoveredEntityIdLayout pixel;
+            pixel.entityId_ = {22, 0};
+            return pixel;
+        },
+        [](auto entity) { return entity == 22; }
+    );
+    EXPECT_EQ(reads, 1);
+    EXPECT_EQ(result.entity_, 22u);
+    EXPECT_EQ(result.frameId_, 41u);
+    EXPECT_EQ(result.renderedCursorPixel_, IRMath::ivec2(3, 1));
+    EXPECT_FALSE(result.stale_);
+}
+
+TEST(PresentedPick, OutsideImageAndAbsentFrameNeverReadPixels) {
+    IRRender::PresentedPickRecord record;
+    record.frameId_ = 7;
+    record.mapping_.resolution_ = {4, 2};
+    int reads = 0;
+    auto read = [&](std::size_t) {
+        ++reads;
+        return IRRender::HoveredEntityIdLayout{};
+    };
+    auto live = [](auto) { return true; };
+    const auto outside =
+        IRRender::resolvePresentedPickAtCursor(&record, {-2.01f, 0.0f}, read, live);
+    EXPECT_EQ(outside.entity_, IREntity::kNullEntity);
+    EXPECT_EQ(outside.frameId_, 7u);
+    EXPECT_EQ(outside.renderedCursorPixel_.x, -1);
+    EXPECT_FALSE(outside.stale_);
+    EXPECT_EQ(IRRender::resolvePresentedPickAtCursor(nullptr, {}, read, live).frameId_, 0u);
+    EXPECT_EQ(reads, 0);
+}
+
 TEST(PresentedPick, PendingSlotIsNotServedAndFullRingDropsItsOldestPendingFrame) {
     GpuReadbackRing<IRRender::PresentedPickRecord, 2> ring;
     IRRender::PresentedPickHistory history;

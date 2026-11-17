@@ -11,6 +11,7 @@
 #include "ir_iso_common.glsl"
 #include "ir_fog_color.glsl"
 #include "ir_sdf_common.glsl"
+#include "ir_pick_record.glsl"
 #if IR_SHAPE_RECEIVER
 #include "ir_shape_data.glsl"
 #include "ir_shape_receiver.glsl"
@@ -85,11 +86,13 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     ivec2 mouseFramebufferPixel;
     int hoverResolveMode;
     int gatherFilterDiagnostic;
+    vec4 cameraViewRotation;
+    ivec2 presentedPickSize;
+    int presentedPickEnabled;
 };
 
 layout(std430, binding = 14) buffer HoveredEntityIdBuffer {
-    uvec2 hoveredEntityId;
-    float hoveredDepth;
+    PickRecord picks[];
 };
 
 out vec4 FragColor;
@@ -331,19 +334,16 @@ void main() {
                     depthForegroundTierHi(kMinTriangleDistance, tier));
     }
     float depth = normalizeDistance(enc);
-    if (isMouseHovered) {
-        if (color.a >= 0.1 && depth <= hoveredDepth) {
-            // Strip the per-trixel priority carrier so a prioritized fragment
-            // reports its true picked id. Read at sampleCoord, the texel the
-            // color and depth gate above sampled: the stage-2 writers store
-            // color and id together, so this is the id of what the fragment
-            // displays.
-            uvec2 entityId = decodeEntityId(texelFetch(triangleEntityIds, sampleCoord, 0).rg);
-            if (entityId != uvec2(0u)) {
-                hoveredEntityId = entityId;
-                hoveredDepth = depth;
-            }
+    if (isMouseHovered || presentedPickEnabled != 0) {
+        const uvec2 entityId = decodeEntityId(texelFetch(triangleEntityIds, sampleCoord, 0).rg);
+        if (isMouseHovered) gatherPick(picks[0], entityId, depth, color.a);
+        const ivec2 pixel = ivec2(gl_FragCoord.xy);
+        if (presentedPickEnabled != 0 && all(greaterThanEqual(pixel, ivec2(0))) &&
+            all(lessThan(pixel, presentedPickSize))) {
+            gatherPick(picks[1 + pixel.y * presentedPickSize.x + pixel.x], entityId, depth, color.a);
         }
+    }
+    if (isMouseHovered) {
         if (showHoverHighlight > 0.0) {
             color = vec4(1.0, 0.0, 0.0, 1.0);
             depth = 0.0;

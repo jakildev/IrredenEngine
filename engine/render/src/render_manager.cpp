@@ -209,26 +209,23 @@ void RenderManager::setPresentedPickPreviousCompletedFault(bool enabled) {
 }
 
 void RenderManager::publishMouseTrixelPick(Buffer *hoverBuffer) {
+    const PresentedPickMapping mapping = IRRender::mainFramebufferPickMapping();
     const int slot = m_presentedPickRing.write(
         IRRender::device()->submissionSerial(),
-        {IRRender::device()->presentingFrameId(), IRRender::mouseMainFramebufferPixel()}
+        {IRRender::device()->presentingFrameId(), IRRender::mouseMainFramebufferPixel(), mapping}
     );
-    if (m_presentedPickBuffers[static_cast<std::size_t>(slot)] == nullptr) {
-        m_presentedPickBuffers[static_cast<std::size_t>(slot)] = IRRender::createResource<Buffer>(
-                                                                     nullptr,
-                                                                     sizeof(HoveredEntityIdLayout),
-                                                                     BUFFER_STORAGE_DYNAMIC
-        )
-                                                                     .second;
+    Buffer *&destination = m_presentedPickBuffers[static_cast<std::size_t>(slot)];
+    std::size_t &bytes = m_presentedPickBufferBytes[static_cast<std::size_t>(slot)];
+    if (destination == nullptr) {
+        destination =
+            IRRender::createResource<Buffer>(nullptr, mapping.bufferBytes(), BUFFER_STORAGE_DYNAMIC)
+                .second;
+    } else if (bytes != mapping.bufferBytes()) {
+        destination->resize(mapping.bufferBytes());
     }
+    bytes = mapping.bufferBytes();
     IRRender::device()->memoryBarrier(BarrierType::BUFFER_UPDATE);
-    IRRender::device()->copyBufferSubData(
-        hoverBuffer,
-        0,
-        m_presentedPickBuffers[static_cast<std::size_t>(slot)],
-        0,
-        sizeof(HoveredEntityIdLayout)
-    );
+    IRRender::device()->copyBufferSubData(hoverBuffer, 0, destination, 0, bytes);
 }
 
 void RenderManager::drainCompletedMouseTrixelPicks() {
@@ -240,17 +237,29 @@ void RenderManager::drainCompletedMouseTrixelPicks() {
                 ->getSubData(0, sizeof(record.layout_), &record.layout_);
             record.frameId_ = producer.frameId_;
             record.cursorPixel_ = producer.cursorPixel_;
-            m_presentedPickHistory.accept(record);
+            record.mapping_ = producer.mapping_;
+            record.pixels_ = m_presentedPickBuffers[static_cast<std::size_t>(slot)];
+            const PresentedPickRecord evicted = m_presentedPickHistory.accept(record);
+            // Completed images leave the writable ring until history evicts them.
+            m_presentedPickBuffers[static_cast<std::size_t>(slot)] = evicted.pixels_;
+            m_presentedPickBufferBytes[static_cast<std::size_t>(slot)] =
+                evicted.mapping_.bufferBytes();
         }
     );
 }
 
 MouseTrixelPick RenderManager::mouseTrixelPick() {
     drainCompletedMouseTrixelPicks();
-    const ivec2 currentCursor = IRRender::mouseMainFramebufferPixel();
-    MouseTrixelPick result = resolvePresentedPick(
-        m_presentedPickHistory.served(m_presentedPickPreviousCompletedFault),
-        currentCursor,
+    const PresentedPickRecord *completed =
+        m_presentedPickHistory.served(m_presentedPickPreviousCompletedFault);
+    MouseTrixelPick result = resolvePresentedPickAtCursor(
+        completed,
+        IRInput::getMousePosition(),
+        [completed](std::size_t index) {
+            HoveredEntityIdLayout pixel;
+            completed->pixels_->getSubData(index * sizeof(pixel), sizeof(pixel), &pixel);
+            return pixel;
+        },
         [](IREntity::EntityId entity) {
             return IREntity::entityExists(entity) &&
                    !IREntity::getEntityManager().isMarkedForDeletion(entity);

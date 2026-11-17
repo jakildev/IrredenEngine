@@ -33,8 +33,8 @@ std::string metalFunctionNameForStage(const ShaderStage &stage) {
 }
 
 MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
-    if (functionName == "c_peraxis_hover_resolve") {
-        return MTL::Size(1, 1, 1);
+    if (functionName == "c_peraxis_hover_resolve" || functionName == "c_presented_pick_clear") {
+        return MTL::Size(64, 1, 1);
     }
     // One thread per overflow record, on the overflow relight's 64-wide grid.
     if (functionName == "c_per_axis_overflow_census") {

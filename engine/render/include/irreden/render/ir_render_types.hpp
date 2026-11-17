@@ -85,11 +85,10 @@ struct SpriteRenderEntry {
     vec4 tintRgba_ = vec4(1.0f);
 };
 
-/// CPU mirror of the @c HoveredEntityIdBuffer SSBO layout (binding 14).
-/// The fragment shader writes the hovered entity id + depth here every frame;
-/// the CPU reads a submission-gated copy through the presented-pick ring.
-/// The binary layout must stay byte-identical to the GLSL/MSL @c std430 block
-/// declared in @c f_trixel_to_framebuffer.glsl and @c trixel_to_framebuffer.metal.
+/// One record in the @c HoveredEntityIdBuffer SSBO (binding 14): a cursor
+/// prefix followed by the pick image. CPU reads are submission-gated.
+/// Keep byte-identical to @c PickRecord in @c ir_pick_record.glsl and
+/// @c ir_pick_record.metal.
 struct HoveredEntityIdLayout {
     uvec2 entityId_{0u, 0u};
     float depth_{1.0f};
@@ -277,7 +276,11 @@ struct FrameDataTrixelToFramebuffer {
     int gatherFilterDiagnostic_ = 0;
     // Zero disables spatial view; otherwise a unit view-to-world quaternion (xyzw).
     vec4 cameraViewRotation_ = vec4(0.0f);
+    ivec2 presentedPickSize_{0};
+    int presentedPickEnabled_ = 0;
+    int presentedPickPadding_ = 0;
 };
+static_assert(offsetof(FrameDataTrixelToFramebuffer, presentedPickSize_) == 288);
 static_assert(
     offsetof(FrameDataTrixelToFramebuffer, cameraViewRotation_) == 272,
     "Spatial view quaternion must append after the gather diagnostic fields"
@@ -331,7 +334,7 @@ static_assert(
 static_assert(offsetof(FrameDataTrixelToFramebuffer, mouseFramebufferPixel_) == 256);
 static_assert(offsetof(FrameDataTrixelToFramebuffer, gatherFilterDiagnostic_) == 268);
 static_assert(
-    sizeof(FrameDataTrixelToFramebuffer) == 288,
+    sizeof(FrameDataTrixelToFramebuffer) == 304,
     "FrameDataTrixelToFramebuffer size must mirror its std140 GLSL block. The "
     "camera scatter shaders (v_/f_peraxis_scatter) read the appended "
     "perAxisBase_ / visualYaw_ / visibleFaceIds_ and scatterFbResolution_ at "

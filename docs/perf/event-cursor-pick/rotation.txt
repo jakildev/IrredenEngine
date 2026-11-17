@@ -1,0 +1,22 @@
+Job: 20261117T091604Z-gui-verify-f76c45
+[fleet-jobs] display: 1 online CoreGraphics display(s), awake=1, NSScreen=1
++ fleet-run --timeout 120 IRShapeDebug --auto-screenshot 10 --rotation-pick-test gui
+[2026-11-17 01:16:05.943] [ClientLog] [info] GUI-ASSERT shot=0 label=rotation_20 kind=HOVERED_ENTITY_ID target=457 name=rotation_pick_owner result=PASS actual=hovered=457,457,457
+[2026-11-17 01:16:05.943] [ClientLog] [info] CaptureCamera: label=rotation_20 yaw=0.34906578 zoom=(16,16) effectiveIso=(-27.361609,-74.175415) subdivisions=1 gameResolution=(1280,720)
+[2026-11-17 01:16:06.129] [ClientLog] [info] GUI-ASSERT shot=1 label=cardinal_0 kind=HOVERED_ENTITY_ID target=457 name=rotation_pick_owner result=PASS actual=hovered=457,457,457
+[2026-11-17 01:16:06.129] [ClientLog] [info] CaptureCamera: label=cardinal_0 yaw=0 zoom=(16,16) effectiveIso=(0,-79) subdivisions=1 gameResolution=(1280,720)
+[2026-11-17 01:16:06.312] [ClientLog] [info] GUI-ASSERT shot=2 label=rotation_70 kind=HOVERED_ENTITY_ID target=457 name=rotation_pick_owner result=PASS actual=hovered=457,457,457
+[2026-11-17 01:16:06.312] [ClientLog] [info] CaptureCamera: label=rotation_70 yaw=1.2217305 zoom=(16,16) effectiveIso=(-75.17541,-26.36161) subdivisions=1 gameResolution=(1280,720)
+[2026-11-17 01:16:06.496] [ClientLog] [info] GUI-ASSERT shot=3 label=cardinal_90 kind=HOVERED_ENTITY_ID target=457 name=rotation_pick_owner result=PASS actual=hovered=457,457,457
+[2026-11-17 01:16:06.496] [ClientLog] [info] CaptureCamera: label=cardinal_90 yaw=1.5707963 zoom=(16,16) effectiveIso=(-80,0.9999924) subdivisions=1 gameResolution=(1280,720)
+[2026-11-17 01:16:06.679] [ClientLog] [info] GUI-ASSERT shot=4 label=rotation_160 kind=HOVERED_ENTITY_ID target=457 name=rotation_pick_owner result=PASS actual=hovered=457,457,457
+[2026-11-17 01:16:06.679] [ClientLog] [info] CaptureCamera: label=rotation_160 yaw=2.792527 zoom=(16,16) effectiveIso=(-27.361603,76.175415) subdivisions=1 gameResolution=(1280,720)
+[2026-11-17 01:16:06.870] [ClientLog] [info] GUI-ASSERT shot=5 label=cardinal_180 kind=HOVERED_ENTITY_ID target=457 name=rotation_pick_owner result=PASS actual=hovered=457,457,457
+[2026-11-17 01:16:06.870] [ClientLog] [info] CaptureCamera: label=cardinal_180 yaw=-3.1414928 zoom=(16,16) effectiveIso=(0.007987976,81) subdivisions=1 gameResolution=(1280,720)
+[2026-11-17 01:16:07.053] [ClientLog] [info] GUI-ASSERT shot=6 label=rotation_250 kind=HOVERED_ENTITY_ID target=457 name=rotation_pick_owner result=PASS actual=hovered=457,457,457
+[2026-11-17 01:16:07.053] [ClientLog] [info] CaptureCamera: label=rotation_250 yaw=-1.919862 zoom=(16,16) effectiveIso=(75.175415,28.361603) subdivisions=1 gameResolution=(1280,720)
+[2026-11-17 01:16:07.238] [ClientLog] [info] GUI-ASSERT shot=7 label=cardinal_270 kind=HOVERED_ENTITY_ID target=457 name=rotation_pick_owner result=PASS actual=hovered=457,457,457
+[2026-11-17 01:16:07.238] [ClientLog] [info] CaptureCamera: label=cardinal_270 yaw=-1.5707963 zoom=(16,16) effectiveIso=(80,0.9999924) subdivisions=1 gameResolution=(1280,720)
+ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[gui-verify] 8/8 assertions passed
+fleet-jobs: 20261117T091604Z-gui-verify-f76c45 succeeded exit=0

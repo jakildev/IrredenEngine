@@ -71,18 +71,12 @@ struct FrameDataIsoTriangles {
     int2 mouseFramebufferPixel;
     int hoverResolveMode;
     int gatherFilterDiagnostic;
+    float4 cameraViewRotation;
+    int2 presentedPickSize;
+    int presentedPickEnabled;
 };
 
-// SSBO populated by the fragment shader when the mouse hovers over a
-// non-transparent trixel that wins the depth test. CPU side is
-// `HoveredEntityIdBuffer` (slot 14, kBufferIndex_HoveredEntityId);
-// readback layout matches the C++ `HoveredEntityIdLayout` in
-// `ir_render_types.hpp` and the GLSL std430 buffer in
-// `f_trixel_to_framebuffer.glsl`.
-struct HoveredEntityIdBuffer {
-    uint2 hoveredEntityId;
-    float hoveredDepth;
-};
+#include "ir_pick_record.metal"
 
 struct VertexOut {
     float4 position [[position]];
@@ -219,7 +213,7 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
     texture2d<uint, access::read> canvasFogOfWar [[texture(8)]],
     texture2d<float, access::read> fogLineOfSight [[texture(9)]],
 #endif
-    device HoveredEntityIdBuffer& hovered [[buffer(14)]]
+    device PickRecord *picks [[buffer(14)]]
 ) {
     FragmentOut out;
 
@@ -377,18 +371,16 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
     const int2 originIndex = int2(floor(displayOrigin));
     const int2 hoveredIndex = int2(floor(hoveredPosition));
     const bool isMouseHovered = all(hoveredIndex == originIndex);
-    if (isMouseHovered) {
-        if (color.a >= 0.1f && depth <= hovered.hoveredDepth) {
-            // Strip the per-trixel priority carrier so picking reports the true
-            // id. Read at sampleCoord, the texel the color and depth gate above
-            // sampled: stage 2 stores color and id together, so this is the id
-            // of what the fragment displays.
-            const uint2 entityId = decodeEntityId(triangleEntityIds.read(sampleCoord).rg);
-            if (any(entityId != uint2(0u))) {
-                hovered.hoveredEntityId = entityId;
-                hovered.hoveredDepth = depth;
-            }
+    if (isMouseHovered || frameData.presentedPickEnabled != 0) {
+        const uint2 entityId = decodeEntityId(triangleEntityIds.read(sampleCoord).rg);
+        if (isMouseHovered) gatherPick(picks[0], entityId, depth, color.a);
+        const int2 pixel = int2(in.position.xy);
+        if (frameData.presentedPickEnabled != 0 && all(pixel >= int2(0)) &&
+            all(pixel < frameData.presentedPickSize)) {
+            gatherPick(picks[1 + pixel.y * frameData.presentedPickSize.x + pixel.x], entityId, depth, color.a);
         }
+    }
+    if (isMouseHovered) {
         if (frameData.showHoverHighlight > 0.0f) {
             color = float4(1.0f, 0.0f, 0.0f, 1.0f);
             depth = 0.0f;
