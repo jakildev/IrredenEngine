@@ -1,0 +1,92 @@
+{
+  "base": "e5c0ce71386f4cad2a3e65d24c6b395caa05ab4d",
+  "head": "7600c4b24d83891fbfbc71229881f19927f59772",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "backend": "Metal",
+  "power": "AC Power",
+  "build_type": "Release",
+  "frames_per_run": 300,
+  "pairs": 5,
+  "quiet": "guarded",
+  "frame_ratio_limit": 1.1,
+  "one_sided_t_95_df4": 2.131846786326649,
+  "scenes": {
+    "million_yaw45": {
+      "args": [
+        "--auto-profile", "300", "--wave-freeze", "--no-overlay",
+        "--pivot-origin", "--config-preset", "configs/perf/million.lua",
+        "--yaw", "0.785398163"
+      ],
+      "frame_avg_ms": {
+        "base_runs": [10.88, 10.90, 10.91, 10.93, 10.85],
+        "head_runs": [11.06, 11.01, 11.02, 10.98, 11.00],
+        "base_mean": 10.894,
+        "head_mean": 11.014,
+        "ratio": 1.0110152377455481,
+        "paired_delta_mean": 0.12,
+        "paired_delta_sd": 0.048989794855663335,
+        "paired_lower_95": 0.07329357703936008,
+        "verdict": "pass"
+      },
+      "frame_p99_ms": {
+        "base_runs": [11.18, 11.39, 11.62, 13.22, 11.40],
+        "head_runs": [11.38, 11.34, 11.34, 11.25, 11.51],
+        "base_mean": 11.762,
+        "head_mean": 11.364,
+        "ratio": 0.9661622173099814,
+        "paired_delta_mean": -0.398,
+        "paired_delta_sd": 0.8974798047867152,
+        "paired_lower_95": -1.2536490486335437,
+        "verdict": "pass"
+      },
+      "voxel_per_axis_store_ms": {
+        "base_runs": [0.732, 0.732, 0.735, 0.733, 0.734],
+        "head_runs": [0.812, 0.811, 0.812, 0.810, 0.811],
+        "base_mean": 0.7332,
+        "head_mean": 0.8112,
+        "ratio": 1.1063829787234045,
+        "paired_delta_mean": 0.078,
+        "paired_delta_sd": 0.0014142135623730965,
+        "paired_lower_95": 0.07665170170653957
+      }
+    },
+    "default64_yaw035": {
+      "args": [
+        "--auto-profile", "300", "--wave-freeze", "--no-overlay",
+        "--pivot-origin", "--yaw", "0.35"
+      ],
+      "frame_avg_ms": {
+        "base_runs": [10.42, 10.46, 10.52, 9.71, 8.80],
+        "head_runs": [9.11, 9.02, 9.86, 10.47, 9.96],
+        "base_mean": 9.982,
+        "head_mean": 9.684,
+        "ratio": 0.9701462632738932,
+        "paired_delta_mean": -0.298,
+        "paired_delta_sd": 1.1942026628675724,
+        "paired_lower_95": -1.4365419113704925,
+        "verdict": "pass"
+      },
+      "frame_p99_ms": {
+        "base_runs": [13.26, 12.50, 12.65, 12.36, 12.11],
+        "head_runs": [13.22, 12.07, 13.22, 12.91, 14.38],
+        "base_mean": 12.576,
+        "head_mean": 13.16,
+        "ratio": 1.046437659033079,
+        "paired_delta_mean": 0.584,
+        "paired_delta_sd": 1.0321724662090153,
+        "paired_lower_95": -0.40006380180038437,
+        "verdict": "pass"
+      },
+      "voxel_per_axis_store_ms": {
+        "base_runs": [0.416, 0.421, 0.428, 0.405, 0.416],
+        "head_runs": [0.430, 0.431, 0.413, 0.459, 0.440],
+        "base_mean": 0.4172,
+        "head_mean": 0.4346,
+        "ratio": 1.0417066155321189,
+        "paired_delta_mean": 0.0174,
+        "paired_delta_sd": 0.024995999679948793,
+        "paired_lower_95": -0.0064309577906049055
+      }
+    }
+  }
+}
