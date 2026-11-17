@@ -1,0 +1,40 @@
+IRShapeDebug --gather-filter-fixture --zoom-calibration --zoom-continuous --zoom 2.2 --yaw 0 --auto-profile 600
+OpenGL, Windows, NVIDIA; framebuffer 1280x720, output scale 1. Five alternating runs per arm, in order nearest, owner, unrestricted.
+OpenGL has no whole-frame GPU timer (Coverage: supported=0 in every report), so the whole-frame figure is the steady wall-frame time
+(first 150 of 600 frames excluded) and the gather cost is the exclusive GPU time of its own stages. quiet is ir-run's host-quiet verdict.
+
+## Stage timing off (default config): whole-frame wall time, ms
+arm run steady_avg steady_p50 steady_p95 steady_min quiet
+nearest 1 2.56 2.41 4.02 1.95 guarded
+owner 1 2.59 2.45 3.96 2.01 guarded
+unrestricted 1 2.48 2.37 3.68 2.05 guarded
+nearest 2 2.42 2.26 3.90 1.94 guarded
+owner 2 2.56 2.41 4.01 1.92 guarded
+unrestricted 2 2.52 2.35 3.86 2.00 guarded
+nearest 3 2.38 2.25 3.66 1.83 guarded
+owner 3 2.47 2.36 3.57 2.00 guarded
+unrestricted 3 2.55 2.40 4.00 2.05 guarded
+nearest 4 2.63 2.43 4.10 2.08 guarded
+owner 4 2.59 2.42 3.98 2.00 guarded
+unrestricted 4 2.68 2.47 4.14 2.03 guarded
+nearest 5 2.61 2.44 4.07 1.96 guarded
+owner 5 2.61 2.45 3.72 1.96 guarded
+unrestricted 5 2.93 2.71 4.53 2.27 guarded
+
+## Stage timing on (--config-preset configs/perf/sdf-on.lua): wall time plus exclusive GPU ms per sampled invocation
+arm run steady_avg steady_p50 steady_p95 steady_min trixelToFb_ms trixelToFb_samples entityCanvasToFb_ms entityCanvasToFb_samples fbToScreen_ms fbToScreen_samples quiet
+nearest 1 4.07 3.86 6.33 3.04 0.019 1198 0.023 599 0.023 599 guarded
+owner 1 4.01 3.78 6.07 3.04 0.023 1198 0.022 599 0.021 599 guarded
+unrestricted 1 4.11 3.80 6.32 3.07 0.019 1198 0.022 599 0.020 599 guarded
+nearest 2 4.01 3.84 5.95 3.03 0.019 1198 0.023 599 0.021 599 guarded
+owner 2 3.94 3.67 6.24 3.01 0.022 1198 0.022 599 0.021 599 guarded
+unrestricted 2 4.05 3.79 6.17 3.06 0.022 1198 0.021 599 0.026 599 guarded
+nearest 3 4.03 3.75 5.97 3.08 0.018 1198 0.021 599 0.021 599 guarded
+owner 3 3.96 3.84 5.27 3.05 0.022 1198 0.024 599 0.021 599 guarded
+unrestricted 3 4.41 4.14 6.50 3.16 0.020 1198 0.024 599 0.022 599 guarded
+nearest 4 4.02 3.81 5.58 3.06 0.018 1198 0.024 599 0.022 599 guarded
+owner 4 4.11 3.74 6.22 2.95 0.023 1198 0.020 599 0.019 599 guarded
+unrestricted 4 3.92 3.75 5.66 3.00 0.020 1198 0.021 599 0.021 599 guarded
+nearest 5 4.11 3.81 6.46 3.04 0.020 1198 0.022 599 0.022 599 guarded
+owner 5 3.99 3.84 5.47 3.02 0.021 1198 0.021 599 0.023 599 guarded
+unrestricted 5 3.81 3.60 5.49 2.94 0.020 1198 0.022 599 0.023 599 guarded
