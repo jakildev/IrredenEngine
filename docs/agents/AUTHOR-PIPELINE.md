@@ -121,12 +121,15 @@ nor an `**Acceptance criteria**` block.
    child's argv, a probe's PASS line, a flag another party reads) is
    graded as written.
 
-**Render-verify and light-verify rows.** A render-verify or light-verify
-criterion is met when every row the PR moves passes, and every other failing
-row fails with the same metrics on a master control run in the same session
-and is tracked by an open re-bless issue. The PR body shows that control row
-by row. A row that fails only on the PR head, or a tracked row whose metrics
-differ from the control, still fails.
+**Render-verify and light-verify rows.** A render-verify criterion is met when
+every row the PR moves passes, and `--against-control` grades every other
+failing row as inherited from the cached record for the exact merge-base
+commit on the same host and preset. Each inherited row remains tracked by an
+open re-bless issue; the PR body names the control commit and tracker. A
+light-verify criterion keeps the same-session rule: every row the PR moves
+passes, and every other failing row has the same metrics on a master control
+run in that session and an open re-bless issue. A row that fails only on the
+PR head, or a tracked row whose metrics differ from its control, still fails.
 
 A pixel-level clause for a placement re-bless follows the contract in
 [`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) (whole-pixel translation vs

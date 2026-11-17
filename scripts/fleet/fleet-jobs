@@ -21,8 +21,9 @@ Profiles are fixed; there is no executable, path, or shell-string form.
   build          the ir-build adjacent to this script (fleet-build --detach
                  enters here after its format -> format-changed rewrite)
   fleet-tests    <cwd's checkout>/scripts/fleet/tests/run_all.sh
-  render-verify  <cwd's checkout>/scripts/render-verify.py; --build-dir,
-                 --update-references and --force are rejected
+  render-verify  <cwd's checkout>/scripts/render-verify.py; result records may
+                 be written under build/; --build-dir, --update-references
+                 and --force are rejected
   light-verify   <cwd's checkout>/scripts/light-verify.py; --build-dir,
                  --update-baselines and --force are rejected
   gui-verify     <cwd's checkout>/scripts/gui-verify.py; the target name
@@ -76,19 +77,22 @@ COUNT = r"[0-9]+"
 # A ref light-verify diffs against; no leading dash, so it never reads as
 # an option of the script.
 GIT_REF = r"[A-Za-z0-9][A-Za-z0-9._/-]*"
+RESULT_PATH = r"build/[A-Za-z0-9][A-Za-z0-9_.-]*(?:/[A-Za-z0-9][A-Za-z0-9_.-]*)*"
 # The options a detached verifier run may pass, by profile. --build-dir
 # selects the directory the demo executable is resolved from;
 # --update-references, --update-baselines and --force rewrite committed
 # references behind a prompt the closed stdin cannot answer.
 VALUE_OPTS = {
     "render-verify": {"--target": IDENT, "--demo": IDENT, "--warmup": COUNT,
-                      "--timeout": COUNT, "--demo-arg": None},
+                      "--timeout": COUNT, "--demo-arg": None,
+                      "--json-out": RESULT_PATH, "--tracker": COUNT},
     "light-verify": {"--target": IDENT, "--warmup": COUNT, "--timeout": COUNT,
                      "--against": GIT_REF},
     "gui-verify": {"--warmup-frames": COUNT, "--timeout": COUNT},
 }
 FLAGS = {
-    "render-verify": ("--all", "--no-build"),
+    "render-verify": ("--all", "--no-build", "--record-control",
+                      "--against-control"),
     "light-verify": ("--no-build", "--if-changed"),
     "gui-verify": ("--no-build", "--allow-no-assertions"),
 }
