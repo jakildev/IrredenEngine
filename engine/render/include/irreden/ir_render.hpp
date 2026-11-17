@@ -409,9 +409,9 @@ MouseTrixelPick getMouseTrixelPick();
 /// Frame id of the newest completed pick record, including when the test-only
 /// fault makes getMouseTrixelPick serve the preceding record.
 std::uint64_t newestCompletedMouseTrixelPickFrameId();
-/// GPU-timeline copy of the current hover buffer, tagged with this frame's id
-/// and render-time cursor. Called after the final hover writer.
-void publishMouseTrixelPick(Buffer *hoverBuffer);
+/// Writable image retained until this frame completes. The composite writes
+/// directly into it so publication adds no whole-frame GPU copy.
+Buffer *beginMouseTrixelPickImage();
 /// Entity id of the voxel under the mouse cursor, read from the entity-id GPU texture.
 IREntity::EntityId getEntityIdAtMouseTrixel();
 /// @}

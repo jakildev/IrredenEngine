@@ -148,7 +148,6 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         IRRender::GatherFilterDiagnostic::NEAREST;
     ShaderProgram *hoverResolveProgram_ = nullptr;
     ShaderProgram *pickClearProgram_ = nullptr;
-    ivec2 pickImageSize_{0};
     bool scatterHoverPending_ = false;
     // IR_PERAXIS_OVERFLOW_CENSUS=1: after each scatter draw, count the overflow
     // records that own a framebuffer pixel into the run witness. The readback
@@ -276,7 +275,6 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 IREntity::getComponent<C_FrameDataTrixelToFramebuffer>("mainFramebuffer");
             resolveScatterHover(framebuffer, frameData, 1);
         }
-        IRRender::publishMouseTrixelPick(hoveredIdBuf_);
     }
 
     void tick(
@@ -1005,13 +1003,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
         auto &pickFrame = IREntity::getComponent<C_FrameDataTrixelToFramebuffer>("mainFramebuffer");
         const ivec2 pickSize = framebuffer.getResolutionPlusBuffer();
-        if (pickImageSize_ != pickSize) {
-            pickImageSize_ = pickSize;
-            hoveredIdBuf_->resize(
-                (1 + static_cast<std::size_t>(pickSize.x) * pickSize.y) *
-                sizeof(HoveredEntityIdLayout)
-            );
-        }
+        hoveredIdBuf_ = IRRender::beginMouseTrixelPickImage();
         hoveredIdBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_HoveredEntityId);
         pickFrame.frameData_.presentedPickSize_ = pickSize;
         pickFrame.updateFrameData(frameDataBuf_);

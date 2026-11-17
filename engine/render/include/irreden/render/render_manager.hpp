@@ -123,7 +123,7 @@ class RenderManager {
     bool isHoveredTrixelVisible() const;
 
     void setPresentedPickPreviousCompletedFault(bool enabled);
-    void publishMouseTrixelPick(Buffer *hoverBuffer);
+    Buffer *beginMouseTrixelPickImage();
     MouseTrixelPick mouseTrixelPick();
     std::uint64_t newestCompletedMouseTrixelPickFrameId();
     void resetMouseTrixelPickStats();

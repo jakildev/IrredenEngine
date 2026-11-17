@@ -208,7 +208,7 @@ void RenderManager::setPresentedPickPreviousCompletedFault(bool enabled) {
     m_presentedPickPreviousCompletedFault = enabled;
 }
 
-void RenderManager::publishMouseTrixelPick(Buffer *hoverBuffer) {
+Buffer *RenderManager::beginMouseTrixelPickImage() {
     const PresentedPickMapping mapping = IRRender::mainFramebufferPickMapping();
     const int slot = m_presentedPickRing.write(
         IRRender::device()->submissionSerial(),
@@ -224,8 +224,7 @@ void RenderManager::publishMouseTrixelPick(Buffer *hoverBuffer) {
         destination->resize(mapping.bufferBytes());
     }
     bytes = mapping.bufferBytes();
-    IRRender::device()->memoryBarrier(BarrierType::BUFFER_UPDATE);
-    IRRender::device()->copyBufferSubData(hoverBuffer, 0, destination, 0, bytes);
+    return destination;
 }
 
 void RenderManager::drainCompletedMouseTrixelPicks() {
