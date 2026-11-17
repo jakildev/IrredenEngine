@@ -99,7 +99,10 @@ The sweep's four cardinal frames are byte-identical between parent and head.
 
 `scripts/render-yaw-crossing-metric.py capture` (a rigid cube over a GRID
 floor, camera yaws −0.5° to +0.5° in 0.25° steps), differing shadow-mask pixels
-on the receiver's top face:
+on the receiver's top face, read on a macOS Metal 2560×1440 capture (output
+scale 2). The grader derives the receiver region and its coverage floors from
+the capture's output scale, so a 1x host's 1280×720 frames grade the same
+scene at about a quarter of these counts:
 
 | Configuration | −0.5° / −0.25° | −0.25° / 0° | 0° / +0.25° | +0.25° / +0.5° | Result |
 |---|---:|---:|---:|---:|---|

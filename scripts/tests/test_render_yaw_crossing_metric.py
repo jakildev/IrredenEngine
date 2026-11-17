@@ -4,6 +4,7 @@ import importlib.machinery
 import importlib.util
 import json
 import math
+import os
 import subprocess
 import sys
 import tempfile
@@ -26,6 +27,35 @@ LIT = metric.LIT_COLOR
 SHADOW = metric.SHADOW_COLOR
 OTHER = (200, 10, 10)
 LIMITS = ("--min-shadow-px", "8", "--min-receiver-px", "100")
+# Game-px columns of the fixture shadow band at offset k: [600, 620 + k), inside
+# the receiver top at every yaw the default step reaches.
+BAND_GAME_COLUMNS = (600, 620)
+
+STUB_FLEET_RUN = """#!{python}
+import re, sys
+sys.path.insert(0, {tests!r})
+from test_render_yaw_crossing_metric import fixture_row, rmu
+args = sys.argv[1:]
+config = open(args[args.index("--config-preset") + 1]).read()
+shots = re.search(r'screenshot_output_dir="([^"]+)"', config).group(1)
+yaw = float(next(a for a in args if a.startswith("--yaw=")).split("=")[1])
+offset = round(((yaw + 3.141592653589793) % 6.283185307179586 - 3.141592653589793)
+               / {step!r})
+rmu.write_png(shots + "/screenshot_0.png", {width}, {height},
+              bytes(fixture_row(1, offset)) * {height}, 3)
+print("ir-run: RESULT=CLEAN")
+"""
+
+
+def fixture_row(scale, offset):
+    """One frame row at output ``scale``: lit receiver everywhere, shadowed over
+    the band whose right edge moves one game px per yaw step."""
+    first = BAND_GAME_COLUMNS[0] * scale
+    last = (BAND_GAME_COLUMNS[1] + offset) * scale
+    row = bytearray()
+    for column in range(metric.GAME_SIZE[0] * scale):
+        row.extend(SHADOW if first <= column < last else LIT)
+    return row
 
 
 class YawCrossingMetricTest(unittest.TestCase):
@@ -126,7 +156,52 @@ class YawCrossingMetricTest(unittest.TestCase):
             [sys.executable, str(SCRIPT), "grade", str(self.root)],
             capture_output=True, text=True)
         self.assertEqual(result.returncode, 2)
-        self.assertIn("fixture requires 2560x1440", json.loads(result.stdout)["error"])
+        self.assertIn("integer multiple of 1280x720", json.loads(result.stdout)["error"])
+
+    def grade_fixture(self, scale):
+        width, height = (side * scale for side in metric.GAME_SIZE)
+        for offset in metric.OFFSETS:
+            rmu.write_png(str(self.root / metric.frame_name(offset)), width, height,
+                          bytes(fixture_row(scale, offset)) * height, 3)
+        result = subprocess.run([sys.executable, str(SCRIPT), "grade", str(self.root)],
+                                capture_output=True, text=True)
+        lines = result.stdout.splitlines()
+        return result.returncode, json.loads(lines[0])
+
+    def test_receiver_region_and_floors_scale_with_the_output(self):
+        readings = {}
+        for scale in (1, 2):
+            code, readings[scale] = self.grade_fixture(scale)
+            self.assertEqual(code, 0, readings[scale])
+            self.assertEqual(readings[scale]["output_scale"], scale)
+            self.assertTrue(readings[scale]["coverage_valid"])
+        one, two = readings[1], readings[2]
+        self.assertEqual((two["min_shadow_px"], two["min_receiver_px"]),
+                         (4 * one["min_shadow_px"], 4 * one["min_receiver_px"]))
+        self.assertAlmostEqual(two["region_px"] / one["region_px"], 4.0, delta=0.05)
+        self.assertGreater(one["cardinal_differing_px"], 0)
+        self.assertEqual(one["cardinal_differing_px"], one["rotated_differing_px"])
+
+    def test_capture_grades_a_scale_one_host(self):
+        """The capture path end to end against a 1x host's 1280x720 frames."""
+        stub = self.root / "fleet-run"
+        stub.write_text(STUB_FLEET_RUN.format(
+            python=sys.executable, tests=str(Path(__file__).resolve().parent),
+            step=math.radians(metric.DEFAULT_STEP_DEG),
+            width=metric.GAME_SIZE[0], height=metric.GAME_SIZE[1]), encoding="utf-8")
+        stub.chmod(0o755)
+        output = self.root / "capture"
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "capture", "--output", str(output)],
+            capture_output=True, text=True,
+            env={**os.environ, "FLEET_RUN": str(stub)})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        reading = json.loads(result.stdout.splitlines()[-2])
+        self.assertEqual(reading["size"], list(metric.GAME_SIZE))
+        self.assertEqual(reading["output_scale"], 1)
+        self.assertTrue(reading["pass"])
+        for offset in metric.OFFSETS:
+            self.assertTrue((output / metric.frame_name(offset)).is_file())
 
     def test_yaws_wrap_below_the_cardinal(self):
         self.assertAlmostEqual(metric.yaw_radians(0.0, 0.25, -1), math.radians(359.75))
