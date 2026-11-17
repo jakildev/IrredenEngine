@@ -1465,6 +1465,10 @@ constexpr std::uint32_t kFramebufferFrameDataUniformBufferSize = sizeof(FrameDat
 // before drawing.
 constexpr std::uint32_t kBufferIndex_GuiCanvasToScreenFrameData =
     kBufferIndex_FramebufferFrameDataUniform;
+// FRAMEBUFFER_POST_EFFECTS shares the alias the same way: it re-asserts its
+// UBO once per enabled frame, before its first draw.
+constexpr std::uint32_t kBufferIndex_FramebufferPostEffectsFrameData =
+    kBufferIndex_FramebufferFrameDataUniform;
 constexpr std::uint32_t kBufferIndex_FramebufferGlitchFrameData =
     kBufferIndex_FramebufferFrameDataUniform;
 constexpr std::uint32_t kBufferIndex_ImageToFramebufferFrameData =

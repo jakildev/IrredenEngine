@@ -15,7 +15,7 @@ inline constexpr float kFrameTimeBudgetMs = 1000.0f / 60.0f;
 
 // Number of named GPU stages in `gpuStageRegistry()`. Single source of truth
 // for both the registry array and the parallel per-stage accumulator array.
-inline constexpr std::size_t kGpuStageCount = 47;
+inline constexpr std::size_t kGpuStageCount = 48;
 
 struct GpuStageTiming {
     float canvasClearMs_ = 0.0f;
@@ -67,6 +67,8 @@ struct GpuStageTiming {
     // Zeroed by FRAMEBUFFER_GLITCH on every off frame: an off frame does no
     // work, so the live row must not keep the last enabled sample.
     float framebufferGlitchMs_ = 0.0f;
+    // Zeroed by FRAMEBUFFER_POST_EFFECTS on every frame with no effect on.
+    float framebufferPostEffectsMs_ = 0.0f;
     // Zeroed by TRIXEL_GLITCH on every frame with no active subject.
     float trixelGlitchMs_ = 0.0f;
     // Zeroed when TRIXEL_GLITCH has no live per-axis route.
@@ -636,7 +638,9 @@ inline void commitGpuStageSample(
 //
 // FRAMEBUFFER_GLITCH is untagged too: `framebufferGlitch` brackets its
 // hold-tick history copy plus the fullscreen draw that replaces the
-// main framebuffer's screen blit on enabled frames. TRIXEL_GLITCH likewise:
+// main framebuffer's screen blit on enabled frames.
+// FRAMEBUFFER_POST_EFFECTS likewise: `framebufferPostEffects` brackets its
+// frame-data upload and every blur, bloom and resolve draw. TRIXEL_GLITCH too:
 // `trixelGlitch` brackets its tick-start history copies and its canvas
 // dispatch; `trixelGlitchPerAxis` owns the corresponding per-axis copies and
 // compacted-cell dispatches.
@@ -694,6 +698,7 @@ inline const std::array<GpuStageInfo, kGpuStageCount> &gpuStageRegistry() {
         {"resolvePerAxisScreenDepth", &GpuStageTiming::resolvePerAxisScreenDepthMs_, 0.05f},
         {"fbToScreen", &GpuStageTiming::fbToScreenMs_, 0.05f},
         {"framebufferGlitch", &GpuStageTiming::framebufferGlitchMs_, 0.05f},
+        {"framebufferPostEffects", &GpuStageTiming::framebufferPostEffectsMs_, 0.05f},
         {"trixelGlitch", &GpuStageTiming::trixelGlitchMs_, 0.05f},
         {"trixelGlitchPerAxis", &GpuStageTiming::trixelGlitchPerAxisMs_, 0.05f},
     }};

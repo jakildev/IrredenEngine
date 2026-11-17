@@ -104,9 +104,12 @@ manager:
 that tick. `FRAMEBUFFER_TO_SCREEN` then presents the output for the main
 framebuffer with the blit's own placement, in place of the composite, so the
 screen target is still cleared and drawn exactly once per frame by the blit.
-`IRPrefab::Glitch::presentedMainColorOrNull()` names the same output for any
-other reader of the presented image: the recorder reads it, so a clip carries
-what the screen showed (see [Recording](#recording)).
+`IRPrefab::Glitch::presentedMainColorOrNull()` names this pass's output.
+`IRPrefab::PresentedFrame::mainColor()` names the image actually presented,
+for the blit, the recorder and any other reader: when
+[`FRAMEBUFFER_POST_EFFECTS`](post-effects.md) runs after this pass it draws
+its own output from this one, and that is presented instead (see
+[Recording](#recording)).
 
 An enabled frame runs `encodeFrame`, which issues its GPU work through a
 `GlitchEncoder`: `recreateImages` on first use or on a framebuffer resize
@@ -117,7 +120,7 @@ pass publishes only after that draw. `tick` hands `encodeFrame` a
 `FRAMEBUFFER_TO_SCREEN` has the same shape: `beginFrame` and `encodeBlit`
 decide and count, and issue their work through a `ScreenBlitEncoder`
 (`beginScreen`, then per framebuffer one `drawFramebuffer`, or
-`drawGlitchOutput` for the main framebuffer on a published tick) that
+`drawPresentedOutput` for the main framebuffer on a published tick) that
 `ScreenBlitGpuEncoder` encodes.
 `test/render/prefab_system_probe_test.cpp` runs both passes against recording
 encoders, with a recording `RenderDevice` catching any call made outside them,
@@ -133,8 +136,8 @@ proves the off path byte-identical against the standing references.
 
 A recording reads the presented image, not the composite: on a tick the pass
 drew its output, `VideoManager` captures that output (through
-`presentedMainColorOrNull`), and on every other tick the composite, both at
-the framebuffer's size. Canvas screenshots (`requestCanvasScreenshot`) read
+`IRPrefab::PresentedFrame::mainColor`, or the post-effects output drawn from
+it), and on every other tick the composite, both at the framebuffer's size. Canvas screenshots (`requestCanvasScreenshot`) read
 the same way; a default-framebuffer screenshot already read the screen. The
 config key `video_capture_post_effects` (default `true`) opts a creation out:
 the clip then holds the raw composite while the screen glitches, and every

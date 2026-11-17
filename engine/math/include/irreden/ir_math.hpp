@@ -516,6 +516,11 @@ inline float pow(float base, float exponent) noexcept {
     return std::pow(base, exponent);
 }
 
+/// e raised to @p exponent. Wraps std::exp.
+inline float exp(float exponent) noexcept {
+    return std::exp(exponent);
+}
+
 /// Base-2 logarithm of @p value. Wraps std::log2. Caller guarantees value > 0.
 inline float log2(float value) noexcept {
     return std::log2(value);

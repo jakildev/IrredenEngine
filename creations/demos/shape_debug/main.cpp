@@ -22,6 +22,7 @@
 
 #include "glitch_fixture.hpp"
 #include "glitch_subject_fixture.hpp"
+#include "post_effects_fixture.hpp"
 #include "lod_scene.hpp"
 #include "sdf_voxel_scene.hpp"
 
@@ -247,6 +248,8 @@ constexpr IRVideo::AutoScreenshotShot kMovingCasterShots[] = {
 bool g_movingCaster = false;
 IRShapeDebug::GlitchFixture::Mode g_glitchMode = IRShapeDebug::GlitchFixture::Mode::NONE;
 IRShapeDebug::GlitchSubjectFixture g_glitchSubject;
+IRShapeDebug::PostEffectsFixture::Mode g_postEffectsMode =
+    IRShapeDebug::PostEffectsFixture::Mode::NONE;
 IREntity::EntityId g_movingCasterEntity = IREntity::kNullEntity;
 
 // A cube assembled from single-voxel entities emits every interior face, so
@@ -1708,6 +1711,12 @@ void registerCliArgs() {
         "none"
     );
     args.enumValue(
+        "--post-effects-test",
+        "Framebuffer post-effects fixture (none|standard-off|off|blur|bloom|grade|all)",
+        {"none", "standard-off", "off", "blur", "bloom", "grade", "all"},
+        "none"
+    );
+    args.enumValue(
         "--glitch-subject-test",
         "Canvas-space subject glitch fixture (none|standard-off|off|tear|hold|split|echo|dissolve|"
         "depth|spill-far-off|spill-far-on|spill-near-off|spill-near-on|choreography|all)",
@@ -1944,6 +1953,8 @@ void readCliArgs() {
     g_voxelEntityCube = args.getFlag("--voxel-entity-cube");
     g_movingCaster = args.getFlag("--moving-caster");
     g_glitchMode = IRShapeDebug::GlitchFixture::info(args.getEnum("--glitch-test")).mode_;
+    g_postEffectsMode =
+        IRShapeDebug::PostEffectsFixture::info(args.getEnum("--post-effects-test")).mode_;
     g_glitchSubject.mode_ =
         IRShapeDebug::GlitchSubjectFixture::info(args.getEnum("--glitch-subject-test")).mode_;
     g_glitchSubject.yawDegrees_ = args.getFloat("--glitch-subject-yaw");
@@ -2101,6 +2112,7 @@ void initSystems();
 void initCommands();
 void initEntities();
 void initGlitchFixture();
+void initPostEffectsFixture();
 void initGlitchSubjectFixture();
 void queueCanvasImageSample();
 void queueFramebufferImageSample();
@@ -2248,6 +2260,7 @@ int main(int argc, char **argv) {
     initEntities();
     initGlitchFixture();
     initGlitchSubjectFixture();
+    initPostEffectsFixture();
     // After initEntities: the tint setters re-apply over the shapes it created.
     registerDemoSettings();
     if (g_zoomContinuous) {
@@ -4723,6 +4736,18 @@ void initSystems() {
             );
         }
     }
+    if (g_postEffectsMode != IRShapeDebug::PostEffectsFixture::Mode::NONE) {
+        // After the glitch pass when a glitch fixture registered one: the
+        // post effects read whatever is presented when they run.
+        renderPipeline.insert(
+            std::find(
+                renderPipeline.begin(),
+                renderPipeline.end(),
+                IRSystem::findSystem(IRSystem::FRAMEBUFFER_TO_SCREEN)
+            ),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_POST_EFFECTS>()
+        );
+    }
     // The interactive minimap is not part of captures or timed scene work.
     IRRender::setCullingMinimapEnabled(
         g_autoWarmupFrames == 0 && g_autoRecordFrames == 0 && g_autoProfileFrames == 0
@@ -4754,6 +4779,11 @@ void initSystems() {
                     }
                     IRShapeDebug::GlitchFixture::logProbe("profile-end", false);
                     g_glitchSubject.logSystemLine("profile-end");
+                    IRShapeDebug::PostEffectsFixture::logProbe(
+                        "profile-end",
+                        g_postEffectsMode,
+                        false
+                    );
                     IR_LOG_INFO("Auto-profile: {} frames collected, exiting", g_autoProfileFrames);
                     IRWindow::closeWindow();
                 }
@@ -5299,6 +5329,12 @@ void initSystems() {
             cfg.numShots_ = 1;
             cfg.onCaptureFrame_ = [](int) {
                 IRShapeDebug::GlitchFixture::logProbe("capture", true);
+            };
+        } else if (IRShapeDebug::PostEffectsFixture::captures(g_postEffectsMode)) {
+            cfg.shots_ = IRShapeDebug::PostEffectsFixture::shot(g_postEffectsMode);
+            cfg.numShots_ = 1;
+            cfg.onCaptureFrame_ = [](int) {
+                IRShapeDebug::PostEffectsFixture::logProbe("capture", g_postEffectsMode, true);
             };
         } else if (g_glitchSubject.captures()) {
             cfg.shots_ = g_glitchSubject.shots(cfg.numShots_);
@@ -6447,6 +6483,14 @@ void initGlitchFixture() {
         ),
         IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1)
     );
+}
+
+void initPostEffectsFixture() {
+    using IRShapeDebug::PostEffectsFixture;
+    if (g_postEffectsMode == PostEffectsFixture::Mode::NONE) {
+        return;
+    }
+    IRPrefab::PostEffects::setState(PostEffectsFixture::state(g_postEffectsMode));
 }
 
 // Every capturing subject mode adds two striped voxel subjects (eight for

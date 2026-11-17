@@ -294,6 +294,11 @@ enum SystemName {
     // VIEWPORT_TO_FRAMEBUFFER, framebuffer debug overlays) and immediately
     // before FRAMEBUFFER_TO_SCREEN, whose blit it replaces on enabled frames.
     FRAMEBUFFER_GLITCH,
+    // Bloom, blur and colour grade over the presented main framebuffer
+    // (engine/prefabs/irreden/render/post_effects.hpp). RENDER after
+    // FRAMEBUFFER_GLITCH when registered and immediately before
+    // FRAMEBUFFER_TO_SCREEN, which presents its output on enabled frames.
+    FRAMEBUFFER_POST_EFFECTS,
     // Canvas-space glitch of `C_GlitchSubject` entities
     // (engine/prefabs/irreden/render/glitch_subject.hpp). RENDER after every
     // main-canvas colour producer (FOG_TO_TRIXEL when present) and immediately
