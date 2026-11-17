@@ -430,6 +430,12 @@ class YawSweepTest(unittest.TestCase):
         self.assertEqual(requested_frames(["--auto-profile=75"]), 75)
         self.assertIsNone(requested_frames(["--zoom", "4"]))
 
+    def test_a_fixed_pose_accepts_the_terminal_reporting_frame_gap(self):
+        args = ["--auto-profile", "301", "--yaw", "0.785398163"]
+        self.assertIsNone(self.mismatch(args, yaw=45.0, last=45.0, travel=0.0, samples=300))
+        short = self.mismatch(args, yaw=45.0, last=45.0, travel=0.0, samples=299)
+        self.assertIn("witnessed 299 frames; --auto-profile asked for 301", short)
+
     def test_travel_is_modelled_with_the_witnesss_wrap(self):
         # 3.3 rad a frame is a 170.92 degree step the short way round.
         wide = ["--yaw-step", "3.3"]

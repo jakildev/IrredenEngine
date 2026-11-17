@@ -1,0 +1,6 @@
+ir-run: running debug tree /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build-release-head
+ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire benchmark -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build-release-head/creations/demos/perf_grid/IRPerfGrid --config-preset configs/perf/million.lua --yaw 0.785398163 --wave-freeze --no-overlay --pivot-origin --auto-profile 301 (timeout: 900s) (window mode: offscreen)
+FOG-EVALUATED subjects=0.0 sd=0.0 max=0 n=226
+ir-run: IRPerfGrid exited cleanly after 11s
+ir-run: QUIET=guarded exe=IRPerfGrid
+ir-run: RESULT=CLEAN exe=IRPerfGrid exit=0
