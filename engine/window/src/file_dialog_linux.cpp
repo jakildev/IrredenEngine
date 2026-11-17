@@ -6,8 +6,12 @@
 #include <irreden/utility/path_utils.hpp>
 
 #include <cerrno>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <random>
+#include <string>
+#include <string_view>
 
 #include <spawn.h>
 #include <sys/wait.h>
@@ -22,6 +26,22 @@ namespace {
 // zenity's exit codes: 0 accepted, 1 cancelled or closed.
 constexpr int kZenityAccepted = 0;
 constexpr int kZenityCancelled = 1;
+
+// '\n' then 32 hex digits from the OS entropy source: a selected path holds it
+// only by guessing 128 random bits before the panel opens.
+std::string multipleSelectionSeparator() {
+    constexpr std::string_view kHexDigits = "0123456789abcdef";
+    std::random_device entropy;
+    std::string separator{"\n"};
+    for (int word = 0; word < 4; ++word) {
+        std::uint32_t bits = entropy();
+        for (int nibble = 0; nibble < 8; ++nibble) {
+            separator += kHexDigits[bits & 0xFu];
+            bits >>= 4;
+        }
+    }
+    return separator;
+}
 
 FileDialogResult outcome(FileDialogStatus status, std::string error) {
     FileDialogResult result;
@@ -45,7 +65,8 @@ FileDialogResult platformOpenFileDialog(GLFWwindow *, const FileDialogRequest &r
         );
     }
 
-    std::vector<std::string> arguments = detail::zenityArguments(request);
+    const std::string separator = multipleSelectionSeparator();
+    std::vector<std::string> arguments = detail::zenityArguments(request, separator);
     arguments.insert(arguments.begin(), zenity->string());
     std::vector<char *> argv;
     argv.reserve(arguments.size() + 1);
@@ -115,7 +136,7 @@ FileDialogResult platformOpenFileDialog(GLFWwindow *, const FileDialogRequest &r
         );
     }
     FileDialogResult result;
-    result.paths_ = detail::parseZenityOutput(output);
+    result.paths_ = detail::parseZenityOutput(output, request.mode_, separator);
     result.status_ = FileDialogStatus::ACCEPTED;
     return result;
 }

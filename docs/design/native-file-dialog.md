@@ -209,7 +209,13 @@ Rejected alternatives:
   keeps repainting and is never marked "Not Responding".
 - **Linux.** GLFW links no toolkit, so the panel is the desktop's `zenity`
   when one is on `PATH` and a display is reachable (`DISPLAY` or
-  `WAYLAND_DISPLAY`); otherwise the call is `UNSUPPORTED` with the reason. An
+  `WAYLAND_DISPLAY`); otherwise the call is `UNSUPPORTED` with the reason.
+  Its output is text, and a path may hold any byte but NUL, so no fixed
+  separator can frame a multiple selection: a newline-joined output would
+  read a picked `…/name\n/etc/passwd` as two picks and grant the second. A
+  single selection is the whole output less zenity's trailing newline; a
+  multiple selection is joined by a separator drawn fresh from the OS entropy
+  source per call, which a path can hold only by guessing it. An
   XDG portal backend would remove the dependency and can replace this source
   without touching callers.
 

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <string>
 #include <system_error>
 
 namespace IRWindow {
@@ -222,14 +223,15 @@ std::string windowsFilterPattern(const FileDialogFilter &filter) {
     return patterns;
 }
 
-std::vector<std::string> zenityArguments(const FileDialogRequest &request) {
+std::vector<std::string>
+zenityArguments(const FileDialogRequest &request, std::string_view separator) {
     std::vector<std::string> arguments{"--file-selection"};
     if (!request.title_.empty()) {
         arguments.push_back("--title=" + request.title_);
     }
     if (request.mode_ == FileDialogMode::OPEN_FILES) {
         arguments.push_back("--multiple");
-        arguments.push_back("--separator=\n");
+        arguments.push_back("--separator=" + std::string{separator});
     }
     if (request.mode_ == FileDialogMode::OPEN_FOLDER) {
         arguments.push_back("--directory");
@@ -250,18 +252,28 @@ std::vector<std::string> zenityArguments(const FileDialogRequest &request) {
     return arguments;
 }
 
-std::vector<std::string> parseZenityOutput(std::string_view output) {
+std::vector<std::string>
+parseZenityOutput(std::string_view output, FileDialogMode mode, std::string_view separator) {
+    if (output.ends_with('\n')) {
+        output.remove_suffix(1);
+    }
     std::vector<std::string> paths;
+    if (mode != FileDialogMode::OPEN_FILES || separator.empty()) {
+        if (!output.empty()) {
+            paths.emplace_back(output);
+        }
+        return paths;
+    }
     while (!output.empty()) {
-        const std::size_t end = output.find('\n');
-        const std::string_view line = output.substr(0, end);
-        if (!line.empty()) {
-            paths.emplace_back(line);
+        const std::size_t end = output.find(separator);
+        const std::string_view path = output.substr(0, end);
+        if (!path.empty()) {
+            paths.emplace_back(path);
         }
         if (end == std::string_view::npos) {
             break;
         }
-        output.remove_prefix(end + 1);
+        output.remove_prefix(end + separator.size());
     }
     return paths;
 }

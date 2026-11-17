@@ -1,9 +1,12 @@
+#include <irreden/script/path_grants.hpp>
 #include <irreden/window/file_dialog.hpp>
 
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <fstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -280,10 +283,12 @@ TEST(FileDialogBackendArguments, WindowsFilterPattern) {
     EXPECT_EQ(IRWindow::detail::windowsFilterPattern({"All files", {"*"}}), "*.*");
 }
 
+constexpr std::string_view kSeparator = "\n0123456789abcdef0123456789abcdef";
+
 TEST(FileDialogBackendArguments, ZenityArgumentsPerMode) {
     FileDialogRequest request;
     EXPECT_EQ(
-        IRWindow::detail::zenityArguments(request),
+        IRWindow::detail::zenityArguments(request, kSeparator),
         std::vector<std::string>{"--file-selection"}
     );
 
@@ -292,12 +297,12 @@ TEST(FileDialogBackendArguments, ZenityArgumentsPerMode) {
     request.directory_ = "/home/user/pictures";
     request.filters_ = {{"Images | all", {"png", "jpg"}}, {"All files", {"*"}}};
     EXPECT_EQ(
-        IRWindow::detail::zenityArguments(request),
+        IRWindow::detail::zenityArguments(request, kSeparator),
         (std::vector<std::string>{
             "--file-selection",
             "--title=Choose images",
             "--multiple",
-            "--separator=\n",
+            "--separator=" + std::string{kSeparator},
             "--filename=/home/user/pictures/",
             "--file-filter=Images / all | *.png *.jpg",
             "--file-filter=All files | *",
@@ -308,26 +313,100 @@ TEST(FileDialogBackendArguments, ZenityArgumentsPerMode) {
     folder.mode_ = FileDialogMode::OPEN_FOLDER;
     folder.directory_ = "/home/user/";
     EXPECT_EQ(
-        IRWindow::detail::zenityArguments(folder),
+        IRWindow::detail::zenityArguments(folder, kSeparator),
         (std::vector<std::string>{"--file-selection", "--directory", "--filename=/home/user/"})
     );
 }
 
+std::vector<std::string> parseZenity(std::string_view output, FileDialogMode mode) {
+    return IRWindow::detail::parseZenityOutput(output, mode, kSeparator);
+}
+
 TEST(FileDialogBackendArguments, ParsesZenityOutput) {
-    EXPECT_TRUE(IRWindow::detail::parseZenityOutput("").empty());
-    EXPECT_TRUE(IRWindow::detail::parseZenityOutput("\n").empty());
+    EXPECT_TRUE(parseZenity("", FileDialogMode::OPEN_FILE).empty());
+    EXPECT_TRUE(parseZenity("\n", FileDialogMode::OPEN_FILE).empty());
+    EXPECT_TRUE(parseZenity("\n", FileDialogMode::OPEN_FILES).empty());
     EXPECT_EQ(
-        IRWindow::detail::parseZenityOutput("/a/one.png\n"),
+        parseZenity("/a/one.png\n", FileDialogMode::OPEN_FILE),
         std::vector<std::string>{"/a/one.png"}
     );
     EXPECT_EQ(
-        IRWindow::detail::parseZenityOutput("/a/one.png\n/b/two words.png\n"),
+        parseZenity("/a/folder\n", FileDialogMode::OPEN_FOLDER),
+        std::vector<std::string>{"/a/folder"}
+    );
+    const std::string two = "/a/one.png" + std::string{kSeparator} + "/b/two words.png\n";
+    EXPECT_EQ(
+        parseZenity(two, FileDialogMode::OPEN_FILES),
         (std::vector<std::string>{"/a/one.png", "/b/two words.png"})
     );
     EXPECT_EQ(
-        IRWindow::detail::parseZenityOutput("/a/one.png\n/b/two.png"),
+        parseZenity(
+            "/a/one.png" + std::string{kSeparator} + "/b/two.png",
+            FileDialogMode::OPEN_FILES
+        ),
         (std::vector<std::string>{"/a/one.png", "/b/two.png"})
     );
+}
+
+// A newline is a legal filename byte, so it frames nothing: each path keeps
+// its newlines whole in every mode, only the trailing one zenity appends goes.
+TEST(FileDialogBackendArguments, NewlinesInsideAPathNeverSplitIt) {
+    const std::string forged = "/picked/name\n/tmp/other";
+    EXPECT_EQ(
+        parseZenity(forged + "\n", FileDialogMode::OPEN_FILE),
+        std::vector<std::string>{forged}
+    );
+    EXPECT_EQ(
+        parseZenity(forged + "\n", FileDialogMode::OPEN_FILES),
+        std::vector<std::string>{forged}
+    );
+    EXPECT_EQ(
+        parseZenity(forged + std::string{kSeparator} + "/b/two.png\n", FileDialogMode::OPEN_FILES),
+        (std::vector<std::string>{forged, "/b/two.png"})
+    );
+    EXPECT_EQ(
+        parseZenity("/a/ends-in-newline\n\n", FileDialogMode::OPEN_FILE),
+        std::vector<std::string>{"/a/ends-in-newline\n"}
+    );
+    // A path ending in '\n' before the separator: no match can begin inside
+    // the path, because the separator's leading '\n' recurs nowhere in it.
+    EXPECT_EQ(
+        parseZenity("/a/x\n" + std::string{kSeparator} + "/b/y\n", FileDialogMode::OPEN_FILES),
+        (std::vector<std::string>{"/a/x\n", "/b/y"})
+    );
+}
+
+// The grant end of the same defect: a picked file whose path embeds another
+// existing absolute path grants that file and nothing else.
+TEST(FileDialogBackendArguments, ANewlineBearingPickGrantsOnlyItself) {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "ir_file_dialog_newline_pick";
+    std::error_code error;
+    fs::remove_all(root, error);
+    const fs::path outside = root / "outside.png";
+    const std::string outsideText = outside.string();
+    // <root>/picked/name\n<outside> — the directory "name\n" mirrors the
+    // outside file's absolute path beneath it.
+    const fs::path picked = fs::path{(root / "picked" / "name\n").string() + outsideText};
+    fs::create_directories(picked.parent_path(), error);
+    if (error) {
+        GTEST_SKIP() << "this host cannot create a filename holding a newline";
+    }
+    std::ofstream{outside} << "outside";
+    std::ofstream{picked} << "picked";
+    ASSERT_TRUE(fs::is_regular_file(picked));
+    ASSERT_TRUE(fs::is_regular_file(outside));
+
+    const std::string output = picked.string() + "\n";
+    IRScript::PathGrants grants;
+    for (const std::string &path : parseZenity(output, FileDialogMode::OPEN_FILES)) {
+        grants.grantFile(path);
+    }
+    EXPECT_EQ(grants.size(), 1u);
+    EXPECT_TRUE(grants.resolve(picked.string()).has_value());
+    EXPECT_FALSE(grants.resolve(outsideText).has_value());
+
+    fs::remove_all(root, error);
 }
 
 } // namespace

@@ -109,11 +109,18 @@ namespace detail {
 std::string windowsFilterPattern(const FileDialogFilter &filter);
 
 /// The `zenity --file-selection` arguments for @p request, program name
-/// excluded.
-std::vector<std::string> zenityArguments(const FileDialogRequest &request);
+/// excluded. @p separator joins an `OPEN_FILES` selection. A path may hold any
+/// byte but NUL, newline included, so no fixed separator frames it: the
+/// backend passes a per-call random one (`'\n'` then hex digits, so no prefix
+/// of it is also a suffix and a match cannot straddle two paths).
+std::vector<std::string>
+zenityArguments(const FileDialogRequest &request, std::string_view separator);
 
-/// The newline-separated paths `zenity` printed, empty lines dropped.
-std::vector<std::string> parseZenityOutput(std::string_view output);
+/// The paths in what `zenity` printed for a @p mode request: the one newline
+/// it appends is dropped, a single-selection output is one path whole, and an
+/// `OPEN_FILES` output splits on @p separator only. Empty paths are dropped.
+std::vector<std::string>
+parseZenityOutput(std::string_view output, FileDialogMode mode, std::string_view separator);
 
 } // namespace detail
 

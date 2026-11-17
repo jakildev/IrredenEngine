@@ -14,6 +14,9 @@
 #include <cstdio>
 #include <filesystem>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace IRWindow {
 
@@ -25,8 +28,11 @@ std::wstring widen(std::string_view text) {
     }
     const int length =
         MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
+    if (length <= 0) {
+        return {};
+    }
     std::wstring wide(static_cast<std::size_t>(length), L'\0');
-    MultiByteToWideChar(
+    const int written = MultiByteToWideChar(
         CP_UTF8,
         0,
         text.data(),
@@ -34,16 +40,27 @@ std::wstring widen(std::string_view text) {
         wide.data(),
         length
     );
+    if (written <= 0) {
+        return {};
+    }
+    wide.resize(static_cast<std::size_t>(written));
     return wide;
 }
 
+// With a -1 source length both calls count the terminating NUL, so the buffer
+// holds it and the resize drops it. Empty means the conversion failed.
 std::string narrow(const wchar_t *text) {
     const int length = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
     if (length <= 1) {
         return {};
     }
-    std::string utf8(static_cast<std::size_t>(length - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8.data(), length, nullptr, nullptr);
+    std::string utf8(static_cast<std::size_t>(length), '\0');
+    const int written =
+        WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8.data(), length, nullptr, nullptr);
+    if (written <= 1) {
+        return {};
+    }
+    utf8.resize(static_cast<std::size_t>(written - 1));
     return utf8;
 }
 
@@ -205,8 +222,11 @@ FileDialogResult platformOpenFileDialog(GLFWwindow *window, const FileDialogRequ
         if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &displayName))) {
             continue;
         }
-        result.paths_.push_back(narrow(displayName));
+        std::string path = narrow(displayName);
         CoTaskMemFree(displayName);
+        if (!path.empty()) {
+            result.paths_.push_back(std::move(path));
+        }
     }
     result.status_ = FileDialogStatus::ACCEPTED;
     return result;
