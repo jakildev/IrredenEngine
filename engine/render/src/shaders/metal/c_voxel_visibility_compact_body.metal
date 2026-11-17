@@ -154,7 +154,11 @@ constant uint kFogWholeBodyExemptBit = 1u << 3u;
 // c_chunk_occlusion_cull.metal (both = the encode scale).
 constant int kOcclusionDepthMargin = kDepthEncodeShift;
 
-// Test every texel of a conservative emission hull against the CURRENT
+// Per-voxel Hi-Z occlusion refine, layered on top of the per-chunk pre-pass
+// (coarse -> fine hierarchical occlusion). Drops a voxel that is
+// locally-exposed + in-frustum but globally occluded by closer geometry, which
+// the chunk pass may retain. Subdivided modes skip the chunk pass.
+// Test every texel of a conservative emission hull against the current
 // frame's full depth pass. Keep partial coverage, background and equal-depth
 // contenders; only strictly hidden voxels leave the election/color list.
 // Stage 1 already ran for every candidate, so depth, AO and legacy shadow

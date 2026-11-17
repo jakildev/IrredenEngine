@@ -1,0 +1,105 @@
+Candidate: c74ed7b958e254df02088be7c1bfdb18423534cf
+Base: 44955ae9fc42a5877f885d284ab5914b5a6c1138
+Command: fleet-jobs start render-verify --name 4955-candidate-identity -- --target IRPerfGrid --no-build
+Terminal wait: fleet-jobs: 20261117T221900Z-render-verify-b3194e failed exit=1
+
+[fleet-jobs] display: 1 online CoreGraphics display(s), awake=1, NSScreen=1
+[render-verify] target=IRPerfGrid demo=perf_grid backend=macos-debug warmup=10
+[render-verify] 7 shots: fit_grid, zoom1_origin, profiler_overlay, zoom1_rot, zoom4_rot, zoom4_pan, zoom4_rot_pan
+[render-verify] default pass demo args: --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode none --no-occlusion-cull
+[render-verify] 8 extra run(s): cull_on, chunk_only, full_cull_off, full_cull_on, position_only_cull_off, position_only_cull_on, static_cycle, static_cycle_dynamic
++ fleet-run --timeout 60 IRPerfGrid --auto-screenshot 10 --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode none --no-occlusion-cull
+[render-verify] extra run 'cull_on': --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode none --occlusion-cull
++ fleet-run --timeout 60 IRPerfGrid --auto-screenshot 10 --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode none --occlusion-cull
+[render-verify] extra run 'chunk_only': --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode none --occlusion-cull --no-per-voxel-occlusion
++ fleet-run --timeout 60 IRPerfGrid --auto-screenshot 10 --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode none --occlusion-cull --no-per-voxel-occlusion
+[render-verify] extra run 'full_cull_off': --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode full --no-occlusion-cull
++ fleet-run --timeout 60 IRPerfGrid --auto-screenshot 10 --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode full --no-occlusion-cull
+[render-verify] extra run 'full_cull_on': --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode full --occlusion-cull
++ fleet-run --timeout 60 IRPerfGrid --auto-screenshot 10 --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode full --occlusion-cull
+[render-verify] extra run 'position_only_cull_off': --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode position_only --no-occlusion-cull
++ fleet-run --timeout 60 IRPerfGrid --auto-screenshot 10 --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode position_only --no-occlusion-cull
+[render-verify] extra run 'position_only_cull_on': --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode position_only --occlusion-cull
++ fleet-run --timeout 60 IRPerfGrid --auto-screenshot 10 --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode position_only --occlusion-cull
+[render-verify] extra run 'static_cycle': --mode voxel_set --no-overlay --subdivision-mode none --wave-freeze --static-cycle
++ fleet-run --timeout 60 IRPerfGrid --auto-screenshot 48 --mode voxel_set --no-overlay --subdivision-mode none --wave-freeze --static-cycle
+[render-verify] extra run 'static_cycle_dynamic': --mode voxel_set --no-overlay --subdivision-mode none --wave-freeze --static-cycle --no-static
++ fleet-run --timeout 60 IRPerfGrid --auto-screenshot 48 --mode voxel_set --no-overlay --subdivision-mode none --wave-freeze --static-cycle --no-static
+
+shot                                     result     match%  max_d     psnr
+----------------------------------------------------------------------------
+fit_grid                                 PASS        100.0      0      inf
+zoom1_origin                             PASS        100.0      0      inf
+profiler_overlay                         PASS        100.0      0      inf
+zoom1_rot                                PASS        100.0      0      inf
+zoom4_rot                                PASS        100.0      0      inf
+zoom4_pan                                PASS        100.0      0      inf
+zoom4_rot_pan                            PASS        100.0      0      inf
+cull_on:fit_grid                         PASS        100.0      0      inf
+cull_on:zoom1_origin                     PASS        100.0      0      inf
+cull_on:profiler_overlay                 PASS        100.0      0      inf
+cull_on:zoom1_rot                        PASS        100.0      0      inf
+cull_on:zoom4_rot                        PASS        100.0      0      inf
+cull_on:zoom4_pan                        PASS        100.0      0      inf
+cull_on:zoom4_rot_pan                    PASS        100.0      0      inf
+chunk_only:fit_grid                      PASS        100.0      0      inf
+chunk_only:zoom1_origin                  PASS        100.0      0      inf
+chunk_only:profiler_overlay              PASS        100.0      0      inf
+chunk_only:zoom1_rot                     PASS        100.0      0      inf
+chunk_only:zoom4_rot                     PASS        100.0      0      inf
+chunk_only:zoom4_pan                     PASS        100.0      0      inf
+chunk_only:zoom4_rot_pan                 PASS        100.0      0      inf
+full_cull_off:fit_grid                   PASS        100.0      0      inf
+full_cull_off:zoom1_origin               PASS        100.0      0      inf
+full_cull_off:profiler_overlay           PASS        100.0      0      inf
+full_cull_off:zoom1_rot                  PASS        100.0      0      inf
+full_cull_off:zoom4_rot                  PASS        100.0      0      inf
+full_cull_off:zoom4_pan                  FAIL      96.4766    141    37.59
+full_cull_off:zoom4_rot_pan              FAIL      96.2719    141    37.56
+full_cull_on:fit_grid                    PASS        100.0      0      inf
+full_cull_on:zoom1_origin                PASS        100.0      0      inf
+full_cull_on:profiler_overlay            PASS        100.0      0      inf
+full_cull_on:zoom1_rot                   PASS        100.0      0      inf
+full_cull_on:zoom4_rot                   PASS        100.0      0      inf
+full_cull_on:zoom4_pan                   FAIL      96.4766    141    37.59
+full_cull_on:zoom4_rot_pan               FAIL      96.2719    141    37.56
+position_only_cull_off:fit_grid          PASS        100.0      0      inf
+position_only_cull_off:zoom1_origin      PASS        100.0      0      inf
+position_only_cull_off:profiler_overlay  PASS        100.0      0      inf
+position_only_cull_off:zoom1_rot         PASS        100.0      0      inf
+position_only_cull_off:zoom4_rot         PASS        100.0      0      inf
+position_only_cull_off:zoom4_pan         PASS        100.0      0      inf
+position_only_cull_off:zoom4_rot_pan     PASS        100.0      0      inf
+position_only_cull_on:fit_grid           PASS        100.0      0      inf
+position_only_cull_on:zoom1_origin       PASS        100.0      0      inf
+position_only_cull_on:profiler_overlay   PASS        100.0      0      inf
+position_only_cull_on:zoom1_rot          PASS        100.0      0      inf
+position_only_cull_on:zoom4_rot          PASS        100.0      0      inf
+position_only_cull_on:zoom4_pan          PASS        100.0      0      inf
+position_only_cull_on:zoom4_rot_pan      PASS        100.0      0      inf
+static_cycle:cycle_fit_grid              PASS        100.0      0      inf
+static_cycle:cycle_zoom1_origin          PASS        100.0      0      inf
+static_cycle:cycle_profiler_overlay      PASS        100.0      0      inf
+static_cycle:cycle_zoom1_rot             FAIL       98.634     30    45.89
+static_cycle:cycle_zoom4_rot             FAIL      81.7653     30    34.83
+static_cycle:cycle_zoom4_pan             PASS        100.0      0      inf
+static_cycle:cycle_zoom4_rot_pan         FAIL      81.5465     29    34.67
+static_cycle_dynamic:cycle_fit_grid      PASS        100.0      0      inf
+static_cycle_dynamic:cycle_zoom1_origin  PASS        100.0      0      inf
+static_cycle_dynamic:cycle_profiler_overlay PASS        100.0      0      inf
+static_cycle_dynamic:cycle_zoom1_rot     FAIL       98.634     30    45.89
+static_cycle_dynamic:cycle_zoom4_rot     FAIL      81.7653     30    34.83
+static_cycle_dynamic:cycle_zoom4_pan     PASS        100.0      0      inf
+static_cycle_dynamic:cycle_zoom4_rot_pan FAIL      81.5465     29    34.67
+
+[render-verify] 10 of 63 checks FAIL
+  - full_cull_off:zoom4_pan: max_delta 141 > 0; match_pct 96.477% < 100.0%  diff=<worktree>/build/creations/demos/perf_grid/save_files/render_verify_diffs/zoom4_pan.diff.png
+  - full_cull_off:zoom4_rot_pan: max_delta 141 > 0; match_pct 96.272% < 100.0%  diff=<worktree>/build/creations/demos/perf_grid/save_files/render_verify_diffs/zoom4_rot_pan.diff.png
+  - full_cull_on:zoom4_pan: max_delta 141 > 0; match_pct 96.477% < 100.0%  diff=<worktree>/build/creations/demos/perf_grid/save_files/render_verify_diffs/zoom4_pan.diff.png
+  - full_cull_on:zoom4_rot_pan: max_delta 141 > 0; match_pct 96.272% < 100.0%  diff=<worktree>/build/creations/demos/perf_grid/save_files/render_verify_diffs/zoom4_rot_pan.diff.png
+  - static_cycle:cycle_zoom1_rot: max_delta 30 > 0; match_pct 98.634% < 100.0%  diff=<worktree>/build/creations/demos/perf_grid/save_files/render_verify_diffs/cycle_zoom1_rot.diff.png
+  - static_cycle:cycle_zoom4_rot: max_delta 30 > 0; match_pct 81.765% < 100.0%  diff=<worktree>/build/creations/demos/perf_grid/save_files/render_verify_diffs/cycle_zoom4_rot.diff.png
+  - static_cycle:cycle_zoom4_rot_pan: max_delta 29 > 0; match_pct 81.546% < 100.0%  diff=<worktree>/build/creations/demos/perf_grid/save_files/render_verify_diffs/cycle_zoom4_rot_pan.diff.png
+  - static_cycle_dynamic:cycle_zoom1_rot: max_delta 30 > 0; match_pct 98.634% < 100.0%  diff=<worktree>/build/creations/demos/perf_grid/save_files/render_verify_diffs/cycle_zoom1_rot.diff.png
+  - static_cycle_dynamic:cycle_zoom4_rot: max_delta 30 > 0; match_pct 81.765% < 100.0%  diff=<worktree>/build/creations/demos/perf_grid/save_files/render_verify_diffs/cycle_zoom4_rot.diff.png
+  - static_cycle_dynamic:cycle_zoom4_rot_pan: max_delta 29 > 0; match_pct 81.546% < 100.0%  diff=<worktree>/build/creations/demos/perf_grid/save_files/render_verify_diffs/cycle_zoom4_rot_pan.diff.png

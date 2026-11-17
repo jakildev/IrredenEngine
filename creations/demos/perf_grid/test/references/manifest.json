@@ -1,31 +1,10 @@
 {
   "demo": "perf_grid",
   "target": "IRPerfGrid",
-  "sweep_backends": [
-    "macos-debug",
-    "windows-debug",
-    "linux-debug"
-  ],
+  "sweep_backends": ["macos-debug", "windows-debug", "linux-debug"],
   "screenshot_subdir": "save_files/screenshots",
-  "demo_args": [
-    "--mode",
-    "voxel_set",
-    "--no-overlay",
-    "--wave-amplitude",
-    "0",
-    "--subdivision-mode",
-    "none",
-    "--no-occlusion-cull"
-  ],
-  "shots": [
-    "fit_grid",
-    "zoom1_origin",
-    "profiler_overlay",
-    "zoom1_rot",
-    "zoom4_rot",
-    "zoom4_pan",
-    "zoom4_rot_pan"
-  ],
+  "demo_args": ["--mode", "voxel_set", "--no-overlay", "--wave-amplitude", "0", "--subdivision-mode", "none", "--no-occlusion-cull"],
+  "shots": ["fit_grid", "zoom1_origin", "profiler_overlay", "zoom1_rot", "zoom4_rot", "zoom4_pan", "zoom4_rot_pan"],
   "thresholds": {
     "per_pixel_tol": 0,
     "match_pct": 100.0,
@@ -35,181 +14,45 @@
   "extra_runs": [
     {
       "name": "cull_on",
-      "demo_args": [
-        "--mode",
-        "voxel_set",
-        "--no-overlay",
-        "--wave-amplitude",
-        "0",
-        "--subdivision-mode",
-        "none",
-        "--occlusion-cull"
-      ],
-      "shots": [
-        "fit_grid",
-        "zoom1_origin",
-        "profiler_overlay",
-        "zoom1_rot",
-        "zoom4_rot",
-        "zoom4_pan",
-        "zoom4_rot_pan"
-      ]
+      "demo_args": ["--mode", "voxel_set", "--no-overlay", "--wave-amplitude", "0", "--subdivision-mode", "none", "--occlusion-cull"],
+      "shots": ["fit_grid", "zoom1_origin", "profiler_overlay", "zoom1_rot", "zoom4_rot", "zoom4_pan", "zoom4_rot_pan"]
     },
     {
       "name": "chunk_only",
-      "demo_args": [
-        "--mode",
-        "voxel_set",
-        "--no-overlay",
-        "--wave-amplitude",
-        "0",
-        "--subdivision-mode",
-        "none",
-        "--occlusion-cull",
-        "--no-per-voxel-occlusion"
-      ],
-      "shots": [
-        "fit_grid",
-        "zoom1_origin",
-        "profiler_overlay",
-        "zoom1_rot",
-        "zoom4_rot",
-        "zoom4_pan",
-        "zoom4_rot_pan"
-      ]
+      "demo_args": ["--mode", "voxel_set", "--no-overlay", "--wave-amplitude", "0", "--subdivision-mode", "none", "--occlusion-cull", "--no-per-voxel-occlusion"],
+      "shots": ["fit_grid", "zoom1_origin", "profiler_overlay", "zoom1_rot", "zoom4_rot", "zoom4_pan", "zoom4_rot_pan"]
     },
     {
       "name": "full_cull_off",
-      "demo_args": [
-        "--mode",
-        "voxel_set",
-        "--no-overlay",
-        "--wave-amplitude",
-        "0",
-        "--subdivision-mode",
-        "full",
-        "--no-occlusion-cull"
-      ],
-      "shots": [
-        "fit_grid",
-        "zoom1_origin",
-        "profiler_overlay",
-        "zoom1_rot",
-        "zoom4_rot",
-        "zoom4_pan",
-        "zoom4_rot_pan"
-      ]
+      "demo_args": ["--mode", "voxel_set", "--no-overlay", "--wave-amplitude", "0", "--subdivision-mode", "full", "--no-occlusion-cull"],
+      "shots": ["fit_grid", "zoom1_origin", "profiler_overlay", "zoom1_rot", "zoom4_rot", "zoom4_pan", "zoom4_rot_pan"]
     },
     {
       "name": "full_cull_on",
-      "demo_args": [
-        "--mode",
-        "voxel_set",
-        "--no-overlay",
-        "--wave-amplitude",
-        "0",
-        "--subdivision-mode",
-        "full",
-        "--occlusion-cull"
-      ],
-      "shots": [
-        "fit_grid",
-        "zoom1_origin",
-        "profiler_overlay",
-        "zoom1_rot",
-        "zoom4_rot",
-        "zoom4_pan",
-        "zoom4_rot_pan"
-      ]
+      "demo_args": ["--mode", "voxel_set", "--no-overlay", "--wave-amplitude", "0", "--subdivision-mode", "full", "--occlusion-cull"],
+      "shots": ["fit_grid", "zoom1_origin", "profiler_overlay", "zoom1_rot", "zoom4_rot", "zoom4_pan", "zoom4_rot_pan"]
     },
     {
       "name": "position_only_cull_off",
-      "demo_args": [
-        "--mode",
-        "voxel_set",
-        "--no-overlay",
-        "--wave-amplitude",
-        "0",
-        "--subdivision-mode",
-        "position_only",
-        "--no-occlusion-cull"
-      ],
-      "shots": [
-        "fit_grid",
-        "zoom1_origin",
-        "profiler_overlay",
-        "zoom1_rot",
-        "zoom4_rot",
-        "zoom4_pan",
-        "zoom4_rot_pan"
-      ]
+      "demo_args": ["--mode", "voxel_set", "--no-overlay", "--wave-amplitude", "0", "--subdivision-mode", "position_only", "--no-occlusion-cull"],
+      "shots": ["fit_grid", "zoom1_origin", "profiler_overlay", "zoom1_rot", "zoom4_rot", "zoom4_pan", "zoom4_rot_pan"]
     },
     {
       "name": "position_only_cull_on",
-      "demo_args": [
-        "--mode",
-        "voxel_set",
-        "--no-overlay",
-        "--wave-amplitude",
-        "0",
-        "--subdivision-mode",
-        "position_only",
-        "--occlusion-cull"
-      ],
-      "shots": [
-        "fit_grid",
-        "zoom1_origin",
-        "profiler_overlay",
-        "zoom1_rot",
-        "zoom4_rot",
-        "zoom4_pan",
-        "zoom4_rot_pan"
-      ]
+      "demo_args": ["--mode", "voxel_set", "--no-overlay", "--wave-amplitude", "0", "--subdivision-mode", "position_only", "--occlusion-cull"],
+      "shots": ["fit_grid", "zoom1_origin", "profiler_overlay", "zoom1_rot", "zoom4_rot", "zoom4_pan", "zoom4_rot_pan"]
     },
     {
       "name": "static_cycle",
-      "demo_args": [
-        "--mode",
-        "voxel_set",
-        "--no-overlay",
-        "--subdivision-mode",
-        "none",
-        "--wave-freeze",
-        "--static-cycle"
-      ],
+      "demo_args": ["--mode", "voxel_set", "--no-overlay", "--subdivision-mode", "none", "--wave-freeze", "--static-cycle"],
       "warmup": 48,
-      "shots": [
-        "cycle_fit_grid",
-        "cycle_zoom1_origin",
-        "cycle_profiler_overlay",
-        "cycle_zoom1_rot",
-        "cycle_zoom4_rot",
-        "cycle_zoom4_pan",
-        "cycle_zoom4_rot_pan"
-      ]
+      "shots": ["cycle_fit_grid", "cycle_zoom1_origin", "cycle_profiler_overlay", "cycle_zoom1_rot", "cycle_zoom4_rot", "cycle_zoom4_pan", "cycle_zoom4_rot_pan"]
     },
     {
       "name": "static_cycle_dynamic",
-      "demo_args": [
-        "--mode",
-        "voxel_set",
-        "--no-overlay",
-        "--subdivision-mode",
-        "none",
-        "--wave-freeze",
-        "--static-cycle",
-        "--no-static"
-      ],
+      "demo_args": ["--mode", "voxel_set", "--no-overlay", "--subdivision-mode", "none", "--wave-freeze", "--static-cycle", "--no-static"],
       "warmup": 48,
-      "shots": [
-        "cycle_fit_grid",
-        "cycle_zoom1_origin",
-        "cycle_profiler_overlay",
-        "cycle_zoom1_rot",
-        "cycle_zoom4_rot",
-        "cycle_zoom4_pan",
-        "cycle_zoom4_rot_pan"
-      ]
+      "shots": ["cycle_fit_grid", "cycle_zoom1_origin", "cycle_profiler_overlay", "cycle_zoom1_rot", "cycle_zoom4_rot", "cycle_zoom4_pan", "cycle_zoom4_rot_pan"]
     }
   ],
   "notes": "Exact cardinal occlusion identity gate (#4955). NONE, FULL and POSITION_ONLY compare cull-off and cull-on against the committed reference frames at byte-exact thresholds. The NONE chunk-only arm isolates per-voxel refinement. Four standard poses are cardinal; three rotated poses exercise the unchanged path. Run occlusion-fire-verify alongside identity so a disabled cull cannot pass vacuously. Metal references are committed; OpenGL reference capture remains tracked by #3544. Never loosen thresholds or rebless an existing reference to pass this gate. STATIC-CYCLE PAIR: static_cycle and static_cycle_dynamic preserve the seven cycle_* reference labels and 48-frame settlement warmup. The static arm creates frozen cells with C_Static and thaws, moves and re-freezes every hundredth cell; the --no-static arm performs the same moves dynamically. The demo asserts settlement and, for static residents, empty pending position ranges, cull-cache chunks and stale light-grid boxes before capture."
