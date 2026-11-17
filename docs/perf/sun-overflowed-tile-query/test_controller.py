@@ -333,6 +333,24 @@ class BinaryAB(unittest.TestCase):
         self.assertEqual(leads.count("pre"), leads.count("post"))
         self.assertEqual(len({rm.ab_arm_dir("out", arm) for arm in arms}), len(arms))
 
+    def test_a_single_tree_probe_alternates_its_variants(self):
+        variants = (rm.PRODUCTION, rm.EARLY_TESTS)
+        self.assertEqual(rm.ab_order(1, ("post",), variants),
+                         (("post", rm.PRODUCTION), ("post", rm.EARLY_TESTS)))
+        self.assertEqual(rm.ab_order(2, ("post",), variants),
+                         (("post", rm.EARLY_TESTS), ("post", rm.PRODUCTION)))
+
+    def test_early_tests_control_forces_early_tests_on_the_early_route_only(self):
+        pristine = (SHADERS / rm.EARLY_FRAGMENT).read_bytes()
+        staged = rm.early_tests_bytes(pristine).decode()
+        self.assertTrue(staged.startswith("#version 450 core\n" + rm.EARLY_TESTS_LINE))
+        self.assertEqual(staged.replace(rm.EARLY_TESTS_LINE, "", 1), pristine.decode())
+        self.assertIn("#define IR_SOURCE_FACE_EARLY_DEPTH 1", staged)
+        with self.assertRaises(rm.StageError):
+            rm.early_tests_bytes(staged.encode())
+        sampler = TWINS[0].read_text()
+        self.assertEqual(rm.transform(sampler, rm.EARLY_TESTS), sampler)
+
     def test_explicit_tree_command_targets_the_snapshot(self):
         command = rm.ab_profile_command(Path("snap"), Path("arm"), ["--x"], 7)
         self.assertEqual(command[command.index("--build-dir") + 1], "snap")

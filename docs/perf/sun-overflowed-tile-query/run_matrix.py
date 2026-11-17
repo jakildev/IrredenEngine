@@ -96,6 +96,12 @@ LEAF_SIZE = 8
 RECEIVER_POINT = (0.0, 0.0, 0.0)
 BUILDS = {"debug": ("build", "Debug"), "release": ("build-release", "Release")}
 PRODUCTION, ABLATION = "production", "ablation"
+# Mechanism control, OpenGL only: the early-route source-face fragment stage gains
+# forced early fragment tests, so a fragment that fails depth is never shaded. The
+# sampler stays pristine.
+EARLY_TESTS = "early-tests"
+EARLY_FRAGMENT = "f_source_face_scatter_early.glsl"
+EARLY_TESTS_LINE = "layout(early_fragment_tests) in;\n"
 DIAGNOSTIC_VARIANTS = ("entry-shadow", "entry-lit", "hit-cleared")
 QUIET_ATTEMPTS = 8
 ARM_TIMEOUT, WARM_TIMEOUT = 180, 900
@@ -133,7 +139,7 @@ def unique_match(pattern, text, what):
 
 def transform(text, variant):
     """The staged sampler source for a variant; production is the pristine text."""
-    if variant == PRODUCTION:
+    if variant in (PRODUCTION, EARLY_TESTS):
         return text
     decision = unique_match(DECISION, text, "queryHierarchy decision")
     if variant == ABLATION:
@@ -153,6 +159,17 @@ def staged_bytes(pristine, variant):
     return transform(pristine.decode("utf-8"), variant).encode("utf-8")
 
 
+def early_tests_bytes(pristine):
+    """The early-route fragment wrapper with early fragment tests forced."""
+    if BACKEND != "opengl":
+        raise StageError("the early-tests control is OpenGL only")
+    text = pristine.decode("utf-8")
+    version = "#version 450 core\n"
+    if not text.startswith(version) or EARLY_TESTS_LINE in text:
+        raise StageError(f"{EARLY_FRAGMENT} does not open with a bare {version.strip()}")
+    return (version + EARLY_TESTS_LINE + text[len(version):]).encode("utf-8")
+
+
 @contextlib.contextmanager
 def staged(shader_root, variant, pristine_sha256, pristine_digest):
     """Stage one sampler variant under the runtime shaders/ root; restore and
@@ -164,12 +181,18 @@ def staged(shader_root, variant, pristine_sha256, pristine_digest):
     if directory_digest(shader_root) != pristine_digest:
         raise ProvenanceError(f"{shader_root} is not the pristine shader set")
     data = staged_bytes(original, variant)
+    fragment = Path(shader_root) / EARLY_FRAGMENT
+    fragment_original = fragment.read_bytes() if variant == EARLY_TESTS else None
     try:
         path.write_bytes(data)
+        if fragment_original is not None:
+            fragment.write_bytes(early_tests_bytes(fragment_original))
         yield {"variant": variant, "sampler_sha256": sha256_bytes(data),
                "shader_dir_sha256": directory_digest(shader_root)}
     finally:
         path.write_bytes(original)
+        if fragment_original is not None:
+            fragment.write_bytes(fragment_original)
         if sha256(path) != pristine_sha256 or directory_digest(shader_root) != pristine_digest:
             raise ProvenanceError(f"{path}: restored shader set does not match the pristine hash")
 
@@ -797,12 +820,12 @@ def tree_provenance(build, tree, pre_tree=None):
     return record
 
 
-def ab_provenance(build, pre_tree):
+def ab_provenance(build, pre_tree, trees=TREES):
     dirty = git("status", "--porcelain", "--", *SOURCE_PATHS)
     if dirty:
         raise ProvenanceError(f"measured sources are modified:\n{dirty}")
     return {"source_revision": git("rev-parse", "HEAD"), "backend": BACKEND, "build": build,
-            "trees": {tree: tree_provenance(build, tree, pre_tree) for tree in TREES},
+            "trees": {tree: tree_provenance(build, tree, pre_tree) for tree in trees},
             "controller_sha256": sha256(Path(__file__)),
             "variant_sampler_sha256": {v: sha256_bytes(staged_bytes(SOURCE_SAMPLER.read_bytes(), v))
                                        for v in (PRODUCTION, ABLATION)},
@@ -810,16 +833,18 @@ def ab_provenance(build, pre_tree):
             "python": sys.version.split()[0]}
 
 
-def ab_order(pair):
-    """Within a pair, both trees run in each variant; odd and even pairs mirror the order."""
-    order = (("pre", PRODUCTION), ("post", PRODUCTION), ("post", ABLATION), ("pre", ABLATION))
+def ab_order(pair, trees=TREES, variants=(PRODUCTION, ABLATION)):
+    """Within a pair every tree runs in every variant, snaking through the trees;
+    odd and even pairs mirror the order."""
+    order = tuple((tree, variant) for index, variant in enumerate(variants)
+                  for tree in (trees if index % 2 == 0 else tuple(reversed(trees))))
     return order if pair % 2 else tuple(reversed(order))
 
 
-def ab_plan(pairs, cases=tuple(CASES)):
+def ab_plan(pairs, cases=tuple(CASES), trees=TREES, variants=(PRODUCTION, ABLATION)):
     return [{"case": case, "pair": pair, "tree": tree, "variant": variant}
             for pair in range(1, pairs + 1) for case in cases
-            for tree, variant in ab_order(pair)]
+            for tree, variant in ab_order(pair, trees, variants)]
 
 
 def ab_arm_dir(output, arm):
@@ -839,9 +864,9 @@ def run_ab_arm(build_dir, directory, args, timeout, runner=launch):
 
 
 def ab_timing(args):
-    output = Path(args.output).resolve() / args.build / "ab-timing"
-    prov = check_provenance(output, ab_provenance(args.build, args.pre_tree))
-    arms = ab_plan(args.pairs)
+    output = Path(args.output).resolve() / args.build / args.name
+    prov = check_provenance(output, ab_provenance(args.build, args.pre_tree, tuple(args.trees)))
+    arms = ab_plan(args.pairs, tuple(args.cases), tuple(args.trees), tuple(args.variants))
     (output / "plan.json").write_text(json.dumps(arms, indent=2) + "\n")
     for arm in arms:
         tree = prov["trees"][arm["tree"]]
@@ -895,6 +920,8 @@ AB_CONTRASTS = (
     ("post vs pre, ablation", ("post", ABLATION), ("pre", ABLATION)),
     ("query term, pre", ("pre", PRODUCTION), ("pre", ABLATION)),
     ("query term, post", ("post", PRODUCTION), ("post", ABLATION)),
+    ("early tests vs production, post", ("post", EARLY_TESTS), ("post", PRODUCTION)),
+    ("early tests vs ablation, post", ("post", EARLY_TESTS), ("post", ABLATION)),
 )
 
 
@@ -907,24 +934,30 @@ def summarize_ab(output):
         arm = data["arm"]
         cases.setdefault(arm["case"], {}).setdefault(arm["pair"], {})[
             (arm["tree"], arm["variant"])] = data["metrics"]
+    declared = {(arm["tree"], arm["variant"])
+                for arm in json.loads((output / "plan.json").read_text())}
     summary = {"provenance": prov, "cases": {}}
-    lines = [f"# {prov['backend']} {prov['trees']['post']['build_type']} — pre vs post binary",
-             "", f"Source `{prov['source_revision']}`; pre binary "
-             f"`{prov['trees']['pre']['binary_sha256'][:12]}` (reverts "
-             f"`{prov['trees']['pre']['tree']['reverts']}`), post binary "
-             f"`{prov['trees']['post']['binary_sha256'][:12]}`.", "",
+    binaries = "; ".join(
+        f"{tree} binary `{tree_prov['binary_sha256'][:12]}`"
+        + (f" (reverts `{tree_prov['tree']['reverts']}`)" if "tree" in tree_prov else "")
+        for tree, tree_prov in prov["trees"].items())
+    build_type = next(iter(prov["trees"].values()))["build_type"]
+    lines = [f"# {prov['backend']} {build_type} — interleaved binary / variant A/B",
+             "", f"Source `{prov['source_revision']}`; {binaries}.", "",
              "| Case | Measurement | Contrast | Pairs | After mean (min–max) | "
              "Before mean (min–max) | Paired delta | One-sided 95% lower / upper | "
              "Delta / before | Upper / before |",
              "|---|---|---|---:|---:|---:|---:|---:|---:|---:|"]
     for case in CASES:
         pairs = cases.get(case, {})
-        complete = [pairs[p] for p in sorted(pairs) if len(pairs[p]) == 4]
+        complete = [pairs[p] for p in sorted(pairs) if set(pairs[p]) == declared]
         if not complete:
             continue
         entry = summary["cases"][case] = {"pairs": len(complete), "contrasts": {}}
         for key, label in METRICS[:2]:
             for name, after, before in AB_CONTRASTS:
+                if after not in declared or before not in declared:
+                    continue
                 a = [p[after][key] for p in complete]
                 b = [p[before][key] for p in complete]
                 if any(value is None for value in a + b):
@@ -1074,7 +1107,7 @@ def witness_capture(build_dir, directory, case, variant_label):
 
 def witness(args):
     output = Path(args.output).resolve() / args.build / "witness"
-    prov = check_provenance(output, ab_provenance(args.build, args.pre_tree))
+    prov = check_provenance(output, ab_provenance(args.build, args.pre_tree, tuple(args.trees)))
     report_path = output / "witness.json"
     report = (json.loads(report_path.read_text()) if report_path.exists()
               else {"provenance": prov, "captures": {}})
@@ -1082,7 +1115,7 @@ def witness(args):
         build_dir, _, _, shader_root = tree_paths(args.build, tree, args.pre_tree)
         pristine = prov["trees"][tree]
         for case in args.cases:
-            for variant in (PRODUCTION, ABLATION):
+            for variant in args.variants:
                 key = f"{tree}/{case}/{variant}"
                 directory = output / tree / case / variant
                 if key in report["captures"]:
@@ -1115,30 +1148,45 @@ def summarize_witness(output):
              "fragment-shader run, including those later hidden.", "",
              "| Tree | Case | Canvas group | Canvases | Source invocations | Owned | "
              "Invocations / owned | Cross-canvas share of hidden | Source GPU ms, production "
-             "| Source GPU ms, ablation | Query term ms |",
-             "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+             "| Source GPU ms, ablation | Query term ms | Early-tests invocations / owned "
+             "| Source GPU ms, early tests |",
+             "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     terms = {}
+
+    def group_of(tree, case, variant, signature):
+        capture_record = report["captures"].get(f"{tree}/{case}/{variant}")
+        return capture_record["summary"]["groups"].get(signature) if capture_record else None
+
+    def ratio_text(value):
+        return "n/a" if value is None else f"{value:.2f}"
+
     for key, capture_record in sorted(report["captures"].items()):
         tree, case, variant = key.split("/")
         if variant != PRODUCTION:
             continue
-        ablation = report["captures"].get(f"{tree}/{case}/{ABLATION}")
         for signature, group in capture_record["summary"]["groups"].items():
-            ablated = (ablation["summary"]["groups"].get(signature) if ablation else None)
+            ablated = group_of(tree, case, ABLATION, signature)
+            early = group_of(tree, case, EARLY_TESTS, signature)
             ablated_ms = ablated["source_gpu_ms"] if ablated else None
             term = (group["source_gpu_ms"] - ablated_ms
                     if ablated_ms is not None and group["source_gpu_ms"] is not None else None)
             terms.setdefault(f"{tree}/{case}", {})[signature] = {
                 "canvases": group["canvases"], "query_term_ms": term,
+                "source_invocations": group["source_invocations"],
+                "source_owned": group["source_owned"],
                 "source_invocations_per_owned": group["source_invocations_per_owned"],
-                "cross_canvas_share": group["cross_canvas_share"]}
-            ratio = group["source_invocations_per_owned"]
+                "cross_canvas_share": group["cross_canvas_share"],
+                "early_tests_invocations_per_owned": (
+                    early["source_invocations_per_owned"] if early else None),
+                "early_tests_source_gpu_ms": early["source_gpu_ms"] if early else None}
             lines.append(
                 f"| {tree} | {case} | `{signature}` | {group['canvases']} "
                 f"| {group['source_invocations'] or 0:.0f} | {group['source_owned'] or 0:.0f} "
-                f"| {'n/a' if ratio is None else f'{ratio:.2f}'} "
+                f"| {ratio_text(group['source_invocations_per_owned'])} "
                 f"| {fmt_share(group['cross_canvas_share'])} "
-                f"| {fmt(group['source_gpu_ms'])} | {fmt(ablated_ms)} | {fmt(term, '+')} |")
+                f"| {fmt(group['source_gpu_ms'])} | {fmt(ablated_ms)} | {fmt(term, '+')} "
+                f"| {ratio_text(early['source_invocations_per_owned'] if early else None)} "
+                f"| {fmt(early['source_gpu_ms'] if early else None)} |")
     for entry in terms.values():
         total = sum(g["query_term_ms"] for g in entry.values() if g["query_term_ms"] is not None)
         for group in entry.values():
@@ -1165,13 +1213,20 @@ def main():
             command.add_argument("--pairs", type=int, default=5)
             command.add_argument("--legacy-pairs", type=int, default=5)
         if name in ("restore", "ab-timing", "witness"):
-            command.add_argument("--pre-tree", type=Path, required=name != "restore",
-                                 help="snapshot root of the pre binary")
+            command.add_argument("--pre-tree", type=Path,
+                                 help="snapshot root of the pre binary (needed for the pre tree)")
         if name == "ab-timing":
             command.add_argument("--pairs", type=int, default=5)
-        if name == "witness":
+        if name in ("ab-timing", "ab-summarize"):
+            command.add_argument("--name", default="ab-timing",
+                                 help="results directory under <output>/<build>")
+        if name in ("ab-timing", "witness"):
             command.add_argument("--trees", nargs="+", choices=TREES, default=list(TREES))
             command.add_argument("--cases", nargs="+", choices=CASES, default=list(CASES))
+            command.add_argument("--variants", nargs="+",
+                                 choices=(PRODUCTION, ABLATION, EARLY_TESTS),
+                                 default=[PRODUCTION, ABLATION]
+                                 + ([EARLY_TESTS] if name == "witness" else []))
         if name == "snapshot":
             command.add_argument("--dest", type=Path, required=True)
             command.add_argument("--label", required=True)
@@ -1191,7 +1246,7 @@ def main():
     elif args.command == "snapshot":
         snapshot(args)
     elif args.command == "ab-summarize":
-        summarize_ab(Path(args.output).resolve() / args.build / "ab-timing")
+        summarize_ab(Path(args.output).resolve() / args.build / args.name)
     elif args.command == "witness":
         witness(args)
     elif args.command == "witness-summarize":
