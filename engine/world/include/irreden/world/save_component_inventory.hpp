@@ -69,6 +69,9 @@
 #include <irreden/render/components/component_camera_zoom_frame_state.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_camera.hpp>
+#include <irreden/render/components/component_canvas_draw_images.hpp>
+#include <irreden/render/components/component_canvas_draw_layer.hpp>
+#include <irreden/render/components/component_canvas_draw_queue.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
@@ -89,8 +92,6 @@
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
 #include <irreden/render/components/component_geometric_shape.hpp>
-#include <irreden/render/components/component_canvas_draw_layer.hpp>
-#include <irreden/render/components/component_canvas_draw_queue.hpp>
 #include <irreden/render/components/component_glitch_state.hpp>
 #include <irreden/render/components/component_glitch_subject.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
@@ -495,6 +496,9 @@ IR_SAVE_OPT_OUT(IRComponents::C_GlitchState)
 // C_CanvasDrawQueue: OPT-OUT — one frame's queued canvas draws, re-issued by
 // the creation every frame; a snapshot never holds a frame in flight.
 IR_SAVE_OPT_OUT(IRComponents::C_CanvasDrawQueue)
+// C_CanvasDrawImages: OPT-OUT — GPU textures decoded from image files; the
+// creation reloads them and holds the new handles.
+IR_SAVE_OPT_OUT(IRComponents::C_CanvasDrawImages)
 // C_CanvasDrawLayer: OPT-OUT — tags a GPU-backed layer canvas the creation
 // makes at setup, like the canvas textures it rides on.
 IR_SAVE_OPT_OUT(IRComponents::C_CanvasDrawLayer)
@@ -733,6 +737,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_PerAxisSurfaceLighting,
     IRComponents::C_GlitchState,
     IRComponents::C_CanvasDrawQueue,
+    IRComponents::C_CanvasDrawImages,
     IRComponents::C_CanvasDrawLayer,
     IRComponents::C_GlitchSubject,
     IRComponents::C_GuiCanvasDisplay,

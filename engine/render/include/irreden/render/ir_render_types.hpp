@@ -914,6 +914,37 @@ constexpr IRMath::ivec2 unpackGlyphPosition(uint32_t packed) {
 constexpr uint32_t kGlyphStyleCellHeightShift = 20u;
 constexpr uint32_t kGlyphStyleCellMask = 0xFu;
 
+// One image draw for `c_canvas_image_to_trixel`, read from the head of the
+// glyph command buffer (`kBufferIndex_GlyphDrawCommands`). The kernel writes
+// canvas texels `[clipLo_, clipHi_)`: the draw's `origin_` / `size_` box cut
+// to the canvas. `uvRect_` (u0, v0, u1, v1) is the source crop mapped onto the
+// unclipped box; sampling is quantised to `cell_` x `cell_` texel blocks
+// counted from `origin_`. `baseSize_` / `levelCount_` describe the bound
+// `MipAtlas`. `posterizeLevels_` 0 leaves the colour alone, otherwise each
+// channel snaps to that many levels before the `tintPacked_` multiply.
+struct CanvasImageCommand {
+    ivec2 clipLo_ = ivec2(0);
+    ivec2 clipHi_ = ivec2(0);
+    ivec2 origin_ = ivec2(0);
+    ivec2 size_ = ivec2(1);
+    vec4 uvRect_ = vec4(0.0f, 0.0f, 1.0f, 1.0f);
+    ivec2 baseSize_ = ivec2(1);
+    int32_t levelCount_ = 1;
+    int32_t cell_ = 1;
+    uint32_t tintPacked_ = 0xFFFFFFFFu;
+    int32_t posterizeLevels_ = 0;
+    int32_t distance_ = 0;
+    int32_t pad_ = 0;
+};
+static_assert(sizeof(CanvasImageCommand) == 80, "must match the shader's CanvasImageCommand");
+static_assert(offsetof(CanvasImageCommand, uvRect_) == 32, "uvRect_ must sit on a 16-byte bound");
+static_assert(offsetof(CanvasImageCommand, baseSize_) == 48, "baseSize_ must follow uvRect_");
+static_assert(offsetof(CanvasImageCommand, distance_) == 72, "distance_ must match the shader");
+// c_canvas_image_to_trixel's workgroup edge, in canvas texels, and the image
+// unit its atlas binds to (0 and 1 are the canvas colour and distance).
+constexpr int kCanvasImageGroupSize = 8;
+constexpr std::uint32_t kCanvasImageAtlasUnit = 2;
+
 /// Per-frame UBO for the GUI_CANVAS_TO_SCREEN pass.
 struct FrameDataGuiCanvasToScreen {
     mat4 mpMatrix_;

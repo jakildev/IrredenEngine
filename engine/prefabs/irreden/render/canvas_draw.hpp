@@ -2,11 +2,13 @@
 #define IR_PREFAB_CANVAS_DRAW_H
 
 // Immediate-mode drawing onto any named trixel canvas at a chosen composite
-// depth: flat text, isometric voxel text, filled rectangles and borders. A
-// call queues glyph commands into the `C_CanvasDrawQueue` singleton; once per
-// frame `System<CANVAS_DRAW>` rasterizes every batch through the text compute
-// path that `TEXT_TO_TRIXEL` owns, so a draw costs no CPU texture upload and
-// must be re-issued every frame, like `IRGui.fillRect`.
+// depth: flat text, isometric voxel text, filled rectangles, borders and
+// decoded images. A call queues glyph commands or an image draw into the
+// `C_CanvasDrawQueue` singleton; once per frame `System<CANVAS_DRAW>`
+// rasterizes every batch through the text compute path that `TEXT_TO_TRIXEL`
+// owns and its own image kernel, so a draw costs no CPU texture upload and
+// must be re-issued every frame, like `IRGui.fillRect`. An image is decoded
+// and uploaded once by `loadImage`; drawing it samples that texture.
 //
 // Where a draw lands on screen is decided by the depth it writes, because the
 // framebuffer composite depth-tests every canvas texel (GL_LESS on the
@@ -35,23 +37,30 @@
 
 #include <irreden/common/components/component_persistent.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
+#include <irreden/render/components/component_canvas_draw_images.hpp>
 #include <irreden/render/components/component_canvas_draw_layer.hpp>
 #include <irreden/render/components/component_canvas_draw_queue.hpp>
 #include <irreden/render/components/component_text_style.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/entities/entity_trixel_canvas.hpp>
+#include <irreden/render/async_texture.hpp>
 #include <irreden/render/gui_text_batch.hpp>
+#include <irreden/render/image_data.hpp>
+#include <irreden/render/ir_render_enums.hpp>
 #include <irreden/render/ir_render_types.hpp>
+#include <irreden/render/texture.hpp>
 #include <irreden/render/trixel_font.hpp>
 #include <irreden/render/trixel_rect.hpp>
 #include <irreden/render/voxel_text.hpp>
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace IRPrefab::CanvasDraw {
@@ -100,14 +109,56 @@ struct VoxelRunOptions {
     IRRender::VoxelFaceColors unlit_faces_{};
 };
 
+// A loaded image, from `loadImage`. `kInvalidImage` is no image.
+using ImageHandle = std::uint32_t;
+constexpr ImageHandle kInvalidImage = 0;
+// The longer side an image keeps on the GPU; a larger file is box-filtered
+// down to it once, at load.
+constexpr int kMaxImageDimension = 4096;
+constexpr int kMaxImageCell = 4096;
+constexpr int kMaxImagePosterizeLevels = 64;
+
+struct ImageOptions {
+    // The source crop mapped onto the drawn box, (u0, v0, u1, v1) in 0..1
+    // with (0, 0) the image's top-left. u1 < u0 or v1 < v0 mirrors.
+    IRMath::vec4 uvRect_ = IRMath::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+    // Mosaic: every cell_ x cell_ block of canvas texels, counted from the
+    // box's top-left, is the one averaged colour of the source under it.
+    int cell_ = 1;
+    IRMath::Color tint_ = IRMath::IRColors::kWhite;
+    // 0 = off; otherwise each channel snaps to this many levels (2 ..
+    // kMaxImagePosterizeLevels) before the tint multiplies it.
+    int levels_ = 0;
+};
+
+// What a loader hands `loadImage` for one decoded file: the file's pixel
+// size and the `MipAtlas` texture built from it.
+struct ImageSource {
+    IRMath::ivec2 sourceSize_ = IRMath::ivec2(0);
+    IRMath::ivec2 baseSize_ = IRMath::ivec2(0);
+    int levelCount_ = 0;
+    std::pair<IRRender::ResourceId, IRRender::Texture2D *> texture_{0, nullptr};
+};
+// Fills the source for `path`, or returns false with the reason in `error`.
+using ImageSourceLoader =
+    std::function<bool(const std::string &path, ImageSource &source, std::string &error)>;
+
 inline IRComponents::C_CanvasDrawQueue &queue() {
     return IREntity::singleton<IRComponents::C_CanvasDrawQueue>();
+}
+
+inline IRComponents::C_CanvasDrawImages &images() {
+    return IREntity::singleton<IRComponents::C_CanvasDrawImages>();
 }
 
 // Registration-time singleton touch, so the lazy create never first runs
 // inside a tick (`widget_theme.hpp` documents why).
 inline void ensureQueueSingleton() {
     queue();
+}
+
+inline void ensureImagesSingleton() {
+    images();
 }
 
 namespace detail {
@@ -119,7 +170,7 @@ inline IRComponents::C_CanvasDrawQueue::Batch &
 batchFor(IRComponents::C_CanvasDrawQueue &queue, IREntity::EntityId canvas) {
     for (IRComponents::C_CanvasDrawQueue::Batch &batch : queue.batches_) {
         if (batch.canvas_ == canvas) {
-            if (batch.commands_.empty()) {
+            if (batch.primitives_.empty()) {
                 batch.canvasSize_ =
                     IREntity::getComponent<IRComponents::C_SizeTriangles>(canvas).size_;
             }
@@ -175,6 +226,65 @@ closePrimitive(IRComponents::C_CanvasDrawQueue::Batch &batch, std::size_t first,
     batch.primitives_.push_back({lo, hi, batch.commands_.size()});
 }
 
+inline IRComponents::C_CanvasDrawImages::Image *
+findImage(IRComponents::C_CanvasDrawImages &registry, ImageHandle handle) {
+    for (IRComponents::C_CanvasDrawImages::Image &image : registry.images_) {
+        if (image.handle_ == handle) {
+            return &image;
+        }
+    }
+    return nullptr;
+}
+
+// Decodes `path`, builds its mip atlas and uploads it.
+inline bool uploadImageFile(const std::string &path, ImageSource &source, std::string &error) {
+    const IRRender::ImageData decoded{path.c_str(), error};
+    if (decoded.data_ == nullptr) {
+        return false;
+    }
+    source.sourceSize_ = IRMath::ivec2(decoded.width_, decoded.height_);
+    IRRender::MipAtlas atlas =
+        IRRender::buildMipAtlas(decoded.data_, source.sourceSize_, kMaxImageDimension);
+    source.baseSize_ = atlas.baseSize_;
+    source.levelCount_ = atlas.levelCount_;
+    const IRRender::DecodedImage pixels{
+        std::move(atlas.pixels_),
+        atlas.atlasSize_.x,
+        atlas.atlasSize_.y
+    };
+    source.texture_ = IRRender::uploadDecodedImage(pixels);
+    return true;
+}
+
+// The kernel command drawing `image` into the `pos` / `size` box, whose part
+// on the canvas is `[clipLo, clipHi)`. Out-of-range options are pulled into
+// range: the crop into 0..1, the cell to 1 .. kMaxImageCell, and a posterize
+// count below 2 to off.
+inline IRRender::CanvasImageCommand imageCommand(
+    const IRComponents::C_CanvasDrawImages::Image &image,
+    IRMath::ivec2 pos,
+    IRMath::ivec2 size,
+    IRMath::ivec2 clipLo,
+    IRMath::ivec2 clipHi,
+    const ImageOptions &options,
+    int distance
+) {
+    IRRender::CanvasImageCommand command;
+    command.clipLo_ = clipLo;
+    command.clipHi_ = clipHi;
+    command.origin_ = pos;
+    command.size_ = size;
+    command.uvRect_ = IRMath::clamp(options.uvRect_, IRMath::vec4(0.0f), IRMath::vec4(1.0f));
+    command.baseSize_ = image.baseSize_;
+    command.levelCount_ = image.levelCount_;
+    command.cell_ = IRMath::clamp(options.cell_, 1, kMaxImageCell);
+    command.tintPacked_ = options.tint_.toPackedRGBA();
+    command.posterizeLevels_ =
+        options.levels_ < 2 ? 0 : IRMath::min(options.levels_, kMaxImagePosterizeLevels);
+    command.distance_ = distance;
+    return command;
+}
+
 inline bool primitivesMeet(
     const IRComponents::C_CanvasDrawQueue::Batch::Primitive &a,
     const IRComponents::C_CanvasDrawQueue::Batch::Primitive &b
@@ -184,12 +294,12 @@ inline bool primitivesMeet(
 
 } // namespace detail
 
-// The end of the run of primitives from `begin` that one dispatch may
-// rasterize together: the index of the first later primitive whose box meets
-// one in the run, or the count. A compute dispatch orders nothing, so a draw
-// over an earlier one needs its own dispatch to land on top; disjoint draws
-// share one. Quadratic in the run's length, cheap at the hundreds of
-// primitives a frame's overlays queue.
+// The end of the run of primitives from `begin` that may rasterize in any
+// order: the index of the first later primitive whose box meets one in the
+// run, or the count. A compute dispatch orders nothing, so a draw over an
+// earlier one must dispatch after it to land on top; a run's glyph draws
+// share one dispatch and each of its images takes its own. Quadratic in the
+// run's length, cheap at the hundreds of primitives a frame's overlays queue.
 inline std::size_t overlapGroupEnd(
     std::span<const IRComponents::C_CanvasDrawQueue::Batch::Primitive> primitives, std::size_t begin
 ) {
@@ -331,6 +441,105 @@ inline void queueRect(
         }
     }
     detail::closePrimitive(batch, first, distance);
+}
+
+// Decodes the image file at `path` (PNG, JPG, anything stb reads) and uploads
+// it, returning its handle, or `kInvalidImage` with the reason in `error`.
+// Loading a path that is already loaded returns the same handle and counts
+// one more reference. Decode and upload are synchronous: call it at setup,
+// not per frame. `loader` stands in for the decode and upload.
+inline ImageHandle loadImage(
+    const std::string &path,
+    std::string &error,
+    const ImageSourceLoader &loader = detail::uploadImageFile
+) {
+    IRComponents::C_CanvasDrawImages &registry = images();
+    for (IRComponents::C_CanvasDrawImages::Image &image : registry.images_) {
+        if (image.path_ == path) {
+            ++image.references_;
+            return image.handle_;
+        }
+    }
+    ImageSource source;
+    if (!loader(path, source, error)) {
+        return kInvalidImage;
+    }
+    const ImageHandle handle = registry.nextHandle_++;
+    registry.images_.push_back(
+        {handle, 1, path, source.sourceSize_, source.baseSize_, source.levelCount_, source.texture_}
+    );
+    return handle;
+}
+
+inline ImageHandle loadImage(const std::string &path) {
+    std::string error;
+    const ImageHandle handle = loadImage(path, error);
+    if (handle == kInvalidImage) {
+        IRE_LOG_WARN("IRPrefab::CanvasDraw::loadImage: {}", error);
+    }
+    return handle;
+}
+
+inline bool isImage(ImageHandle handle) {
+    return detail::findImage(images(), handle) != nullptr;
+}
+
+// The decoded file's size in pixels; zero for a handle that names no image.
+inline IRMath::ivec2 imageSize(ImageHandle handle) {
+    const IRComponents::C_CanvasDrawImages::Image *image = detail::findImage(images(), handle);
+    return image != nullptr ? image->sourceSize_ : IRMath::ivec2(0);
+}
+
+// Drops one reference to the image; the last one frees its texture and
+// retires the handle. Nothing for a handle that names no image.
+inline void releaseImage(ImageHandle handle) {
+    IRComponents::C_CanvasDrawImages &registry = images();
+    for (std::size_t i = 0; i < registry.images_.size(); ++i) {
+        IRComponents::C_CanvasDrawImages::Image &image = registry.images_[i];
+        if (image.handle_ != handle) {
+            continue;
+        }
+        if (--image.references_ > 0) {
+            return;
+        }
+        if (image.texture_.second != nullptr) {
+            IRRender::destroyResource<IRRender::Texture2D>(image.texture_.first);
+        }
+        registry.images_.erase(registry.images_.begin() + static_cast<std::ptrdiff_t>(i));
+        return;
+    }
+}
+
+// The image stretched over the `pos` / `size` box of canvas texels, clipped
+// to the canvas. A canvas texel is two framebuffer pixels wide and one tall,
+// so a box of `size` shows the source undistorted when
+// 2 * size.x / size.y equals the crop's pixel aspect. Texels the source
+// leaves transparent keep what the canvas held. Nothing for a handle that
+// names no image.
+inline void queueImage(
+    IREntity::EntityId canvas,
+    ImageHandle handle,
+    IRMath::ivec2 pos,
+    IRMath::ivec2 size,
+    const ImageOptions &options,
+    int distance
+) {
+    const IRComponents::C_CanvasDrawImages::Image *image = detail::findImage(images(), handle);
+    if (image == nullptr) {
+        return;
+    }
+    IRComponents::C_CanvasDrawQueue::Batch &batch = detail::batchFor(queue(), canvas);
+    IRMath::ivec2 lo;
+    IRMath::ivec2 hi;
+    if (!IRRender::clipRectToCanvas(pos, size, batch.canvasSize_, lo, hi)) {
+        return;
+    }
+    batch.images_.push_back(
+        {handle, detail::imageCommand(*image, pos, size, lo, hi, options, distance)}
+    );
+    batch.primitives_.push_back(
+        {lo, hi, batch.commands_.size(), static_cast<int>(batch.images_.size()) - 1}
+    );
 }
 
 // A hollow border `thickness` texels wide inside `pos` / `size`.

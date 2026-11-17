@@ -14,13 +14,20 @@
 //   local w, h = IRCanvas.measureVoxelText(text, { voxelSize, depth, facing })
 //   IRCanvas.fillRect(name, x, y, w, h, color, distance?)
 //   IRCanvas.drawBorder(name, x, y, w, h, color, thickness?, distance?)
+//   local handle, err = IRCanvas.loadImage(path)   -- image-base relative; nil, err on failure
+//   local w, h = IRCanvas.imageSize(handle)        -- the file's pixel size
+//   IRCanvas.releaseImage(handle)
+//   IRCanvas.image(name, handle, x, y, w, h, { uv = { u0, v0, u1, v1 }, cell, tint, levels,
+//                                              distance })
 //   IRCanvas.Depth.{BEHIND, WORLD_NEAR, WORLD_FAR, FRONT}  -- composite depths
 //   IRCanvas.AlignH.{LEFT, CENTER, RIGHT}, IRCanvas.AlignV.{TOP, CENTER, BOTTOM}
 //
 // A canvas is named as `IRRender.getCanvas` knows it ("gui", "background",
 // or a layer). `distance` defaults to IRCanvas.Depth.FRONT. An unknown
-// option key, an unknown canvas, or a value outside its range raises before
-// anything is queued.
+// option key, an unknown canvas, an unknown image handle, or a value outside
+// its range raises before anything is queued. `loadImage` reports a file it
+// cannot decode, or a path outside the image base, through its second return
+// instead.
 
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
@@ -35,19 +42,30 @@
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 #include <irreden/script/lua_text_bindings.hpp>
+#include <irreden/utility/path_utils.hpp>
 
 #include <array>
+#include <cstdint>
+#include <filesystem>
 #include <functional>
+#include <limits>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <tuple>
+#include <utility>
 
 namespace IRScript::detail {
 
 using CanvasResolver = std::function<IREntity::EntityId(const std::string &)>;
 using LayerFactory = std::function<IREntity::EntityId(const std::string &)>;
+// Loads the image at an already contained path, or returns kInvalidImage with
+// the reason in `error`.
+using ImageLoader =
+    std::function<IRPrefab::CanvasDraw::ImageHandle(const std::string &path, std::string &error)>;
 
 inline IREntity::EntityId renderCanvasByName(const std::string &name) {
     return IRRender::hasCanvas(name) ? IRRender::getCanvas(name) : IREntity::kNullEntity;
@@ -58,6 +76,65 @@ inline IREntity::EntityId renderLayer(const std::string &name) {
         return IREntity::kNullEntity;
     }
     return IRPrefab::CanvasDraw::createLayer(name);
+}
+
+inline IRPrefab::CanvasDraw::ImageHandle renderImage(const std::string &path, std::string &error) {
+    return IRPrefab::CanvasDraw::loadImage(path, error);
+}
+
+// The handle a Lua value spells, or kInvalidImage when it is not a positive
+// whole number.
+inline IRPrefab::CanvasDraw::ImageHandle canvasDrawImageHandle(const sol::object &value) {
+    if (!value.valid() || value.get_type() != sol::type::number) {
+        return IRPrefab::CanvasDraw::kInvalidImage;
+    }
+    const double number = value.as<double>();
+    if (!IRMath::isFinite(number) || number != IRMath::floor(number) || number < 1.0 ||
+        number > static_cast<double>(std::numeric_limits<std::uint32_t>::max())) {
+        return IRPrefab::CanvasDraw::kInvalidImage;
+    }
+    return static_cast<IRPrefab::CanvasDraw::ImageHandle>(number);
+}
+
+// The handle of a loaded image, raising for anything else.
+inline IRPrefab::CanvasDraw::ImageHandle
+requireCanvasDrawImage(const sol::object &value, const char *caller) {
+    const IRPrefab::CanvasDraw::ImageHandle handle = canvasDrawImageHandle(value);
+    if (!IRPrefab::CanvasDraw::isImage(handle)) {
+        throw sol::error{
+            std::string(caller) + ": handle must be a loaded image (IRCanvas.loadImage's result)"
+        };
+    }
+    return handle;
+}
+
+// The `uv` crop: four numbers in [0, 1], the whole image when absent.
+inline IRMath::vec4 canvasDrawUvRect(const sol::table &options, const char *caller) {
+    IRMath::vec4 rect(0.0f, 0.0f, 1.0f, 1.0f);
+    const sol::object value = options["uv"];
+    if (!value.valid() || value.get_type() == sol::type::lua_nil) {
+        return rect;
+    }
+    const std::string message = std::string(caller) + ": uv must be { u0, v0, u1, v1 } in [0, 1]";
+    if (value.get_type() != sol::type::table) {
+        throw sol::error{message};
+    }
+    const sol::table uv = value.as<sol::table>();
+    if (uv.size() != 4) {
+        throw sol::error{message};
+    }
+    for (int i = 0; i < 4; ++i) {
+        const sol::object component = uv[i + 1];
+        if (component.get_type() != sol::type::number) {
+            throw sol::error{message};
+        }
+        const double number = component.as<double>();
+        if (!IRMath::isFinite(number) || number < 0.0 || number > 1.0) {
+            throw sol::error{message};
+        }
+        rect[i] = static_cast<float>(number);
+    }
+    return rect;
 }
 
 inline int canvasDrawDistance(const sol::table &options, const char *caller) {
@@ -133,6 +210,9 @@ inline constexpr std::array<std::string_view, 7> kCanvasDrawVoxelRunKeys{
 inline constexpr std::array<std::string_view, 3> kCanvasDrawRunMeasureKeys{
     "count", "voxelSize", "axis"
 };
+inline constexpr std::array<std::string_view, 5> kCanvasDrawImageKeys{
+    "uv", "cell", "tint", "levels", "distance"
+};
 
 // An `IRCanvas.Axis` value, X when absent.
 inline IRRender::VoxelRunAxis canvasDrawAxis(const sol::table &options, const char *caller) {
@@ -176,13 +256,25 @@ canvasDrawVoxelStyle(const sol::table &options, const char *caller) {
     return style;
 }
 
-/// @p resolve names a canvas for the draw calls; @p createLayer stands up a
-/// layer for `createLayer`, returning kNullEntity when the name is taken.
+/// @p imageBase confines every `loadImage` path, as `bindWidgets`' image base
+/// does; it is canonicalized once here, and a base that cannot be resolved
+/// throws. @p resolve names a canvas for the draw calls; @p createLayer stands
+/// up a layer for `createLayer`, returning kNullEntity when the name is taken;
+/// @p loadImage decodes a contained path.
 inline void bindCanvasDraw(
     LuaScript &script,
+    const std::filesystem::path &imageBase,
     CanvasResolver resolve = renderCanvasByName,
-    LayerFactory createLayer = renderLayer
+    LayerFactory createLayer = renderLayer,
+    ImageLoader loadImage = renderImage
 ) {
+    std::error_code baseError;
+    const std::filesystem::path canonicalImageBase =
+        std::filesystem::weakly_canonical(imageBase, baseError);
+    if (baseError) {
+        throw std::invalid_argument("bindCanvasDraw requires a valid image base");
+    }
+
     sol::state &lua = script.lua();
     const sol::object existing = lua["IRCanvas"];
     if (existing.valid() && existing.get_type() != sol::type::lua_nil &&
@@ -417,6 +509,106 @@ inline void bindCanvasDraw(
             thickness.value_or(1)
         );
     };
+
+    // `path` is relative to the image base. The same file loads once: a
+    // second load returns the first handle and counts one more reference,
+    // which `releaseImage` gives back.
+    canvas["loadImage"] = statefulLuaFunction(
+        [canonicalImageBase, loadImage](
+            const std::string &path
+        ) -> std::tuple<sol::optional<lua_Integer>, sol::optional<std::string>> {
+            constexpr const char *kCaller = "IRCanvas.loadImage";
+            const std::optional<std::filesystem::path> resolved =
+                IRUtility::resolveContainedPath(canonicalImageBase, path);
+            if (!resolved) {
+                return {
+                    sol::nullopt,
+                    std::string(kCaller) + ": path '" + path +
+                        "' must be relative to the image base and stay inside it (no absolute "
+                        "path, no '..', no symlink out)"
+                };
+            }
+            std::string error;
+            const IRPrefab::CanvasDraw::ImageHandle handle = loadImage(resolved->string(), error);
+            if (handle == IRPrefab::CanvasDraw::kInvalidImage) {
+                return {sol::nullopt, std::string(kCaller) + ": " + error};
+            }
+            return {static_cast<lua_Integer>(handle), sol::nullopt};
+        }
+    );
+
+    canvas["imageSize"] = [](sol::object handle) {
+        const IRMath::ivec2 size =
+            IRPrefab::CanvasDraw::imageSize(requireCanvasDrawImage(handle, "IRCanvas.imageSize"));
+        return std::make_tuple(size.x, size.y);
+    };
+
+    // A handle already released is a no-op, so a teardown may release twice.
+    canvas["releaseImage"] = [](sol::object handle) {
+        const IRPrefab::CanvasDraw::ImageHandle image = canvasDrawImageHandle(handle);
+        if (image == IRPrefab::CanvasDraw::kInvalidImage) {
+            throw sol::error{"IRCanvas.releaseImage: handle must be IRCanvas.loadImage's result"};
+        }
+        IRPrefab::CanvasDraw::releaseImage(image);
+    };
+
+    canvas["image"] = statefulLuaFunction([require](
+                                              sol::this_state state,
+                                              const std::string &name,
+                                              sol::object handle,
+                                              int x,
+                                              int y,
+                                              int w,
+                                              int h,
+                                              sol::object optionsObject
+                                          ) {
+        constexpr const char *kCaller = "IRCanvas.image";
+        const IREntity::EntityId target = require(name, kCaller);
+        const IRPrefab::CanvasDraw::ImageHandle image = requireCanvasDrawImage(handle, kCaller);
+        const sol::table options = optionsTable(state, optionsObject, kCaller);
+        rejectUnknownKeys(options, kCanvasDrawImageKeys, kCaller);
+        IRPrefab::CanvasDraw::ImageOptions imageOptions;
+        imageOptions.uvRect_ = canvasDrawUvRect(options, kCaller);
+        imageOptions.cell_ =
+            integerOption(options, "cell", 1, 1, IRPrefab::CanvasDraw::kMaxImageCell, kCaller);
+        imageOptions.tint_ = colorOption(options, "tint", imageOptions.tint_);
+        imageOptions.levels_ = integerOption(
+            options,
+            "levels",
+            0,
+            0,
+            IRPrefab::CanvasDraw::kMaxImagePosterizeLevels,
+            kCaller
+        );
+        if (imageOptions.levels_ == 1) {
+            throw sol::error{
+                std::string(kCaller) + ": levels must be 0 (off) or a whole number in [2, " +
+                std::to_string(IRPrefab::CanvasDraw::kMaxImagePosterizeLevels) + "]"
+            };
+        }
+        IRPrefab::CanvasDraw::queueImage(
+            target,
+            image,
+            IRMath::ivec2(x, y),
+            IRMath::ivec2(w, h),
+            imageOptions,
+            canvasDrawDistance(options, kCaller)
+        );
+    });
+}
+
+// The image base defaults to the run directory, the tree `IRFile` reads.
+inline void bindCanvasDraw(
+    LuaScript &script,
+    CanvasResolver resolve = renderCanvasByName,
+    LayerFactory createLayer = renderLayer
+) {
+    std::error_code error;
+    const std::filesystem::path runDirectory = std::filesystem::current_path(error);
+    if (error) {
+        throw std::runtime_error("bindCanvasDraw could not resolve the run directory");
+    }
+    bindCanvasDraw(script, runDirectory, std::move(resolve), std::move(createLayer));
 }
 
 } // namespace IRScript::detail
