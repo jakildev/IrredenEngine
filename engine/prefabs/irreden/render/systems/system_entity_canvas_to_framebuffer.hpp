@@ -20,6 +20,7 @@
 #include <irreden/render/entity_canvas.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/gather_filter_diagnostic.hpp>
+#include <irreden/render/composite_draw_witness.hpp>
 #include <irreden/input/components/component_hitbox_2d.hpp>
 
 #include <algorithm>
@@ -41,9 +42,13 @@ constexpr int kMaxEntityCanvasInstances = IRConstants::kEntityCanvasLiveBudget;
 
 template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     using GhostEval = System<FOG_REVEAL_EVAL_CANVAS_GHOST>;
+    using DrawKind = IRPrefab::CompositeDrawWitness::DrawKind;
     struct CanvasInstance {
         FrameDataTrixelToFramebuffer frameData_;
         const C_TriangleCanvasTextures *textures_;
+        IREntity::EntityId entity_;
+        vec2 framebufferCenter_;
+        vec2 framebufferExtent_;
     };
 
     // Per-frame instance list, gathered in tick and consumed in endTick.
@@ -56,6 +61,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         IRRender::GatherFilterDiagnostic::NEAREST;
     std::vector<std::pair<IREntity::EntityId, C_HitBox2D *>> hitboxes_;
     const std::vector<GhostEval::HeldPose> *heldGhostPoses_ = nullptr;
+    IRPrefab::CompositeDrawWitness::Recorder drawWitness_;
 
     // Frame constants snapshotted once in beginTick because they are constant
     // across every visible detached entity in a frame. fbRes_ comes from the
@@ -464,6 +470,9 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         CanvasInstance inst{};
         inst.frameData_ = fd;
         inst.textures_ = canvasTextures;
+        inst.entity_ = entity;
+        inst.framebufferCenter_ = entityFbCenter;
+        inst.framebufferExtent_ = framebufferExtent;
         instances_.push_back(inst);
     }
 
@@ -500,7 +509,6 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
             ->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
         (sunDepth ? sunDepth : frameDataBuffer)
             ->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
-        canvasProgram->use();
         // The composite depth-tests
         // each detached canvas against the world depth the gather wrote (so world
         // geometry occludes a detached solid) and WRITES its winning fragment's
@@ -513,41 +521,75 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // overlays, write depth.
         IRRender::device()->setDepthTest(true);
         IRRender::device()->setDepthWrite(true);
-        for (auto &inst : instances_) {
-            frameDataBuffer->subData(0, sizeof(FrameDataTrixelToFramebuffer), &inst.frameData_);
-            inst.textures_->bind(0, 1, 2);
-            if (inst.textures_->renderedSampleLayout_ == TrixelSampleLayout::SOURCE_FACES) {
-                inst.textures_->sourceFaces_.second->bindBase(
-                    BufferTarget::SHADER_STORAGE,
-                    kBufferIndex_SourceVoxelFaces
-                );
-                inst.textures_->sourceFaceOrder_.second->bindBase(
-                    BufferTarget::SHADER_STORAGE,
-                    kBufferIndex_PerAxisCellCompacted
-                );
-                // The GPU producer bounds the entire canvas. Exactly one shader
-                // accepts it, preserving face order even at clamp boundaries.
-                for (auto *program : std::array{sourceEarlyProgram, sourceProgram}) {
-                    program->use();
-                    IRRender::device()->drawElementsInstancedIndirect(
-                        DrawMode::TRIANGLES,
-                        IndexType::UNSIGNED_SHORT,
-                        inst.textures_->sourceFaces_.second,
-                        0
+        const bool witnessed = drawWitness_.beginFrame();
+        const auto draws = [&](auto &&bracket) {
+            canvasProgram->use();
+            for (std::size_t i = 0; i < instances_.size(); ++i) {
+                const CanvasInstance &inst = instances_[i];
+                frameDataBuffer->subData(0, sizeof(FrameDataTrixelToFramebuffer), &inst.frameData_);
+                inst.textures_->bind(0, 1, 2);
+                if (inst.textures_->renderedSampleLayout_ == TrixelSampleLayout::SOURCE_FACES) {
+                    inst.textures_->sourceFaces_.second->bindBase(
+                        BufferTarget::SHADER_STORAGE,
+                        kBufferIndex_SourceVoxelFaces
                     );
+                    inst.textures_->sourceFaceOrder_.second->bindBase(
+                        BufferTarget::SHADER_STORAGE,
+                        kBufferIndex_PerAxisCellCompacted
+                    );
+                    // The GPU producer bounds the entire canvas. Exactly one
+                    // shader accepts it, preserving face order even at clamp
+                    // boundaries.
+                    for (auto *program : std::array{sourceEarlyProgram, sourceProgram}) {
+                        program->use();
+                        bracket(
+                            i,
+                            program == sourceEarlyProgram ? DrawKind::SOURCE_EARLY
+                                                          : DrawKind::SOURCE_FALLBACK,
+                            [&] {
+                                IRRender::device()->drawElementsInstancedIndirect(
+                                    DrawMode::TRIANGLES,
+                                    IndexType::UNSIGNED_SHORT,
+                                    inst.textures_->sourceFaces_.second,
+                                    0
+                                );
+                            }
+                        );
+                    }
+                    activeMask->bindBase(
+                        BufferTarget::SHADER_STORAGE,
+                        kBufferIndex_VoxelActiveMask
+                    );
+                    compacted->bindBase(
+                        BufferTarget::SHADER_STORAGE,
+                        kBufferIndex_CompactedVoxelIndices
+                    );
+                    canvasProgram->use();
                 }
-                activeMask->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_VoxelActiveMask);
-                compacted->bindBase(
-                    BufferTarget::SHADER_STORAGE,
-                    kBufferIndex_CompactedVoxelIndices
-                );
-                canvasProgram->use();
+                bracket(i, DrawKind::TEXTURE_LAYER, [] {
+                    IRRender::device()->drawElements(
+                        DrawMode::TRIANGLES,
+                        IRShapes2D::kQuadIndicesLength,
+                        IndexType::UNSIGNED_SHORT
+                    );
+                });
             }
-            IRRender::device()->drawElements(
-                DrawMode::TRIANGLES,
-                IRShapes2D::kQuadIndicesLength,
-                IndexType::UNSIGNED_SHORT
-            );
+        };
+        if (!witnessed) {
+            draws([](std::size_t, DrawKind, auto &&draw) { draw(); });
+        } else {
+            draws([this](std::size_t i, DrawKind kind, auto &&draw) {
+                drawWitness_.beginShadedDraw(witnessSite(i, kind));
+                draw();
+                drawWitness_.endShadedDraw();
+            });
+            drawWitness_.beginReplay();
+            draws([this](std::size_t, DrawKind, auto &&draw) {
+                drawWitness_.beginOwnedDraw();
+                draw();
+                drawWitness_.endOwnedDraw();
+            });
+            drawWitness_.endFrame();
         }
         // Restore the pipeline's default depth-write so later passes are
         // unaffected — matches the setDepthWrite(true) / setDepthTest(true)
@@ -556,6 +598,18 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         IRRender::device()->setDepthWrite(true);
 
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+    }
+
+    IRPrefab::CompositeDrawWitness::DrawSite witnessSite(std::size_t index, DrawKind kind) const {
+        const CanvasInstance &inst = instances_[index];
+        return {
+            static_cast<int>(index),
+            static_cast<std::uint64_t>(inst.entity_),
+            kind,
+            inst.framebufferCenter_,
+            inst.framebufferExtent_,
+            inst.frameData_.distanceOffset_
+        };
     }
 
     static SystemId create() {
@@ -581,8 +635,9 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
             const C_WorldTransform,
             AlsoWrites<C_HitBox2D>>("EntityCanvasToFramebuffer");
         IRRender::tagGpuStage(s, "entityCanvasToFb");
-        getSystemParams<System<ENTITY_CANVAS_TO_FRAMEBUFFER>>(s)->gatherFilterDiagnostic_ =
-            IRPrefab::GatherFilter::diagnosticFromEnvironment();
+        auto *system = getSystemParams<System<ENTITY_CANVAS_TO_FRAMEBUFFER>>(s);
+        system->gatherFilterDiagnostic_ = IRPrefab::GatherFilter::diagnosticFromEnvironment();
+        system->drawWitness_.configureFromEnvironment();
         return s;
     }
 };

@@ -572,6 +572,20 @@ void GLTracer_glShaderSource(GLuint shader, GLsizei count, const GLchar *const *
     IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
+void GLTracer_glStencilFunc(GLenum func, GLint ref, GLuint mask) {
+    IRE_GL_LOG_DEBUG("glStencilFunc({}, {}, {})", E2S(func), ref, mask);
+    apiHook.glStencilFunc(func, ref, mask);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glStencilOp(GLenum fail, GLenum zfail, GLenum zpass) {
+    IRE_GL_LOG_DEBUG("glStencilOp({}, {}, {})", E2S(fail), E2S(zfail), E2S(zpass));
+    apiHook.glStencilOp(fail, zfail, zpass);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
 void GLTracer_glUseProgram(GLuint program) {
     IRE_GL_LOG_DEBUG("glUseProgram({})", program);
     apiHook.glUseProgram(program);
@@ -2004,6 +2018,8 @@ void InjectAPITracer4(GL4API *api) {
     INJECT(glReadPixels);
     INJECT(glScissor);
     INJECT(glShaderSource);
+    INJECT(glStencilFunc);
+    INJECT(glStencilOp);
     INJECT(glTexImage2D);
     INJECT(glTexImage3D);
     INJECT(glTexParameterf);
@@ -2234,6 +2250,8 @@ void GetAPI4(GL4API *api, PFNGETGLPROC GetGLProc) {
     LOAD_GL_FUNC(glReadPixels);
     LOAD_GL_FUNC(glScissor);
     LOAD_GL_FUNC(glShaderSource);
+    LOAD_GL_FUNC(glStencilFunc);
+    LOAD_GL_FUNC(glStencilOp);
     LOAD_GL_FUNC(glTexImage2D);
     LOAD_GL_FUNC(glTexImage3D);
     LOAD_GL_FUNC(glTexParameterf);

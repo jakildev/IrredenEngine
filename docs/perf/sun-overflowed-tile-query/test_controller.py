@@ -317,5 +317,82 @@ class ByteForByteRestoration(unittest.TestCase):
         self.assertEqual((discarded, len(attempts)), (2, 3))
 
 
+class BinaryAB(unittest.TestCase):
+    def test_every_pair_runs_both_trees_in_both_variants_in_mirrored_order(self):
+        arms = rm.ab_plan(4)
+        self.assertEqual(len(arms), 4 * len(rm.CASES) * 4)
+        for pair in range(1, 5):
+            for case in rm.CASES:
+                order = [(a["tree"], a["variant"]) for a in arms
+                         if (a["pair"], a["case"]) == (pair, case)]
+                self.assertEqual(tuple(order), rm.ab_order(pair))
+        self.assertEqual(rm.ab_order(2), tuple(reversed(rm.ab_order(1))))
+        # Each tree leads the production comparison in half the pairs.
+        leads = [next(tree for tree, variant in rm.ab_order(p) if variant == rm.PRODUCTION)
+                 for p in range(1, 5)]
+        self.assertEqual(leads.count("pre"), leads.count("post"))
+        self.assertEqual(len({rm.ab_arm_dir("out", arm) for arm in arms}), len(arms))
+
+    def test_explicit_tree_command_targets_the_snapshot(self):
+        command = rm.ab_profile_command(Path("snap"), Path("arm"), ["--x"], 7)
+        self.assertEqual(command[command.index("--build-dir") + 1], "snap")
+        self.assertNotIn("--release", command)
+        self.assertEqual(command[-2:], ["--", "--x"])
+
+    def test_cut_share_is_against_the_before_mean(self):
+        stats = rm.paired_difference([30.0, 32.0, 31.0], [60.0, 62.0, 64.0])
+        self.assertAlmostEqual(stats["delta_mean"], -31.0)
+        self.assertAlmostEqual(stats["change_share"], -31.0 / 62.0)
+        self.assertAlmostEqual(stats["upper_share"], stats["delta_upper_95"] / 62.0)
+
+    def test_witness_fixture_drops_the_profile_and_exits_after_the_window(self):
+        self.assertNotIn("--auto-profile", rm.WITNESS_COMMON)
+        self.assertNotIn("--profile-frames", rm.WITNESS_COMMON)
+        self.assertEqual(rm.WITNESS_COMMON[-2:], ["--exit-after-frames", str(rm.WITNESS_EXIT_FRAME)])
+        self.assertGreater(rm.WITNESS_EXIT_FRAME, rm.WITNESS_FIRST_FRAME + rm.WITNESS_FRAMES)
+        stripped = [v for v in rm.COMMON if v not in ("--auto-profile", "--profile-frames", "360")]
+        self.assertEqual(rm.WITNESS_COMMON[:-2], stripped)
+
+
+def witness_row(instance, kind, invocations, owned, gpu_ms=1.0, center=(10.0, 20.0)):
+    return {"frame": 60, "draw": 0, "instance": instance, "entity": instance, "kind": kind,
+            "center_x": center[0], "center_y": center[1], "extent_x": 4.0, "extent_y": 4.0,
+            "distance_offset": 0, "fragment_invocations": invocations, "owned_samples": owned,
+            "gpu_ms": gpu_ms}
+
+
+class DrawWitness(unittest.TestCase):
+    def test_coincident_canvases_split_hidden_work_into_front_and_cross_canvas(self):
+        rows = [witness_row(0, "source-early", 300, 100), witness_row(0, "source-fallback", 0, 0),
+                witness_row(1, "source-early", 250, 0), witness_row(2, "source-early", 250, 0),
+                witness_row(0, "texture-layer", 50, 0),
+                witness_row(3, "source-early", 40, 40, center=(99.0, 0.0))]
+        groups = rm.witness_frame(rows)
+        stack = groups[rm.canvas_signature(rows[0])]
+        self.assertEqual(stack["canvases"], 3)
+        self.assertEqual((stack["source_invocations"], stack["source_owned"]), (800, 100))
+        self.assertAlmostEqual(stack["source_invocations_per_owned"], 8.0)
+        self.assertEqual(stack["front_canvas"], 0)
+        self.assertEqual((stack["front_canvas_hidden"], stack["cross_canvas_hidden"]), (200, 500))
+        self.assertAlmostEqual(stack["cross_canvas_share"], 500 / 700)
+        self.assertEqual(stack["kinds"]["texture-layer"]["invocations"], 50)
+        lone = groups[rm.canvas_signature(rows[-1])]
+        self.assertEqual((lone["canvases"], lone["cross_canvas_hidden"]), (1, 0))
+        self.assertIsNone(lone["cross_canvas_share"])
+
+    def test_unsupported_or_empty_witness_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "witness.csv"
+            for text in ("unsupported\n", ",".join(rm.WITNESS_COLUMNS) + "\n", ""):
+                path.write_text(text)
+                with self.subTest(text=text), self.assertRaises(rm.ChildFailure):
+                    rm.read_witness(path)
+            path.write_text(",".join(rm.WITNESS_COLUMNS) + "\n"
+                            "60,0,0,7,source-early,1.0,2.0,3.0,4.0,-5,90,30,0.25\n")
+            row = rm.read_witness(path)[0]
+            self.assertEqual((row["fragment_invocations"], row["owned_samples"]), (90, 30))
+            self.assertEqual((row["distance_offset"], row["gpu_ms"]), (-5, 0.25))
+
+
 if __name__ == "__main__":
     unittest.main()

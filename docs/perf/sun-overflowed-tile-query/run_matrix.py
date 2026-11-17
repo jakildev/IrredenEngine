@@ -28,6 +28,7 @@ import gzip
 import hashlib
 import json
 import math
+import os
 import platform
 import re
 import shutil
@@ -375,12 +376,13 @@ def quiet_failure(directory):
     return False
 
 
-def run_profile_arm(build, directory, args, timeout, runner=launch):
+def run_profile_arm(build, directory, args, timeout, runner=launch, command=None):
     """One repeat_profile run, retried only while the host lacks a quiet window."""
+    command = command or profile_command(build, directory, args, timeout)
     for attempt in range(QUIET_ATTEMPTS):
         if directory.exists():
             shutil.rmtree(directory)
-        code = runner(profile_command(build, directory, args, timeout))
+        code = runner(command)
         manifest = directory / "manifest.json"
         if code == 0 and manifest.exists():
             runs = json.loads(manifest.read_text()).get("runs") or []
@@ -695,35 +697,505 @@ def score(args):
 
 
 def restore(args):
-    runtime = build_paths(args.build)[3] / SUBDIR / SAMPLER
-    shutil.copyfile(SOURCE_SAMPLER, runtime)
-    print(f"{runtime} = {sha256(runtime)}")
+    roots = [build_paths(args.build)[3]]
+    if getattr(args, "pre_tree", None):
+        roots.append(tree_paths(args.build, "pre", args.pre_tree)[3])
+    for root in roots:
+        runtime = root / SUBDIR / SAMPLER
+        shutil.copyfile(SOURCE_SAMPLER, runtime)
+        print(f"{runtime} = {sha256(runtime)}")
+
+
+# Binary A/B and the hidden-invocation witness. "post" is this worktree's build;
+# "pre" is a snapshot of the same demo built from a tree with one change reverted,
+# taken by `snapshot` and recorded in its tree.json.
+TREES = ("pre", "post")
+SNAPSHOT_PATHS = ("CMakeCache.txt", f"creations/demos/{DEMO}")
+SNAPSHOT_SKIP = ("CMakeFiles", "save_files")
+WITNESS_ENV = "IR_COMPOSITE_DRAW_WITNESS"
+WITNESS_FIRST_FRAME, WITNESS_FRAMES = 60, 5
+WITNESS_EXIT_FRAME = WITNESS_FIRST_FRAME + WITNESS_FRAMES + 5
+WITNESS_COLUMNS = ("frame", "draw", "instance", "entity", "kind", "center_x", "center_y",
+                   "extent_x", "extent_y", "distance_offset", "fragment_invocations",
+                   "owned_samples", "gpu_ms")
+SOURCE_KINDS = ("source-early", "source-fallback")
+
+
+def _without_profile(args):
+    """The timing fixture with its profile-and-exit pair replaced by a fixed exit."""
+    out, skip = [], 0
+    for value in args:
+        if skip:
+            skip -= 1
+        elif value == "--auto-profile":
+            pass
+        elif value == "--profile-frames":
+            skip = 1
+        else:
+            out.append(value)
+    return out + ["--exit-after-frames", str(WITNESS_EXIT_FRAME)]
+
+
+WITNESS_COMMON = _without_profile(COMMON)
+
+
+def tree_paths(build, tree, pre_tree=None):
+    """(build dir, build type, binary, runtime shaders) of a tree; pre is a snapshot root."""
+    if tree == "post":
+        return build_paths(build)
+    if pre_tree is None:
+        raise ProvenanceError("the pre tree needs --pre-tree")
+    build_dir = Path(pre_tree).resolve()
+    binary = build_dir / "creations/demos" / DEMO / TARGET
+    binary = binary if binary.is_file() else binary.with_suffix(".exe")
+    return build_dir, BUILDS[build][1], binary, binary.parent / "shaders"
+
+
+def snapshot(args):
+    """Copy this worktree's built demo to --dest and record the tree it was built from.
+    The tree may carry an uncommitted revert; its diff against HEAD is retained."""
+    build_dir, build_type, binary, shader_root = build_paths(args.build)
+    dest = Path(args.dest).resolve()
+    if dest.exists():
+        raise ProvenanceError(f"{dest} exists; snapshots are taken once")
+    if sha256(shader_root / SUBDIR / SAMPLER) != sha256(SOURCE_SAMPLER):
+        raise ProvenanceError("runtime sampler is not pristine; run restore first")
+    diff = git("diff", "HEAD", "--", *SOURCE_PATHS)
+    for relative in SNAPSHOT_PATHS:
+        source = build_dir / relative
+        if source.is_dir():
+            shutil.copytree(source, dest / relative,
+                            ignore=shutil.ignore_patterns(*SNAPSHOT_SKIP, "*.obj", "*.o"))
+        else:
+            (dest / relative).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, dest / relative)
+    (dest / "tree.diff").write_text(diff + ("\n" if diff else ""))
+    record = {"label": args.label, "head": git("rev-parse", "HEAD"),
+              "reverts": args.reverts, "build_type": build_type,
+              "diff_sha256": sha256_bytes(diff.encode()),
+              "binary_sha256": sha256(binary),
+              "shader_dir_sha256": directory_digest(shader_root)}
+    (dest / "tree.json").write_text(json.dumps(record, indent=2) + "\n")
+    print(dest / "tree.json")
+
+
+def tree_provenance(build, tree, pre_tree=None):
+    build_dir, build_type, binary, shader_root = tree_paths(build, tree, pre_tree)
+    runtime = shader_root / SUBDIR / SAMPLER
+    pristine = SOURCE_SAMPLER.read_bytes()
+    if sha256(runtime) != sha256_bytes(pristine):
+        raise ProvenanceError(f"{runtime} differs from {SOURCE_SAMPLER}; rebuild or run restore")
+    record = {"build_dir": build_dir.as_posix(), "build_type": build_type,
+              "binary_sha256": sha256(binary), "pristine_sampler_sha256": sha256_bytes(pristine),
+              "pristine_shader_dir_sha256": directory_digest(shader_root),
+              "runtime_scripts_sha256": directory_digest(binary.parent / "scripts")}
+    if tree == "pre":
+        tree_json = json.loads((build_dir / "tree.json").read_text())
+        if tree_json["binary_sha256"] != record["binary_sha256"]:
+            raise ProvenanceError(f"{build_dir} binary differs from its tree.json")
+        record["tree"] = tree_json
+    return record
+
+
+def ab_provenance(build, pre_tree):
+    dirty = git("status", "--porcelain", "--", *SOURCE_PATHS)
+    if dirty:
+        raise ProvenanceError(f"measured sources are modified:\n{dirty}")
+    return {"source_revision": git("rev-parse", "HEAD"), "backend": BACKEND, "build": build,
+            "trees": {tree: tree_provenance(build, tree, pre_tree) for tree in TREES},
+            "controller_sha256": sha256(Path(__file__)),
+            "variant_sampler_sha256": {v: sha256_bytes(staged_bytes(SOURCE_SAMPLER.read_bytes(), v))
+                                       for v in (PRODUCTION, ABLATION)},
+            "host": platform.platform(), "host_gpu": host_gpu(),
+            "python": sys.version.split()[0]}
+
+
+def ab_order(pair):
+    """Within a pair, both trees run in each variant; odd and even pairs mirror the order."""
+    order = (("pre", PRODUCTION), ("post", PRODUCTION), ("post", ABLATION), ("pre", ABLATION))
+    return order if pair % 2 else tuple(reversed(order))
+
+
+def ab_plan(pairs, cases=tuple(CASES)):
+    return [{"case": case, "pair": pair, "tree": tree, "variant": variant}
+            for pair in range(1, pairs + 1) for case in cases
+            for tree, variant in ab_order(pair)]
+
+
+def ab_arm_dir(output, arm):
+    return Path(output) / arm["case"] / f"pair-{arm['pair']}-{arm['tree']}-{arm['variant']}"
+
+
+def ab_profile_command(build_dir, directory, args, timeout):
+    return [sys.executable, str(ROOT / "scripts/perf/repeat_profile.py"), "--target", TARGET,
+            "--build-dir", str(build_dir), "--output", str(directory),
+            "--repeats", "1", "--timeout", str(timeout), "--", *args]
+
+
+def run_ab_arm(build_dir, directory, args, timeout, runner=launch):
+    """run_profile_arm against an explicit build tree."""
+    return run_profile_arm(None, directory, args, timeout, runner=runner,
+                           command=ab_profile_command(build_dir, directory, args, timeout))
+
+
+def ab_timing(args):
+    output = Path(args.output).resolve() / args.build / "ab-timing"
+    prov = check_provenance(output, ab_provenance(args.build, args.pre_tree))
+    arms = ab_plan(args.pairs)
+    (output / "plan.json").write_text(json.dumps(arms, indent=2) + "\n")
+    for arm in arms:
+        tree = prov["trees"][arm["tree"]]
+        build_dir, _, _, shader_root = tree_paths(args.build, arm["tree"], args.pre_tree)
+        directory = ab_arm_dir(output, arm)
+        record = directory / "arm.json"
+        fixture = [*COMMON, *CASES[arm["case"]]]
+        if record.exists():
+            retained = json.loads(record.read_text())
+            validate_arm(json.loads((directory / "manifest.json").read_text()),
+                         retained["expected"])
+            if retained["arm"] != arm or retained["expected"]["fixture_args"] != fixture:
+                raise ProvenanceError(f"{record} declares a different arm")
+            continue
+        with staged(shader_root, arm["variant"], tree["pristine_sampler_sha256"],
+                    tree["pristine_shader_dir_sha256"]) as stage:
+            warm = output / "warmup" / arm["tree"] / arm["variant"]
+            if not (warm / "summary.md").exists():
+                print(f"{args.build} warm {arm['tree']} {arm['variant']}", flush=True)
+                run_ab_arm(build_dir, warm, fixture, WARM_TIMEOUT)
+            print(f"{args.build} {arm['case']} pair {arm['pair']} {arm['tree']} "
+                  f"{arm['variant']}", flush=True)
+            discarded = run_ab_arm(build_dir, directory, fixture, ARM_TIMEOUT)
+        expected = {"build_type": tree["build_type"], "binary_sha256": tree["binary_sha256"],
+                    "shader_dir_sha256": stage["shader_dir_sha256"],
+                    "sampler_sha256": stage["sampler_sha256"],
+                    "runtime_scripts_sha256": tree["runtime_scripts_sha256"],
+                    "source_revision": prov["source_revision"], "fixture_args": fixture}
+        validate_arm(json.loads((directory / "manifest.json").read_text()), expected)
+        metrics = report_metrics(directory / "run-1.txt", "counters")
+        record.write_text(json.dumps({"arm": arm, "expected": expected, "metrics": metrics,
+                                      "quiet_attempts_discarded": discarded,
+                                      "restored_shader_dir_sha256": directory_digest(shader_root)},
+                                     indent=2) + "\n")
+    summarize_ab(output)
+
+
+def paired_difference(after, before):
+    """after-minus-before statistics over interleaved pairs, with the change as a
+    share of the before mean."""
+    stats = paired(after, before)
+    mean = stats["ablation_mean"]
+    stats["change_share"] = stats["delta_mean"] / mean if mean else None
+    stats["upper_share"] = (stats["delta_upper_95"] / mean
+                            if mean and stats["delta_upper_95"] is not None else None)
+    return stats
+
+
+AB_CONTRASTS = (
+    ("post vs pre, production", ("post", PRODUCTION), ("pre", PRODUCTION)),
+    ("post vs pre, ablation", ("post", ABLATION), ("pre", ABLATION)),
+    ("query term, pre", ("pre", PRODUCTION), ("pre", ABLATION)),
+    ("query term, post", ("post", PRODUCTION), ("post", ABLATION)),
+)
+
+
+def summarize_ab(output):
+    output = Path(output)
+    prov = json.loads((output / "provenance.json").read_text())
+    cases = {}
+    for record in sorted(output.glob("*/pair-*/arm.json")):
+        data = json.loads(record.read_text())
+        arm = data["arm"]
+        cases.setdefault(arm["case"], {}).setdefault(arm["pair"], {})[
+            (arm["tree"], arm["variant"])] = data["metrics"]
+    summary = {"provenance": prov, "cases": {}}
+    lines = [f"# {prov['backend']} {prov['trees']['post']['build_type']} — pre vs post binary",
+             "", f"Source `{prov['source_revision']}`; pre binary "
+             f"`{prov['trees']['pre']['binary_sha256'][:12]}` (reverts "
+             f"`{prov['trees']['pre']['tree']['reverts']}`), post binary "
+             f"`{prov['trees']['post']['binary_sha256'][:12]}`.", "",
+             "| Case | Measurement | Contrast | Pairs | After mean (min–max) | "
+             "Before mean (min–max) | Paired delta | One-sided 95% lower / upper | "
+             "Delta / before | Upper / before |",
+             "|---|---|---|---:|---:|---:|---:|---:|---:|---:|"]
+    for case in CASES:
+        pairs = cases.get(case, {})
+        complete = [pairs[p] for p in sorted(pairs) if len(pairs[p]) == 4]
+        if not complete:
+            continue
+        entry = summary["cases"][case] = {"pairs": len(complete), "contrasts": {}}
+        for key, label in METRICS[:2]:
+            for name, after, before in AB_CONTRASTS:
+                a = [p[after][key] for p in complete]
+                b = [p[before][key] for p in complete]
+                if any(value is None for value in a + b):
+                    continue
+                stats = paired_difference(a, b)
+                entry["contrasts"].setdefault(key, {})[name] = stats
+                lines.append(
+                    f"| {case} | {label} | {name} | {stats['n']} "
+                    f"| {stats['production_mean']:.3f} ({stats['production_min']:.3f}–"
+                    f"{stats['production_max']:.3f}) | {stats['ablation_mean']:.3f} "
+                    f"({stats['ablation_min']:.3f}–{stats['ablation_max']:.3f}) "
+                    f"| {stats['delta_mean']:+.3f} "
+                    f"| {fmt(stats['delta_lower_95'], '+')} / {fmt(stats['delta_upper_95'], '+')} "
+                    f"| {fmt_share(stats['change_share'])} | {fmt_share(stats['upper_share'])} |")
+    gate = summary["cases"].get(LEGACY_CASE, {}).get("contrasts", {}).get(
+        "entityCanvasToFb", {}).get("post vs pre, production")
+    if gate:
+        summary["gl_cut"] = {"upper_share": gate["upper_share"],
+                             "met": gate["upper_share"] is not None
+                             and gate["upper_share"] <= -0.5}
+        lines += ["", f"`{LEGACY_CASE}` production composite cut: upper bound "
+                  f"{fmt_share(gate['upper_share'])} of the pre mean; the half-cut gate "
+                  f"(≤ −50.0%) is {'met' if summary['gl_cut']['met'] else 'not met'}."]
+    lines += ["", "Columns read after = the first arm named in the contrast, before = the "
+              "second. Rows are sampled invocation spans or frame averages; they are never "
+              "summed."]
+    (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    (output / "summary.md").write_text("\n".join(lines) + "\n")
+    print(output / "summary.md")
+
+
+def read_witness(path):
+    """Rows of a witness CSV; an `unsupported` file or one with no rows is refused."""
+    text = Path(path).read_text() if Path(path).exists() else ""
+    if text.strip() == "unsupported":
+        raise ChildFailure(f"{path}: the backend has no fragment invocation counter")
+    rows = list(csv.DictReader(text.splitlines()))
+    if not rows or tuple(rows[0].keys()) != WITNESS_COLUMNS:
+        raise ChildFailure(f"{path}: no witness rows")
+    for row in rows:
+        for key in WITNESS_COLUMNS:
+            if key == "kind":
+                continue
+            row[key] = float(row[key]) if key in ("center_x", "center_y", "extent_x",
+                                                  "extent_y", "gpu_ms") else int(row[key])
+    return rows
+
+
+def canvas_signature(row):
+    """Canvases placed at the same framebuffer centre, extent and depth offset."""
+    return (f"{row['center_x']:.1f},{row['center_y']:.1f} "
+            f"{row['extent_x']:.1f}x{row['extent_y']:.1f} d{row['distance_offset']}")
+
+
+def witness_frame(rows):
+    """Per signature group and draw kind: canvas count, invocations, owned samples and
+    GPU time, plus the group's hidden invocations split into the front canvas's own
+    overdraw and everything the other canvases shade."""
+    groups = {}
+    for row in rows:
+        group = groups.setdefault(canvas_signature(row), {"canvases": set(), "kinds": {},
+                                                          "per_canvas": {}})
+        group["canvases"].add(row["instance"])
+        kind = group["kinds"].setdefault(row["kind"], {"draws": 0, "invocations": 0,
+                                                       "owned": 0, "gpu_ms": 0.0})
+        kind["draws"] += 1
+        kind["invocations"] += row["fragment_invocations"]
+        kind["owned"] += row["owned_samples"]
+        kind["gpu_ms"] += max(row["gpu_ms"], 0.0)
+        if row["kind"] in SOURCE_KINDS:
+            canvas = group["per_canvas"].setdefault(row["instance"], [0, 0])
+            canvas[0] += row["fragment_invocations"]
+            canvas[1] += row["owned_samples"]
+    result = {}
+    for signature, group in groups.items():
+        kinds = {name: {**values, "invocations_per_owned": (values["invocations"] / values["owned"]
+                                                            if values["owned"] else None)}
+                 for name, values in group["kinds"].items()}
+        source = [kinds[k] for k in SOURCE_KINDS if k in kinds]
+        invocations = sum(k["invocations"] for k in source)
+        owned = sum(k["owned"] for k in source)
+        hidden = invocations - owned
+        front = max(group["per_canvas"].items(), key=lambda item: (item[1][1], -item[0]),
+                    default=(None, [0, 0]))
+        intra = front[1][0] - front[1][1]
+        result[signature] = {
+            "canvases": len(group["canvases"]), "kinds": kinds,
+            "source_invocations": invocations, "source_owned": owned,
+            "source_invocations_per_owned": invocations / owned if owned else None,
+            "source_hidden_invocations": hidden,
+            "front_canvas": front[0], "front_canvas_hidden": intra,
+            "cross_canvas_hidden": hidden - intra,
+            "cross_canvas_share": (hidden - intra) / hidden if hidden > 0 else None,
+            "source_gpu_ms": sum(k["gpu_ms"] for k in source)}
+    return result
+
+
+def summarize_witness_capture(rows):
+    """Median of every per-group figure over the witnessed frames."""
+    frames = sorted({row["frame"] for row in rows})
+    per_frame = [witness_frame([r for r in rows if r["frame"] == f]) for f in frames]
+    signatures = sorted(set().union(*per_frame), key=lambda s: -max(
+        frame.get(s, {}).get("source_gpu_ms", 0.0) for frame in per_frame))
+
+    def median(values):
+        values = [v for v in values if v is not None]
+        return statistics.median(values) if values else None
+
+    out = {"frames": frames, "groups": {}}
+    for signature in signatures:
+        entries = [frame[signature] for frame in per_frame if signature in frame]
+        keys = ("source_invocations", "source_owned", "source_invocations_per_owned",
+                "source_hidden_invocations", "front_canvas_hidden", "cross_canvas_hidden",
+                "cross_canvas_share", "source_gpu_ms")
+        group = {"canvases": entries[0]["canvases"], "front_canvas": entries[-1]["front_canvas"]}
+        group.update({key: median([e[key] for e in entries]) for key in keys})
+        kinds = sorted(set().union(*(e["kinds"] for e in entries)))
+        group["kinds"] = {kind: {key: median([e["kinds"].get(kind, {}).get(key) for e in entries])
+                                 for key in ("draws", "invocations", "owned",
+                                             "invocations_per_owned", "gpu_ms")}
+                          for kind in kinds}
+        out["groups"][signature] = group
+    return out
+
+
+def witness_capture(build_dir, directory, case, variant_label):
+    """One unprofiled launch with the witness armed; returns its CSV path."""
+    directory.mkdir(parents=True)
+    csv_path = directory / "witness.csv"
+    command = ["fleet-run", "--timeout", str(WARM_TIMEOUT), "--build-dir", str(build_dir),
+               TARGET, *WITNESS_COMMON, *CASES[case]]
+    environment = {**os.environ,
+                   WITNESS_ENV: f"{WITNESS_FIRST_FRAME},{WITNESS_FRAMES},{csv_path.as_posix()}"}
+    with (directory / "run.log").open("w") as stream:
+        code = subprocess.run(platform_launch_argv(command), cwd=ROOT, stdin=subprocess.DEVNULL,
+                              stdout=stream, stderr=subprocess.STDOUT, env=environment).returncode
+    log = (directory / "run.log").read_text(errors="replace")
+    if code or run_result(log) != "CLEAN":
+        raise ChildFailure(f"{directory}: {variant_label} witness run was not CLEAN")
+    rows = read_witness(csv_path)
+    if sorted({row["frame"] for row in rows}) != list(
+            range(WITNESS_FIRST_FRAME, WITNESS_FIRST_FRAME + WITNESS_FRAMES)):
+        raise ChildFailure(f"{csv_path}: witnessed frames are not the declared window")
+    return {"command": command, "environment": {WITNESS_ENV: environment[WITNESS_ENV]},
+            "result": "CLEAN", "csv": csv_path.name, "csv_sha256": sha256(csv_path)}
+
+
+def witness(args):
+    output = Path(args.output).resolve() / args.build / "witness"
+    prov = check_provenance(output, ab_provenance(args.build, args.pre_tree))
+    report_path = output / "witness.json"
+    report = (json.loads(report_path.read_text()) if report_path.exists()
+              else {"provenance": prov, "captures": {}})
+    for tree in args.trees:
+        build_dir, _, _, shader_root = tree_paths(args.build, tree, args.pre_tree)
+        pristine = prov["trees"][tree]
+        for case in args.cases:
+            for variant in (PRODUCTION, ABLATION):
+                key = f"{tree}/{case}/{variant}"
+                directory = output / tree / case / variant
+                if key in report["captures"]:
+                    if sha256(directory / "witness.csv") != report["captures"][key]["csv_sha256"]:
+                        raise ProvenanceError(f"{directory}/witness.csv does not match its record")
+                    continue
+                if directory.exists():
+                    shutil.rmtree(directory)
+                with staged(shader_root, variant, pristine["pristine_sampler_sha256"],
+                            pristine["pristine_shader_dir_sha256"]) as stage:
+                    print(f"witness {tree} {case} {variant}", flush=True)
+                    capture_record = witness_capture(build_dir, directory, case, key)
+                capture_record.update(stage)
+                capture_record["summary"] = summarize_witness_capture(
+                    read_witness(directory / "witness.csv"))
+                report["captures"][key] = capture_record
+                report_path.write_text(json.dumps(report, indent=2) + "\n")
+    summarize_witness(output)
+
+
+def summarize_witness(output):
+    """The per-group table for every capture, and the query term each group carries
+    (production minus ablation GPU time) per tree and case."""
+    output = Path(output)
+    report = json.loads((output / "witness.json").read_text())
+    lines = ["# Composite draw witness", "",
+             f"Medians over frames {WITNESS_FIRST_FRAME}–"
+             f"{WITNESS_FIRST_FRAME + WITNESS_FRAMES - 1}. Owned samples are the framebuffer "
+             "samples a draw holds when the composite ends; invocations count every "
+             "fragment-shader run, including those later hidden.", "",
+             "| Tree | Case | Canvas group | Canvases | Source invocations | Owned | "
+             "Invocations / owned | Cross-canvas share of hidden | Source GPU ms, production "
+             "| Source GPU ms, ablation | Query term ms |",
+             "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    terms = {}
+    for key, capture_record in sorted(report["captures"].items()):
+        tree, case, variant = key.split("/")
+        if variant != PRODUCTION:
+            continue
+        ablation = report["captures"].get(f"{tree}/{case}/{ABLATION}")
+        for signature, group in capture_record["summary"]["groups"].items():
+            ablated = (ablation["summary"]["groups"].get(signature) if ablation else None)
+            ablated_ms = ablated["source_gpu_ms"] if ablated else None
+            term = (group["source_gpu_ms"] - ablated_ms
+                    if ablated_ms is not None and group["source_gpu_ms"] is not None else None)
+            terms.setdefault(f"{tree}/{case}", {})[signature] = {
+                "canvases": group["canvases"], "query_term_ms": term,
+                "source_invocations_per_owned": group["source_invocations_per_owned"],
+                "cross_canvas_share": group["cross_canvas_share"]}
+            ratio = group["source_invocations_per_owned"]
+            lines.append(
+                f"| {tree} | {case} | `{signature}` | {group['canvases']} "
+                f"| {group['source_invocations'] or 0:.0f} | {group['source_owned'] or 0:.0f} "
+                f"| {'n/a' if ratio is None else f'{ratio:.2f}'} "
+                f"| {fmt_share(group['cross_canvas_share'])} "
+                f"| {fmt(group['source_gpu_ms'])} | {fmt(ablated_ms)} | {fmt(term, '+')} |")
+    for entry in terms.values():
+        total = sum(g["query_term_ms"] for g in entry.values() if g["query_term_ms"] is not None)
+        for group in entry.values():
+            group["query_term_share"] = (group["query_term_ms"] / total
+                                         if total and group["query_term_ms"] is not None
+                                         else None)
+    (output / "summary.json").write_text(json.dumps({"query_terms": terms}, indent=2) + "\n")
+    (output / "summary.md").write_text("\n".join(lines) + "\n")
+    print(output / "summary.md")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("timing", "diagnose", "score", "summarize", "restore"):
+    for name in ("timing", "diagnose", "score", "summarize", "restore", "snapshot",
+                 "ab-timing", "ab-summarize", "witness", "witness-summarize"):
         command = sub.add_parser(name)
         command.add_argument("--build", choices=BUILDS, required=True)
-        if name != "restore":
+        if name not in ("restore", "snapshot"):
             command.add_argument("--output", type=Path, required=True,
                                  help="results root; the build's tree is <output>/<build>")
         if name == "timing":
             command.add_argument("--pairs", type=int, default=5)
             command.add_argument("--legacy-pairs", type=int, default=5)
+        if name in ("restore", "ab-timing", "witness"):
+            command.add_argument("--pre-tree", type=Path, required=name != "restore",
+                                 help="snapshot root of the pre binary")
+        if name == "ab-timing":
+            command.add_argument("--pairs", type=int, default=5)
+        if name == "witness":
+            command.add_argument("--trees", nargs="+", choices=TREES, default=list(TREES))
+            command.add_argument("--cases", nargs="+", choices=CASES, default=list(CASES))
+        if name == "snapshot":
+            command.add_argument("--dest", type=Path, required=True)
+            command.add_argument("--label", required=True)
+            command.add_argument("--reverts", required=True,
+                                 help="the commit whose revert the tree carries")
     args = parser.parse_args()
-    if args.command == "timing":
-        if args.pairs < 2 or args.legacy_pairs < 2:
+    if args.command in ("timing", "ab-timing"):
+        if args.pairs < 2 or getattr(args, "legacy_pairs", 2) < 2:
             parser.error("paired statistics need at least two pairs")
-        timing(args)
+        (timing if args.command == "timing" else ab_timing)(args)
     elif args.command == "diagnose":
         diagnose(args)
     elif args.command == "score":
         score(args)
     elif args.command == "summarize":
         summarize_build(Path(args.output).resolve() / args.build)
+    elif args.command == "snapshot":
+        snapshot(args)
+    elif args.command == "ab-summarize":
+        summarize_ab(Path(args.output).resolve() / args.build / "ab-timing")
+    elif args.command == "witness":
+        witness(args)
+    elif args.command == "witness-summarize":
+        summarize_witness(Path(args.output).resolve() / args.build / "witness")
     else:
         restore(args)
     return 0
