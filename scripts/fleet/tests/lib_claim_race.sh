@@ -19,6 +19,7 @@
 # Test seams, honoured by race_stage inside the stub (space-separated lists):
 #   CLAIM_RACE_DELAY="<claimant>:<stage>:<secs>"   sleep before the first <stage>
 #   CLAIM_RACE_EXIT="<claimant>:<stage>"           exit 1 at <stage>
+# Stages are chosen by the suite; claim races use pre, post, and release.
 
 # --- stub side ---------------------------------------------------------------
 
@@ -235,9 +236,9 @@ race_live_count() {
 
 # race_report
 #   Each claimant's exit code, the markers it reached, and its captured
-#   output, preceded by the broken rendezvous if any.
+#   output, followed by the gh call log, final label set, and orphan sentinels.
 race_report() {
-    local name path markers
+    local name path markers details
     [[ -n "$RACE_BROKEN" ]] && echo "    rendezvous: $RACE_BROKEN"
     for name in $RACE_NAMES; do
         markers=""
@@ -249,6 +250,24 @@ race_report() {
             sed 's/^/      | /' "$CLAIM_RUN/$name.out"
         fi
     done
+    echo "    call log:"
+    if [[ -s "${CLAIM_LOG:-}" ]]; then
+        sed 's/^/      | /' "$CLAIM_LOG"
+    else
+        echo "      | (none)"
+    fi
+    details=""
+    if [[ -s "${CLAIM_STATE:-}" ]]; then
+        details=$(awk 'NF { printf "%s%s", separator, $0; separator=", " }' "$CLAIM_STATE")
+    fi
+    echo "    final labels: ${details:-(none)}"
+    details=""
+    if [[ -d "${FLEET_ORPHANS_DIR:-}" ]]; then
+        for path in "$FLEET_ORPHANS_DIR"/*; do
+            [[ -f "$path" ]] && details="${details}${details:+, }${path##*/}"
+        done
+    fi
+    echo "    orphan sentinels: ${details:-(none)}"
 }
 
 # race_report_if_failed <fail-count-before-the-schedule> <schedule-label>

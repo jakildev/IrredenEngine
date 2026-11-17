@@ -75,8 +75,14 @@ case "${1:-} ${2:-}" in
             fi
             shift || true
         done
-        printf 'REMOVE %s %s\n' "$CLAIMANT" "$remove" >> "$CLAIM_LOG"
-        [[ "$CLAIM_MODE" == cleanup-fail ]] && exit 1
+        printf 'REMOVE START %s %s\n' "$CLAIMANT" "$remove" >> "$CLAIM_LOG"
+        if [[ -n "$remove" && "$CLAIM_MODE" == race ]]; then
+            race_stage release
+        fi
+        if [[ "$CLAIM_MODE" == cleanup-fail ]]; then
+            printf 'REMOVE END %s %s rc=1\n' "$CLAIMANT" "$remove" >> "$CLAIM_LOG"
+            exit 1
+        fi
         lock_state
         : > "${CLAIM_STATE}.next"
         while IFS= read -r label; do
@@ -84,6 +90,7 @@ case "${1:-} ${2:-}" in
         done < "$CLAIM_STATE"
         mv "${CLAIM_STATE}.next" "$CLAIM_STATE"
         unlock_state
+        printf 'REMOVE END %s %s rc=0\n' "$CLAIMANT" "$remove" >> "$CLAIM_LOG"
         ;;
     "api "*)
         posted=""
@@ -250,6 +257,9 @@ report=$(race_report)
 assert_contains "$report" "claimant beta: rc=1 markers=[pre-beta]" "the report carries the exited claimant's rc and progress"
 assert_contains "$report" "| gh stub: beta forced to exit at post" "the report carries the exited claimant's output"
 assert_contains "$report" "claimant alpha: rc=1 markers=[posted-alpha pre-alpha]" "the report carries the peer's rc and progress"
+assert_contains "$report" "call log:" "the report carries the gh call log"
+assert_contains "$report" "final labels: fleet:reviewing-mac-alpha" "the report carries the final label set"
+assert_contains "$report" "orphan sentinels: (none)" "the report carries orphan sentinels"
 assert_eq "$(race_live_count)" 0 "no claimant outlives the broken schedule"
 reset_fixture
 assert_eq "$(ls -A "$CLAIM_RUN")" "" "the next schedule starts without rendezvous state"
