@@ -177,6 +177,7 @@ struct VideoRecorder::FFmpegState {
     // full queue.
     std::condition_variable queueSpaceCv;
     bool blockWhenQueueFull = false;
+    bool encoderHeld = false;
     std::deque<std::vector<std::uint8_t>> frameQueue;
     std::deque<AudioChunk> audioQueue;
     std::vector<std::vector<std::uint8_t>> freeFramePool;
@@ -184,7 +185,6 @@ struct VideoRecorder::FFmpegState {
     bool stopRequested = false;
     bool encodeFailed = false;
     std::string workerError;
-    std::size_t maxQueuedFrames = 8;
     std::size_t maxQueuedAudioChunks = 128;
     int64_t droppedVideoFrames = 0;
 #endif
@@ -516,8 +516,10 @@ bool VideoRecorder::start(const VideoRecorderConfig &config) {
             {
                 std::unique_lock<std::mutex> lock(state->queueMutex);
                 state->queueCv.wait(lock, [state]() {
-                    return state->stopRequested || !state->frameQueue.empty() ||
-                           (state->audioMuxEnabled && !state->audioQueue.empty());
+                    return state->stopRequested ||
+                           (!state->encoderHeld &&
+                            (!state->frameQueue.empty() ||
+                             (state->audioMuxEnabled && !state->audioQueue.empty())));
                 });
 
                 if (state->stopRequested && state->frameQueue.empty() &&
@@ -826,7 +828,7 @@ bool VideoRecorder::enqueueFrame(std::vector<std::uint8_t> &&frame) {
         if (state->blockWhenQueueFull) {
             state->queueSpaceCv.wait(lock, [state]() {
                 return state->encodeFailed || state->stopRequested ||
-                       state->frameQueue.size() < state->maxQueuedFrames;
+                       state->frameQueue.size() < kMaxQueuedVideoFrames;
             });
         }
         if (state->encodeFailed) {
@@ -838,7 +840,7 @@ bool VideoRecorder::enqueueFrame(std::vector<std::uint8_t> &&frame) {
             return false;
         }
 
-        if (state->frameQueue.size() >= state->maxQueuedFrames) {
+        if (state->frameQueue.size() >= kMaxQueuedVideoFrames) {
             state->frameQueue.pop_front();
             ++state->droppedVideoFrames;
             ++m_droppedVideoFrameCount;
@@ -1074,6 +1076,22 @@ std::uint64_t VideoRecorder::getDroppedVideoFrameCount() const {
 
 const std::string &VideoRecorder::getLastError() const {
     return m_lastError;
+}
+
+void VideoRecorder::holdEncoderForTesting(bool held) {
+#if IR_VIDEO_HAS_FFMPEG
+    FFmpegState *state = m_state;
+    if (state == nullptr) {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(state->queueMutex);
+        state->encoderHeld = held;
+    }
+    state->queueCv.notify_all();
+#else
+    (void)held;
+#endif
 }
 
 } // namespace IRVideo

@@ -4,6 +4,7 @@
 #include <irreden/audio/ir_audio_types.hpp>
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -89,6 +90,10 @@ struct VideoRecorderConfig {
 /// @endcode
 class VideoRecorder {
   public:
+    /// Frames the encoder queue holds before @c submitVideoFrame waits or gives
+    /// the oldest one up.
+    static constexpr std::size_t kMaxQueuedVideoFrames = 8;
+
     VideoRecorder();
     ~VideoRecorder();
 
@@ -144,6 +149,11 @@ class VideoRecorder {
     /// Last error string set by FFmpeg on a failed @c start or @c submitVideoFrame.
     [[nodiscard]] const std::string &getLastError() const;
     /// @}
+
+    /// Test seam: while held, the encoder thread takes no frame, so the queue
+    /// fills at a known count whatever the host's encode speed. @c stop drains
+    /// the queue through a hold. No-op when not recording.
+    void holdEncoderForTesting(bool held);
 
   private:
     // Atomic because `stop()` clears it from VideoManager's async finalize
