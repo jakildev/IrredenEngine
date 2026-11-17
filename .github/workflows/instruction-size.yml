@@ -3,8 +3,10 @@ name: Instruction Size
 # An agent-facing instruction file may not grow past its budget
 # (docs/agents/CLAUDE-BASELINE.md §"What belongs in agent-facing docs").
 # scripts/lint_instruction_size.py is a per-file ratchet against
-# scripts/lint_instruction_size_baseline.json: a file may shrink toward its
-# class cap, never grow past its budget. Unfiltered on purpose — the
+# scripts/lint_instruction_size_baseline.json and
+# scripts/lint_instruction_size_bytes_baseline.json: a file may shrink toward
+# its line or byte budget (line cap times 80), never grow past it. Unfiltered
+# on purpose — the
 # population is every CLAUDE.md at any depth plus the .claude/ and
 # docs/agents/ trees, so any push can regress it.
 #

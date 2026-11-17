@@ -32,10 +32,14 @@ class TempTree(unittest.TestCase):
         self.baseline = self.root / "baseline.json"
         self.files = {}
         self.p = []
+        self.byte_baseline = self.root / "bytes-baseline.json"
         for target, value in (("REPO", self.root), ("BASELINE", self.baseline)):
             patcher = patch.object(lint, target, value)
             patcher.start()
             self.p.append(patcher)
+        patcher = patch.object(lint, "BYTE_BASELINE", self.byte_baseline, create=True)
+        patcher.start()
+        self.p.append(patcher)
         patcher = patch.object(lint, "tracked_files", lambda: list(self.files))
         patcher.start()
         self.p.append(patcher)
@@ -60,8 +64,14 @@ class TempTree(unittest.TestCase):
     def seed(self, budgets):
         self.baseline.write_text(json.dumps(budgets))
 
+    def seed_bytes(self, budgets):
+        self.byte_baseline.write_text(json.dumps(budgets))
+
     def read_baseline(self):
         return json.loads(self.baseline.read_text())
+
+    def read_byte_baseline(self):
+        return json.loads(self.byte_baseline.read_text())
 
     def run_main(self, *argv):
         out, err = io.StringIO(), io.StringIO()
@@ -120,6 +130,13 @@ class Classes(TempTree):
         path.parent.mkdir(parents=True)
         path.write_text("one\ntwo")
         self.assertEqual(lint.count_lines("engine/CLAUDE.md"), 2)
+
+    def test_a_tracked_file_missing_from_the_worktree_is_skipped(self):
+        self.files["engine/CLAUDE.md"] = True
+        counts, _ = lint.scan_tree()
+        byte_counts, _ = lint.scan_bytes()
+        self.assertEqual(counts, {})
+        self.assertEqual(byte_counts, {})
 
 
 class Scanning(TempTree):
@@ -207,6 +224,40 @@ class Scanning(TempTree):
         lint.write_baseline(lint.scan_tree()[0])
         self.assertEqual(self.read_baseline(), {"engine/CLAUDE.md": 250})
 
+    def test_under_the_line_cap_and_over_the_byte_cap_fails(self):
+        path = self.root / "docs/agents/FLEET.md"
+        path.parent.mkdir(parents=True)
+        path.write_text("x" * 32001)
+        self.files["docs/agents/FLEET.md"] = True
+        rc, out, _ = self.run_main()
+        self.assertEqual(rc, 1)
+        self.assertIn("docs/agents/FLEET.md: 32001 bytes, budget 32000", out)
+
+    def test_byte_baseline_holds_lowers_and_never_raises(self):
+        path = self.root / "engine/CLAUDE.md"
+        path.parent.mkdir(parents=True)
+        self.files["engine/CLAUDE.md"] = True
+        path.write_text("x" * 17000)
+        self.seed_bytes({"engine/CLAUDE.md": 17000})
+        rc, _, _ = self.run_main()
+        self.assertEqual(rc, 0)
+
+        path.write_text("x" * 17001)
+        rc, _, err = self.run_main("--update-baseline")
+        self.assertEqual(rc, 1)
+        self.assertIn("engine/CLAUDE.md: 17000 -> 17001 bytes", err)
+        self.assertEqual(self.read_byte_baseline(), {"engine/CLAUDE.md": 17000})
+
+        path.write_text("x" * 16500)
+        rc, _, _ = self.run_main("--update-baseline")
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.read_byte_baseline(), {"engine/CLAUDE.md": 16500})
+
+        path.write_text("x" * 16000)
+        rc, _, _ = self.run_main("--update-baseline")
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.read_byte_baseline(), {})
+
 
 class AgainstRef(unittest.TestCase):
     """`--against`: a real git repo, the base committed first and the head
@@ -226,10 +277,14 @@ class AgainstRef(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.p = []
         self.baseline = self.root / "scripts" / lint.BASELINE.name
+        self.byte_baseline = self.root / "scripts" / "lint_instruction_size_bytes_baseline.json"
         for target, value in (("REPO", self.root), ("BASELINE", self.baseline)):
             patcher = patch.object(lint, target, value)
             patcher.start()
             self.p.append(patcher)
+        patcher = patch.object(lint, "BYTE_BASELINE", self.byte_baseline, create=True)
+        patcher.start()
+        self.p.append(patcher)
         self.git("init", "-q")
         self.git("config", "user.email", "t@example.com")
         self.git("config", "user.name", "t")
@@ -403,6 +458,21 @@ class AgainstRef(unittest.TestCase):
     def test_against_does_not_combine_with_update_baseline(self):
         with self.assertRaises(SystemExit):
             self.run_main("--against", "HEAD", "--update-baseline")
+
+    def test_a_byte_offender_already_at_the_base_is_inherited(self):
+        path = self.root / self.FLEET
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x" * 32001)
+        self.baseline.parent.mkdir(parents=True, exist_ok=True)
+        self.baseline.write_text("{}")
+        self.git("add", "-A")
+        self.git("commit", "-qm", "base")
+        base = self.git("rev-parse", "HEAD")
+
+        rc, out, _ = self.run_main("--against", base)
+        self.assertEqual(rc, 0)
+        self.assertIn("inherited bytes:", out)
+        self.assertIn(f"{self.FLEET}: 32001 bytes, budget 32000", out)
 
 
 class Split(unittest.TestCase):
