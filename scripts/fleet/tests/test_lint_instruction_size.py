@@ -398,6 +398,38 @@ class AgainstRef(unittest.TestCase):
                       "(+11, past the 10-line band)", out)
         self.assertIn("more than 10 line(s) past its budget", err)
 
+    def test_an_introduced_byte_excess_within_the_band_warns_and_passes(self):
+        path = self.root / self.FLEET
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x" * 32000)
+        self.git("add", "-A")
+        self.git("commit", "-qm", "base")
+        base = self.git("rev-parse", "HEAD")
+
+        path.write_bytes(b"x" * 32800)
+        rc, out, err = self.run_main("--against", base)
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.section(out, "introduced bytes:"),
+                         [f"{self.FLEET}: 32800 bytes, budget 32000"])
+        self.assertIn(f"::warning file={self.FLEET}::{self.FLEET}: 32800 bytes, "
+                      "budget 32000 (+800, within the 800-byte band)", out)
+        self.assertIn("annotated, not failed", err)
+
+    def test_an_introduced_byte_excess_past_the_band_fails(self):
+        path = self.root / self.FLEET
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x" * 32000)
+        self.git("add", "-A")
+        self.git("commit", "-qm", "base")
+        base = self.git("rev-parse", "HEAD")
+
+        path.write_bytes(b"x" * 32801)
+        rc, out, err = self.run_main("--against", base)
+        self.assertEqual(rc, 1)
+        self.assertIn(f"::error file={self.FLEET}::{self.FLEET}: 32801 bytes, "
+                      "budget 32000 (+801, past the 800-byte band)", out)
+        self.assertIn("more than 800 byte(s) past its budget", err)
+
     def test_the_band_is_on_the_head_excess_not_this_change_s_delta(self):
         # An inherited +8 that grows by 3 crosses the wall at cap + band, so a
         # series of small additions cannot creep past it.
