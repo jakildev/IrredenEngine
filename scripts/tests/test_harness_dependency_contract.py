@@ -72,6 +72,7 @@ _NEVER_ELIGIBLE = frozenset({
 
 _POPULATION_GLOBS = ("scripts/*.py", "scripts/tests/*.py")
 _POPULATION_FILES = (
+    "scripts/fleet/fleet_codex_doctor.py",
     "scripts/fleet/lint_rules_commands.py",
     "scripts/perf/compare_perf_runs.py",
     "scripts/perf/repeat_profile.py",
@@ -107,10 +108,21 @@ def _imported_top_level_names(path: Path) -> set[str]:
     return names
 
 
+def _local_top_level_names(root: Path, files: list[Path]) -> set[str]:
+    """Top-level modules provided by the harness source population."""
+    scripts = root / "scripts"
+    names = {path.stem for path in files}
+    for path in files:
+        relative = path.relative_to(scripts)
+        if len(relative.parts) > 1:
+            names.add(relative.parts[0])
+    return names
+
+
 def derive_third_party(root: Path) -> dict[str, set[str]]:
     """Map repo-relative path -> third-party top-level modules it imports."""
     files = _population(root)
-    local = {p.stem for p in files}
+    local = _local_top_level_names(root, files)
     found: dict[str, set[str]] = {}
     for path in files:
         third = {n for n in _imported_top_level_names(path)
@@ -207,6 +219,11 @@ class HarnessDependencyContractTest(unittest.TestCase):
         self.assertIn("scripts/perf/sun_geometry_probe.py", population)
         self.assertIn("scripts/perf/sun_face_index_probe.py", population)
         self.assertNotIn("scripts/tests/test_sun_geometry_probe.py", derive_third_party(_REPO))
+
+    def test_fleet_display_helper_is_checked_as_local_source(self):
+        population = {p.relative_to(_REPO).as_posix() for p in _population(_REPO)}
+        self.assertIn("scripts/fleet/fleet_codex_doctor.py", population)
+        self.assertNotIn("scripts/verify_common.py", derive_third_party(_REPO))
 
     def test_gating_path_is_never_eligible(self):
         gating = _never_eligible(_REPO)
