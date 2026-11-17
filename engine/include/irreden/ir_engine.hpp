@@ -147,6 +147,12 @@ inline void init(const char *argv0, const char *configFileName = "config.lua") {
         windowModeOverride
     );
     g_world->setHandOffPlatform(detail::makeProcessHandOffPlatform());
+    // A capture run must never block on a modal panel, including one whose
+    // capture system has not armed yet.
+    g_world->setCaptureRunRequested(
+        args().wasProvided("--auto-screenshot") || args().wasProvided("--auto-record") ||
+        args().autoRecordRealTime()
+    );
     g_world->setupLuaBindings(g_luaBindingRegistrations);
 }
 
@@ -179,6 +185,17 @@ inline int entityCountOverride() {
 // thread in a child run launched through ir-run and resumes when it exits.
 inline HandOffResult handOff(const HandOffRequest &request) {
     return getWorld().handOff(request);
+}
+
+// The native open panel: one file, several files, or a folder, with a title,
+// a starting directory and extension filters. Modal: blocks the main thread
+// until the user answers, then returns the chosen absolute UTF-8 paths, or an
+// empty list with the reason in `status_` (cancelled, refused in a capture or
+// unattended run, unsupported host, failed). The Lua face is the opt-in
+// `IRDialog.open` (`LuaScript::bindLuaFileDialog`), which also grants the
+// picked paths to the confined Lua readers. docs/design/native-file-dialog.md.
+inline IRWindow::FileDialogResult openFileDialog(const IRWindow::FileDialogRequest &request) {
+    return getWorld().openFileDialog(request);
 }
 
 inline void setToolRoot(const std::filesystem::path &root) {

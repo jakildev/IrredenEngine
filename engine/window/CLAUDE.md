@@ -88,6 +88,32 @@ Minimized is deliberately not a mode: a minimized window reports a 0x0
 framebuffer on Windows, and `VideoManager::captureScreenshot` skips every
 shot. Fullscreen is ignored (with a log line) outside `normal`.
 
+## Native file dialog
+
+`file_dialog.hpp` is the host's "open" panel: one file, several, or a folder,
+with a title, a starting directory and extension filters. Creations call
+`IREngine::openFileDialog` (or Lua `IRDialog.open`), never the functions here
+directly; decisions and the containment grant are in
+[`docs/design/native-file-dialog.md`](../../docs/design/native-file-dialog.md).
+
+- `runFileDialog(request, host, panel)` is the whole path around the OS:
+  validate, refuse, call the injected panel, check what it returned. It
+  refuses in a capture run, outside `WindowMode::NORMAL` and off the main
+  thread, so a new gate goes here and gets a row in
+  `test/window/file_dialog_test.cpp`.
+- `platformOpenFileDialog` has one source per host, selected in
+  `CMakeLists.txt`: `file_dialog_cocoa.mm` (`NSOpenPanel` as a sheet on the
+  engine window), `file_dialog_win32.cpp` (`IFileOpenDialog`),
+  `file_dialog_linux.cpp` (`zenity`, else `UNSUPPORTED`). Only the macOS one
+  has been built and opened; the other two have never been compiled on their
+  host.
+- The panel is modal. GLFW releases every held key and button when the window
+  loses focus to it, which is what keeps input state sane afterwards; a panel
+  that does not take focus from the engine window would break that.
+- A host panel's argument building stays a pure function in
+  `file_dialog.cpp` (`detail::zenityArguments`, `detail::windowsFilterPattern`)
+  so every host's test run covers it.
+
 ## Framebuffer vs. window size
 
 Under HiDPI / scaling, the framebuffer is larger than the window. Use

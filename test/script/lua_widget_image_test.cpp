@@ -221,6 +221,32 @@ TEST_F(LuaWidgetImage, EscapingPathsRaiseWithoutADecode) {
     ) << "a refused path must leave the widget's image untouched";
 }
 
+TEST_F(LuaWidgetImage, AGrantedAbsolutePathLoadsAndUngrantedOnesStillRaise) {
+    const std::string outside = (m_tree.root_ / "outside.png").string();
+    m_lua.lua()["outside"] = outside;
+    m_lua.lua()["sibling"] = (m_tree.root_ / "base2" / "thumb.png").string();
+    EXPECT_NE(
+        error("IRGui.makeImage(0, 0, 1, 1, outside)").find("IRGui.makeImage"),
+        std::string::npos
+    );
+    EXPECT_TRUE(g_decodedPaths.empty());
+
+    ASSERT_TRUE(m_lua.pathGrants().grantFile(outside));
+    run(R"lua(
+        image = IRGui.makeImage(0, 0, 1, 1, outside)
+        errIsNil = IRGui.imageError(image) == nil
+    )lua");
+    EXPECT_TRUE(IREntity::getComponent<C_WidgetImage>(entity("image")).loaded_);
+    EXPECT_TRUE(m_lua.lua()["errIsNil"].get<bool>());
+    EXPECT_EQ(g_decodedPaths, std::vector<std::string>{outside});
+
+    EXPECT_NE(
+        error("IRGui.setImagePath(image, sibling)").find("IRGui.setImagePath"),
+        std::string::npos
+    ) << "a file grant covers nothing beside it";
+    EXPECT_EQ(fs::path(IREntity::getComponent<C_WidgetImage>(entity("image")).path_), outside);
+}
+
 TEST_F(LuaWidgetImage, InBaseSymlinkDecodesOnceWithTheResolvedPath) {
     if (!trySymlink(m_tree.base_ / "thumb.png", m_tree.base_ / "alias.png")) {
         GTEST_SKIP() << "this host cannot create symlinks";

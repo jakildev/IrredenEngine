@@ -1,4 +1,5 @@
 set(COMMON_SRC
+    src/file_dialog.cpp
     src/ir_glfw_window.cpp
     src/ir_window.cpp
 )
@@ -13,6 +14,21 @@ if(IR_isDarwin)
 else()
     list(APPEND COMMON_SRC src/ir_window_platform.cpp)
     set(IR_WINDOW_PLATFORM_LIBS "")
+endif()
+
+# The native open panel (file_dialog.hpp): NSOpenPanel, IFileOpenDialog, or the
+# desktop's zenity. One source per host; file_dialog.cpp is the shared half.
+if(IR_isDarwin)
+    list(APPEND COMMON_SRC src/file_dialog_cocoa.mm)
+    find_library(IR_WINDOW_UTI_LIB UniformTypeIdentifiers REQUIRED)
+    list(APPEND IR_WINDOW_PLATFORM_LIBS ${IR_WINDOW_UTI_LIB})
+elseif(IR_isWindows)
+    list(APPEND COMMON_SRC src/file_dialog_win32.cpp)
+    # ole32: COM; uuid: the dialog's CLSID / IID definitions; shell32:
+    # SHCreateItemFromParsingName.
+    list(APPEND IR_WINDOW_PLATFORM_LIBS ole32 uuid shell32)
+else()
+    list(APPEND COMMON_SRC src/file_dialog_linux.cpp)
 endif()
 
 # GLFW
@@ -42,6 +58,7 @@ target_compile_options(
 target_link_libraries(
     IrredenEngineWindow PUBLIC
     IrredenEngineProfile
+    IrredenEngineUtility
     IrredenEngineMath
     IrredenEngineEntity
     IrredenEngineSystem

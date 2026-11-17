@@ -1,5 +1,6 @@
 add_library(IrredenEngineScripting STATIC
     src/lua_script.cpp
+    src/path_grants.cpp
     src/prefab_api.cpp
     src/prefab_component_factory.cpp
     src/lua_bindings_prefab.cpp
