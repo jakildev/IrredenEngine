@@ -79,18 +79,34 @@ shared uint sharedRecordCounts[64];
 void main() {
     const uint lane = gl_LocalInvocationID.x;
     if (admission.x == 1) {
-        if (lane == 0u) {
-            uint total = 0u;
-            for (uint group = 0u; group < uint(admission.y); ++group) {
-                const uint count = admissionScratch[group];
-                admissionScratch[group] = total;
-                total += count;
+        // Every lane reaches every barrier: the round count is uniform.
+        const uint groups = uint(admission.y);
+        uint total = 0u;
+        for (uint roundBase = 0u; roundBase < groups; roundBase += 64u) {
+            const uint group = roundBase + lane;
+            const uint count = group < groups ? admissionScratch[group] : 0u;
+            sharedRecordCounts[lane] = count;
+            memoryBarrierShared();
+            barrier();
+            for (uint offset = 1u; offset < 64u; offset <<= 1u) {
+                const uint addend = lane >= offset ? sharedRecordCounts[lane - offset] : 0u;
+                memoryBarrierShared();
+                barrier();
+                sharedRecordCounts[lane] += addend;
+                memoryBarrierShared();
+                barrier();
             }
+            if (group < groups) admissionScratch[group] = total + sharedRecordCounts[lane] - count;
+            total += sharedRecordCounts[63];
+            memoryBarrierShared();
+            barrier();
+        }
+        if (lane == 0u) {
             const uint boundWords = uint(sunDepthBuf.length());
             const uint capacity = sourceFaceCapacity(boundWords);
             const uint base = atomicAdd(sunDepthBuf[sourceFaceHeaderIndex(boundWords)], total);
-            admissionScratch[uint(admission.y)] = base;
-            admissionScratch[uint(admission.y) + 1u] = total;
+            admissionScratch[groups] = base;
+            admissionScratch[groups + 1u] = total;
             if (total > 0u && (base >= capacity || total > capacity - base)) {
                 atomicExchange(sunDepthBuf[sourceFaceHierarchyNeededIndex(capacity)], 1u);
             }

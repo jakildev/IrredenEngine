@@ -2264,11 +2264,9 @@ void initSystems() {
                     IR_LOG_INFO("Auto-profile: {} frames collected, exiting", g_autoProfileFrames);
                     if (IREngine::args().getFlag("--sun-face-index-probe")) {
                         const std::string path = "sun-face-index-profile.csv";
-                        IR_LOG_INFO(
-                            "sun-face-index-probe: path={} written={}",
-                            path,
-                            IRPrefab::SunShadow::writeSourceFaceIndexProbe(path)
-                        );
+                        // IR_LOG_INFO compiles out in Release; the write must stay outside it.
+                        const bool written = IRPrefab::SunShadow::writeSourceFaceIndexProbe(path);
+                        IR_LOG_INFO("sun-face-index-probe: path={} written={}", path, written);
                     }
                     if (g_fogWorldPan || g_fogTeleport) {
                         logFogWorldPanTotals();
