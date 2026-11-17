@@ -17,6 +17,7 @@ DISPLAY_VALIDATORS = (
     "scripts/feeder-margin-verify.py", "scripts/gui-verify.py", "scripts/light-verify.py",
     "scripts/occlusion-fire-verify.py", "scripts/package-smoke.py", "scripts/pivot-verify.py",
     "scripts/render-continuous-zoom-metric.py", "scripts/render-verify.py",
+    "scripts/render-yaw-crossing-metric.py",
     "scripts/perf/grid_capacity_controls.py", "scripts/perf/repeat_profile.py",
     "scripts/perf/sdf_controls.py", "scripts/perf/sun_depth_slab_capture.py",
     "scripts/perf/sun_depth_slab_timing.py",

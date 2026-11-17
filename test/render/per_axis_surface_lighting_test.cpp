@@ -4,35 +4,56 @@
 #include <irreden/render/per_axis_surface_lighting.hpp>
 
 // The per-axis surface lighting switch lives on the C_PerAxisSurfaceLighting
-// singleton: off until set, readable back, and kept across a scene
-// transition like every singleton row. On a fog pipeline the same switch
-// admits the surface routes, and `surfaceFogRoute` decides whether the
-// composite fogs them or fog keeps lighting in compute.
+// singleton: unset until set, readable back, and kept across a scene
+// transition like every singleton row. Unset, it admits the surface routes
+// only on a pipeline without a fog pass; an explicit value applies to both.
+// On a fog pipeline `surfaceFogRoute` then decides whether the composite fogs
+// the surface routes or fog keeps lighting in compute.
 
 namespace {
+
+using IRComponents::C_PerAxisSurfaceLighting;
+using IRPrefab::PerAxisSurfaceLighting::enabledFor;
 
 class PerAxisSurfaceLightingTest : public testing::Test {
   protected:
     IREntity::EntityManager m_entity_manager;
 };
 
-TEST_F(PerAxisSurfaceLightingTest, OffUntilEnabledAndReadsBack) {
-    EXPECT_FALSE(IRPrefab::PerAxisSurfaceLighting::isEnabled());
-    ASSERT_NE(IREntity::singletonOrNull<IRComponents::C_PerAxisSurfaceLighting>(), nullptr);
-
-    IRPrefab::PerAxisSurfaceLighting::setEnabled(true);
+TEST_F(PerAxisSurfaceLightingTest, UnsetUntilSetAndReadsBack) {
+    // No system manager, so no fog pass is registered.
     EXPECT_TRUE(IRPrefab::PerAxisSurfaceLighting::isEnabled());
+    const C_PerAxisSurfaceLighting *lighting =
+        IREntity::singletonOrNull<C_PerAxisSurfaceLighting>();
+    ASSERT_NE(lighting, nullptr);
+    EXPECT_FALSE(lighting->enabled_.has_value());
 
     IRPrefab::PerAxisSurfaceLighting::setEnabled(false);
     EXPECT_FALSE(IRPrefab::PerAxisSurfaceLighting::isEnabled());
+
+    IRPrefab::PerAxisSurfaceLighting::setEnabled(true);
+    EXPECT_TRUE(IRPrefab::PerAxisSurfaceLighting::isEnabled());
 }
 
 TEST_F(PerAxisSurfaceLightingTest, SurvivesSceneTransition) {
-    IRPrefab::PerAxisSurfaceLighting::setEnabled(true);
+    IRPrefab::PerAxisSurfaceLighting::setEnabled(false);
 
     IREntity::resetGameplay();
 
-    EXPECT_TRUE(IRPrefab::PerAxisSurfaceLighting::isEnabled());
+    EXPECT_FALSE(IRPrefab::PerAxisSurfaceLighting::isEnabled());
+}
+
+TEST(PerAxisSurfaceLightingDefault, UnsetFollowsTheFogPass) {
+    const C_PerAxisSurfaceLighting unset{};
+    EXPECT_TRUE(enabledFor(unset, false));
+    EXPECT_FALSE(enabledFor(unset, true));
+}
+
+TEST(PerAxisSurfaceLightingDefault, ExplicitValueAppliesToEveryPipeline) {
+    for (bool fogPassRegistered : {false, true}) {
+        EXPECT_TRUE(enabledFor(C_PerAxisSurfaceLighting{true}, fogPassRegistered));
+        EXPECT_FALSE(enabledFor(C_PerAxisSurfaceLighting{false}, fogPassRegistered));
+    }
 }
 
 using IRComponents::C_CanvasFogOfWar;
@@ -64,10 +85,10 @@ TEST(SurfaceFogRoute, PipelineWithoutAFogPassRunsUnfogged) {
     EXPECT_EQ(surfaceFogRoute(false, &observers, true, true), SurfaceFogRoute::NONE);
 }
 
-TEST(SurfaceFogRoute, FogPipelineKeepsComputeUntilOptedIn) {
+TEST(SurfaceFogRoute, FogPipelineKeepsComputeWhileSwitchedOff) {
     const FrameDataFogObservers observers = observersWithSources(1);
     EXPECT_EQ(surfaceFogRoute(true, &observers, false, false), SurfaceFogRoute::FALLBACK);
-    // A main canvas without fog on a fog pipeline is still a default-off frame.
+    // A main canvas without fog on a fog pipeline still follows the switch.
     EXPECT_EQ(surfaceFogRoute(true, nullptr, false, false), SurfaceFogRoute::FALLBACK);
 }
 

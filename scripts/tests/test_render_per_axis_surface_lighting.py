@@ -175,7 +175,7 @@ bool overlay=false,depth=false;
 DebugOverlayMode getDebugOverlay(){return overlay?DebugOverlayMode::AO:DebugOverlayMode::NONE;}
 bool getDepthColorDebugMode(){return depth;}
 }
-struct C_PerAxisSurfaceLighting {bool enabled_;};
+struct C_PerAxisSurfaceLighting {std::optional<bool> enabled_;};
 struct C_TrixelCanvasRenderBehavior {bool useCameraPositionIso_;};
 namespace IREntity {
 C_TrixelCanvasRenderBehavior behavior;
@@ -216,8 +216,10 @@ ROUTING_CASES = r"""
 int main(){
     const char* values[]={nullptr,"","0","1","01","true","1 ","11"};
     for(const char* value:values){
-        const bool expected=value && std::strcmp(value,"1")==0;
-        if(enabledFromEnv(value)!=expected){std::fprintf(stderr,"explicit opt-in\n");return 1;}
+        const std::optional<bool> expected=
+            !value?std::nullopt:std::strcmp(value,"0")==0?std::optional<bool>(false):
+            std::strcmp(value,"1")==0?std::optional<bool>(true):std::nullopt;
+        if(enabledFromEnv(value)!=expected){std::fprintf(stderr,"explicit switch\n");return 1;}
     }
     int resource=1;
     for(bool glitch:{false,true})for(bool voxelPool:{false,true})
@@ -285,7 +287,9 @@ int main(){
         }
     }
     for(bool fog:{false,true})for(bool gated:{false,true})for(bool glitch:{false,true})
-    for(bool hasFog:{false,true})for(bool enabled:{false,true}) {
+    for(bool hasFog:{false,true})
+    for(std::optional<bool> enabled:{std::optional<bool>(),std::optional<bool>(false),
+                                     std::optional<bool>(true)}) {
         Axes axes{true}; Program program; Producer producer;
         producer.program_=&program;
         producer.perAxisCanvases_=&axes;
@@ -301,7 +305,8 @@ int main(){
         systems[FOG_TO_TRIXEL]=fog;glitchActive=glitch;
         ShadowProducer shadow;shadow.perAxisCanvases_=&axes;currentRouteProducer=&producer;
         shadow.begin();
-        const bool exact=enabled&&(!fog||!hasFog||(!gated&&!glitch));
+        // Unset admits the routes only without a fog pass.
+        const bool exact=enabled.value_or(!fog)&&(!fog||!hasFog||(!gated&&!glitch));
         if(shadow.dispatch(7)==exact){std::fprintf(stderr,"live fog fallback\n");return 9;}
         IREntity::surfaceLighting.enabled_=false;
         shadow.begin();
@@ -338,9 +343,13 @@ def routing_harness(variant):
         tick, r"if\s*\(\s*entity\s*==\s*perAxisCanvasEntity_\s*&&\s*perAxisCanvases_")
     consume = re.search(r"scatterLightingEnabled_\s*=\s*[^;]+;",
                         functions(consumer, "beginTick"))[0]
-    enabled = re.search(
-        r"if\s*\((surfaceLighting\s*!=\s*nullptr\s*&&\s*surfaceLighting\[0\][^{};]*)\)"
-        r"\s*\{\s*IRPrefab::PerAxisSurfaceLighting::setEnabled\(true\);", producer)[1]
+    recognised, requested = re.search(
+        r"if\s*\((surfaceLighting\s*!=\s*nullptr\s*&&[^{};]*)\)"
+        r"\s*\{\s*IRPrefab::PerAxisSurfaceLighting::setEnabled\(([^;]*)\);", producer).groups()
+    default = re.search(
+        r"std::optional<bool> enabled_(?:\{([^}]*)\})?;",
+        (ROOT / "engine/prefabs/irreden/render/components/"
+                "component_per_axis_surface_lighting.hpp").read_text())[1] or "std::nullopt"
     if variant == "stale-ready":
         reset = re.sub(r"perAxisSurfaceLightingReady_\s*=\s*false\s*;", "", reset)
     elif variant == "ready-before-tick":
@@ -352,8 +361,12 @@ def routing_harness(variant):
                       r"SurfaceFogRoute::FALLBACK\)", "if (false)", gate)
     elif variant == "relight-eligible":
         publish = re.sub(r"if\s*\(perAxisSurfaceLightingEligible_\)", "if (false)", publish)
-    elif variant == "presence-enables":
-        enabled = "surfaceLighting != nullptr"
+    elif variant == "presence-disables":
+        recognised, requested = "surfaceLighting != nullptr", "false"
+    elif variant == "default-off":
+        default = "false"
+    elif variant == "unset-ignores-fog-pass":
+        fog_route = fog_route.replace("value_or(!fogPassRegistered)", "value_or(true)")
     elif variant == "per-axis-glitch-gate":
         gate = gate.replace("perAxisSurfaceLightingEligible_ =",
                             "perAxisSurfaceLightingEligible_ = "
@@ -403,7 +416,9 @@ struct ShadowProducer {
             "const auto& behavior=IREntity::behavior;" + skip_detached + publish + "}\n};\n"
             "bool consume(const Producer* lighting_){bool scatterLightingEnabled_=false;"
             + consume + "return scatterLightingEnabled_;}\n" + shadow_adapter +
-            "bool enabledFromEnv(const char* surfaceLighting){return " + enabled + ";}\n"
+            "std::optional<bool> enabledFromEnv(const char* surfaceLighting){return ("
+            + recognised + ") ? std::optional<bool>(" + requested + ") : std::optional<bool>("
+            + default + ");}\n"
             + ROUTING_CASES)
 
 
@@ -584,7 +599,8 @@ class PerAxisSurfaceLightingTest(unittest.TestCase):
     def test_albedo_producer_consumer_readiness(self):
         original = routing_harness("production")
         for variant in ("production", "stale-ready", "ready-before-tick", "consumer-eligibility",
-                        "fog-accepted", "relight-eligible", "presence-enables",
+                        "fog-accepted", "relight-eligible", "presence-disables", "default-off",
+                        "unset-ignores-fog-pass",
                         "per-axis-glitch-gate", "per-axis-voxel-pool", "shadow-always-sampled",
                         "shadow-always-skipped", "shadow-missing-consumer", "shadow-stale-route"):
             with self.subTest(variant=variant), tempfile.TemporaryDirectory() as temporary:
