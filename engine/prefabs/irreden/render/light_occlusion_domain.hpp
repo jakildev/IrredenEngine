@@ -4,11 +4,13 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/render/ir_render_types.hpp>
+#include <irreden/render/light_volume_dispatch.hpp>
 
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_light_source.hpp>
 
+#include <array>
 #include <cstdint>
 
 namespace IRSystem::detail {
@@ -17,6 +19,7 @@ struct LocalLightFrame {
     int maxRadius_ = 0;
     int propagationIterations_ = IRRender::kLightVolumePropagateIterations;
     std::uint32_t eligible_ = 0;
+    IRRender::detail::LightVolumeRadiusMap radiusMap_{};
 };
 
 struct LocalLightSeed {
@@ -43,6 +46,12 @@ struct LightOcclusionDomain {
     }
 };
 
+inline int effectiveLightRadius(const IRComponents::C_LightSource &light) {
+    const int radius = static_cast<int>(light.radius_);
+    return radius > 0 ? IRMath::min(radius, IRRender::kLightVolumePropagateIterations)
+                      : IRRender::kLightVolumePropagateIterations;
+}
+
 inline bool
 lightNodeTargetsCanvas(const IREntity::ArchetypeNode *node, IREntity::EntityId currentCanvas) {
     const IREntity::EntityId parent =
@@ -52,6 +61,7 @@ lightNodeTargetsCanvas(const IREntity::ArchetypeNode *node, IREntity::EntityId c
 
 inline LocalLightFrame localLightFrame(IREntity::EntityId currentCanvas) {
     LocalLightFrame frame;
+    std::array<bool, IRRender::kLightVolumePropagateIterations + 1> activeRadii{};
     const auto include =
         IREntity::getArchetype<IRComponents::C_LightSource, IRComponents::C_WorldTransform>();
     for (auto *node : IREntity::queryArchetypeNodesSimple(include)) {
@@ -64,13 +74,16 @@ inline LocalLightFrame localLightFrame(IREntity::EntityId currentCanvas) {
                 continue;
             }
             ++frame.eligible_;
-            frame.maxRadius_ = IRMath::max(frame.maxRadius_, static_cast<int>(lights[i].radius_));
+            const int radius = effectiveLightRadius(lights[i]);
+            activeRadii[radius] = true;
+            frame.maxRadius_ = IRMath::max(frame.maxRadius_, radius);
         }
     }
     frame.maxRadius_ = IRMath::min(frame.maxRadius_, IRRender::kLightVolumePropagateIterations);
     if (frame.maxRadius_ > 0) {
         frame.propagationIterations_ = frame.maxRadius_;
     }
+    frame.radiusMap_ = IRRender::detail::lightVolumeRadiusMap(activeRadii);
     return frame;
 }
 

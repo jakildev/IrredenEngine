@@ -5,7 +5,11 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/render/ir_render_types.hpp>
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <span>
+#include <vector>
 
 namespace IRRender::detail {
 
@@ -14,6 +18,63 @@ inline constexpr IRMath::ivec3 kLightPropagationGroupSize{8, 8, 4};
 struct LightVolumeDispatch {
     IRMath::ivec3 origin_{0};
     IRMath::ivec3 groups_{0};
+};
+
+inline constexpr int kLightVolumeFrameIterationBudget = 4 * kLightVolumePropagateIterations;
+
+struct LightVolumeRadiusMap {
+    std::array<int, kLightVolumePropagateIterations + 1> classForRadius_{};
+    int classCount_ = 0;
+    int totalIterations_ = 0;
+};
+
+inline LightVolumeRadiusMap
+lightVolumeRadiusMap(const std::array<bool, kLightVolumePropagateIterations + 1> &activeRadii) {
+    LightVolumeRadiusMap result;
+    std::array<int, kLightVolumePropagateIterations> classes{};
+    int classCount = 0;
+    for (int radius = kLightVolumePropagateIterations; radius >= 1; --radius) {
+        if (activeRadii[radius]) {
+            classes[classCount++] = radius;
+            result.classForRadius_[radius] = radius;
+            result.totalIterations_ += radius;
+        }
+    }
+
+    while (result.totalIterations_ > kLightVolumeFrameIterationBudget) {
+        IR_ASSERT(classCount >= 2, "An over-budget light schedule requires two radius classes");
+        int mergeIndex = 0;
+        int smallestDifference = classes[0] - classes[1];
+        for (int i = 1; i + 1 < classCount; ++i) {
+            const int difference = classes[i] - classes[i + 1];
+            if (difference < smallestDifference) {
+                mergeIndex = i;
+                smallestDifference = difference;
+            }
+        }
+        const int wider = classes[mergeIndex];
+        const int narrower = classes[mergeIndex + 1];
+        for (int radius = 1; radius <= kLightVolumePropagateIterations; ++radius) {
+            if (result.classForRadius_[radius] == narrower) {
+                result.classForRadius_[radius] = wider;
+            }
+        }
+        result.totalIterations_ -= narrower;
+        for (int i = mergeIndex + 1; i + 1 < classCount; ++i) {
+            classes[i] = classes[i + 1];
+        }
+        --classCount;
+    }
+    result.classCount_ = classCount;
+    return result;
+}
+
+struct LightVolumePropagationPass {
+    std::uint32_t lightOffset_ = 0;
+    std::uint32_t lightCount_ = 0;
+    int iterations_ = 0;
+    float stepFalloff_ = 0.0f;
+    LightVolumeDispatch dispatch_{};
 };
 
 inline LightVolumeDispatch lightVolumePropagationDispatch(
@@ -54,6 +115,88 @@ inline LightVolumeDispatch lightVolumePropagationDispatch(
         dispatch.groups_[axis] = IRMath::divCeil(upper[axis] - dispatch.origin_[axis], groupSize);
     }
     return dispatch;
+}
+
+inline void lightVolumePropagationSchedule(
+    std::vector<GPULightSource> &lights,
+    IRMath::ivec3 worldOriginVoxel,
+    std::vector<GPULightSource> &scratch,
+    std::vector<LightVolumePropagationPass> &passes
+) {
+    passes.clear();
+    if (lights.empty()) {
+        return;
+    }
+
+    std::array<bool, kLightVolumePropagateIterations + 1> activeRadii{};
+    for (const auto &light : lights) {
+        const int radius = static_cast<int>(light.directionAndRadius_.w);
+        IR_ASSERT(
+            radius >= 1 && radius <= kLightVolumePropagateIterations,
+            "Staged light radius must be inside the propagation cap"
+        );
+        activeRadii[radius] = true;
+    }
+    const LightVolumeRadiusMap radiusMap = lightVolumeRadiusMap(activeRadii);
+    for (auto &light : lights) {
+        const int radius = static_cast<int>(light.directionAndRadius_.w);
+        const int classRadius = radiusMap.classForRadius_[radius];
+        if (classRadius == radius) {
+            continue;
+        }
+        const IRMath::ivec3 seed = IRMath::ivec3(light.originAndType_);
+        const IRMath::ivec3 apex = IRMath::ivec3(light.trueOriginVoxel_);
+        const IRMath::ivec3 delta = seed - apex;
+        const int boundaryDistance =
+            IRMath::abs(delta.x) + IRMath::abs(delta.y) + IRMath::abs(delta.z);
+        light.directionAndRadius_.w = static_cast<float>(classRadius);
+        light.coneAndSeedAlpha_.y =
+            1.0f - static_cast<float>(boundaryDistance) / static_cast<float>(classRadius);
+    }
+
+    std::array<std::uint32_t, kLightVolumePropagateIterations + 1> counts{};
+    int maxRadius = 0;
+    for (const auto &light : lights) {
+        const int radius = static_cast<int>(light.directionAndRadius_.w);
+        IR_ASSERT(
+            radius >= 1 && radius <= kLightVolumePropagateIterations,
+            "Staged light class radius must be inside the propagation cap"
+        );
+        ++counts[radius];
+        maxRadius = IRMath::max(maxRadius, radius);
+    }
+
+    int classCount = 0;
+    for (int radius = maxRadius; radius >= 1; --radius) {
+        classCount += counts[radius] > 0 ? 1 : 0;
+    }
+    const int dispatchReach = maxRadius + (classCount > 1 ? 1 : 0);
+    const LightVolumeDispatch dispatch =
+        lightVolumePropagationDispatch(lights, worldOriginVoxel, dispatchReach);
+
+    scratch.resize(lights.size());
+    std::array<std::size_t, kLightVolumePropagateIterations + 1> next{};
+    std::size_t offset = 0;
+    for (int radius = maxRadius; radius >= 1; --radius) {
+        next[radius] = offset;
+        offset += counts[radius];
+    }
+    for (const auto &light : lights) {
+        const int radius = static_cast<int>(light.directionAndRadius_.w);
+        scratch[next[radius]++] = light;
+    }
+    lights.swap(scratch);
+
+    std::uint32_t lightOffset = 0;
+    for (int radius = maxRadius; radius >= 1; --radius) {
+        if (counts[radius] == 0) {
+            continue;
+        }
+        passes.push_back(
+            {lightOffset, counts[radius], radius, 1.0f / static_cast<float>(radius), dispatch}
+        );
+        lightOffset += counts[radius];
+    }
 }
 
 } // namespace IRRender::detail

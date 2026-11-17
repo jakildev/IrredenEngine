@@ -151,7 +151,7 @@ TEST_F(LightVolumeBoundarySeedTest, FreeClampedCellIsByteIdenticalToToday) {
     ASSERT_EQ(withView.count_, 1u);
     ASSERT_EQ(withoutView.count_, 1u);
     EXPECT_EQ(seedCell(withView.out_[0]), ivec3(kWindowMax, 0, 0));
-    // boundaryDist 7, reach 32 (the light's own radius) -> alpha 1 - 7/32.
+    // boundaryDist 7, reach 32 -> alpha 1 - 7/32.
     EXPECT_NEAR(withView.out_[0].coneAndSeedAlpha_.y, 1.0f - 7.0f / 32.0f, 1e-5f);
     ASSERT_EQ(withView.states_.size(), 1u);
     EXPECT_EQ(withView.states_[0].state_, IRSystem::LightGatherState::BOUNDARY_DISCOUNTED);
@@ -163,6 +163,50 @@ TEST_F(LightVolumeBoundarySeedTest, FreeClampedCellIsByteIdenticalToToday) {
         ),
         0
     );
+}
+
+TEST_F(LightVolumeBoundarySeedTest, MixedRadiiUseEachLightsOwnBoundaryDiscount) {
+    const IREntity::EntityId canvas = IREntity::createEntity();
+    makeLight(vec3(70.0f, 0.0f, 0.0f), 8);
+    makeLight(vec3(-70.0f, 0.0f, 0.0f), 32);
+
+    const GatherResult result = gather(canvas, nullptr);
+
+    ASSERT_EQ(result.count_, 2u);
+    for (const IRRender::GPULightSource &light : result.out_) {
+        const int radius = static_cast<int>(light.directionAndRadius_.w);
+        if (radius == 8) {
+            EXPECT_EQ(seedCell(light), ivec3(kWindowMax, 0, 0));
+            EXPECT_NEAR(light.coneAndSeedAlpha_.y, 1.0f - 7.0f / 8.0f, 1e-5f);
+        } else {
+            ASSERT_EQ(radius, 32);
+            EXPECT_EQ(seedCell(light), ivec3(-IRComponents::kLightVolumeHalfExtent, 0, 0));
+            EXPECT_NEAR(light.coneAndSeedAlpha_.y, 1.0f - 6.0f / 32.0f, 1e-5f);
+        }
+    }
+}
+
+TEST_F(LightVolumeBoundarySeedTest, BudgetMergedLightUsesItsClassRadiusForBoundaryDiscount) {
+    const IREntity::EntityId canvas = IREntity::createEntity();
+    makeLight(vec3(0.0f), 32);
+    makeLight(vec3(70.0f, 0.0f, 0.0f), 31);
+    makeLight(vec3(0.0f, 10.0f, 0.0f), 30);
+    makeLight(vec3(0.0f, 20.0f, 0.0f), 29);
+    makeLight(vec3(0.0f, 30.0f, 0.0f), 28);
+
+    const GatherResult result = gather(canvas, nullptr);
+
+    ASSERT_EQ(result.count_, 5u);
+    bool foundMergedBoundaryLight = false;
+    for (const IRRender::GPULightSource &light : result.out_) {
+        if (seedCell(light) != ivec3(kWindowMax, 0, 0)) {
+            continue;
+        }
+        foundMergedBoundaryLight = true;
+        EXPECT_EQ(light.directionAndRadius_.w, 32.0f);
+        EXPECT_NEAR(light.coneAndSeedAlpha_.y, 1.0f - 7.0f / 32.0f, 1e-5f);
+    }
+    EXPECT_TRUE(foundMergedBoundaryLight);
 }
 
 TEST_F(LightVolumeBoundarySeedTest, OccludedClampRelocatesToNearestFaceCell) {
@@ -284,20 +328,21 @@ TEST_F(LightVolumeBoundarySeedTest, DeterministicTieBreak) {
     }
 }
 
-// The search bound is the light's own remaining residual, not a constant: a
+// The search bound is the light's radius-class remaining residual, not a constant: a
 // cell farther than that would seed at alpha <= 0 and be dropped by the
 // propagate anyway. radius 8 with boundaryDist 7 leaves maxDist 0, so an
 // occluded clamp has nowhere legal to go.
 TEST_F(LightVolumeBoundarySeedTest, SearchStopsAtRemainingReach) {
     const IREntity::EntityId canvas = IREntity::createEntity();
     makeSpotLight(vec3(70.0f, 0.0f, 0.0f), 8);
+    makeLight(vec3(0.0f), 32);
     occludeVoxel(kWindowMax, 0, 0);
 
     const IRSystem::detail::LightOcclusionGridView occlusion = view();
     const GatherResult result = gather(canvas, &occlusion);
 
-    EXPECT_EQ(result.count_, 0u);
-    ASSERT_EQ(result.states_.size(), 1u);
+    EXPECT_EQ(result.count_, 1u);
+    ASSERT_EQ(result.states_.size(), 2u);
     EXPECT_EQ(result.states_[0].state_, IRSystem::LightGatherState::SKIPPED_OCCLUDED);
     // A skipped spot must not arm the consumer's winning-light-ID read.
     EXPECT_FALSE(result.hasSpot_);

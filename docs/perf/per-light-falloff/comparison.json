@@ -1,0 +1,98 @@
+{
+  "refs": {
+    "base": "345dbbf251fe",
+    "head": "83d312a7ea17"
+  },
+  "environment": {
+    "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "power": "AC Power",
+    "quiet": "guarded",
+    "backend": "Metal",
+    "frames_per_arm": 300,
+    "base_binary_sha256": "36a3c0ba7c20a604b130e3f38f33373e5ed35bcd0f7a01fd2dcc109524c573a2",
+    "head_binary_sha256": "db472a3dceb1b28b23aa8d56cad1c78d7997395ee1808a6fb2832a1a24aad435"
+  },
+  "grading": {
+    "rule": "identity rule (i)",
+    "ratio_limit": 1.05,
+    "absolute_floor_ms": 0.01,
+    "retained_pair_ids": [1, 2, 3, 5, 6],
+    "excluded": "Pair 4 was replaced in full before grading because its head had an isolated 42.28 ms frame p99 while its GPU rows remained flat."
+  },
+  "rows": [
+    {
+      "metric": "frame avg",
+      "base_ms": 28.904,
+      "head_ms": 28.884,
+      "ratio": 0.9993080542485466,
+      "pass": true,
+      "base_runs": [29.02, 28.87, 28.82, 28.99, 28.82],
+      "head_runs": [28.9, 28.85, 28.93, 28.91, 28.83]
+    },
+    {
+      "metric": "frame p95",
+      "base_ms": 29.052,
+      "head_ms": 28.94,
+      "ratio": 0.9961448437284868,
+      "pass": true,
+      "base_runs": [29.33, 28.86, 28.86, 29.23, 28.98],
+      "head_runs": [28.98, 28.92, 28.93, 29.0, 28.87]
+    },
+    {
+      "metric": "frame p99",
+      "base_ms": 29.606,
+      "head_ms": 30.18,
+      "ratio": 1.019387961899615,
+      "pass": true,
+      "base_runs": [29.85, 29.44, 29.42, 29.77, 29.55],
+      "head_runs": [29.72, 29.77, 32.73, 29.38, 29.3]
+    },
+    {
+      "metric": "steady frame avg",
+      "base_ms": 27.932,
+      "head_ms": 27.894,
+      "ratio": 0.9986395532006301,
+      "pass": true,
+      "base_runs": [28.07, 27.84, 27.86, 28.02, 27.87],
+      "head_runs": [27.93, 27.89, 27.91, 27.88, 27.86]
+    },
+    {
+      "metric": "steady frame p95",
+      "base_ms": 29.022,
+      "head_ms": 28.9,
+      "ratio": 0.9957962924677829,
+      "pass": true,
+      "base_runs": [29.3, 28.79, 28.86, 29.19, 28.97],
+      "head_runs": [28.95, 28.95, 28.9, 28.85, 28.85]
+    },
+    {
+      "metric": "steady frame p99",
+      "base_ms": 29.3,
+      "head_ms": 29.132,
+      "ratio": 0.9942662116040955,
+      "pass": true,
+      "base_runs": [29.69, 28.89, 29.04, 29.63, 29.25],
+      "head_runs": [29.12, 29.29, 29.14, 29.11, 29.0]
+    },
+    {
+      "metric": "GPU computeLightVolume",
+      "base_ms": 0.333,
+      "head_ms": 0.3306,
+      "ratio": 0.9927927927927928,
+      "delta_ms": -0.0024,
+      "pass": true,
+      "base_runs": [0.338, 0.335, 0.334, 0.327, 0.331],
+      "head_runs": [0.328, 0.33, 0.331, 0.328, 0.336]
+    }
+  ],
+  "mixed_radius_fixture": {
+    "target": "IRLightingPerLightFalloff",
+    "frames": 300,
+    "result": "CLEAN",
+    "quiet": "guarded",
+    "frame_avg_ms": 8.57,
+    "steady_frame_avg_ms": 8.48,
+    "compute_light_volume_exclusive_ms": 3.461,
+    "compute_light_volume_samples": 299
+  }
+}

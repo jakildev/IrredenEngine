@@ -39,7 +39,7 @@ bool greaterThanEqual(ivec3 a,ivec3 b){return a>=b;}
 bool lessThan(ivec3 a,ivec3 b){return a<b;}
 int roundHalfUp(float a){return int(std::floor(a+.5f));}
 constexpr float kLightVolumeHalfExtent=64,kLightVolumeSize=128;
-constexpr int kLightTypeSpot=3;
+constexpr int kLightTypeSpot=3,kLightVolumeFlagHasSpot=1;
 struct Light {struct {int w;} originAndType;};
 Light lights[2]{{{1}},{{3}}};
 vec3 expectedPosition{0},expectedCoord{0};ivec3 expectedCell{0};
@@ -106,7 +106,8 @@ class SurfaceLightVolumeTest(unittest.TestCase):
                 "lost_origin": body.replace("position - vec3(volumeOrigin.xyz())", "position"),
                 "lost_half_cell": body.replace("+ vec3(0.5)", ""),
                 "ignored_strength": body.replace("* sampleValue.a", "* 1.0"),
-                "ignored_spot_gate": body.replace("volumeOrigin.w != 0", "true"),
+                "ignored_spot_gate": body.replace(
+                    "(volumeOrigin.w & kLightVolumeFlagHasSpot) != 0", "true"),
                 "wrong_spot_position": body.replace(
                     "spotConeFactor(winner - 1, position)",
                     "spotConeFactor(winner - 1, localPosition)"),

@@ -17,6 +17,7 @@
 // with no display / no GPU), so the always-run CPU suite stays green there.
 
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <stdexcept>
 
 #if defined(IR_GRAPHICS_OPENGL)
@@ -642,6 +643,7 @@ TEST_F(MetalGpuComputeDispatchTest, BoundedLightVolumeMatchesFullVolumeAfterEver
         ivec3 cell_;
         vec3 color_;
         float alpha_;
+        float radius_ = 32.0f;
     };
     struct Frame {
         const char *name_;
@@ -733,11 +735,13 @@ TEST_F(MetalGpuComputeDispatchTest, BoundedLightVolumeMatchesFullVolumeAfterEver
             light.trueOriginVoxel_ = vec4(vec3(world), 0.0f);
             light.colorAndIntensity_ = vec4(input.color_, 1.0f);
             light.coneAndSeedAlpha_ = vec4(0, input.alpha_, 0, 0);
+            light.directionAndRadius_.w = input.radius_;
             lights.push_back(light);
         }
         LightVolumeParams params{};
         params.lightCount_ = static_cast<int>(lights.size());
-        params.worldOriginVoxel_ = ivec4(frame.origin_, frame.carryId_ ? 1 : 0);
+        const int flags = frame.carryId_ ? kLightVolumeFlagHasSpot : 0;
+        params.worldOriginVoxel_ = ivec4(frame.origin_, flags);
         params.stepFalloff_ = frame.iterations_ > 0 ? 1.0f / frame.iterations_ : 1.0f;
         params.propagationOrigin_ = ivec4(0);
         parameters.subData(0, sizeof(params), &params);
@@ -876,6 +880,223 @@ TEST_F(MetalGpuComputeDispatchTest, BoundedLightVolumeMatchesFullVolumeAfterEver
             EXPECT_EQ(bounded.groups_, ivec3(0));
         }
     }
+    setActiveMetalPipeline(nullptr);
+}
+
+TEST_F(
+    MetalGpuComputeDispatchTest,
+    BoundedLightVolumeMixedRadiusSchedulePreservesOverlapAfterEveryIteration
+) {
+    using namespace IRRender;
+    using namespace IRMath;
+
+    constexpr int size = 128;
+    constexpr int halfExtent = size / 2;
+    constexpr std::size_t byteCount = std::size_t(size) * size * size * 4;
+    constexpr int occlusionSize = 256;
+    constexpr std::size_t bitfieldWords =
+        std::size_t(occlusionSize) * occlusionSize * occlusionSize / 32;
+    const auto program = [](const char *filename) {
+        const std::string path = std::string(IR_TEST_RENDER_SHADER_DIR) + "/" + filename;
+        return ShaderProgram{std::vector{ShaderStage{path.c_str(), ShaderType::COMPUTE}}};
+    };
+    auto clear = program("c_clear_light_volume.glsl");
+    auto seed = program("c_seed_light_volume.glsl");
+    auto propagate = program("c_propagate_light_volume.glsl");
+
+    std::vector<Texture3D> textures;
+    textures.reserve(8);
+    for (int i = 0; i < 8; ++i) {
+        textures.emplace_back(TextureKind::TEXTURE_3D, size, size, size, TextureFormat::RGBA8);
+    }
+    Buffer parameters{nullptr, sizeof(LightVolumeParams), BUFFER_STORAGE_DYNAMIC};
+    Buffer sources{nullptr, 4 * sizeof(GPULightSource), BUFFER_STORAGE_DYNAMIC};
+    Buffer occlusion{
+        nullptr,
+        (4 + 2 * bitfieldWords) * sizeof(std::uint32_t),
+        BUFFER_STORAGE_DYNAMIC
+    };
+    const std::vector<std::uint8_t> zero(byteCount, 0);
+    const auto read = [&](int index) {
+        textures[index].bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        auto *native = boundMetalImageTexture(0);
+        std::vector<std::uint8_t> bytes(byteCount);
+        native->getBytes(
+            bytes.data(),
+            size * 4,
+            size * size * 4,
+            MTL::Region(0, 0, 0, size, size, size),
+            0,
+            0
+        );
+        return bytes;
+    };
+    const auto makeLight = [&](ivec3 cell, int radius, vec3 color) {
+        GPULightSource light{};
+        const ivec3 world = cell - ivec3(halfExtent);
+        light.originAndType_ = vec4(vec3(world), 0.0f);
+        light.trueOriginVoxel_ = light.originAndType_;
+        light.colorAndIntensity_ = vec4(color, 1.0f);
+        light.directionAndRadius_.w = static_cast<float>(radius);
+        light.coneAndSeedAlpha_.y = 1.0f;
+        return light;
+    };
+    const auto clearTextures = [&]() {
+        clear.use();
+        for (int arm : {0, 4}) {
+            for (int ping = 0; ping < 2; ++ping) {
+                textures[arm + ping]
+                    .bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                textures[arm + 2 + ping]
+                    .bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                device_->dispatchCompute(size / 8, size / 8, size / 8);
+            }
+        }
+        device_->finish();
+        for (int index = 0; index < 8; ++index) {
+            ASSERT_EQ(read(index), zero);
+        }
+    };
+    const auto uploadOcclusion = [&](bool wall) {
+        std::vector<std::uint32_t> words(4 + 2 * bitfieldWords, 0u);
+        if (wall) {
+            for (int z = 48; z <= 80; ++z) {
+                for (int y = 48; y <= 80; ++y) {
+                    const ivec3 cell(58, y, z);
+                    const ivec3 grid = cell - ivec3(halfExtent) + ivec3(occlusionSize / 2);
+                    const std::size_t flat =
+                        (std::size_t(grid.z) * occlusionSize + grid.y) * occlusionSize + grid.x;
+                    words[4 + flat / 32] |= 1u << (flat % 32);
+                }
+            }
+        }
+        occlusion.subData(0, words.size() * sizeof(std::uint32_t), words.data());
+        occlusion.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_LightOcclusionGrid);
+    };
+
+    const auto run = [&](std::vector<GPULightSource> lights,
+                         bool wall,
+                         bool narrowestFirst,
+                         bool compareEveryIteration) {
+        clearTextures();
+        uploadOcclusion(wall);
+        std::vector<GPULightSource> scratch;
+        std::vector<IRRender::detail::LightVolumePropagationPass> passes;
+        IRRender::detail::lightVolumePropagationSchedule(lights, ivec3(0), scratch, passes);
+        if (narrowestFirst) {
+            std::reverse(passes.begin(), passes.end());
+        }
+        sources.subData(0, lights.size() * sizeof(GPULightSource), lights.data());
+        sources.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_LightSourceBuffer);
+        int readPing = 0;
+        for (const auto &pass : passes) {
+            LightVolumeParams params{};
+            params.lightCount_ = static_cast<int>(pass.lightCount_);
+            params.stepFalloff_ = pass.stepFalloff_;
+            params.worldOriginVoxel_ = ivec4(0);
+            params.propagationOrigin_ =
+                ivec4(pass.dispatch_.origin_, static_cast<int>(pass.lightOffset_));
+            parameters.subData(0, sizeof(params), &params);
+            parameters.bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
+            seed.use();
+            for (int arm : {0, 4}) {
+                textures[arm + readPing]
+                    .bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+                textures[arm + 2 + readPing]
+                    .bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+                device_->dispatchCompute(IRMath::divCeil(pass.lightCount_, 64u), 1, 1);
+            }
+            device_->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+
+            for (int iteration = 0; iteration < pass.iterations_; ++iteration) {
+                for (int arm : {0, 4}) {
+                    params.propagationOrigin_ =
+                        arm == 0
+                            ? ivec4(0, 0, 0, static_cast<int>(pass.lightOffset_))
+                            : ivec4(pass.dispatch_.origin_, static_cast<int>(pass.lightOffset_));
+                    parameters.subData(0, sizeof(params), &params);
+                    parameters.bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
+                    textures[arm + readPing]
+                        .bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                    textures[arm + 1 - readPing]
+                        .bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                    textures[arm + 2 + readPing]
+                        .bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                    textures[arm + 3 - readPing]
+                        .bindAsImage(3, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                    propagate.use();
+                    const ivec3 groups =
+                        arm == 0 ? ivec3(size / 8, size / 8, size / 4) : pass.dispatch_.groups_;
+                    device_->dispatchCompute(groups.x, groups.y, groups.z);
+                    device_->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+                }
+                readPing = 1 - readPing;
+                if (compareEveryIteration) {
+                    device_->finish();
+                    EXPECT_EQ(read(readPing), read(4 + readPing));
+                }
+            }
+        }
+        device_->finish();
+        const auto full = read(readPing);
+        const auto bounded = read(4 + readPing);
+        EXPECT_EQ(full, bounded);
+        return bounded;
+    };
+
+    const auto checkMaxField = [&](const std::vector<std::uint8_t> &wide,
+                                   const std::vector<std::uint8_t> &narrow,
+                                   const std::vector<std::uint8_t> &both,
+                                   int brighterTolerance) {
+        int mismatches = 0;
+        for (std::size_t offset = 0; offset < byteCount; offset += 4) {
+            const std::uint8_t expectedAlpha = IRMath::max(wide[offset + 3], narrow[offset + 3]);
+            if (both[offset + 3] < expectedAlpha ||
+                both[offset + 3] > expectedAlpha + brighterTolerance) {
+                ++mismatches;
+                continue;
+            }
+            if (wide[offset + 3] == narrow[offset + 3] || both[offset + 3] != expectedAlpha) {
+                continue;
+            }
+            const auto &winner = wide[offset + 3] > narrow[offset + 3] ? wide : narrow;
+            for (int channel = 0; channel < 3; ++channel) {
+                mismatches += both[offset + channel] != winner[offset + channel] ? 1 : 0;
+            }
+        }
+        EXPECT_EQ(mismatches, 0);
+    };
+
+    const GPULightSource wide = makeLight(ivec3(48, 64, 64), 32, vec3(1, 0, 0));
+    const GPULightSource lamp = makeLight(ivec3(64, 64, 64), 8, vec3(0, 1, 0));
+    std::vector<std::uint8_t> overlapReference;
+    for (bool wall : {false, true}) {
+        SCOPED_TRACE(wall ? "wall" : "open");
+        const auto wideOnly = run({wide}, wall, false, false);
+        const auto lampOnly = run({lamp}, wall, false, false);
+        const auto both = run({wide, lamp}, wall, false, false);
+        checkMaxField(wideOnly, lampOnly, both, 0);
+        if (!wall) {
+            overlapReference = both;
+        }
+    }
+    const auto narrowestFirst = run({wide, lamp}, false, true, false);
+    int narrowestFirstDifferences = 0;
+    for (std::size_t offset = 0; offset < byteCount; offset += 4) {
+        narrowestFirstDifferences +=
+            std::memcmp(narrowestFirst.data() + offset, overlapReference.data() + offset, 4) != 0
+                ? 1
+                : 0;
+    }
+    EXPECT_GT(narrowestFirstDifferences, 0);
+    RecordProperty("narrowest_first_differing_cells", narrowestFirstDifferences);
+
+    const GPULightSource radius30 = makeLight(ivec3(62, 64, 64), 30, vec3(1, 0, 0));
+    const GPULightSource radius29 = makeLight(ivec3(65, 64, 64), 29, vec3(0, 0, 1));
+    const auto radius30Only = run({radius30}, false, false, false);
+    const auto radius29Only = run({radius29}, false, false, false);
+    const auto residualPair = run({radius30, radius29}, false, false, true);
+    checkMaxField(radius30Only, radius29Only, residualPair, 6);
     setActiveMetalPipeline(nullptr);
 }
 
@@ -1692,7 +1913,6 @@ TEST(GpuComputeDispatchTest, SkippedOnUnsupportedBackend) {
 #if defined(IR_GRAPHICS_OPENGL) || defined(IR_GRAPHICS_METAL)
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
-#include <algorithm>
 #include <array>
 #include <cstring>
 #include <memory>

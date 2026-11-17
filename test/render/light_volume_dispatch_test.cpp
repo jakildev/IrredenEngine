@@ -5,6 +5,7 @@
 #include <array>
 #include <span>
 #include <stdexcept>
+#include <vector>
 
 namespace {
 
@@ -13,6 +14,8 @@ using IRMath::vec3;
 using IRMath::vec4;
 using IRRender::GPULightSource;
 using IRRender::detail::lightVolumePropagationDispatch;
+using IRRender::detail::lightVolumePropagationSchedule;
+using IRRender::detail::lightVolumeRadiusMap;
 
 GPULightSource stagedSeed(ivec3 cell, ivec3 volumeOrigin = ivec3(0)) {
     GPULightSource light{};
@@ -81,6 +84,99 @@ TEST(LightVolumeDispatchTest, SeparatedCornerSeedsCoverTheFullDomain) {
         EXPECT_EQ(dispatch.origin_, ivec3(0));
         EXPECT_EQ(dispatch.groups_, ivec3(16, 16, 32));
     }
+}
+
+TEST(LightVolumeDispatchTest, MixedRadiiKeepTheMaxIterationSuperset) {
+    std::array lights{stagedSeed(ivec3(24, 64, 64)), stagedSeed(ivec3(72, 64, 64))};
+    lights[0].directionAndRadius_.w = 8.0f;
+    lights[1].directionAndRadius_.w = 32.0f;
+
+    const auto dispatch = lightVolumePropagationDispatch(lights, ivec3(0), 32);
+    const ivec3 end = dispatch.origin_ + dispatch.groups_ * ivec3(8, 8, 4);
+    EXPECT_LE(dispatch.origin_.x, 0);
+    EXPECT_GE(end.x, 105);
+    EXPECT_LE(dispatch.origin_.y, 32);
+    EXPECT_GE(end.y, 97);
+}
+
+TEST(LightVolumeDispatchTest, RadiusClassesRunWidestFirst) {
+    std::vector<GPULightSource> lights{
+        stagedSeed(ivec3(30)),
+        stagedSeed(ivec3(60)),
+        stagedSeed(ivec3(90))
+    };
+    lights[0].directionAndRadius_.w = 8.0f;
+    lights[1].directionAndRadius_.w = 32.0f;
+    lights[2].directionAndRadius_.w = 16.0f;
+    std::vector<GPULightSource> scratch;
+    std::vector<IRRender::detail::LightVolumePropagationPass> passes;
+
+    lightVolumePropagationSchedule(lights, ivec3(0), scratch, passes);
+
+    ASSERT_EQ(passes.size(), 3u);
+    EXPECT_EQ(passes[0].iterations_, 32);
+    EXPECT_EQ(passes[1].iterations_, 16);
+    EXPECT_EQ(passes[2].iterations_, 8);
+    EXPECT_EQ(lights[0].directionAndRadius_.w, 32.0f);
+    EXPECT_EQ(lights[1].directionAndRadius_.w, 16.0f);
+    EXPECT_EQ(lights[2].directionAndRadius_.w, 8.0f);
+}
+
+TEST(LightVolumeDispatchTest, SingleClassKeepsOnePassAndTheExistingBox) {
+    std::vector<GPULightSource> lights{stagedSeed(ivec3(31)), stagedSeed(ivec3(80))};
+    for (auto &light : lights) {
+        light.directionAndRadius_.w = 24.0f;
+    }
+    const auto existing = lightVolumePropagationDispatch(lights, ivec3(0), 24);
+    std::vector<GPULightSource> scratch;
+    std::vector<IRRender::detail::LightVolumePropagationPass> passes;
+
+    lightVolumePropagationSchedule(lights, ivec3(0), scratch, passes);
+
+    ASSERT_EQ(passes.size(), 1u);
+    EXPECT_EQ(passes[0].lightOffset_, 0u);
+    EXPECT_EQ(passes[0].lightCount_, 2u);
+    EXPECT_EQ(passes[0].iterations_, 24);
+    EXPECT_FLOAT_EQ(passes[0].stepFalloff_, 1.0f / 24.0f);
+    EXPECT_EQ(passes[0].dispatch_.origin_, existing.origin_);
+    EXPECT_EQ(passes[0].dispatch_.groups_, existing.groups_);
+}
+
+TEST(LightVolumeDispatchTest, BudgetMergesTheWidestTiedAdjacentPair) {
+    std::array<bool, IRRender::kLightVolumePropagateIterations + 1> active{};
+    for (int radius : {32, 31, 30, 29, 28}) {
+        active[radius] = true;
+    }
+
+    const auto map = lightVolumeRadiusMap(active);
+
+    EXPECT_EQ(map.classCount_, 4);
+    EXPECT_EQ(map.totalIterations_, 119);
+    EXPECT_EQ(map.classForRadius_[32], 32);
+    EXPECT_EQ(map.classForRadius_[31], 32);
+    EXPECT_EQ(map.classForRadius_[30], 30);
+    EXPECT_EQ(map.classForRadius_[29], 29);
+    EXPECT_EQ(map.classForRadius_[28], 28);
+}
+
+TEST(LightVolumeDispatchTest, MixedClassBoxIncludesTheResidualShell) {
+    std::vector<GPULightSource> lights{stagedSeed(ivec3(64))};
+    lights[0].directionAndRadius_.w = 32.0f;
+    auto narrow = stagedSeed(ivec3(96));
+    narrow.directionAndRadius_.w = 8.0f;
+    lights.push_back(narrow);
+    std::vector<GPULightSource> scratch;
+    std::vector<IRRender::detail::LightVolumePropagationPass> passes;
+
+    lightVolumePropagationSchedule(lights, ivec3(0), scratch, passes);
+
+    ASSERT_EQ(passes.size(), 2u);
+    const ivec3 end = passes[0].dispatch_.origin_ +
+                      passes[0].dispatch_.groups_ * IRRender::detail::kLightPropagationGroupSize;
+    EXPECT_LE(passes[0].dispatch_.origin_.x, 31);
+    EXPECT_GE(end.x, 98);
+    EXPECT_EQ(passes[0].dispatch_.origin_, passes[1].dispatch_.origin_);
+    EXPECT_EQ(passes[0].dispatch_.groups_, passes[1].dispatch_.groups_);
 }
 
 TEST(LightVolumeDispatchTest, ContainsEveryCellReachableByTheSixNeighborStencil) {
