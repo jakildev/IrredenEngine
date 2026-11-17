@@ -22,8 +22,8 @@
 
 #include "glitch_fixture.hpp"
 #include "glitch_subject_fixture.hpp"
-#include "lod_scene.hpp"
 #include "post_effects_fixture.hpp"
+#include "lod_scene.hpp"
 #include "sdf_voxel_scene.hpp"
 
 #include <algorithm>
