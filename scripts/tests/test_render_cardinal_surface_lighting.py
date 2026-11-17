@@ -398,6 +398,26 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
                         self.assertEqual(run.returncode, 1, run.stderr)
                         self.assertIn(messages[name], run.stderr)
 
+    def test_overflow_distance_images_fit_minimum_gl_image_units(self):
+        systems = ROOT / "engine/prefabs/irreden/render/systems"
+        producer = (systems / "system_lighting_to_trixel.hpp").read_text()
+        dispatch = extract_function(producer, "dispatchOverflowLighting")
+        glsl = (shader_directory("glsl") / "c_light_overflow_faces.glsl").read_text()
+        bindings = {
+            name: binding
+            for binding, name in glsl_image_bindings(glsl_include_closure(
+                shader_directory("glsl") / "c_light_overflow_faces.glsl"
+            ))
+        }
+
+        self.assertEqual(bindings["perAxisDistancesX"], 4)
+        self.assertEqual(bindings["perAxisDistancesY"], 5)
+        self.assertEqual(bindings["perAxisDistancesZ"], 6)
+        self.assertLess(max(bindings.values()), 8)
+        self.assertIn("IRPlatform::kIsOpenGL ? 4 + axis : 10 + axis", dispatch)
+        self.assertIn("bindAsImage(4, TextureAccess::READ_ONLY", dispatch)
+        self.assertIn("bindAsImage(6, TextureAccess::READ_ONLY", dispatch)
+
     def test_glitch_source_route_lifetime_and_bindings(self):
         systems = ROOT / "engine/prefabs/irreden/render/systems"
         producer = (systems / "system_lighting_to_trixel.hpp").read_text()

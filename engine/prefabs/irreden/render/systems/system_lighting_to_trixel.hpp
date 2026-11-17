@@ -594,8 +594,9 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             kBufferIndex_OverflowLightingScratch
         );
         for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+            const int imageSlot = IRPlatform::kIsOpenGL ? 4 + axis : 10 + axis;
             axes.axes_[axis].distances_.second->bindAsImage(
-                10 + axis,
+                imageSlot,
                 TextureAccess::READ_ONLY,
                 TextureFormat::R32I
             );
@@ -621,7 +622,16 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 &restoreOverflowRoute
             );
         }
-        if (mainCanvasTextures_ != nullptr) {
+        if (IRPlatform::kIsOpenGL) {
+            if (mainCanvasSunShadow_ != nullptr) {
+                mainCanvasSunShadow_->getTexture()
+                    ->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            }
+            if (mainCanvasTextures_ != nullptr) {
+                mainCanvasTextures_->getTextureEntityIds()
+                    ->bindAsImage(6, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
+            }
+        } else if (mainCanvasTextures_ != nullptr) {
             for (int slot = 10; slot <= 12; ++slot) {
                 mainCanvasTextures_->getTextureDistances()
                     ->bindAsImage(slot, TextureAccess::READ_ONLY, TextureFormat::R32I);

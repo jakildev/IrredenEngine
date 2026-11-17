@@ -86,9 +86,11 @@ layout(std140, binding = 23) uniform LightVolumeParams {
 
 layout(binding = 3) uniform sampler2D paletteLUT;
 layout(binding = 5) uniform sampler3D lightVolume;
-layout(r32i, binding = 10) readonly uniform iimage2D perAxisDistancesX;
-layout(r32i, binding = 11) readonly uniform iimage2D perAxisDistancesY;
-layout(r32i, binding = 12) readonly uniform iimage2D perAxisDistancesZ;
+// OpenGL exposes separate sampler and image namespaces, so image 5 can coexist
+// with the lightVolume sampler. All image units stay within the guaranteed 0-7 range.
+layout(r32i, binding = 4) readonly uniform iimage2D perAxisDistancesX;
+layout(r32i, binding = 5) readonly uniform iimage2D perAxisDistancesY;
+layout(r32i, binding = 6) readonly uniform iimage2D perAxisDistancesZ;
 
 // The overflow entry list + ctrl block live in the per-axis resolve scratch.
 // Slot 28 is held by the sun-depth map this pass samples, so the scratch is
