@@ -6,17 +6,26 @@
 //   c_voxel_to_trixel_stage_1_feeder.metal → FEEDER 1, ELECTION 0 (shadow-feeder dispatch)
 //   c_voxel_to_trixel_stage_1_winner_resolve.metal
 //                                          → FEEDER 0, ELECTION 1 (cardinal winner election)
+//   c_voxel_to_trixel_stage_1_per_axis.metal
+//                                          → PER_AXIS 1, ELECTION 0 (per-axis store)
+//   c_voxel_to_trixel_stage_1_per_axis_winner_resolve.metal
+//                                          → PER_AXIS 1, ELECTION 1 (per-axis election)
 //   c_voxel_to_trixel_stage_1_overflow_append.metal
-//                                          → FEEDER 0, ELECTION 0, OVERFLOW_APPEND 1
+//                                          → PER_AXIS 1, ELECTION 0, OVERFLOW_APPEND 1
 //                                            (per-axis overflow append; also includes
 //                                            ir_per_axis_occlusion.metal ahead of the body)
 // Variant-only code sits under `#if IR_FEEDER_PASS` / `#if IR_STORE_WINNER_ELECTION` /
-// `#if IR_OVERFLOW_APPEND` so the visible kernel compiles with the variants' branches
-// textually absent — no runtime predication tax on the hottest kernel. The body is kept
+// `#if IR_PER_AXIS_PASS` / `#if IR_OVERFLOW_APPEND` so each kernel compiles with the other
+// variants' branches textually absent — no runtime predication tax on the hottest kernel.
+// Which pass a per-axis kernel runs is its program, never a uniform; `perAxisRoute` only
+// names the axis there, and the general kernels never read it. The body is kept
 // include-free to mirror the GLSL twin's wrapper-supplied, macro-ordered include chain.
 
 #ifndef IR_OVERFLOW_APPEND
 #define IR_OVERFLOW_APPEND 0
+#endif
+#ifndef IR_PER_AXIS_PASS
+#define IR_PER_AXIS_PASS 0
 #endif
 
 // MSL has no portable image-atomic syntax across all macOS versions, so the
@@ -48,7 +57,7 @@ inline void writeDistanceTap(
     );
 }
 
-// Winner-resolve tap (resolveMode == 1) — GLSL twin in
+// Winner-resolve tap (IR_STORE_WINNER_ELECTION) — GLSL twin in
 // c_voxel_to_trixel_stage_1_body.glsl. Among the faces whose encoded distance
 // equals the settled atomic-min winner at this cell, elect the smallest
 // run-stable voxel pool index into the winner scratch (a manually-managed
@@ -76,6 +85,7 @@ inline void resolveWinnerTap(
     atomic_fetch_min_explicit(&perAxisWinnerIds[linearIndex], voxelIndex, memory_order_relaxed);
 }
 
+#if IR_PER_AXIS_PASS
 inline void countPerAxisStoreDrop(
     constant FrameDataVoxelToTrixel& frameData,
     device atomic_uint* scratch
@@ -127,6 +137,7 @@ inline bool perAxisStoreDropIsVisible(
     return all(isoPos >= frameData.visibleIsoBounds.xy) &&
            all(isoPos <= frameData.visibleIsoBounds.zw);
 }
+#endif
 
 #if IR_OVERFLOW_APPEND
 // Overflow append. An exposed face that loses its cardinal store cell is
@@ -214,6 +225,7 @@ inline void overflowAppendTap(
 }
 #endif
 
+#if !IR_PER_AXIS_PASS
 // Emit a face's 2x3 trixel block through the deformation matrix D.
 // World canvas: maxN=2 (Z-yaw residual ≤ π/4, column lengths ≤ √3).
 // Detached canvas: maxN=6 (full SO(3)).
@@ -286,6 +298,7 @@ inline void emitDeformedFace(
         }
     }
 }
+#endif
 
 // 12 B per voxel — must match C_Voxel layout in
 // engine/prefabs/irreden/voxel/components/component_voxel.hpp.
@@ -306,6 +319,7 @@ struct Voxel {
 // through the atomic scratch buffer; Metal passes the texture + observers into
 // the shared functions as arguments.
 
+#if !IR_PER_AXIS_PASS
 // Detached canvases retain the height-cost radial drop. Ceiling retention is
 // owned by selectVoxelFace, including partial dissolve and neighbour caps.
 static float fogColumnRevealZ(
@@ -333,6 +347,7 @@ static float fogColumnRevealZ(
     }
     return reveal;
 }
+#endif
 
 kernel void IR_STAGE1_KERNEL_NAME(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
@@ -352,12 +367,20 @@ kernel void IR_STAGE1_KERNEL_NAME(
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId3 [[thread_position_in_threadgroup]]
 ) {
+#if IR_PER_AXIS_PASS
+    // One invocation per entry of this axis's list (buffers 25/26 are bound to
+    // the axis's region and indirect struct).
+    const uint compactedIdx =
+        perAxisDispatchEntry(groupId.xy, indirectParams.numGroupsX, localId3.x);
+    if (compactedIdx >= indirectParams.visibleCount) return;
+    const uint voxelIndex = compactedVoxelIndices[compactedIdx];
+#else
     const int microSliceCount = voxelDispatchMicroSliceCount(
         frameData.voxelRenderOptions.x,
 #if IR_FEEDER_PASS
-        frameData.feederSubCap, 0
+        frameData.feederSubCap
 #else
-        frameData.voxelRenderOptions.y, frameData.perAxisRoute
+        frameData.voxelRenderOptions.y
 #endif
     );
     const uint2 dispatchLane = voxelDispatchLane(
@@ -379,20 +402,27 @@ kernel void IR_STAGE1_KERNEL_NAME(
     // The visible list is read forward from struct 0.
     const uint voxelIndex = compactedVoxelIndices[compactedIdx];
 #endif
+#endif
     const float4 voxelPosition = positions[voxelIndex];
-    const uint2 localId = localId3.xy;
     // `slot` is the per-voxel visible-triplet index (0/1/2); `faceId` is the
-    // WORLD FaceId (0..5) the camera sees at this slot.
+    // WORLD FaceId (0..5) the camera sees at this slot. A per-axis entry emits
+    // only the slot on its list's axis.
+#if IR_PER_AXIS_PASS
+    const int axis = frameData.perAxisRoute - 1;
+    const int slot = perAxisVisibleSlot(frameData.visibleFaceIds, axis);
+    const int faceSelectRoute = frameData.perAxisRoute;
+#else
+    const uint2 localId = localId3.xy;
     const int slot = localIDToFace_2x3(localId);
+    const int faceSelectRoute = 0;
+#endif
     int faceId = frameData.visibleFaceIds[slot];
-    const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
 
     const int2 canvasSize = frameData.canvasSizePixels;
 
     // Re-voxelize marker: detached canvases (visibleFaceIds.w != 0) bake the
     // entity rotation into the CELL positions and raster at cardinal 0.
     const bool reVoxelize = frameData.visibleFaceIds.w != 0;
-    const bool dilateRevox = frameData.visibleFaceIds.w == 1;
 
     // Exposed-face gate: emit only faces that are camera-visible AND exposed.
     // Re-voxelize canvases gate too: c_revoxelize_detached authors the
@@ -408,16 +438,94 @@ kernel void IR_STAGE1_KERNEL_NAME(
     const VoxelFaceSelect sel = selectVoxelFace(
         canvasFogOfWar, fogObservers, faceId, reVoxelize,
         voxels[voxelIndex].reserved, flagsByte, voxelPosition,
-        frameData.perAxisRoute, frameData.isDetachedCanvas,
+        faceSelectRoute, frameData.isDetachedCanvas,
         frameData.detachedWorldReceive, frameData.detachedViewToWorld,
         frameData.fogCeilingEnabled.x
     );
     if (!sel.keepFace) return;
     faceId = sel.faceId;
     const int riserFlip = sel.riserFlip;
-    const bool bothPolaritiesExposed = sel.bothPolaritiesExposed;
     const bool fogWholeBodyExempt =
         (voxels[voxelIndex].reserved & (1u << 3u)) != 0u;
+
+#if IR_PER_AXIS_PASS
+    // Smooth camera Z-yaw per-axis routing
+    // (docs/design/per-axis-trixel-canvas-rotation.md). Each axis canvas stores
+    // ONE cell per face (not the emitDeformedFace cluster); atomicMin
+    // resolves occlusion per cell and the framebuffer scatter reconstructs the
+    // deformed face quad, so D is not applied here. The store taps, the
+    // election and stage 2 walk the same list with the same face selection, so
+    // the elected face writes the textures at every cell the store taps
+    // touched (the occupied-cell store and scratch reset depend on it).
+    //
+    // Per-axis own-column fog clip: reveal <= 0 (FULLY hidden), applied on
+    // EVERY axis (1/2/3) so a rotating boundary object clips its hidden half
+    // identically (a hidden column's Z-face would otherwise float on the Z
+    // axis). The nearest-cell metric keeps the hidden ring that the fog pass
+    // paints on every per-axis sample. visionCircleCount==0 and the 1×1
+    // placeholder grid short-circuit non-fog rotating scenes.
+    if (!fogWholeBodyExempt && fogObservers.visionCircleCount > 0 &&
+        fogColumnRevealNearest(
+            canvasFogOfWar, fogObservers, roundHalfUp(voxelPosition.xyz).xy
+        ) <= 0.0f) {
+        return;
+    }
+    if ((faceId >> 1) != axis) return;
+    // Store-frame iso store: key each face by the iso pixel of its position
+    // in the nearest-cardinal view, `perAxisStoreFrame.xy +
+    // pos3DtoPos2DIso(rotateCardinalZ(facePos, perAxisStoreFrame.z))`,
+    // instead of the in-plane (y,z)/(x,z)/(x,y) lattice. The in-plane lattice
+    // collapses faces that share an in-plane column but differ in
+    // depth-along-the-fixed axis (separate objects stacked along x) onto one
+    // cell -> back face dropped even though screen-separated. The cardinal
+    // iso key depends on all three coords, so screen-separated faces land in
+    // distinct cells and both survive; collisions occur only for genuine
+    // same-pixel cardinal occlusion (resolved by the rawDepth atomicMin). The
+    // scatter recovers the origin via isoPixelToPos3D (exact, non-singular at
+    // every yaw since the frame is a cardinal view, not the live one) and
+    // reprojects under the live yaw.
+    // The store origin is whole-iso: the per-axis store is BASE-resolution
+    // regardless of effSub, so it must NOT be density-scaled (a density-scaled
+    // origin jitters under pan); the voxel's continuous sub-cell offset rides
+    // the encoding so the scatter can sub-pixel-shift the face quad.
+    const int2 perAxisBase = frameData.perAxisStoreFrame.xy;
+    int voxelDistance;
+    const int3 facePos =
+        perAxisStoreFacePos(
+            voxelPosition, faceId, slot, axis, riserFlip, frameData.perAxisStoreFrame.z,
+            voxelDistance
+        );
+#if IR_OVERFLOW_APPEND
+    const uint fogClassByte = encodeFogOverflowClassByte(
+        fogWholeBodyExempt, (voxels[voxelIndex].reserved >> 4u) & 0xFFu
+    );
+    const uint overflowColor =
+        (voxels[voxelIndex].colorPacked & 0x00FFFFFFu) | (fogClassByte << 24u);
+    overflowAppendTap(
+        perAxisBase, facePos, voxelDistance, overflowColor, sel.isCutFace, voxelIndex,
+        perAxisStoreDropIsVisible(voxelPosition.xyz, frameData),
+        frameData, scatterFrame, scatterGlobals, occluderDepth,
+        distanceScratch, perAxisWinnerIds, canvasSize
+    );
+#elif IR_STORE_WINNER_ELECTION
+    // Equal keys arise from perAxisStoreFacePos's 4-bit frac quantization —
+    // this election is what keeps the stage-2 color tap deterministic among
+    // them.
+    resolveWinnerTap(
+        perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelIndex,
+        distanceScratch, perAxisWinnerIds, canvasSize
+    );
+#else
+    writePerAxisDistanceTap(
+        perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance,
+        perAxisStoreDropIsVisible(voxelPosition.xyz, frameData),
+        frameData, distanceScratch, perAxisWinnerIds, canvasSize
+    );
+#endif
+#else
+    const bool bothPolaritiesExposed = sel.bothPolaritiesExposed;
+    const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
+    const bool dilateRevox = frameData.visibleFaceIds.w == 1;
 
     // Per-voxel analytic fog clip — STAGE-1-ONLY (stage 2 never repeats it:
     // with the distances dropped, its colour taps are rejected by the depth
@@ -426,7 +534,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
     // the silhouette. The GRID canvas keeps a hidden ring via
     // fogColumnRevealNearest so the fog cut has matter to repaint; a
     // world-placed DETACHED canvas has no fog pass and clips tight at the voxel
-    // lattice. The per-axis routes run their own clip inside their branch.
+    // lattice. The per-axis kernels run their own clip in their variant.
     // The GRID drop is z-FREE: a voxel above the height ceiling but inside the
     // disc keeps its geometry and FOG_TO_TRIXEL paints it the unexplored colour
     // per pixel — removing it would expose the ground through a hollow, shorter
@@ -435,8 +543,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
     const bool ownColumnHidden = frameData.isDetachedCanvas > 0.5f
         ? fogColumnRevealZ(canvasFogOfWar, fogObservers, sel.worldColumn, voxelPosition.z) <= 0.0f
         : fogColumnRevealNearest(canvasFogOfWar, fogObservers, sel.worldColumn) <= 0.0f;
-    if (!fogWholeBodyExempt && sel.fogActive &&
-        frameData.perAxisRoute == 0 && ownColumnHidden) {
+    if (!fogWholeBodyExempt && sel.fogActive && ownColumnHidden) {
         return;
     }
 
@@ -472,89 +579,6 @@ kernel void IR_STAGE1_KERNEL_NAME(
         frameData.faceDeform[slot].xy,
         frameData.faceDeform[slot].zw
     );
-
-    // Smooth camera Z-yaw per-axis routing
-    // (docs/design/per-axis-trixel-canvas-rotation.md). Each axis route stores
-    // ONE cell per face center (not the emitDeformedFace cluster); atomicMin
-    // resolves occlusion per cell and the framebuffer scatter reconstructs the
-    // deformed face quad, so D is not applied here.
-    if (frameData.perAxisRoute != 0) {
-        // Per-axis own-column fog clip: reveal <= 0 (FULLY hidden), applied on
-        // EVERY axis route (1/2/3) so a rotating boundary object clips its
-        // hidden half identically (a hidden column's Z-face would otherwise float
-        // on route 3). The nearest-cell metric keeps the hidden ring that the fog
-        // pass paints on every per-axis sample. visionCircleCount==0 and the 1×1
-        // placeholder grid short-circuit non-fog rotating scenes.
-        if (!fogWholeBodyExempt && fogObservers.visionCircleCount > 0 &&
-            fogColumnRevealNearest(
-                canvasFogOfWar, fogObservers, roundHalfUp(voxelPosition.xyz).xy
-            ) <= 0.0f) {
-            return;
-        }
-        const int axis = frameData.perAxisRoute - 1;
-        if ((faceId >> 1) != axis) return;
-        // Store-frame iso store: key each face by the iso pixel of its position
-        // in the nearest-cardinal view, `perAxisStoreFrame.xy +
-        // pos3DtoPos2DIso(rotateCardinalZ(facePos, perAxisStoreFrame.z))`,
-        // instead of the in-plane (y,z)/(x,z)/(x,y) lattice. The in-plane lattice
-        // collapses faces that share an in-plane column but differ in
-        // depth-along-the-fixed axis (separate objects stacked along x) onto one
-        // cell -> back face dropped even though screen-separated. The cardinal
-        // iso key depends on all three coords, so screen-separated faces land in
-        // distinct cells and both survive; collisions occur only for genuine
-        // same-pixel cardinal occlusion (resolved by the rawDepth atomicMin). The
-        // scatter recovers the origin via isoPixelToPos3D (exact, non-singular at
-        // every yaw since the frame is a cardinal view, not the live one) and
-        // reprojects under the live yaw.
-        // The store origin is whole-iso: the per-axis store is base-resolution,
-        // so it must NOT be density-scaled (a density-scaled origin jitters under
-        // pan). Cardinal single-canvas paths keep trixelFrameOffset.
-        const int2 perAxisBase = frameData.perAxisStoreFrame.xy;
-        // Store at BASE (world-unit) resolution regardless of effSub —
-        // on the subdivided path only the z=0 invocation writes (the voxel's
-        // continuous sub-cell offset rides the encoding so the scatter can
-        // sub-pixel-shift the face quad).
-        if (frameData.voxelRenderOptions.x != 0 && zIdx != 0) return;
-        int voxelDistance;
-        const int3 facePos =
-            perAxisStoreFacePos(
-                voxelPosition, faceId, slot, axis, riserFlip, frameData.perAxisStoreFrame.z,
-                voxelDistance
-            );
-#if IR_OVERFLOW_APPEND
-        // Each record reconstructs the whole face, not one of its two trixels.
-        if (any(int2(localId) != faceOffset_2x3(slot, 0))) return;
-        const uint fogClassByte = encodeFogOverflowClassByte(
-            fogWholeBodyExempt, (voxels[voxelIndex].reserved >> 4u) & 0xFFu
-        );
-        const uint overflowColor =
-            (voxels[voxelIndex].colorPacked & 0x00FFFFFFu) | (fogClassByte << 24u);
-        overflowAppendTap(
-            perAxisBase, facePos, voxelDistance, overflowColor, sel.isCutFace, voxelIndex,
-            perAxisStoreDropIsVisible(voxelPosition.xyz, frameData),
-            frameData, scatterFrame, scatterGlobals, occluderDepth,
-            distanceScratch, perAxisWinnerIds, canvasSize
-        );
-        return;
-#else
-        // Equal keys arise from perAxisStoreFacePos's 4-bit frac quantization —
-        // the winner election here is what keeps the stage-2 color tap
-        // deterministic among them.
-        if (frameData.resolveMode != 0) {
-            resolveWinnerTap(
-                perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelIndex,
-                distanceScratch, perAxisWinnerIds, canvasSize
-            );
-            return;
-        }
-        writePerAxisDistanceTap(
-            perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance,
-            perAxisStoreDropIsVisible(voxelPosition.xyz, frameData),
-            frameData, distanceScratch, perAxisWinnerIds, canvasSize
-        );
-        return;
-#endif
-    }
 
     if (frameData.voxelRenderOptions.x == 0) {
         // roundHalfUp, not hardware round(): half-integer voxel positions must
@@ -667,4 +691,5 @@ kernel void IR_STAGE1_KERNEL_NAME(
 #endif
         );
     }
+#endif
 }

@@ -114,9 +114,21 @@ const char *const kFileCompVoxelToTrixelStage1Feeder =
 // threadgroupSizeForFunctionName + functionUsesImageAtomicScratch).
 const char *const kFileCompVoxelToTrixelStage1WinnerResolve =
     "shaders/c_voxel_to_trixel_stage_1_winner_resolve.glsl";
-// The per-axis overflow-append specialization (IR_OVERFLOW_APPEND 1): the
-// per-axis route appends each cardinal-store loser unless the occluder pyramid
-// proves its footprint hidden. Metal mirror in
+// The per-axis list-walk specializations (IR_PER_AXIS_PASS 1) launch one
+// invocation per per-axis list entry: the distance store, the winner election
+// (with IR_STORE_WINNER_ELECTION 1) and the colour pass. The general stage-1 and
+// stage-2 kernels carry no per-axis code. Metal mirrors in
+// metal/c_voxel_to_trixel_stage_{1_per_axis,1_per_axis_winner_resolve,2_per_axis}.metal
+// (registered in threadgroupSizeForFunctionName + functionUsesImageAtomicScratch).
+const char *const kFileCompVoxelToTrixelStage1PerAxis =
+    "shaders/c_voxel_to_trixel_stage_1_per_axis.glsl";
+const char *const kFileCompVoxelToTrixelStage1PerAxisWinnerResolve =
+    "shaders/c_voxel_to_trixel_stage_1_per_axis_winner_resolve.glsl";
+const char *const kFileCompVoxelToTrixelStage2PerAxis =
+    "shaders/c_voxel_to_trixel_stage_2_per_axis.glsl";
+// The per-axis overflow-append specialization (IR_PER_AXIS_PASS 1,
+// IR_OVERFLOW_APPEND 1): the per-axis list walk appends each cardinal-store
+// loser unless the occluder pyramid proves its footprint hidden. Metal mirror in
 // metal/c_voxel_to_trixel_stage_1_overflow_append.metal (registered in
 // threadgroupSizeForFunctionName + functionUsesImageAtomicScratch).
 const char *const kFileCompVoxelToTrixelStage1OverflowAppend =

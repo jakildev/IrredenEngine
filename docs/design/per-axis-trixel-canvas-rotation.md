@@ -141,10 +141,33 @@ not an occlusion test. See the independent
 [six-face mask reproduction](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/scatter-silhouette-edges/overflow-mask-analysis.md)
 and its [source-equation checker](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/scatter-silhouette-edges/overflow-mask-analysis.py).
 
-The rotating-frame sequence is store ×3 (mode 0), per-axis election and
+The rotating-frame sequence is store ×3, per-axis election and
 stage 2 ×3, the occupied-cell compaction, the occluder prepass and its
 pyramid, the overflow append ×3, then the canonical sort, with the required
-barriers. At cardinal yaw the per-axis set is parked and the original gather
+barriers.
+
+**Per-axis kernels.** Each of the four list walks is its own compiled
+variant of the shared stage bodies, selected by program, never by a uniform:
+`c_voxel_to_trixel_stage_1_per_axis` (store),
+`c_voxel_to_trixel_stage_1_per_axis_winner_resolve` (election),
+`c_voxel_to_trixel_stage_2_per_axis` (colour) and
+`c_voxel_to_trixel_stage_1_overflow_append`, all built with
+`IR_PER_AXIS_PASS 1`. The general visible, feeder, cardinal-election and
+stage-2 kernels compile with the per-axis code textually absent and never read
+`perAxisRoute`; `resolveMode_` is a reserved field no shader reads. Each
+variant launches **one invocation per list entry**, in 1-D groups of
+`kPerAxisEntriesPerGroup` (64) whose grid spills X into Y past 1024 groups.
+The compact writes those dimensions (`writePerAxisDispatchDims`) and every
+variant recovers its entry with `perAxisDispatchEntry`, both from
+`ir_voxel_dispatch`; `test_render_voxel_dispatch_packing.py` executes the
+writer and the decoders of both dialects for exact-once coverage. The entry's
+face is the visible-triplet slot on the list's axis (`perAxisVisibleSlot`),
+then `selectVoxelFace` and `perAxisStoreFacePos` as on every pass, so the
+store taps, the election and stage 2 keep one face and one cell per entry —
+the property the occupied-cell store reset rests on (§"Store reset over the
+occupied-cell list"). The 2×3×N voxel lattice the general kernels use would
+launch six lanes per entry on Metal and 48 on OpenGL, of which four fail the
+axis test and the other two repeat one tap. At cardinal yaw the per-axis set is parked and the original gather
 path runs. The overflow capacity is at least three records per voxel, rounded
 to a power of two: the append emits at most one record per voxel and axis, so
 the lane holds every candidate on a frame that rejects none. Cap drops remain
