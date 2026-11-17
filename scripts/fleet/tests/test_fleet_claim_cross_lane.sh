@@ -56,20 +56,29 @@ emit_issue_labels() {
     fi
 }
 
-# CLAIM_VIEW_FAIL="<claimant>:<n|always> ...": the claimant's first <n> issue
-# views (every view for `always`) fail, alternating a non-zero exit with a
-# truncated document, the two shapes of a transient GitHub read failure.
-# A claimant outside a race schedule is named `solo`.
+# CLAIM_VIEW_FAIL="<claimant>:<n|always>[:partial] ...": the claimant's first
+# <n> issue views (every view for `always`) fail, alternating a non-zero exit
+# with a truncated document, the two shapes of a transient GitHub read
+# failure. With `:partial` they instead succeed with a well-formed document
+# that omits a requested field, cycling through each of labels, body and
+# state. A claimant outside a race schedule is named `solo`.
 view_fails_now() {
-    local who="${CLAIMANT:-solo}" spec budget count=0 counter
+    local who="${CLAIMANT:-solo}" spec budget mode count=0 counter
     for spec in ${CLAIM_VIEW_FAIL:-}; do
         [[ "${spec%%:*}" == "$who" ]] || continue
         budget="${spec#*:}"
+        mode="${budget#*:}"
+        [[ "$mode" == "$budget" ]] && mode=""
+        budget="${budget%%:*}"
         counter="${CLAIM_STATE}.view-fails-$who"
         [[ -f "$counter" ]] && count=$(cat "$counter")
         [[ "$budget" == always || "$count" -lt "$budget" ]] || return 1
         printf '%s\n' "$((count + 1))" > "$counter"
-        VIEW_FAIL_SHAPE=$((count % 2))
+        if [[ "$mode" == partial ]]; then
+            VIEW_FAIL_SHAPE=$((2 + count % 3))
+        else
+            VIEW_FAIL_SHAPE=$((count % 2))
+        fi
         return 0
     done
     return 1
@@ -78,11 +87,16 @@ view_fails_now() {
 case "${1:-} ${2:-}" in
     "issue view")
         if view_fails_now; then
-            if [[ "$VIEW_FAIL_SHAPE" -eq 0 ]]; then
-                echo "gh stub: HTTP 502 on issue view (${CLAIMANT:-solo})" >&2
-                exit 1
-            fi
-            printf '{"state":"OPEN","labels":['
+            case "$VIEW_FAIL_SHAPE" in
+                0)
+                    echo "gh stub: HTTP 502 on issue view (${CLAIMANT:-solo})" >&2
+                    exit 1
+                    ;;
+                1) printf '{"state":"OPEN","labels":[' ;;
+                2) printf '{"state":"OPEN","body":""}\n' ;;
+                3) printf '{"state":"OPEN","labels":[]}\n' ;;
+                4) printf '{"labels":[],"body":""}\n' ;;
+            esac
             exit 0
         fi
         printf '{"state":"OPEN","labels":'
@@ -430,5 +444,36 @@ if [[ -e "$CLAIM_RUN" ]]; then
 else
     ok "the unreadable schedule leaves no rendezvous state behind"
 fi
+
+echo "T12 fix: a well-formed snapshot missing a requested field is incomplete"
+t12_pr=4501
+for t12_lane in review-claim:fleet:reviewing-mac-poolA \
+        resolving-claim:fleet:resolving-mac-poolA \
+        amending-claim:$AMEND_LABEL pr-claim:fleet:claim-mac-poolA; do
+    t12_cmd="${t12_lane%%:*}" t12_label="${t12_lane#*:}"
+    set_labels "fleet:reviewing-mac-poolZ"
+    rc=0
+    CLAIM_VIEW_FAIL="solo:always:partial" "$FLEET_CLAIM" "$t12_cmd" "$t12_pr" poolA \
+        >"$TMPROOT/t12.out" 2>&1 || rc=$?
+    assert_exit "$rc" 1 "$t12_cmd refuses a snapshot that omits labels, body or state"
+    assert_eq "$(view_attempts solo)" "$FLEET_CLAIM_ACQUIRE_RETRIES" \
+        "$t12_cmd re-reads a partial snapshot within the bounded budget"
+    assert_contains "$(cat "$TMPROOT/t12.out")" \
+        "refused on PR#${t12_pr}: live labels unavailable after ${FLEET_CLAIM_ACQUIRE_RETRIES} incomplete fetch attempt(s)" \
+        "$t12_cmd names the partial snapshot as an incomplete fetch"
+    assert_eq "$(wc -l < "$CLAIM_POST_LOG" | tr -d ' ')" "0" "$t12_cmd sends no POST"
+    assert_eq "$(labels_flat)" "fleet:reviewing-mac-poolZ" \
+        "$t12_cmd leaves the hidden foreign label as the only label"
+    t12_pr=$((t12_pr + 1))
+
+    set_labels
+    rc=0
+    CLAIM_VIEW_FAIL="solo:2:partial" "$FLEET_CLAIM" "$t12_cmd" "$t12_pr" poolA \
+        >"$TMPROOT/t12.out" 2>&1 || rc=$?
+    assert_exit "$rc" 0 "$t12_cmd recovers once a complete snapshot arrives"
+    assert_eq "$(labels_flat)" "$t12_label" "$t12_cmd then claims its own label"
+    "$FLEET_CLAIM" "${t12_cmd%-claim}-release" "$t12_pr" poolA >/dev/null 2>&1 || true
+    t12_pr=$((t12_pr + 1))
+done
 
 summarize "fleet-claim cross-lane mutex"
