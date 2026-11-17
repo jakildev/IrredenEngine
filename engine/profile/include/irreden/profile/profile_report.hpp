@@ -232,6 +232,7 @@ struct InputLatencySummary {
     FrameEndEvent endEvent_ = FrameEndEvent::NOT_MEASURED;
     std::vector<InputLatencyFrame> frames_;
     double clockMappingErrorMs_ = 0.0;
+    uint64_t stalePickInputTicks_ = 0;
 };
 
 /// Aggregated data for a profile report, populated by World at shutdown.

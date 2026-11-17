@@ -108,6 +108,9 @@ World::World(
     IRRender::setGuiScale(m_worldConfig["gui_scale"].get_integer());
     IRPrefab::GuiCanvas::setPixelated(m_worldConfig["gui_pixelated"].get_boolean());
     IRRender::setHoveredTrixelVisible(m_worldConfig["hovered_trixel_visible"].get_boolean());
+    m_renderer.setPresentedPickPreviousCompletedFault(
+        m_worldConfig["presented_pick_previous_completed_test_fault"].get_boolean()
+    );
     IRProfile::CPUProfiler::instance().setEnabled(m_worldConfig["profiling_enabled"].get_boolean());
     IRRender::gpuStageTiming().enabled_ = m_worldConfig["gpu_stage_timing"].get_boolean();
     IRRender::gpuStageTiming().legacyFinishTiming_ =
@@ -556,6 +559,7 @@ void World::enableFrameTiming(bool enabled) {
         1024
     );
     m_systemManager.setTimingEnabled(enabled);
+    m_renderer.resetMouseTrixelPickStats();
     if (enabled) {
         m_frameTimesMs.clear();
         m_frameTimesMs.reserve(1024);
@@ -649,6 +653,7 @@ void World::buildAndWriteProfileReport() {
     const auto &occlusionGridTiming = IRRender::buildLightOcclusionGridTiming();
     takeFrameCompletions();
     report.inputLatency_ = m_inputLatency.takeSummary(IRRender::device()->frameEndEvent());
+    report.inputLatency_.stalePickInputTicks_ = m_renderer.staleMouseTrixelPickInputTicks();
     report.cpuPhases_.push_back(
         {"BuildLightOcclusionGrid::Clear",
          occlusionGridTiming.clear_.totalMs_,

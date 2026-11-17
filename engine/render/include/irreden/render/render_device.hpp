@@ -88,6 +88,9 @@ class RenderDevice {
     void setPresentingFrame(std::uint64_t frameId) {
         m_frameCompletions.setFrameId(frameId);
     }
+    std::uint64_t presentingFrameId() const {
+        return m_frameCompletions.frameId();
+    }
     // Never blocks: false when no finished frame is waiting.
     bool pollFrameCompletion(FrameCompletion &out) {
         return m_frameCompletions.poll(out);
