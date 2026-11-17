@@ -185,9 +185,13 @@ class Env(unittest.TestCase):
     def setUp(self):
         self._saved = {k: os.environ.pop(k, None) for k in
                        ("FLEET_STATE_DIR", "FLEET_SESSIONS_DIR", "FLEET_ALERTS_DIR",
-                        "FLEET_CONF", "FLEET_DIR", "FLEET_HEALTH_NOW")}
+                        "FLEET_CONF", "FLEET_DIR", "FLEET_HEALTH_NOW",
+                        "FLEET_PUBLIC_TEXT_TERM_FILE", "HOME")}
         self.tmp = tempfile.TemporaryDirectory()
         self.root = build_fleet_dir(Path(self.tmp.name) / "fleet")
+        self.home = Path(self.tmp.name) / "home"
+        self.home.mkdir()
+        os.environ["HOME"] = str(self.home)
         # The process-table probe reads the live host; pin it to the healthy
         # reading so no fixture depends on what is running where the suite runs.
         self._probe = fleet_health.scout_process_count
@@ -224,9 +228,22 @@ class Env(unittest.TestCase):
         self.assertFalse(any("public text" in warning for warning in report["warnings"]))
         text = fleet_health.render_text(report)
         self.assertIn("public text terms not configured", text)
-        (self.root / "public-text-terms").write_text("fixture\n")
+        default_terms = self.home / ".fleet" / "public-text-terms"
+        default_terms.parent.mkdir()
+        default_terms.write_text("fixture\n")
         _rc, configured = self.run_report()
         self.assertTrue(configured["public_text_terms"]["configured"])
+        self.assertEqual(configured["public_text_terms"]["path"], str(default_terms))
+
+    def test_public_text_term_file_override_is_reported(self):
+        override = Path(self.tmp.name) / "override-terms"
+        override.write_text("fixture\n")
+        os.environ["FLEET_PUBLIC_TEXT_TERM_FILE"] = str(override)
+
+        _rc, report = self.run_report()
+
+        self.assertTrue(report["public_text_terms"]["configured"])
+        self.assertEqual(report["public_text_terms"]["path"], str(override))
 
 
 class Dispatches(Env):

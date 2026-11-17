@@ -11,7 +11,6 @@ from pathlib import Path
 
 from fleet_runtime import REPO_SLUGS
 
-DEFAULT_TERM_FILE = Path.home() / ".fleet" / "public-text-terms"
 CREATION_PATH_RE = re.compile(r"(?<![\w.-])(creations/[A-Za-z0-9_.@+/-]+)")
 
 
@@ -38,6 +37,16 @@ def _terms(path):
                 if line.strip() and not line.lstrip().startswith("#")]
     except FileNotFoundError:
         return []
+
+
+def term_file_path(term_file=None):
+    """Return the configured private-term file path."""
+    if term_file is not None:
+        return Path(term_file)
+    override = os.environ.get("FLEET_PUBLIC_TEXT_TERM_FILE")
+    if override:
+        return Path(override)
+    return Path.home() / ".fleet" / "public-text-terms"
 
 
 def _ignored_creation_paths(lines, git_root):
@@ -77,8 +86,7 @@ def find_public_text(text, target_repo, repo_map=None, term_file=None, git_root=
     target_slug_pattern = _slug_pattern(target_slug)
     foreign = [(key, slug, _slug_pattern(slug)) for key, slug in repos.items()
                if slug.lower() != target_slug.lower()]
-    literals = _terms(term_file or os.environ.get("FLEET_PUBLIC_TEXT_TERM_FILE")
-                      or DEFAULT_TERM_FILE)
+    literals = _terms(term_file_path(term_file))
     findings = []
     seen = set()
 
@@ -119,8 +127,7 @@ def main(argv=None):
     parser.add_argument("--target-repo", required=True)
     parser.add_argument("--text-file", required=True, help="text file, or - for stdin")
     parser.add_argument("--repo-map-file")
-    parser.add_argument("--term-file", default=os.environ.get(
-        "FLEET_PUBLIC_TEXT_TERM_FILE", str(DEFAULT_TERM_FILE)))
+    parser.add_argument("--term-file")
     parser.add_argument("--git-root", default=os.getcwd())
     args = parser.parse_args(argv)
     try:
@@ -131,7 +138,7 @@ def main(argv=None):
             args.target_repo,
             repo_map=load_repo_map(args.repo_map_file
                                    or os.environ.get("FLEET_PUBLIC_TEXT_REPO_MAP")),
-            term_file=args.term_file,
+            term_file=term_file_path(args.term_file),
             git_root=args.git_root,
         )
     except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:

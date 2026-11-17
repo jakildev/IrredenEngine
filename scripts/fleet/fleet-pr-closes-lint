@@ -252,11 +252,17 @@ def main(argv=None):
               file=sys.stderr)
         return 2
 
-    public_findings = fleet_public_text.find_public_text(
-        title + "\n" + body, pr_slug, git_root=os.getcwd())
+    public_findings = [
+        ("title", finding)
+        for finding in fleet_public_text.find_public_text(title, pr_slug, git_root=os.getcwd())
+    ]
+    public_findings += [
+        ("body", finding)
+        for finding in fleet_public_text.find_public_text(body, pr_slug, git_root=os.getcwd())
+    ]
     if public_findings:
-        for finding in public_findings:
-            print(f"PUBLIC-TEXT {fleet_public_text.format_finding(finding)}")
+        for source, finding in public_findings:
+            print(f"PUBLIC-TEXT {finding.kind} {source} line {finding.line}")
             print(f"  {finding.text}", file=sys.stderr)
         return 1
 
