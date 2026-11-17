@@ -7,19 +7,19 @@ another GPU submission.
 
 ## Record
 
-Each `TRIXEL_TO_FRAMEBUFFER` pass clears a buffer on the GPU, writes its pick image during the
-existing composite, and publishes a GPU-timeline copy after its final writer. The copy is tagged
+Each `TRIXEL_TO_FRAMEBUFFER` pass claims a retained-ring slot, clears it on the GPU and writes its
+pick image during the existing composite. The slot is tagged
 with:
 
 - the rendered frame id;
 - the main-framebuffer cursor pixel used by that frame;
 - window-point scale, framebuffer translation, output scale and framebuffer dimensions; and
-- the submission serial that contains the copy.
+- the submission serial that contains the writes.
 
 The CPU serves only slots whose submission serial has completed. If several slots become readable
 together, the record with the greatest frame id wins. The two newest completed images leave the
 writable ring and remain pinned in history; eviction returns their buffers to the ring. A full
-ring drops its oldest pending slot. GPU copies remain ordered, and the read path never waits for
+ring drops its oldest pending slot. GPU writes remain ordered, and the read path never waits for
 room or reads the live buffer a queued submission can still write.
 
 The buffer contains a 32-byte `HoveredEntityIdLayout` prefix for the rendered cursor, followed by
@@ -54,19 +54,18 @@ shared storage does not make an uncommitted command buffer visible to the CPU, a
 multiple submitted frames in flight.
 
 The 32-byte record layout and binding 14 remain shared by both backends. The live allocation and
-each readback allocation occupy `32 * (1 + width * height)` bytes. History retains two completed
-images in addition to the live image and pending ring slots. No full-image CPU copy is required.
-The additional GPU clear, per-pixel writes, scatter resolves and readback copy require measured
-performance qualification; functional correctness alone does not qualify this design.
+each retained allocation occupy `32 * (1 + width * height)` bytes. History retains two completed
+images in addition to pending ring slots. No full-image GPU or CPU copy is required. The
+additional GPU clear, per-pixel writes and scatter resolves require measured performance
+qualification; functional correctness alone does not qualify this design.
 
 ## Prototype qualification
 
-This implementation has not been selected as a performance-qualified design. The
+This implementation is rejected as the selected design by criteria 4 and 5. The
 [measurement record](../perf/event-cursor-pick/README.md) distinguishes passing functional checks
-from outstanding gates. At a 1282 by 722 framebuffer, each allocation is 29,619,360 bytes;
-the live image, two retained images and one pending copy total 118,477,440 bytes. The bounded
-eight-slot ring plus two retained images and the live image can reach 325,812,960 bytes at that
-size. These are allocation calculations, not GPU timing measurements.
+from the locked performance failures. At a 1282 by 722 framebuffer, each allocation is
+29,619,360 bytes. The bounded eight-slot ring plus two retained history images can reach
+296,193,600 bytes at that size. This is an allocation calculation, not a GPU timing measurement.
 
 The full-frame buffer preserves the composite's existing GPU hover rule and avoids adding an
 attachment to every gather pipeline. It has a larger record than a compact ID-plus-depth image,
@@ -76,6 +75,8 @@ on [the rotating-owner issue](https://github.com/jakildev/IrredenEngine/issues/4
 
 Copying canvas textures and evaluating their hover rule on the CPU is excluded by the task's
 single-owner constraint. A one-pixel GPU re-query remains a viable alternative to measure; it
-needs retained sources and deferred dispatch. Neither its dispatch delay nor the full-frame
-buffer's per-frame cost has been qualified here. This prototype adds no dispatch queue or
-explicit GPU wait, but that alone is not evidence that input-to-present latency stays flat.
+needs retained sources and deferred dispatch. Its dispatch delay remains unmeasured. The direct
+retained-ring prototype adds no dispatch queue or explicit GPU wait, but five paired runs still
+measure +0.290 ms mean input-to-present, +0.292 ms frame mean and +0.271 ms GPU span. Those exceed
+the locked 0.118 ms latency and 0.160 ms frame bounds, so design direction is required before a
+different mechanism is implemented.

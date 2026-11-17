@@ -1,0 +1,39 @@
+Completed-image prototype performance, Apple M4 Max, macOS/Metal, Release,
+stage profiling off, guarded benchmark lease, 2026-11-17.
+
+Parent: e5c0ce71386f4cad2a3e65d24c6b395caa05ab4d
+Head:   e07eaa293 (direct retained-ring rendering; no whole-image copy)
+Scene:  IRPerfGrid --auto-profile 300 --config-preset
+        configs/perf/million-profiling-off.lua --yaw 0 --wave-freeze
+        --no-overlay --pivot-origin
+Method: five interleaved parent/head pairs. Each row below is head - parent,
+        in milliseconds. Every retained run reports 300/300 valid GPU frames,
+        225 steady frames, QUIET=guarded, and a clean exit.
+
+pair  frame mean  GPU command-buffer span  input-to-present mean  input-to-present p99
+1       +0.300              +0.271                 +0.264                 +0.157
+2       +0.350              +0.265                 +0.335                 +0.595
+3       +0.280              +0.280                 +0.306                 +0.368
+4       +0.280              +0.271                 +0.271                 +0.349
+5       +0.250              +0.270                 +0.274                 +0.241
+mean    +0.292              +0.271                 +0.290                 +0.342
+
+Absolute frame means, parent/head:
+1 18.230/18.530; 2 18.220/18.570; 3 18.280/18.560;
+4 18.240/18.520; 5 18.270/18.520.
+
+Verdict:
+- Criterion 4 fails: +0.290 ms mean input-to-present exceeds #4998's locked
+  million-scene mean noise bound of 0.118 ms.
+- Criterion 5 fails: every frame-mean delta exceeds #4998's locked 0.160 ms
+  frame-mean noise bound. Parent GPU-span spread in this matrix is 0.009 ms,
+  while the paired head regression is +0.265 to +0.280 ms.
+- Rendering directly into a retained ring slot removed the prototype's
+  approximately 0.42 ms copy-path regression, but the mandatory full-image
+  clear/write itself remains visible. The whole-frame-image mechanism therefore
+  cannot satisfy the locked no-visible-cost premise on this host.
+
+The first attempts after moving the Release tree intermittently stalled in
+macOS LaunchServices before engine startup and hit the runner watchdog. Fresh
+one-command invocations then produced the ten clean retained measurements
+above. Failed/watchdog attempts are excluded, not treated as timing samples.
