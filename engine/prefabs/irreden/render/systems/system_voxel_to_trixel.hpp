@@ -2197,10 +2197,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // entity; shadowFeederCullViewport reuses them at both margins.
         const IsoBounds2D chunkVp =
             IRPrefab::SunShadow::shadowFeederCullViewport(kCullChunkMargin, shadowFeederParams_);
-        const IsoBounds2D sunFaceChunkVp = IRPrefab::SunShadow::sunFaceMaskViewport(
-            IRRender::getCullViewport().isoViewport(kCullChunkMargin),
-            sunFaceFeederParams_
-        );
         const CardinalIndex chunkCardinal = IRMath::rasterYawCardinalIndex(frameData_.rasterYaw_);
         // Smooth camera Z-yaw: while rotating (residual yaw != 0,
         // i.e. the per-axis canvases are active), project the chunk-visibility
@@ -2212,6 +2208,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // exactly, preventing a near-cardinal residual from freeing textures
         // while this path still reads them.
         const bool rotating = IRRender::isSpatialViewEnabled() || frameData_.residualYaw_ != 0.0f;
+        const IsoBounds2D sunFaceChunkVp = IRPrefab::SunShadow::sunFaceMaskViewport(
+            IRRender::getCullViewport().isoViewport(kCullChunkMargin),
+            sunFaceFeederParams_,
+            chunkCardinal,
+            rotating,
+            frameData_.visualYaw_
+        );
         std::uint32_t admittedChunkCount = 0;
         std::uint32_t sunFaceAdmittedCount = 0;
         if (revoxInverse || canvasLocalRotation.isDetached()) {
