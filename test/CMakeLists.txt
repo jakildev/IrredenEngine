@@ -146,6 +146,7 @@ add_executable(IrredenEngineTest
   render/gpu_compute_dispatch_test.cpp
   render/gpu_readback_ring_test.cpp
   render/gpu_submission_fences_test.cpp
+  render/input_latency_test.cpp
   render/offscreen_frame_pacer_test.cpp
   render/gpu_encoder_intervals_test.cpp
   render/gpu_timestamp_poll_test.cpp

@@ -159,6 +159,89 @@ void writeFrameDecomposition(FILE *f, const ProfileReport &report, float frameMe
     std::fprintf(f, "\n");
 }
 
+const char *frameEndEventName(FrameEndEvent event) {
+    switch (event) {
+    case FrameEndEvent::GPU_COMPLETE:
+        return "gpu-complete";
+    case FrameEndEvent::PRESENTED:
+        return "presented";
+    case FrameEndEvent::NOT_MEASURED:
+        break;
+    }
+    return "not measured";
+}
+
+void writeLatencyRow(FILE *f, const char *name, const std::vector<float> &values) {
+    if (values.empty()) {
+        std::fprintf(f, "%s: no samples\n", name);
+        return;
+    }
+    const Percentiles p = computePercentiles(values);
+    std::fprintf(f, "%s: mean=%.3f p99=%.3f max=%.3f\n", name, p.avg_, p.p99_, p.max_);
+}
+
+// Statistics cover the steady frames of the `Steady frame time` line; frames
+// whose end never arrived count toward the frames but not the samples.
+void writeInputLatency(FILE *f, const ProfileReport &report) {
+    const InputLatencySummary &latency = report.inputLatency_;
+    std::fprintf(f, "--- Input latency ---\n");
+    std::fprintf(f, "End event: %s\n", frameEndEventName(latency.endEvent_));
+    if (latency.endEvent_ == FrameEndEvent::NOT_MEASURED) {
+        std::fprintf(f, "Frames in flight at frame start: not measured\n\n");
+        return;
+    }
+    std::fprintf(
+        f,
+        "input_to_present runs from the frame's last OS-event poll to the end event; "
+        "cursor_to_present\n"
+        "from RENDER's cursor sample; submit_to_present from the frame's last commit.\n"
+        "frame_start_to_submit is the frame's CPU time, from its loop iteration's start to that "
+        "commit.\n"
+    );
+    const size_t recorded = report.frameTimesMs_.size();
+    const size_t warmup = recorded / kProfileWarmupDivisor;
+    const size_t last = std::min(recorded, latency.frames_.size());
+    std::vector<float> input;
+    std::vector<float> cursor;
+    std::vector<float> cpu;
+    std::vector<float> submit;
+    std::vector<float> observedLag;
+    uint32_t maxInFlight = 0;
+    for (size_t i = warmup; i < last; ++i) {
+        const InputLatencyFrame &frame = latency.frames_[i];
+        maxInFlight = std::max(maxInFlight, frame.framesInFlight_);
+        if (!frame.ended_)
+            continue;
+        input.push_back(frame.inputToEndMs_);
+        cursor.push_back(frame.cursorToEndMs_);
+        cpu.push_back(frame.startToSubmitMs_);
+        submit.push_back(frame.submitToEndMs_);
+        observedLag.push_back(frame.endObservedLagMs_);
+    }
+    std::fprintf(
+        f,
+        "Steady frames: %zu (first %zu of %zu excluded) samples=%zu\n",
+        recorded - warmup,
+        warmup,
+        recorded,
+        input.size()
+    );
+    writeLatencyRow(f, "input_to_present_ms", input);
+    writeLatencyRow(f, "cursor_to_present_ms", cursor);
+    writeLatencyRow(f, "frame_start_to_submit_ms", cpu);
+    writeLatencyRow(f, "submit_to_present_ms", submit);
+    std::fprintf(f, "Frames in flight at frame start: max=%u\n", maxInFlight);
+    const Percentiles lag = computePercentiles(observedLag);
+    std::fprintf(
+        f,
+        "End observed by the CPU after the end event: mean=%.3fms max=%.3fms; "
+        "clock mapping error <= %.4fms\n\n",
+        lag.avg_,
+        lag.max_,
+        latency.clockMappingErrorMs_
+    );
+}
+
 } // namespace
 
 void appendCpuScopePhases(ProfileReport &report, const CpuFrameHistogram &histogram) {
@@ -334,6 +417,8 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
     if (!report.frameTimesMs_.empty()) {
         writeFrameDecomposition(f, report, computePercentiles(report.frameTimesMs_).avg_);
     }
+
+    writeInputLatency(f, report);
 
     std::fprintf(f, "--- Render device counters ---\n");
     std::fprintf(f, "Supported: %u\n", report.deviceCountersSupported_ ? 1u : 0u);
@@ -695,6 +780,19 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
             report.frameUpdateTicks_,
             30,
             [f](uint32_t ticks) { std::fprintf(f, "%u", ticks); }
+        );
+        writeSeries(
+            f,
+            "--- Input to present (ms, in order; - = no end) ---\n",
+            report.inputLatency_.frames_,
+            10,
+            [f](const InputLatencyFrame &frame) {
+                if (frame.ended_) {
+                    std::fprintf(f, "%.3f", frame.inputToEndMs_);
+                } else {
+                    std::fputc('-', f);
+                }
+            }
         );
     }
 

@@ -1,6 +1,7 @@
 #include <irreden/render/metal/metal_render_impl.hpp>
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/gpu_encoder_intervals.hpp>
+#include <irreden/render/input_latency.hpp>
 #include <irreden/render/metal/metal_cocoa_bridge.hpp>
 #include <irreden/render/metal/metal_runtime.hpp>
 #include <irreden/render/offscreen_frame_pacer.hpp>
@@ -14,6 +15,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <mach/mach_time.h>
 #include <memory>
 #include <thread>
 #include <unordered_map>
@@ -29,6 +31,36 @@ constexpr NS::UInteger kTimestampAttachmentIndex = 0;
 // buffers exist, so a stage grows its own buffer instead of taking one per
 // encoder. The largest stage at the million rotated control creates 72 encoders.
 constexpr NS::UInteger kTimestampEncoderPairCapacity = 128;
+
+// Host time in seconds: the timebase of a command buffer's GPUStartTime and
+// GPUEndTime. steady_clock's epoch on macOS is not guaranteed to be the same.
+double hostTimeSeconds() {
+    static const double secondsPerTick = [] {
+        mach_timebase_info_data_t timebase{};
+        mach_timebase_info(&timebase);
+        return static_cast<double>(timebase.numer) / static_cast<double>(timebase.denom) * 1e-9;
+    }();
+    return static_cast<double>(mach_absolute_time()) * secondsPerTick;
+}
+
+// A finished command buffer's GPU end on the steady clock. The host-to-steady
+// offset is read between two host reads; half their gap bounds its error.
+void reportFrameEnd(FrameCompletionQueue &queue, MTL::CommandBuffer *commandBuffer) {
+    if (!queue.enabled()) {
+        return;
+    }
+    const double hostBefore = hostTimeSeconds();
+    const double steadyNow = steadyClockSeconds();
+    const double hostAfter = hostTimeSeconds();
+    const double offset = steadyNow - 0.5 * (hostBefore + hostAfter);
+    const double gpuEnd = commandBuffer->GPUEndTime();
+    queue.finished(
+        gpuEnd + offset,
+        steadyNow,
+        0.5 * (hostAfter - hostBefore),
+        commandBuffer->status() == MTL::CommandBufferStatusCompleted && gpuEnd > 0.0
+    );
+}
 
 struct MetalTimestampPair {
     MTL::CounterSampleBuffer *sampleBuffer_ = nullptr;
@@ -384,6 +416,7 @@ class MetalRenderDevice final : public RenderDevice {
 
     void setGpuFrameTimingEnabled(bool enabled) override {
         m_gpuFrameTiming.reset(enabled, true);
+        m_frameCompletions.reset(enabled, FrameEndEvent::GPU_COMPLETE);
     }
 
     GpuMemoryStats gpuMemoryStats() const override {
@@ -432,8 +465,10 @@ class MetalRenderDevice final : public RenderDevice {
         if (auto *drawable = metalDrawable(); drawable != nullptr) {
             commandBuffer->presentDrawable(drawable);
         }
+        m_frameCompletions.submitted(steadyClockSeconds);
         commandBuffer->commit();
         commandBuffer->waitUntilCompleted();
+        reportFrameEnd(m_frameCompletions, commandBuffer);
         ++m_submissionSerial;
         recordCompletedFrameBuffer(commandBuffer);
         for (auto &pair : m_timestamps) {

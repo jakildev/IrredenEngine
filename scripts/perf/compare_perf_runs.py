@@ -83,6 +83,21 @@ STEADY_FRAME_RE = re.compile(
     r"Steady frame time \(first (\d+) of (\d+) frames excluded\):\s+avg=([\d.]+)ms\s+"
     r"p50=([\d.]+)ms\s+p95=([\d.]+)ms\s+p99=([\d.]+)ms\s+min=([\d.]+)ms\s+max=([\d.]+)ms"
 )
+INPUT_LATENCY_NOT_MEASURED = "not measured"
+INPUT_LATENCY_END_RE = re.compile(r"^End event: (gpu-complete|presented|not measured)$")
+INPUT_LATENCY_STEADY_RE = re.compile(
+    r"^Steady frames: (\d+) \(first (\d+) of (\d+) excluded\) samples=(\d+)$"
+)
+INPUT_LATENCY_METRIC_RE = re.compile(
+    r"^(\w+)_ms: mean=(-?[\d.]+) p99=(-?[\d.]+) max=(-?[\d.]+)$"
+)
+INPUT_LATENCY_IN_FLIGHT_RE = re.compile(
+    r"^Frames in flight at frame start: (?:max=(\d+)|not measured)$"
+)
+INPUT_LATENCY_OBSERVED_RE = re.compile(
+    r"^End observed by the CPU after the end event: mean=(-?[\d.]+)ms max=(-?[\d.]+)ms; "
+    r"clock mapping error <= ([\d.]+)ms$"
+)
 WITNESS_YAW_RE = re.compile(
     r"^Camera yaw: first=(-?[\d.]+)deg last=(-?[\d.]+)deg travel=([\d.]+)deg samples=(\d+)$"
 )
@@ -280,6 +295,36 @@ class FrameSplit:
 
 
 @dataclass
+class LatencyMetric:
+    mean: float
+    p99: float
+    max_: float
+
+
+@dataclass
+class InputLatency:
+    """The input latency section. A device that times no frame end writes
+    `end_event` INPUT_LATENCY_NOT_MEASURED and nothing else: every other field
+    stays None or empty, never zero. `metrics` is keyed by the row name without
+    its `_ms` suffix (input_to_present, cursor_to_present,
+    frame_start_to_submit, submit_to_present). `series` holds input_to_present
+    per recorded frame, None for a frame whose end never arrived."""
+    end_event: str
+    steady_frames: Optional[int] = None
+    samples: Optional[int] = None
+    metrics: Dict[str, LatencyMetric] = field(default_factory=dict)
+    max_frames_in_flight: Optional[int] = None
+    observed_lag_mean_ms: Optional[float] = None
+    observed_lag_max_ms: Optional[float] = None
+    clock_mapping_error_ms: Optional[float] = None
+    series: List[Optional[float]] = field(default_factory=list)
+
+    @property
+    def measured(self) -> bool:
+        return self.end_event != INPUT_LATENCY_NOT_MEASURED
+
+
+@dataclass
 class CellReport:
     cell_id: str
     frame: FrameTiming = field(default_factory=FrameTiming)
@@ -316,6 +361,8 @@ class CellReport:
     device_counters: Dict[str, DeviceCounter] = field(default_factory=dict)
     # 0 is a written "unavailable"; None is a report without the line.
     gpu_process_peak_bytes: Optional[int] = None
+    # None for a report without the input latency section.
+    input_latency: Optional[InputLatency] = None
     raw: str = ""
 
     def steady_frame_times_ms(self) -> List[float]:
@@ -397,6 +444,12 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
             continue
         if s.startswith("--- Render device counters"):
             section = "device_counters"
+            continue
+        if s.startswith("--- Input latency"):
+            section = "input_latency"
+            continue
+        if s.startswith("--- Input to present"):
+            section = "input_latency_series"
             continue
         if s.startswith("--- Voxel cull stats"):
             section = "cull"
@@ -515,6 +568,37 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
                     total=int(m.group(2)),
                     steady_per_frame=float(m.group(3)),
                     max_per_frame=int(m.group(4)),
+                )
+        elif section == "input_latency":
+            m = INPUT_LATENCY_END_RE.match(s)
+            if m:
+                report.input_latency = InputLatency(end_event=m.group(1))
+                continue
+            latency = report.input_latency
+            if latency is None:
+                continue
+            m = INPUT_LATENCY_STEADY_RE.match(s)
+            if m:
+                latency.steady_frames, latency.samples = int(m.group(1)), int(m.group(4))
+                continue
+            m = INPUT_LATENCY_METRIC_RE.match(s)
+            if m:
+                latency.metrics[m.group(1)] = LatencyMetric(
+                    *(float(m.group(i)) for i in range(2, 5))
+                )
+                continue
+            m = INPUT_LATENCY_IN_FLIGHT_RE.match(s)
+            if m:
+                latency.max_frames_in_flight = int(m.group(1)) if m.group(1) else None
+                continue
+            m = INPUT_LATENCY_OBSERVED_RE.match(s)
+            if m:
+                (latency.observed_lag_mean_ms, latency.observed_lag_max_ms,
+                 latency.clock_mapping_error_ms) = (float(m.group(i)) for i in range(1, 4))
+        elif section == "input_latency_series":
+            if report.input_latency is not None:
+                report.input_latency.series.extend(
+                    None if value == "-" else float(value) for value in s.split()
                 )
         elif section == "gpu":
             fmt = GPU_STAGE_FORMAT_RE.match(s)

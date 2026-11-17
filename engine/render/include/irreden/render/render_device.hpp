@@ -3,6 +3,7 @@
 
 #include <irreden/render/ir_render_enums.hpp>
 #include <irreden/render/gpu_frame_timing.hpp>
+#include <irreden/render/input_latency.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -75,6 +76,25 @@ class RenderDevice {
     }
     const GpuFrameTimingStats &gpuFrameTimingStats() const {
         return m_gpuFrameTiming.stats();
+    }
+    // Frame ends for the input latency probe. A backend that times them arms
+    // the queue from setGpuFrameTimingEnabled; any other reports
+    // NOT_MEASURED, never a zero reading. The frame loop names the frame the
+    // next present() belongs to; that is not submissionSerial(), which a
+    // mid-frame finish() also advances.
+    FrameEndEvent frameEndEvent() const {
+        return m_frameCompletions.endEvent();
+    }
+    void setPresentingFrame(std::uint64_t frameId) {
+        m_frameCompletions.setFrameId(frameId);
+    }
+    // Never blocks: false when no finished frame is waiting.
+    bool pollFrameCompletion(FrameCompletion &out) {
+        return m_frameCompletions.poll(out);
+    }
+    // Submitted frames whose end has not been reported.
+    std::uint32_t framesInFlight() const {
+        return m_frameCompletions.inFlight();
     }
     virtual GpuMemoryStats gpuMemoryStats() const {
         return {};
@@ -225,6 +245,7 @@ class RenderDevice {
 
   protected:
     GpuFrameTimingAccumulator m_gpuFrameTiming;
+    FrameCompletionQueue m_frameCompletions;
 };
 
 RenderDevice *device();

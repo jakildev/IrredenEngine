@@ -478,3 +478,97 @@ TEST(ProfileScope, DisabledHistogramRecordsNothing) {
 }
 
 } // namespace
+
+namespace {
+
+IRProfile::InputLatencyFrame
+latencyFrame(float inputMs, float cursorMs, float submitMs, uint32_t inFlight, bool ended = true) {
+    IRProfile::InputLatencyFrame frame;
+    frame.inputToEndMs_ = inputMs;
+    frame.cursorToEndMs_ = cursorMs;
+    frame.submitToEndMs_ = submitMs;
+    frame.startToSubmitMs_ = 2.0f * submitMs;
+    frame.endObservedLagMs_ = 0.05f;
+    frame.framesInFlight_ = inFlight;
+    frame.ended_ = ended;
+    return frame;
+}
+
+TEST(InputLatencyReport, StatisticsCoverTheSteadyFramesOnly) {
+    IRProfile::ProfileReport report;
+    report.frameTimesMs_.assign(8, 16.0f);
+    report.inputLatency_.endEvent_ = IRProfile::FrameEndEvent::GPU_COMPLETE;
+    report.inputLatency_.clockMappingErrorMs_ = 0.0001;
+    // The first two of eight frames are warm-up: their 100 ms and in-flight
+    // count of 5 must not reach the statistics.
+    report.inputLatency_.frames_ = {
+        latencyFrame(100.0f, 90.0f, 50.0f, 5),
+        latencyFrame(100.0f, 90.0f, 50.0f, 5),
+        latencyFrame(10.0f, 6.0f, 2.0f, 0),
+        latencyFrame(12.0f, 8.0f, 2.0f, 0),
+        latencyFrame(0.0f, 0.0f, 0.0f, 1, false),
+        latencyFrame(14.0f, 10.0f, 2.0f, 0),
+        latencyFrame(10.0f, 6.0f, 2.0f, 0),
+        latencyFrame(14.0f, 10.0f, 2.0f, 0),
+    };
+    const std::string text = writeAndRead(report);
+
+    EXPECT_NE(text.find("--- Input latency ---\nEnd event: gpu-complete\n"), std::string::npos)
+        << text;
+    EXPECT_NE(text.find("Steady frames: 6 (first 2 of 8 excluded) samples=5\n"), std::string::npos)
+        << text;
+    EXPECT_NE(
+        text.find("input_to_present_ms: mean=12.000 p99=14.000 max=14.000\n"),
+        std::string::npos
+    ) << text;
+    EXPECT_NE(
+        text.find("cursor_to_present_ms: mean=8.000 p99=10.000 max=10.000\n"),
+        std::string::npos
+    ) << text;
+    EXPECT_NE(
+        text.find("submit_to_present_ms: mean=2.000 p99=2.000 max=2.000\n"),
+        std::string::npos
+    ) << text;
+    EXPECT_NE(
+        text.find("frame_start_to_submit_ms: mean=4.000 p99=4.000 max=4.000\n"),
+        std::string::npos
+    ) << text;
+    EXPECT_NE(text.find("Frames in flight at frame start: max=1\n"), std::string::npos) << text;
+    EXPECT_NE(text.find("clock mapping error <= 0.0001ms\n"), std::string::npos) << text;
+    EXPECT_NE(
+        text.find(
+            "--- Input to present (ms, in order; - = no end) ---\n"
+            "100.000 100.000 10.000 12.000 - 14.000 10.000 14.000\n"
+        ),
+        std::string::npos
+    ) << text;
+}
+
+TEST(InputLatencyReport, ADeviceWithoutFrameEndsIsNotMeasuredRatherThanZero) {
+    IRProfile::ProfileReport report;
+    report.frameTimesMs_.assign(4, 16.0f);
+    const std::string text = writeAndRead(report);
+
+    EXPECT_NE(
+        text.find(
+            "--- Input latency ---\nEnd event: not measured\n"
+            "Frames in flight at frame start: not measured\n"
+        ),
+        std::string::npos
+    ) << text;
+    EXPECT_EQ(text.find("input_to_present_ms"), std::string::npos) << text;
+    EXPECT_EQ(text.find("--- Input to present"), std::string::npos) << text;
+}
+
+TEST(InputLatencyReport, ARunWithNoEndedFrameSaysSo) {
+    IRProfile::ProfileReport report;
+    report.frameTimesMs_.assign(4, 16.0f);
+    report.inputLatency_.endEvent_ = IRProfile::FrameEndEvent::GPU_COMPLETE;
+    report.inputLatency_.frames_.assign(4, latencyFrame(0.0f, 0.0f, 0.0f, 0, false));
+    const std::string text = writeAndRead(report);
+
+    EXPECT_NE(text.find("samples=0\ninput_to_present_ms: no samples\n"), std::string::npos) << text;
+    EXPECT_NE(text.find("Frames in flight at frame start: max=0\n"), std::string::npos) << text;
+}
+
+} // namespace

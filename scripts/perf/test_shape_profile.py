@@ -40,6 +40,17 @@ class ShapeProfileArgumentsTest(unittest.TestCase):
                                                   "--no-shadows"])
                 self.assertEqual(parsed["--sdf-voxel-scene"], representation)
 
+    def test_the_default_scene_takes_the_timing_presets_and_no_sdf_workload(self):
+        args = [*ARGS]
+        args[1] = "off"
+        for preset in ("sdf-off", "input-latency-delay-20ms"):
+            args[-1] = f"configs/perf/{preset}.lua"
+            self.assertEqual(shape_profile_arguments(args)["--sdf-voxel-scene"], "off")
+        for extra in (["--sdf-voxel-blockers"], ["--sdf-voxel-copies", "4"],
+                      ["--sdf-voxel-pose", "root"], ["--sdf-voxel-motion"]):
+            with self.subTest(extra=extra), self.assertRaisesRegex(ValueError, "default scene"):
+                shape_profile_arguments([*args, *extra])
+
     def test_workload_controls_and_release_witness_are_structured(self):
         parsed = shape_profile_arguments([
             *ARGS, "--sdf-voxel-pose", "parented", "--sdf-voxel-presentation",
@@ -96,7 +107,7 @@ class ShapeProfileArgumentsTest(unittest.TestCase):
         for flag, value in (("--auto-profile", "0"), ("--auto-profile", "-1"),
                             ("--auto-profile", "3.5"), ("--yaw", "nan"),
                             ("--yaw", "inf"), ("--zoom", "inf"), ("--zoom", "0"),
-                            ("--zoom", "1.6"), ("--sdf-voxel-scene", "off"),
+                            ("--zoom", "1.6"), ("--sdf-voxel-scene", "bogus"),
                             ("--config-preset", "unknown.lua")):
             args = [*ARGS]
             args[args.index(flag) + 1] = value

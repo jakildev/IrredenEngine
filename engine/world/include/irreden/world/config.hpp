@@ -237,6 +237,13 @@ class WorldConfig {
             "max_update_ticks_per_frame",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(8)
         );
+        // Test-only positive control for the input latency probe: sleep this
+        // many milliseconds between a frame's last OS-event poll and its
+        // RENDER. 0 (the default) never sleeps.
+        m_config.addEntry(
+            "input_latency_test_delay_ms",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::NUMBER>>(0.0)
+        );
         sol::table configTable = m_lua.getTable("config");
         // A config file with no `config` global yields an invalid table, whose
         // `operator[]` would index a null `lua_State*`; an empty table takes
