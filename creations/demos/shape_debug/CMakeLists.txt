@@ -9,6 +9,7 @@ irreden_bundle_assets(IRShapeDebug
     SCRIPTS config.lua
     EXTRA_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/configs configs
+        ${CMAKE_CURRENT_SOURCE_DIR}/data data/shape_debug
         ${PROJECT_SOURCE_DIR}/assets/prefabs assets/prefabs
         ${PROJECT_SOURCE_DIR}/creations/editors/voxel_editor/test/fixtures/editor_parts
         assets/prefabs/editor_parts

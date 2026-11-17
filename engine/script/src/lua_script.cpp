@@ -1049,6 +1049,10 @@ void LuaScript::bindLuaCanvasDraw() {
     detail::bindCanvasDraw(*this);
 }
 
+void LuaScript::bindLuaCanvasDraw(const std::filesystem::path &imageBase) {
+    detail::bindCanvasDraw(*this, imageBase);
+}
+
 void LuaScript::bindLuaFiles() {
     detail::bindFiles(*this);
 }

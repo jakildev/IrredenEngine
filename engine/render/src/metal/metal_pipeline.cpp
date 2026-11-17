@@ -57,6 +57,10 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
     if (functionName == "c_text_to_trixel") {
         return MTL::Size(6, 11, 1);
     }
+    // kCanvasImageGroupSize texels on each side.
+    if (functionName == "c_canvas_image_to_trixel") {
+        return MTL::Size(8, 8, 1);
+    }
     if (functionName == "c_shapes_to_trixel_depth" ||
         functionName == "c_shapes_to_trixel_publish" ||
         functionName == "c_shapes_to_trixel_caster" ||

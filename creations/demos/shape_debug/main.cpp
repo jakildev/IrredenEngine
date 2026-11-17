@@ -9,6 +9,7 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_constants.hpp>
 #include <irreden/render/camera.hpp>
+#include <irreden/render/canvas_draw.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/default_pivot_latch.hpp>
 #include <irreden/render/per_axis_surface_lighting.hpp>
@@ -75,6 +76,7 @@
 #include <irreden/common/rotation_mode.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_build_distance_hiz.hpp>
+#include <irreden/render/systems/system_canvas_draw.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_resolve_per_axis_screen_depth.hpp>
@@ -649,6 +651,26 @@ constexpr IRVideo::AutoScreenshotShot kTextSizeSampleShots[] = {
 bool g_voxelTextSample = false;
 constexpr IRVideo::AutoScreenshotShot kVoxelTextSampleShots[] = {
     {1.0f, vec2(0, 0), 0.0f, "voxel_text_sample"},
+};
+
+// --canvas-image-sample: a canvas-draw layer of image draws around a world
+// cube. In the centre, the image at the BEHIND depth, so the cube covers it,
+// under FRONT voxel text that covers both, with an inset image painted over
+// its corner. Across the top, the image whole, cropped, as a 4-texel and a
+// 12-texel mosaic, and posterized under a tint.
+// --canvas-image-pan stretches the centre image over the whole canvas and
+// moves its crop every frame, so everything else paints over a moving image.
+// --canvas-image-file draws another image file in place of the probe.
+bool g_canvasImageSample = false;
+bool g_canvasImagePan = false;
+std::string g_canvasImagePath = "data/shape_debug/canvas_image_sample.png";
+constexpr const char *kCanvasImageLayerName = "canvasImageSample";
+constexpr int kCanvasImageCubeSize = 24;
+IREntity::EntityId g_canvasImageLayer = IREntity::kNullEntity;
+IRPrefab::CanvasDraw::ImageHandle g_canvasImageHandle = IRPrefab::CanvasDraw::kInvalidImage;
+int g_canvasImageFrame = 0;
+constexpr IRVideo::AutoScreenshotShot kCanvasImageSampleShots[] = {
+    {1.0f, vec2(0, 0), 0.0f, "canvas_image_sample"},
 };
 
 // --load-prefab <path>: the scene is the prefab manifest at <path> (exe-relative)
@@ -1831,6 +1853,21 @@ void registerCliArgs() {
         "Replace the scene + capture table with isometric voxel GUI text in each facing and "
         "face-colour style, over an empty world"
     );
+    args.flag(
+        "--canvas-image-sample",
+        "Replace the scene + capture table with canvas-draw images: the probe image whole, "
+        "cropped, as mosaics and posterized, and one behind a world cube under voxel text"
+    );
+    args.flag(
+        "--canvas-image-pan",
+        "With --canvas-image-sample, stretch the centre image over the whole canvas and move its "
+        "crop every frame"
+    );
+    args.string(
+        "--canvas-image-file",
+        "With --canvas-image-sample, the image file to draw (exe-relative or absolute path)",
+        ""
+    );
     args.numbers(
         "--framebuffer-size",
         "Resize the logical window to produce the requested framebuffer width and height",
@@ -1898,6 +1935,11 @@ void readCliArgs() {
     g_viewportPortrait = args.getFlag("--viewport-portrait");
     g_textSizeSample = args.getFlag("--text-size-sample");
     g_voxelTextSample = args.getFlag("--voxel-text-sample");
+    g_canvasImageSample = args.getFlag("--canvas-image-sample");
+    g_canvasImagePan = args.getFlag("--canvas-image-pan");
+    if (args.wasProvided("--canvas-image-file")) {
+        g_canvasImagePath = args.getString("--canvas-image-file");
+    }
     if (args.wasProvided("--framebuffer-size")) {
         const std::vector<float> &size = args.getFloats("--framebuffer-size");
         if (size[0] > 0.0f && size[1] > 0.0f && IRMath::floor(size[0]) == size[0] &&
@@ -2031,6 +2073,7 @@ void initCommands();
 void initEntities();
 void initGlitchFixture();
 void initGlitchSubjectFixture();
+void queueCanvasImageSample();
 void registerDemoSettings();
 
 int main(int argc, char **argv) {
@@ -4546,6 +4589,22 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>()
         );
     }
+    if (g_canvasImageSample) {
+        // The draws are queued, then flushed, immediately before the composite.
+        const auto composite =
+            std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId);
+        renderPipeline.insert(
+            composite,
+            {
+                IRSystem::createSystem<IRComponents::C_CanvasDrawLayer>(
+                    "ShapeDebugCanvasImageSample",
+                    [](const IRComponents::C_CanvasDrawLayer &) {},
+                    []() { queueCanvasImageSample(); }
+                ),
+                IRSystem::createSystem<IRSystem::CANVAS_DRAW>(),
+            }
+        );
+    }
     if (g_viewportPortrait) {
         // The sync feeds the viewport's pool before the voxel raster reads it;
         // the composite lands on top of the world + GUI composite.
@@ -5210,6 +5269,8 @@ void initSystems() {
             IRVideo::setAutoScreenshotShots(cfg, kTextSizeSampleShots);
         } else if (g_voxelTextSample) {
             IRVideo::setAutoScreenshotShots(cfg, kVoxelTextSampleShots);
+        } else if (g_canvasImageSample) {
+            IRVideo::setAutoScreenshotShots(cfg, kCanvasImageSampleShots);
         } else if (!g_loadPrefabPath.empty()) {
             buildLoadPrefabShots();
             cfg.shots_ = g_loadPrefabShots.data();
@@ -5976,6 +6037,117 @@ void initVoxelTextSampleScene() {
     line("CENTRED\nDEPTH 2", ivec2(kLeft, y), centred);
 }
 
+// The --canvas-image-sample scene (see g_canvasImageSample).
+void initCanvasImageSampleScene() {
+    IREntity::createEntity(
+        C_LocalTransform{vec3(0.0f)},
+        C_VoxelSetNew{
+            ivec3(kCanvasImageCubeSize),
+            Color{200, 205, 215, 255},
+            IRComponents::EntityAnchor::CENTER
+        }
+    );
+    g_canvasImageLayer = IRPrefab::CanvasDraw::createLayer(kCanvasImageLayerName);
+    g_canvasImageHandle = IRPrefab::CanvasDraw::loadImage(g_canvasImagePath);
+    IR_ASSERT(
+        g_canvasImageHandle != IRPrefab::CanvasDraw::kInvalidImage,
+        "the canvas image sample needs {}",
+        g_canvasImagePath
+    );
+}
+
+// One frame of the --canvas-image-sample layer; re-issued every frame.
+void queueCanvasImageSample() {
+    namespace Draw = IRPrefab::CanvasDraw;
+    constexpr int kGap = 12;
+    constexpr int kTileCount = 5;
+    constexpr int kLabelHeight = 14;
+    const ivec2 canvas = IREntity::getComponent<C_SizeTriangles>(g_canvasImageLayer).size_;
+    // A canvas texel is two pixels wide and one tall, so a w x 4w/3 box
+    // shows a 3:2 image undistorted.
+    const int tileWidth = (canvas.x - (kTileCount + 1) * kGap) / kTileCount;
+    const ivec2 tile(tileWidth, tileWidth * 4 / 3);
+    const float phase = static_cast<float>(g_canvasImageFrame++) * 0.03f;
+
+    // Centred on the canvas, where the world origin's cube projects. Queued
+    // first, so every draw that meets it paints over it.
+    const int top = kGap + tile.y + kLabelHeight + kGap;
+    const int backdropHeight = 2 * (canvas.y / 2 - top);
+    ivec2 backdrop(backdropHeight * 3 / 4, backdropHeight);
+    ivec2 backdropPos = (canvas - backdrop) / 2;
+    Draw::ImageOptions backdropOptions;
+    if (g_canvasImagePan) {
+        // A window between the whole image and 60% of it, wandering.
+        const float span = 0.8f + 0.2f * IRMath::cos(phase);
+        const vec2 origin =
+            (1.0f - span) *
+            (vec2(0.5f) + 0.5f * vec2(IRMath::sin(phase * 1.3f), IRMath::cos(phase)));
+        backdropOptions.uvRect_ = vec4(origin, origin + vec2(span));
+        backdrop = canvas;
+        backdropPos = ivec2(0);
+    }
+    Draw::queueImage(
+        g_canvasImageLayer,
+        g_canvasImageHandle,
+        backdropPos,
+        backdrop,
+        backdropOptions,
+        Draw::kDepthBehind
+    );
+
+    struct Tile {
+        const char *label_;
+        Draw::ImageOptions options_;
+    };
+    const Tile tiles[kTileCount] = {
+        {"FULL", {}},
+        {"CROP", {.uvRect_ = vec4(0.12f, 0.2f, 0.52f, 0.6f)}},
+        {"CELL 4", {.cell_ = 4}},
+        {"CELL 12", {.cell_ = 12}},
+        {"POSTER", {.tint_ = Color{255, 170, 90, 255}, .levels_ = 4}},
+    };
+    for (int i = 0; i < kTileCount; ++i) {
+        const ivec2 pos(kGap + i * (tile.x + kGap), kGap);
+        Draw::queueImage(
+            g_canvasImageLayer,
+            g_canvasImageHandle,
+            pos,
+            tile,
+            tiles[i].options_,
+            Draw::kDepthFront
+        );
+        Draw::queueText(
+            g_canvasImageLayer,
+            tiles[i].label_,
+            ivec2(pos.x, pos.y + tile.y + 4),
+            {},
+            Draw::kDepthFront
+        );
+    }
+
+    const ivec2 centre = canvas / 2;
+    Draw::queueImage(
+        g_canvasImageLayer,
+        g_canvasImageHandle,
+        centre + ivec2(tile.x / 2, tile.y / 3),
+        tile,
+        {.cell_ = 2, .tint_ = Color{150, 220, 255, 255}},
+        Draw::kDepthFront
+    );
+    Draw::VoxelTextOptions title;
+    title.faces_ = IRRender::shadedVoxelFaceColors(Color{235, 200, 90, 255});
+    title.style_ = {3, 2, IRRender::VoxelTextFacing::CAMERA};
+    title.alignH_ = TextAlignH::CENTER;
+    title.boxWidth_ = canvas.x;
+    Draw::queueVoxelText(
+        g_canvasImageLayer,
+        "IN FRONT",
+        ivec2(0, centre.y - 12),
+        title,
+        Draw::kDepthFront
+    );
+}
+
 // The --text-size-sample scene (see g_textSizeSample).
 void initTextSizeSampleScene() {
     // The 63 characters both sets cover, 21 per line.
@@ -6277,6 +6449,12 @@ void initEntities() {
     if (g_voxelTextSample) {
         IR_LOG_INFO("--- GUI voxel text sample scene ---");
         initVoxelTextSampleScene();
+        return;
+    }
+    if (g_canvasImageSample) {
+        IR_LOG_INFO("--- Canvas image sample scene ---");
+        initCanvasImageSampleScene();
+        setupCanvasLighting();
         return;
     }
     if (g_viewportPortrait) {

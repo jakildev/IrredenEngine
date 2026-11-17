@@ -246,6 +246,12 @@
       "capture_offset": 0
     },
     {
+      "name": "canvas_image",
+      "demo_args": ["--canvas-image-sample"],
+      "shots": ["canvas_image_sample"],
+      "capture_offset": 0
+    },
+    {
       "name": "glitch_standard_off",
       "demo_args": ["--glitch-test", "standard-off"],
       "shots": [

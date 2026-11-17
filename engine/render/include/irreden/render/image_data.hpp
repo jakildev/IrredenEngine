@@ -38,6 +38,55 @@ std::vector<Color> boxFilterToTrixels(
     const std::uint8_t *rgba, IRMath::ivec2 imageSize, IRMath::ivec2 trixels, Color background
 );
 
+// A mip pyramid packed into one RGBA8 image, for kernels that pick their own
+// level with integer texel reads: level 0 at the origin, every smaller level
+// stacked top to bottom in a column at x = `baseSize_.x`. Colours are
+// premultiplied by alpha, so a linear filter across a transparent edge stays
+// exact.
+struct MipAtlas {
+    std::vector<std::uint8_t> pixels_;
+    IRMath::ivec2 atlasSize_ = IRMath::ivec2(0);
+    IRMath::ivec2 baseSize_ = IRMath::ivec2(0);
+    int levelCount_ = 0;
+};
+
+// Each level halves the one above it, rounding down and stopping at one texel.
+constexpr IRMath::ivec2 mipLevelSize(IRMath::ivec2 baseSize, int level) {
+    const int width = baseSize.x >> level;
+    const int height = baseSize.y >> level;
+    return IRMath::ivec2(width < 1 ? 1 : width, height < 1 ? 1 : height);
+}
+
+// Levels down to the one whose longer side is a single texel.
+constexpr int mipLevelCount(IRMath::ivec2 baseSize) {
+    int longest = baseSize.x > baseSize.y ? baseSize.x : baseSize.y;
+    int levels = 1;
+    while (longest > 1) {
+        longest >>= 1;
+        ++levels;
+    }
+    return levels;
+}
+
+// Where `level`'s top-left texel sits in the atlas. The shader twin is
+// `mipAtlasLevelOrigin` in c_canvas_image_to_trixel.
+constexpr IRMath::ivec2 mipAtlasLevelOrigin(IRMath::ivec2 baseSize, int level) {
+    if (level <= 0) {
+        return IRMath::ivec2(0);
+    }
+    int y = 0;
+    for (int above = 1; above < level; ++above) {
+        y += mipLevelSize(baseSize, above).y;
+    }
+    return IRMath::ivec2(baseSize.x, y);
+}
+
+// Builds the pyramid of an RGBA8 image (row-major, straight alpha). An image
+// whose longer side exceeds @p maxDimension is first box-filtered down to it,
+// keeping its aspect; every level is the area average of the one above. Empty
+// when the image is.
+MipAtlas buildMipAtlas(const std::uint8_t *rgba, IRMath::ivec2 imageSize, int maxDimension);
+
 void writePNG(const char *filename, int width, int height, int nrChannels, const uint8_t *data);
 std::vector<Color> createColorPaletteFromFile(const char *filename);
 } // namespace IRRender
