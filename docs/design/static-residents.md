@@ -1512,6 +1512,9 @@ change or a continuous-yaw frame makes the next cardinal call rebuild the
 whole cache (`C_VoxelPool::rebuildChunkBounds`). The gate holds write-driven
 work at zero and reports the camera's.
 
+What each gate 3 count measures, and what a zero from it does and does not
+prove, is in [`voxel-feeder-accounting.md`](voxel-feeder-accounting.md).
+
 **Gate 4, motion control.** Unit tests in `test/ecs/`, any build type. An
 entity and an always-dynamic twin are compared after every step of: created
 static; settled; thawed; moved; frozen; settled; resettled after a raw
