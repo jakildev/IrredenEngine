@@ -218,6 +218,13 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
     FragmentOut out;
 
     const float2 textureSize = float2(triangleColors.get_width(), triangleColors.get_height());
+    if (frameData.presentedPickEnabled != 0) {
+        const int2 queryPixel(
+            frameData.mouseFramebufferPixel.x,
+            frameData.presentedPickSize.y - 1 - frameData.mouseFramebufferPixel.y
+        );
+        if (any(int2(in.position.xy) != queryPixel)) discard_fragment();
+    }
     const int2 z1 = trixelOriginOffsetZ1(int2(textureSize));
 
     // Every texture read and the hover compare are raw; local display
@@ -373,13 +380,9 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
     const bool isMouseHovered = all(hoveredIndex == originIndex);
     if (isMouseHovered || frameData.presentedPickEnabled != 0) {
         const uint2 entityId = decodeEntityId(triangleEntityIds.read(sampleCoord).rg);
-        if (isMouseHovered) gatherPick(picks[0], entityId, depth, color.a);
-        const int2 pixel = int2(in.position.xy);
-        if (frameData.presentedPickEnabled != 0 && all(pixel >= int2(0)) &&
-            all(pixel < frameData.presentedPickSize)) {
-            gatherPick(picks[1 + pixel.y * frameData.presentedPickSize.x + pixel.x], entityId, depth, color.a);
-        }
+        gatherPick(picks[0], entityId, depth, color.a);
     }
+    if (frameData.presentedPickEnabled != 0) discard_fragment();
     if (isMouseHovered) {
         if (frameData.showHoverHighlight > 0.0f) {
             color = float4(1.0f, 0.0f, 0.0f, 1.0f);

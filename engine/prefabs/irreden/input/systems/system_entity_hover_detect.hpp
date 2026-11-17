@@ -12,6 +12,8 @@
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
 #include <irreden/input/pick_priority.hpp>
 
+#include <cstdint>
+
 namespace IRSystem {
 
 // Spelling insurance: out-of-tree consumers may name this type directly
@@ -31,10 +33,54 @@ struct C_EntityHoverDetectTag {};
 template <> struct System<ENTITY_HOVER_DETECT> {
     IREntity::EntityId previousHoveredEntity_ = IREntity::kNullEntity;
     int logThrottleCounter_ = 0;
+    struct PendingPickDispatch {
+        std::uint64_t frameId_ = 0;
+        IRMath::ivec2 cursorPixel_{};
+        IRPrefab::PickPriority::Candidate hitboxPick_{};
+        IREntity::EntityId guiHovered_ = IREntity::kNullEntity;
+        bool leftPressed_ = false;
+        bool rightPressed_ = false;
+        bool active_ = false;
+    };
+    PendingPickDispatch pendingPick_;
 
     void tick(C_EntityHoverDetectTag &) {}
 
     void beginTick() {
+        if (pendingPick_.active_) {
+            IRRender::MouseTrixelPick queried;
+            double delayMs = 0.0;
+            if (!IRRender::getRenderManager().takeMouseTrixelPickQuery(
+                    pendingPick_.frameId_,
+                    pendingPick_.cursorPixel_,
+                    queried,
+                    delayMs
+                )) {
+                return;
+            }
+            IRE_LOG_INFO(
+                "EVENT-CURSOR-PICK frame={} pixel={},{} delay_ms={:.3f}",
+                queried.frameId_,
+                queried.renderedCursorPixel_.x,
+                queried.renderedCursorPixel_.y,
+                delayMs
+            );
+            if (queried.entity_ != IREntity::kNullEntity) {
+                IRPrefab::PickPriority::select(
+                    pendingPick_.hitboxPick_,
+                    {queried.entity_, queried.priority_, queried.isoDepth_}
+                );
+            }
+            const IREntity::EntityId currentHovered =
+                pendingPick_.guiHovered_ != IREntity::kNullEntity
+                    ? pendingPick_.guiHovered_
+                    : pendingPick_.hitboxPick_.entity_;
+            applyHoverTransition(currentHovered);
+            dispatchClicks(currentHovered, pendingPick_.leftPressed_, pendingPick_.rightPressed_);
+            pendingPick_ = {};
+            return;
+        }
+
         // GUI hitboxes always own the cursor. World hitboxes and the trixel
         // readback then share one priority/depth comparison: higher authored
         // priority wins, followed by nearest iso depth. Equal candidates keep
@@ -65,6 +111,30 @@ template <> struct System<ENTITY_HOVER_DETECT> {
         );
 
         const IRRender::MouseTrixelPick trixelPick = IRRender::getMouseTrixelPick();
+        const bool rightPressed = IRInput::checkKeyMouseButton(
+            KeyMouseButtons::kMouseButtonRight,
+            ButtonStatuses::PRESSED
+        );
+        const bool leftPressed = IRInput::checkKeyMouseButton(
+            KeyMouseButtons::kMouseButtonLeft,
+            ButtonStatuses::PRESSED
+        );
+        if (trixelPick.stale_) {
+            const IRMath::ivec2 cursorPixel = IRRender::mouseMainFramebufferPixel();
+            if (IRRender::getRenderManager()
+                    .requestMouseTrixelPickQuery(trixelPick.frameId_, cursorPixel)) {
+                pendingPick_ = {
+                    trixelPick.frameId_,
+                    cursorPixel,
+                    bestPick,
+                    guiHovered,
+                    leftPressed,
+                    rightPressed,
+                    true
+                };
+                return;
+            }
+        }
         if (trixelPick.entity_ != IREntity::kNullEntity) {
             IRPrefab::PickPriority::select(
                 bestPick,
@@ -80,7 +150,7 @@ template <> struct System<ENTITY_HOVER_DETECT> {
         }
 
         applyHoverTransition(currentHovered);
-        dispatchClicks(currentHovered);
+        dispatchClicks(currentHovered, leftPressed, rightPressed);
     }
 
     // Hover enter/leave dispatch. Callable without a GL context: beginTick's
@@ -130,24 +200,19 @@ template <> struct System<ENTITY_HOVER_DETECT> {
             if (params->previousHoveredEntity_ == destroyed) {
                 params->previousHoveredEntity_ = IREntity::kNullEntity;
             }
+            if (params->pendingPick_.hitboxPick_.entity_ == destroyed) {
+                params->pendingPick_.hitboxPick_ = {};
+            }
+            if (params->pendingPick_.guiHovered_ == destroyed) {
+                params->pendingPick_.guiHovered_ = IREntity::kNullEntity;
+            }
         });
         return id;
     }
 
   private:
-    void dispatchClicks(IREntity::EntityId currentHovered) {
-        const bool rightPressed = IRInput::checkKeyMouseButton(
-            KeyMouseButtons::kMouseButtonRight,
-            ButtonStatuses::PRESSED
-        );
-        // Hover test first so the left-button query short-circuits away: a
-        // left click is only actionable on a hovered entity, and this keeps
-        // the un-hovered steady state at one input query per frame.
-        const bool leftPressed =
-            currentHovered != IREntity::kNullEntity && IRInput::checkKeyMouseButton(
-                                                           KeyMouseButtons::kMouseButtonLeft,
-                                                           ButtonStatuses::PRESSED
-                                                       );
+    void dispatchClicks(IREntity::EntityId currentHovered, bool leftPressed, bool rightPressed) {
+        leftPressed = leftPressed && currentHovered != IREntity::kNullEntity;
         if (!rightPressed && !leftPressed) {
             return;
         }

@@ -16,6 +16,8 @@
 #include <irreden/voxel/components/component_voxel.hpp>
 
 #include <array>
+#include <chrono>
+#include <functional>
 #include <string>
 
 using namespace IRComponents;
@@ -123,7 +125,13 @@ class RenderManager {
     bool isHoveredTrixelVisible() const;
 
     void setPresentedPickPreviousCompletedFault(bool enabled);
-    Buffer *beginMouseTrixelPickImage();
+    void publishMouseTrixelPick(Buffer *hoverBuffer);
+    void setMouseTrixelPickQuery(std::function<void(std::uint64_t, ivec2, Buffer *)> query);
+    bool requestMouseTrixelPickQuery(std::uint64_t frameId, ivec2 cursorPixel);
+    void prepareMouseTrixelPickQuery();
+    bool takeMouseTrixelPickQuery(
+        std::uint64_t frameId, ivec2 cursorPixel, MouseTrixelPick &result, double &delayMs
+    );
     MouseTrixelPick mouseTrixelPick();
     std::uint64_t newestCompletedMouseTrixelPickFrameId();
     void resetMouseTrixelPickStats();
@@ -234,13 +242,25 @@ class RenderManager {
     struct PresentedPickProducer {
         std::uint64_t frameId_ = 0;
         ivec2 cursorPixel_{};
-        PresentedPickMapping mapping_{};
     };
     static constexpr int kMaxPresentedPickSlots = 8;
     detail::GpuReadbackRing<PresentedPickProducer, kMaxPresentedPickSlots> m_presentedPickRing;
     std::array<Buffer *, kMaxPresentedPickSlots> m_presentedPickBuffers{};
-    std::array<std::size_t, kMaxPresentedPickSlots> m_presentedPickBufferBytes{};
     PresentedPickHistory m_presentedPickHistory;
+    struct PresentedPickQuery {
+        std::uint64_t frameId_ = 0;
+        ivec2 cursorPixel_{};
+        std::chrono::steady_clock::time_point requestedAt_{};
+        Buffer *buffer_ = nullptr;
+        bool queued_ = false;
+        bool submitted_ = false;
+        bool ready_ = false;
+        std::uint64_t submissionSerial_ = 0;
+        PresentedPickRecord record_{};
+    };
+    std::function<void(std::uint64_t, ivec2, Buffer *)> m_presentedPickQueryCallback;
+    PresentedPickQuery m_presentedPickQuery;
+    bool m_deviceFrameBegunEarly = false;
     std::uint64_t m_lastStalePickInputTick = 0;
     std::uint64_t m_stalePickInputTicks = 0;
     bool m_presentedPickPreviousCompletedFault = false;

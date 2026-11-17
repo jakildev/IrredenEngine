@@ -208,23 +208,27 @@ void RenderManager::setPresentedPickPreviousCompletedFault(bool enabled) {
     m_presentedPickPreviousCompletedFault = enabled;
 }
 
-Buffer *RenderManager::beginMouseTrixelPickImage() {
-    const PresentedPickMapping mapping = IRRender::mainFramebufferPickMapping();
+void RenderManager::publishMouseTrixelPick(Buffer *hoverBuffer) {
     const int slot = m_presentedPickRing.write(
         IRRender::device()->submissionSerial(),
-        {IRRender::device()->presentingFrameId(), IRRender::mouseMainFramebufferPixel(), mapping}
+        {IRRender::device()->presentingFrameId(), IRRender::mouseMainFramebufferPixel()}
     );
-    Buffer *&destination = m_presentedPickBuffers[static_cast<std::size_t>(slot)];
-    std::size_t &bytes = m_presentedPickBufferBytes[static_cast<std::size_t>(slot)];
-    if (destination == nullptr) {
-        destination =
-            IRRender::createResource<Buffer>(nullptr, mapping.bufferBytes(), BUFFER_STORAGE_DYNAMIC)
-                .second;
-    } else if (bytes != mapping.bufferBytes()) {
-        destination->resize(mapping.bufferBytes());
+    if (m_presentedPickBuffers[static_cast<std::size_t>(slot)] == nullptr) {
+        m_presentedPickBuffers[static_cast<std::size_t>(slot)] = IRRender::createResource<Buffer>(
+                                                                     nullptr,
+                                                                     sizeof(HoveredEntityIdLayout),
+                                                                     BUFFER_STORAGE_DYNAMIC
+        )
+                                                                     .second;
     }
-    bytes = mapping.bufferBytes();
-    return destination;
+    IRRender::device()->memoryBarrier(BarrierType::BUFFER_UPDATE);
+    IRRender::device()->copyBufferSubData(
+        hoverBuffer,
+        0,
+        m_presentedPickBuffers[static_cast<std::size_t>(slot)],
+        0,
+        sizeof(HoveredEntityIdLayout)
+    );
 }
 
 void RenderManager::drainCompletedMouseTrixelPicks() {
@@ -236,29 +240,112 @@ void RenderManager::drainCompletedMouseTrixelPicks() {
                 ->getSubData(0, sizeof(record.layout_), &record.layout_);
             record.frameId_ = producer.frameId_;
             record.cursorPixel_ = producer.cursorPixel_;
-            record.mapping_ = producer.mapping_;
-            record.pixels_ = m_presentedPickBuffers[static_cast<std::size_t>(slot)];
-            const PresentedPickRecord evicted = m_presentedPickHistory.accept(record);
-            // Completed images leave the writable ring until history evicts them.
-            m_presentedPickBuffers[static_cast<std::size_t>(slot)] = evicted.pixels_;
-            m_presentedPickBufferBytes[static_cast<std::size_t>(slot)] =
-                evicted.mapping_.bufferBytes();
+            m_presentedPickHistory.accept(record);
         }
     );
 }
 
+void RenderManager::setMouseTrixelPickQuery(
+    std::function<void(std::uint64_t, ivec2, Buffer *)> query
+) {
+    m_presentedPickQueryCallback = std::move(query);
+}
+
+bool RenderManager::requestMouseTrixelPickQuery(std::uint64_t frameId, ivec2 cursorPixel) {
+    if (!m_presentedPickQueryCallback || frameId == 0) {
+        return false;
+    }
+    if ((m_presentedPickQuery.queued_ || m_presentedPickQuery.submitted_ ||
+         m_presentedPickQuery.ready_) &&
+        m_presentedPickQuery.frameId_ == frameId &&
+        m_presentedPickQuery.cursorPixel_ == cursorPixel) {
+        return true;
+    }
+    if (m_presentedPickQuery.queued_ || m_presentedPickQuery.submitted_) {
+        return false;
+    }
+    if (m_presentedPickQuery.buffer_ == nullptr) {
+        m_presentedPickQuery.buffer_ =
+            IRRender::createResource<Buffer>(
+                nullptr,
+                sizeof(HoveredEntityIdLayout),
+                BUFFER_STORAGE_DYNAMIC | BUFFER_STORAGE_MAP_READ | BUFFER_STORAGE_MAP_PERSISTENT |
+                    BUFFER_STORAGE_MAP_COHERENT
+            )
+                .second;
+    }
+    m_presentedPickQuery.frameId_ = frameId;
+    m_presentedPickQuery.cursorPixel_ = cursorPixel;
+    m_presentedPickQuery.requestedAt_ = std::chrono::steady_clock::now();
+    m_presentedPickQuery.queued_ = true;
+    m_presentedPickQuery.submitted_ = false;
+    m_presentedPickQuery.ready_ = false;
+    IRInput::InputManager &input = IRInput::getInputManager();
+    if (m_lastStalePickInputTick == input.inputTick() && m_stalePickInputTicks > 0) {
+        --m_stalePickInputTicks;
+    }
+    return true;
+}
+
+void RenderManager::prepareMouseTrixelPickQuery() {
+    if (!m_presentedPickQuery.queued_ || !m_presentedPickQueryCallback) {
+        return;
+    }
+    if (!m_deviceFrameBegunEarly) {
+        IRRender::device()->beginFrame();
+        m_deviceFrameBegunEarly = true;
+    }
+    m_presentedPickQueryCallback(
+        m_presentedPickQuery.frameId_,
+        m_presentedPickQuery.cursorPixel_,
+        m_presentedPickQuery.buffer_
+    );
+    m_presentedPickQuery.submissionSerial_ = IRRender::device()->submissionSerial();
+    m_presentedPickQuery.queued_ = false;
+    m_presentedPickQuery.submitted_ = true;
+}
+
+bool RenderManager::takeMouseTrixelPickQuery(
+    std::uint64_t frameId, ivec2 cursorPixel, MouseTrixelPick &result, double &delayMs
+) {
+    if (m_presentedPickQuery.submitted_ &&
+        IRRender::device()->completedSubmissionSerial() >= m_presentedPickQuery.submissionSerial_) {
+        m_presentedPickQuery.buffer_->getSubData(
+            0,
+            sizeof(m_presentedPickQuery.record_.layout_),
+            &m_presentedPickQuery.record_.layout_
+        );
+        m_presentedPickQuery.record_.frameId_ = m_presentedPickQuery.frameId_;
+        m_presentedPickQuery.record_.cursorPixel_ = m_presentedPickQuery.cursorPixel_;
+        m_presentedPickQuery.submitted_ = false;
+        m_presentedPickQuery.ready_ = true;
+    }
+    if (!m_presentedPickQuery.ready_ || m_presentedPickQuery.frameId_ != frameId ||
+        m_presentedPickQuery.cursorPixel_ != cursorPixel) {
+        return false;
+    }
+    result = resolvePresentedPick(
+        &m_presentedPickQuery.record_,
+        cursorPixel,
+        [](IREntity::EntityId entity) {
+            return IREntity::entityExists(entity) &&
+                   !IREntity::getEntityManager().isMarkedForDeletion(entity);
+        }
+    );
+    delayMs = std::chrono::duration<double, std::milli>(
+                  std::chrono::steady_clock::now() - m_presentedPickQuery.requestedAt_
+    )
+                  .count();
+    m_presentedPickQuery.ready_ = false;
+    return true;
+}
+
 MouseTrixelPick RenderManager::mouseTrixelPick() {
     drainCompletedMouseTrixelPicks();
-    const PresentedPickRecord *completed =
-        m_presentedPickHistory.served(m_presentedPickPreviousCompletedFault);
-    MouseTrixelPick result = resolvePresentedPickAtCursor(
-        completed,
-        IRInput::getMousePosition(),
-        [completed](std::size_t index) {
-            HoveredEntityIdLayout pixel;
-            completed->pixels_->getSubData(index * sizeof(pixel), sizeof(pixel), &pixel);
-            return pixel;
-        },
+    const ivec2 currentCursor = IRRender::mouseMainFramebufferPixel();
+    MouseTrixelPick result = resolvePresentedPick(
+        m_presentedPickHistory.served(m_presentedPickPreviousCompletedFault),
+        currentCursor,
         [](IREntity::EntityId entity) {
             return IREntity::entityExists(entity) &&
                    !IREntity::getEntityManager().isMarkedForDeletion(entity);
@@ -294,7 +381,9 @@ void RenderManager::beginFrame() {
     IRWindow::getWindowSize(m_windowExtentPoints);
     updateOutputResolution();
     updateDefaultRotationPivotFocus();
-    IRRender::device()->beginFrame();
+    if (!m_deviceFrameBegunEarly) {
+        IRRender::device()->beginFrame();
+    }
 }
 
 void RenderManager::renderFrame() {
@@ -307,6 +396,7 @@ void RenderManager::presentFrame() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
     IRRender::device()->present();
+    m_deviceFrameBegunEarly = false;
 }
 
 VoxelPoolAllocation RenderManager::allocateVoxels(unsigned int numVoxels, std::string canvasName) {

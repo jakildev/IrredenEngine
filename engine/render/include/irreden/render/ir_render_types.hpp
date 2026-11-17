@@ -85,8 +85,9 @@ struct SpriteRenderEntry {
     vec4 tintRgba_ = vec4(1.0f);
 };
 
-/// One record in the @c HoveredEntityIdBuffer SSBO (binding 14): a cursor
-/// prefix followed by the pick image. CPU reads are submission-gated.
+/// The record in the @c HoveredEntityIdBuffer SSBO (binding 14). The normal
+/// render publishes it for the render-time cursor; an event-cursor re-query
+/// writes the same layout and exposes it only after its submission completes.
 /// Keep byte-identical to @c PickRecord in @c ir_pick_record.glsl and
 /// @c ir_pick_record.metal.
 struct HoveredEntityIdLayout {

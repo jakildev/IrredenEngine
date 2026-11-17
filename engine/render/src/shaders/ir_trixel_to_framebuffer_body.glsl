@@ -176,6 +176,11 @@ float normalizeDistance(int dist) {
 
 void main() {
     ivec2 textureSize = textureSize(triangleColors, 0);
+    if (presentedPickEnabled != 0) {
+        const ivec2 queryPixel =
+            ivec2(mouseFramebufferPixel.x, presentedPickSize.y - 1 - mouseFramebufferPixel.y);
+        if (ivec2(gl_FragCoord.xy) != queryPixel) discard;
+    }
     ivec2 z1 = trixelOriginOffsetZ1(textureSize);
     // Rectangular color/depth/tier/id reads and the hover compare all use the
     // raw canvas position of this fragment's pixel; local display triangles
@@ -336,13 +341,9 @@ void main() {
     float depth = normalizeDistance(enc);
     if (isMouseHovered || presentedPickEnabled != 0) {
         const uvec2 entityId = decodeEntityId(texelFetch(triangleEntityIds, sampleCoord, 0).rg);
-        if (isMouseHovered) gatherPick(picks[0], entityId, depth, color.a);
-        const ivec2 pixel = ivec2(gl_FragCoord.xy);
-        if (presentedPickEnabled != 0 && all(greaterThanEqual(pixel, ivec2(0))) &&
-            all(lessThan(pixel, presentedPickSize))) {
-            gatherPick(picks[1 + pixel.y * presentedPickSize.x + pixel.x], entityId, depth, color.a);
-        }
+        gatherPick(picks[0], entityId, depth, color.a);
     }
+    if (presentedPickEnabled != 0) discard;
     if (isMouseHovered) {
         if (showHoverHighlight > 0.0) {
             color = vec4(1.0, 0.0, 0.0, 1.0);

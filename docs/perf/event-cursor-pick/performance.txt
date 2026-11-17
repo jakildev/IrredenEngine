@@ -37,3 +37,13 @@ The first attempts after moving the Release tree intermittently stalled in
 macOS LaunchServices before engine startup and hit the runner watchdog. Fresh
 one-command invocations then produced the ten clean retained measurements
 above. Failed/watchdog attempts are excluded, not treated as timing samples.
+
+Selected one-pixel re-query, dirty head b87eea04a, Debug quick matrix:
+- `scripts/perf/perf_grid_matrix.sh --label event-pick-head-retry --quick --frames 120`
+- zoom 1: steady 16.88 ms, input 0.014 ms, trixelToFb CPU 0.038 ms,
+  ttf_hover_reset 0.005 ms, GPU span 6.170 ms.
+- zoom 4: steady 16.67 ms, input 0.011 ms, trixelToFb CPU 0.025 ms,
+  ttf_hover_reset 0.003 ms, GPU span 10.485 ms.
+
+Both cells completed. This is a hot-path smoke measurement, not the five-pair
+Release million control, so it does not by itself qualify criteria 4 and 5.

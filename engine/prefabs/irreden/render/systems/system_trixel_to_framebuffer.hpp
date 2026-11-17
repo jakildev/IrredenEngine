@@ -49,6 +49,7 @@ namespace IRSystem {
 template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     Buffer *frameDataBuf_ = nullptr;
     Buffer *hoveredIdBuf_ = nullptr;
+    Buffer *hoveredIdResetBuf_ = nullptr;
     ShaderProgram *program_ = nullptr;
     ShaderProgram *shapeProbeProgram_ = nullptr;
     Buffer *shapeProbeFrameBuf_ = nullptr;
@@ -147,8 +148,18 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     IRRender::GatherFilterDiagnostic gatherFilterDiagnostic_ =
         IRRender::GatherFilterDiagnostic::NEAREST;
     ShaderProgram *hoverResolveProgram_ = nullptr;
-    ShaderProgram *pickClearProgram_ = nullptr;
     bool scatterHoverPending_ = false;
+    struct PresentedPickDraw {
+        IREntity::EntityId canvas_ = IREntity::kNullEntity;
+        FrameDataTrixelToFramebuffer frameData_{};
+        ShaderProgram *program_ = nullptr;
+        bool probe_ = false;
+        bool surfaceLighting_ = false;
+        bool cardinalLighting_ = false;
+    };
+    std::vector<PresentedPickDraw> presentedPickDraws_;
+    FrameDataTrixelToFramebuffer presentedPickScatterFrame_{};
+    bool presentedPickHasScatter_ = false;
     // IR_PERAXIS_OVERFLOW_CENSUS=1: after each scatter draw, count the overflow
     // records that own a framebuffer pixel into the run witness. The readback
     // waits for the GPU every frame, so a census run's timings are not a
@@ -193,7 +204,10 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     }
 
     void resolveScatterHover(
-        C_TrixelCanvasFramebuffer &framebuffer, C_FrameDataTrixelToFramebuffer &frameData, int mode
+        C_TrixelCanvasFramebuffer &framebuffer,
+        C_FrameDataTrixelToFramebuffer &frameData,
+        int mode,
+        ivec2 cursorPixel = IRRender::mouseMainFramebufferPixel()
     ) {
         if (!hoverResolveProgram_) {
             hoverResolveProgram_ =
@@ -207,12 +221,10 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         framebuffer.framebuffer_.second->getTextureEntityIds().bind(0);
         framebuffer.getTextureDepth().bind(1);
         frameData.frameData_.hoverResolveMode_ = mode;
-        frameData.frameData_.mouseFramebufferPixel_ = IRRender::mouseMainFramebufferPixel();
+        frameData.frameData_.mouseFramebufferPixel_ = cursorPixel;
         frameData.updateFrameData(frameDataBuf_);
         hoverResolveProgram_->use();
-        const auto size = frameData.frameData_.presentedPickSize_;
-        const ivec2 grid = voxelDispatchGridForCount(IRMath::divCeil(size.x * size.y + 1, 64));
-        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
+        IRRender::device()->dispatchCompute(1, 1, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         framebuffer.bindFramebuffer();
         program_->use();
@@ -275,6 +287,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 IREntity::getComponent<C_FrameDataTrixelToFramebuffer>("mainFramebuffer");
             resolveScatterHover(framebuffer, frameData, 1);
         }
+        IRRender::publishMouseTrixelPick(hoveredIdBuf_);
     }
 
     void tick(
@@ -358,7 +371,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             textureSize
         );
 
-        frameData.frameData_.presentedPickEnabled_ = behavior.mouseHoverEnabled_ ? 1 : 0;
+        frameData.frameData_.presentedPickEnabled_ = 0;
         if (!behavior.mouseHoverEnabled_) {
             frameData.frameData_.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
             frameData.frameData_.effectiveSubdivisionsForHover_ = vec2(1.0f);
@@ -403,6 +416,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             }
             framebuffer.bindFramebuffer();
             if (behavior.mouseHoverEnabled_) {
+                presentedPickScatterFrame_ = frameData.frameData_;
+                presentedPickHasScatter_ = true;
                 resolveScatterHover(framebuffer, frameData, 0);
                 scatterHoverPending_ = true;
             }
@@ -447,13 +462,16 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             const bool probe = (shapeProbeEnabled_ || shapeLightingEnabled_) &&
                                entity == perAxisCanvasEntity_ &&
                                triangleCanvasTextures.shapeGeometry_.samplesValid();
+            ShaderProgram *drawProgram = program_;
             if (probe) {
                 bindShapeProbe(triangleCanvasTextures);
-                (shapeLightingEnabled_ ? shapeLightingProgram_ : shapeProbeProgram_)->use();
+                drawProgram = shapeLightingEnabled_ ? shapeLightingProgram_ : shapeProbeProgram_;
+                drawProgram->use();
             } else if (cardinalLighting) {
                 bindSunShadowResources();
-                (surfaceFogEnabled_ ? cardinalLightingFogProgram_ : cardinalLightingProgram_)
-                    ->use();
+                drawProgram =
+                    surfaceFogEnabled_ ? cardinalLightingFogProgram_ : cardinalLightingProgram_;
+                drawProgram->use();
             }
             if ((probe && shapeLightingEnabled_) || cardinalLighting) {
                 bindSurfaceLightingResources();
@@ -473,6 +491,16 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 IndexType::UNSIGNED_SHORT
             );
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            if (behavior.mouseHoverEnabled_) {
+                presentedPickDraws_.push_back(
+                    {entity,
+                     frameData.frameData_,
+                     drawProgram,
+                     probe,
+                     (probe && shapeLightingEnabled_) || cardinalLighting,
+                     cardinalLighting}
+                );
+            }
             if ((probe && shapeLightingEnabled_) || cardinalLighting)
                 restoreSurfaceLightingResources();
             if (probe)
@@ -880,8 +908,96 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots(voxelCompactedBuf_, voxelIndirectBuf_);
     }
 
+    void executePresentedPickQuery(std::uint64_t, ivec2 cursorPixel, Buffer *destination) {
+        auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+        auto &frameData = IREntity::getComponent<C_FrameDataTrixelToFramebuffer>("mainFramebuffer");
+        const FrameDataTrixelToFramebuffer savedFrameData = frameData.frameData_;
+
+        IRRender::resetBufferFromSeed(
+            hoveredIdResetBuf_,
+            destination,
+            0,
+            sizeof(HoveredEntityIdLayout)
+        );
+        destination->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_HoveredEntityId);
+        framebuffer.bindFramebuffer();
+        IRRender::device()->setDepthTest(false);
+        IRRender::device()->setDepthWrite(false);
+
+        if (presentedPickHasScatter_) {
+            frameData.frameData_ = presentedPickScatterFrame_;
+            resolveScatterHover(framebuffer, frameData, 0, cursorPixel);
+        }
+
+        for (const PresentedPickDraw &draw : presentedPickDraws_) {
+            auto canvas = IREntity::getComponentOptional<C_TriangleCanvasTextures>(draw.canvas_);
+            if (!canvas.has_value()) {
+                continue;
+            }
+            frameData.frameData_ = draw.frameData_;
+            frameData.frameData_.mouseFramebufferPixel_ = cursorPixel;
+            frameData.frameData_.presentedPickSize_ = framebuffer.getResolutionPlusBuffer();
+            frameData.frameData_.presentedPickEnabled_ = 1;
+            frameData.frameData_.showHoverHighlight_ = 0.0f;
+            frameData.updateFrameData(frameDataBuf_);
+
+            if (draw.probe_) {
+                bindShapeProbe(*canvas.value());
+            } else if (draw.cardinalLighting_) {
+                bindSunShadowResources();
+            }
+            draw.program_->use();
+            if (draw.surfaceLighting_) {
+                bindSurfaceLightingResources();
+                surfaceAO_->getTexture()->bind(4);
+            }
+            canvas.value()->bind(0, 1, 2);
+            if (draw.surfaceLighting_) {
+                (cardinalGlitchOverrideEnabled_
+                     ? canvas.value()->glitchPresentationOverrides_.second
+                     : canvas.value()->getTextureColors())
+                    ->bind(6);
+            }
+            IRRender::device()->setPolygonMode(PolygonMode::FILL);
+            IRRender::device()->drawElements(
+                DrawMode::TRIANGLES,
+                IRShapes2D::kQuadIndicesLength,
+                IndexType::UNSIGNED_SHORT
+            );
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            if (draw.surfaceLighting_) {
+                restoreSurfaceLightingResources();
+            }
+            if (draw.probe_) {
+                restoreShapeProbe();
+            }
+        }
+
+        if (presentedPickHasScatter_) {
+            frameData.frameData_ = presentedPickScatterFrame_;
+            resolveScatterHover(framebuffer, frameData, 1, cursorPixel);
+        }
+        IRRender::device()->setDepthWrite(true);
+        IRRender::device()->setDepthTest(true);
+        hoveredIdBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_HoveredEntityId);
+        frameData.frameData_ = savedFrameData;
+        frameData.updateFrameData(frameDataBuf_);
+        program_->use();
+    }
+
     void beginTick() {
         scatterHoverPending_ = false;
+        presentedPickDraws_.clear();
+        presentedPickHasScatter_ = false;
+        {
+            IR_PROFILE_SCOPE("ttf_hover_reset");
+            IRRender::resetBufferFromSeed(
+                hoveredIdResetBuf_,
+                hoveredIdBuf_,
+                0,
+                sizeof(HoveredEntityIdLayout)
+            );
+        }
 
         guiCanvasOnScreen_ = IRPrefab::GuiCanvas::compositesOnScreen() ? IRRender::getCanvas("gui")
                                                                        : IREntity::kNullEntity;
@@ -1001,18 +1117,6 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         program_->use();
         quadVao_->bind();
         auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
-        auto &pickFrame = IREntity::getComponent<C_FrameDataTrixelToFramebuffer>("mainFramebuffer");
-        const ivec2 pickSize = framebuffer.getResolutionPlusBuffer();
-        hoveredIdBuf_ = IRRender::beginMouseTrixelPickImage();
-        hoveredIdBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_HoveredEntityId);
-        pickFrame.frameData_.presentedPickSize_ = pickSize;
-        pickFrame.updateFrameData(frameDataBuf_);
-        pickClearProgram_->use();
-        const ivec2 pickGrid =
-            voxelDispatchGridForCount(IRMath::divCeil(pickSize.x * pickSize.y + 1, 64));
-        IRRender::device()->dispatchCompute(pickGrid.x, pickGrid.y, 1);
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-        program_->use();
         if (visibilityPrepassEnabled_ && scatterLightingEnabled_) {
             ensurePerAxisVisibilityBuffer(framebuffer.getResolutionPlusBuffer());
         }
@@ -1098,6 +1202,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_HoveredEntityId
         );
+        IRRender::createNamedResource<Buffer>(
+            "HoveredEntityIdReset",
+            &initData,
+            sizeof(initData),
+            BUFFER_STORAGE_NONE
+        );
 
         // Exclude detached per-entity canvases: those are composited at the
         // owning entity's iso position by ENTITY_CANVAS_TO_FRAMEBUFFER. Without
@@ -1111,11 +1221,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         auto *sys = getSystemParams<System<TRIXEL_TO_FRAMEBUFFER>>(id);
         sys->frameDataBuf_ = IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
         sys->hoveredIdBuf_ = IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
-        sys->pickClearProgram_ =
-            IRRender::createNamedResource<ShaderProgram>(
-                "PresentedPickClear",
-                std::vector{ShaderStage{kFileCompPresentedPickClear, ShaderType::COMPUTE}}
-            ).second;
+        sys->hoveredIdResetBuf_ = IRRender::getNamedResource<Buffer>("HoveredEntityIdReset");
         sys->program_ = IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
         sys->cardinalLightingProgram_ =
             IRRender::getNamedResource<ShaderProgram>("CanvasCardinalLightingProgram");
@@ -1130,6 +1236,11 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             IRRender::getNamedResource<ShaderProgram>("PerAxisSurfaceLightingProgram");
         sys->visibleLightingProgram_ =
             IRRender::getNamedResource<ShaderProgram>("PerAxisVisibleLightingProgram");
+        IRRender::getRenderManager().setMouseTrixelPickQuery(
+            [sys](std::uint64_t frameId, ivec2 cursorPixel, Buffer *destination) {
+                sys->executePresentedPickQuery(frameId, cursorPixel, destination);
+            }
+        );
         const char *visibilityPrepass = std::getenv("IR_PERAXIS_VISIBILITY_PREPASS");
         sys->visibilityPrepassEnabled_ = visibilityPrepass != nullptr &&
                                          visibilityPrepass[0] == '1' &&

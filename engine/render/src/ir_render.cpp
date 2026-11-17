@@ -535,8 +535,8 @@ std::uint64_t newestCompletedMouseTrixelPickFrameId() {
     return getRenderManager().newestCompletedMouseTrixelPickFrameId();
 }
 
-Buffer *beginMouseTrixelPickImage() {
-    return getRenderManager().beginMouseTrixelPickImage();
+void publishMouseTrixelPick(Buffer *hoverBuffer) {
+    getRenderManager().publishMouseTrixelPick(hoverBuffer);
 }
 
 IREntity::EntityId getEntityIdAtMouseTrixel() {
