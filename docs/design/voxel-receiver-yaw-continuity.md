@@ -78,8 +78,10 @@ route), and fails when `enabledFor` ignores the fog pass.
 ## Measurements
 
 Metal, Apple M4 Max, macOS, Debug. The parent is the commit this change is
-stacked on, captured in the same session as the head. The receiver-polygon and
-alternative-cost readings were taken on battery, the rest on mains power.
+stacked on. The parent columns of the crossing tables, the receiver-polygon
+controls and the alternative costs were read on battery in an earlier session;
+the head crossing readings were repeated on mains power with the same figures,
+and every moved-row comparison pairs head and parent in one session.
 
 ### Crossing continuity
 
