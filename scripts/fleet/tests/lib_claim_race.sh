@@ -41,6 +41,40 @@ race_stage() {
     return 0
 }
 
+race_labels_reset() {
+    rm -rf "$1"
+    mkdir -p "$1"
+}
+
+race_labels_add() {
+    mkdir -p "$1"
+    : > "$1/$2"
+}
+
+race_labels_remove() {
+    rm -f "$1/$2"
+}
+
+race_labels_list() {
+    local path
+    [[ -d "$1" ]] || return 0
+    for path in "$1"/*; do
+        [[ -f "$path" ]] && printf '%s\n' "${path##*/}"
+    done
+}
+
+race_labels_emit_json() {
+    local first=1 label
+    printf '['
+    while IFS= read -r label; do
+        [[ -n "$label" ]] || continue
+        [[ "$first" -eq 1 ]] || printf ','
+        printf '{"name":"%s"}' "$label"
+        first=0
+    done < <(race_labels_list "$1")
+    printf ']'
+}
+
 # race_abandoned: succeed, with the reason in RACE_ABANDONED, once the
 # schedule is abandoned.
 race_abandoned() {
@@ -257,7 +291,9 @@ race_report() {
         echo "      | (none)"
     fi
     details=""
-    if [[ -s "${CLAIM_STATE:-}" ]]; then
+    if [[ -d "${CLAIM_STATE:-}" ]]; then
+        details=$(race_labels_list "$CLAIM_STATE" | awk 'NF { printf "%s%s", separator, $0; separator=", " }')
+    elif [[ -s "${CLAIM_STATE:-}" ]]; then
         details=$(awk 'NF { printf "%s%s", separator, $0; separator=", " }' "$CLAIM_STATE")
     fi
     echo "    final labels: ${details:-(none)}"

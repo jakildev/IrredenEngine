@@ -31,31 +31,16 @@ export AMEND_LABEL="fleet:amending-mac-poolA"
 export REVIEW_LABEL="fleet:reviewing-mac-poolB"
 export RESOLVE_LABEL="fleet:resolving-mac-poolB"
 mkdir -p "$FLEET_HEARTBEATS_DIR" "$FLEET_CLAIMS_DIR" \
-    "$FLEET_RESERVATIONS_DIR" "$TMPROOT/bin"
+    "$FLEET_RESERVATIONS_DIR" "$CLAIM_STATE" "$TMPROOT/bin"
 
 cat > "$TMPROOT/bin/gh" <<'GH_STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 source "$CLAIM_RACE_LIB"
 
-lock_state() {
-    race_lock "${CLAIM_STATE}.lock"
-}
-
-unlock_state() {
-    race_unlock "${CLAIM_STATE}.lock"
-}
-
 emit_labels() {
-    local first=1 label
-    printf '['
-    while IFS= read -r label; do
-        [[ -n "$label" ]] || continue
-        [[ "$first" -eq 1 ]] || printf ','
-        printf '{"name":"%s"}' "$label"
-        first=0
-    done < "$CLAIM_STATE"
-    printf ']\n'
+    race_labels_emit_json "$CLAIM_STATE"
+    printf '\n'
 }
 
 emit_issue_labels() {
@@ -70,11 +55,9 @@ emit_issue_labels() {
 
 case "${1:-} ${2:-}" in
     "issue view")
-        lock_state
         printf '{"state":"OPEN","labels":'
         emit_issue_labels
         printf ',"body":""}\n'
-        unlock_state
         ;;
     "issue edit")
         remove=""
@@ -85,13 +68,7 @@ case "${1:-} ${2:-}" in
             fi
             shift || true
         done
-        lock_state
-        : > "${CLAIM_STATE}.next"
-        while IFS= read -r label; do
-            [[ "$label" == "$remove" ]] || printf '%s\n' "$label" >> "${CLAIM_STATE}.next"
-        done < "$CLAIM_STATE"
-        mv "${CLAIM_STATE}.next" "$CLAIM_STATE"
-        unlock_state
+        race_labels_remove "$CLAIM_STATE" "$remove"
         ;;
     "api "*)
         posted=""
@@ -102,11 +79,9 @@ case "${1:-} ${2:-}" in
             shift || true
         done
         if [[ -z "$posted" ]]; then
-            lock_state
             printf '['
             emit_labels
             printf ']\n'
-            unlock_state
             exit 0
         fi
 
@@ -117,15 +92,9 @@ case "${1:-} ${2:-}" in
             race_stage gated
         fi
 
-        lock_state
-        present=0
-        while IFS= read -r label; do
-            [[ "$label" == "$posted" ]] && present=1
-        done < "$CLAIM_STATE"
-        [[ "$present" -eq 1 ]] || printf '%s\n' "$posted" >> "$CLAIM_STATE"
+        race_labels_add "$CLAIM_STATE" "$posted"
         printf '%s\n' "$posted" >> "$CLAIM_POST_LOG"
         emit_labels
-        unlock_state
         ;;
     "label "*|"pr "*) ;;
 esac
@@ -143,16 +112,18 @@ assert_exit() {
 }
 
 set_labels() {
-    : > "$CLAIM_STATE"
+    race_labels_reset "$CLAIM_STATE"
     : > "$CLAIM_POST_LOG"
     local label
-    for label in "$@"; do printf '%s\n' "$label" >> "$CLAIM_STATE"; done
+    for label in "$@"; do race_labels_add "$CLAIM_STATE" "$label"; done
 }
 
 label_count() {
-    local count=0 label
-    while IFS= read -r label; do [[ -n "$label" ]] && count=$((count + 1)); done < "$CLAIM_STATE"
-    printf '%s\n' "$count"
+    race_labels_list "$CLAIM_STATE" | awk 'NF { count++ } END { print count + 0 }'
+}
+
+labels_flat() {
+    race_labels_list "$CLAIM_STATE"
 }
 
 assert_foreign_claim_refused() {
@@ -160,7 +131,7 @@ assert_foreign_claim_refused() {
     set_labels "$held_label"
     "$FLEET_CLAIM" "$command" "$pr" "$agent" >/dev/null 2>&1 || rc=$?
     assert_exit "$rc" 1 "foreign $lane refuses $command"
-    assert_eq "$(cat "$CLAIM_STATE")" "$held_label" \
+    assert_eq "$(labels_flat)" "$held_label" \
         "$command refusal preserves the exact label set"
     assert_eq "$(wc -l < "$CLAIM_POST_LOG" | tr -d ' ')" "0" \
         "$command refusal sends no POST"
@@ -321,9 +292,9 @@ run_race() {
     assert_eq "$successes" "1" "$order leaves exactly one successful claimant"
     assert_eq "$(label_count)" "1" "$order leaves exactly one lane label"
     if [[ "$amend_rc" == 0 && "$review_rc" != 0 ]]; then
-        assert_eq "$(cat "$CLAIM_STATE")" "$AMEND_LABEL" "$order leaves the amend winner's label"
+        assert_eq "$(labels_flat)" "$AMEND_LABEL" "$order leaves the amend winner's label"
     elif [[ "$review_rc" == 0 && "$amend_rc" != 0 ]]; then
-        assert_eq "$(cat "$CLAIM_STATE")" "$REVIEW_LABEL" "$order leaves the review winner's label"
+        assert_eq "$(labels_flat)" "$REVIEW_LABEL" "$order leaves the review winner's label"
     else
         bad "$order final label belongs to the sole successful claimant"
     fi
@@ -353,7 +324,7 @@ assert_contains "$report" "| gh stub: review forced to exit at post" "the report
 assert_contains "$report" "claimant amend: rc=1 markers=[arrived-amend]" "the report carries the peer's rc and progress"
 assert_eq "$(race_live_count)" 0 "no claimant outlives the broken schedule"
 rm -rf "$CLAIM_RUN"
-if [[ -e "$CLAIM_RUN" || -e "${CLAIM_STATE}.lock" ]]; then
+if [[ -e "$CLAIM_RUN" ]]; then
     bad "the broken schedule leaves rendezvous state behind"
 else
     ok "the broken schedule leaves no rendezvous state behind"

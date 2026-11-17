@@ -7,9 +7,11 @@ source "$(dirname "$0")/lib_preflight.sh"
 source "$(dirname "$0")/lib_assert.sh"
 FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 
-export CLAIM_RACE_LIB CLAIM_RACE_SUITE_PID=$$
+export CLAIM_RACE_LIB CLAIM_RACE_LABEL_LIB CLAIM_RACE_SUITE_PID=$$
 CLAIM_RACE_LIB="$(cd "$(dirname "$0")" && pwd)/lib_claim_race.sh"
+CLAIM_RACE_LABEL_LIB="$(cd "$(dirname "$0")" && pwd)/lib_claim_race_labels.sh"
 source "$CLAIM_RACE_LIB"
+source "$CLAIM_RACE_LABEL_LIB"
 
 TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/fleet-claim-race.XXXXXX")
 source "$(dirname "$0")/lib_hermetic.sh"
@@ -28,31 +30,16 @@ export CLAIM_PEERS="alpha beta"
 export CLAIM_RETURN_ORDER=together
 export FLEET_CLAIM_ACQUIRE_RETRIES=3
 mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_HEARTBEATS_DIR" \
-    "$FLEET_RESERVATIONS_DIR" "$FLEET_ORPHANS_DIR" "$TMPROOT/bin"
+    "$FLEET_RESERVATIONS_DIR" "$FLEET_ORPHANS_DIR" "$CLAIM_STATE" "$TMPROOT/bin"
 
 cat > "$TMPROOT/bin/gh" <<'GH_STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 source "$CLAIM_RACE_LIB"
-
-lock_state() {
-    race_lock "${CLAIM_STATE}.lock"
-}
-
-unlock_state() {
-    race_unlock "${CLAIM_STATE}.lock"
-}
+source "$CLAIM_RACE_LABEL_LIB"
 
 emit_flat() {
-    local first=1 label
-    printf '['
-    while IFS= read -r label; do
-        [[ -n "$label" ]] || continue
-        [[ "$first" -eq 1 ]] || printf ','
-        printf '{"name":"%s"}' "$label"
-        first=0
-    done < "$CLAIM_STATE"
-    printf ']'
+    race_labels_emit_json "$CLAIM_STATE"
 }
 
 case "${1:-} ${2:-}" in
@@ -83,13 +70,7 @@ case "${1:-} ${2:-}" in
             printf 'REMOVE END %s %s rc=1\n' "$CLAIMANT" "$remove" >> "$CLAIM_LOG"
             exit 1
         fi
-        lock_state
-        : > "${CLAIM_STATE}.next"
-        while IFS= read -r label; do
-            [[ "$label" == "$remove" ]] || printf '%s\n' "$label" >> "${CLAIM_STATE}.next"
-        done < "$CLAIM_STATE"
-        mv "${CLAIM_STATE}.next" "$CLAIM_STATE"
-        unlock_state
+        race_labels_remove "$CLAIM_STATE" "$remove"
         printf 'REMOVE END %s %s rc=0\n' "$CLAIMANT" "$remove" >> "$CLAIM_LOG"
         ;;
     "api "*)
@@ -102,11 +83,7 @@ case "${1:-} ${2:-}" in
         if [[ -n "$posted" ]]; then
             [[ "$CLAIM_MODE" == race ]] && race_stage post
             printf 'POST %s %s\n' "$CLAIMANT" "$posted" >> "$CLAIM_LOG"
-            lock_state
-            if ! grep -Fxq "$posted" "$CLAIM_STATE"; then
-                printf '%s\n' "$posted" >> "$CLAIM_STATE"
-            fi
-            unlock_state
+            race_labels_add "$CLAIM_STATE" "$posted"
             if [[ "$CLAIM_MODE" == race && ! -e "$CLAIM_RUN/posted-${CLAIMANT}" ]]; then
                 : > "$CLAIM_RUN/posted-${CLAIMANT}"
                 race_await posted $CLAIM_PEERS || exit 1
@@ -142,11 +119,7 @@ case "${1:-} ${2:-}" in
                 if [[ "$count" -eq 1 ]]; then
                     printf '[[{"name":"fleet:reviewing-mac-solo"}]]\n'
                 else
-                    lock_state
-                    if ! grep -Fxq 'fleet:reviewing-mac-other' "$CLAIM_STATE"; then
-                        printf '%s\n' 'fleet:reviewing-mac-other' >> "$CLAIM_STATE"
-                    fi
-                    unlock_state
+                    race_labels_add "$CLAIM_STATE" 'fleet:reviewing-mac-other'
                     printf '[[{"name":"fleet:reviewing-mac-solo"},{"name":"fleet:reviewing-mac-other"}]]\n'
                 fi
                 exit 0
@@ -169,14 +142,18 @@ export PATH="$TMPROOT/bin:$PATH"
 
 reset_fixture() {
     race_reset
-    rm -rf "${CLAIM_STATE}.lock" "$FLEET_CLAIMS_DIR" "$FLEET_HEARTBEATS_DIR" "$FLEET_ORPHANS_DIR"
+    rm -rf "$FLEET_CLAIMS_DIR" "$FLEET_HEARTBEATS_DIR" "$FLEET_ORPHANS_DIR"
     mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_HEARTBEATS_DIR" "$FLEET_ORPHANS_DIR"
-    : > "$CLAIM_STATE"
+    race_labels_reset "$CLAIM_STATE"
     : > "$CLAIM_LOG"
 }
 
 label_count() {
-    awk 'NF { count++ } END { print count + 0 }' "$CLAIM_STATE"
+    race_labels_list "$CLAIM_STATE" | awk 'NF { count++ } END { print count + 0 }'
+}
+
+labels_flat() {
+    race_labels_list "$CLAIM_STATE"
 }
 
 # review_claim_as <host> <pr>: the claimant's review-claim, run under race_launch.
@@ -185,40 +162,46 @@ review_claim_as() {
 }
 
 run_race() {
-    local order="$1" host_a="$2" host_b="$3" fails_before="$FAIL"
+    local order="$1" host_a="$2" host_b="$3" schedule="${4:-$1 $2/$3}" fails_before="$FAIL"
     reset_fixture
     export CLAIM_MODE=race CLAIM_PEERS="alpha beta" CLAIM_RETURN_ORDER="$order"
     unset FLEET_CLAIM_NO_SLEEP
     race_launch alpha review_claim_as "$host_a" 7001
     race_launch beta review_claim_as "$host_b" 7001
     race_finish
-    assert_eq "$RACE_BROKEN" "" "$order $host_a/$host_b rendezvous ends on claimant events"
+    assert_eq "$RACE_BROKEN" "" "$schedule rendezvous ends on claimant events"
     successes=$(( ($(cat "$CLAIM_RUN/alpha.rc") == 0) + ($(cat "$CLAIM_RUN/beta.rc") == 0) ))
-    assert_eq "$successes" 1 "$order $host_a/$host_b race admits exactly one owner"
-    assert_eq "$(label_count)" 1 "$order $host_a/$host_b race leaves one label"
-    assert_contains "$(cat "$CLAIM_LOG")" "GET alpha" "$order alpha performs an independent GET"
-    assert_contains "$(cat "$CLAIM_LOG")" "GET beta" "$order beta performs an independent GET"
+    assert_eq "$successes" 1 "$schedule race admits exactly one owner"
+    assert_eq "$(label_count)" 1 "$schedule race leaves one label"
+    assert_contains "$(cat "$CLAIM_LOG")" "GET alpha" "$schedule alpha performs an independent GET"
+    assert_contains "$(cat "$CLAIM_LOG")" "GET beta" "$schedule beta performs an independent GET"
     if [[ "$successes" -eq 1 ]]; then
         winner=alpha
         [[ "$(cat "$CLAIM_RUN/beta.rc")" -eq 0 ]] && winner=beta
         winner_gets=$(cat "$CLAIM_RUN/get-${winner}")
         if [[ "$winner_gets" -ge 2 ]]; then
-            ok "$order winner confirms independently before returning"
+            ok "$schedule winner confirms independently before returning"
         else
-            bad "$order winner returned after only $winner_gets GET(s)"
+            bad "$schedule winner returned after only $winner_gets GET(s)"
         fi
     else
-        bad "$order had no sole winner to confirm"
+        bad "$schedule had no sole winner to confirm"
     fi
     marker_count=$(find "$FLEET_CLAIMS_DIR" -name '_prlabel-reviewing-*' -type f | wc -l | tr -d ' ')
-    assert_eq "$marker_count" 1 "$order stamps liveness only for the admitted owner"
-    race_report_if_failed "$fails_before" "$order $host_a/$host_b"
+    assert_eq "$marker_count" 1 "$schedule stamps liveness only for the admitted owner"
+    race_report_if_failed "$fails_before" "$schedule"
 }
 
 run_race alpha-first mac mac
 run_race beta-first mac mac
 run_race together mac mac
 run_race together mac windows
+
+echo "a slow lex-max release remains inside the settle window"
+saved_race_delay="${CLAIM_RACE_DELAY:-}"
+export CLAIM_RACE_DELAY="beta:release:3"
+run_race beta-first mac mac "slow-release beta-first mac/mac"
+export CLAIM_RACE_DELAY="$saved_race_delay"
 
 echo "three contenders can exhaust, but never co-win"
 fails_before="$FAIL"
@@ -263,7 +246,6 @@ assert_contains "$report" "orphan sentinels: (none)" "the report carries orphan 
 assert_eq "$(race_live_count)" 0 "no claimant outlives the broken schedule"
 reset_fixture
 assert_eq "$(ls -A "$CLAIM_RUN")" "" "the next schedule starts without rendezvous state"
-if [[ -e "${CLAIM_STATE}.lock" ]]; then bad "the next schedule starts with the state lock held"; else ok "the next schedule starts with the state lock free"; fi
 
 echo "the deadlock guard abandons a wedged schedule and reports it"
 reset_fixture
@@ -348,7 +330,7 @@ assert_eq "$(cat "$CLAIM_RUN/get-solo")" 2 "uncontested success requires two GET
 
 run_single confirmation-race 1 "competitor appearing at confirmation refuses success"
 assert_eq "$(label_count)" 1 "confirmation refusal removes only the candidate"
-assert_eq "$(cat "$CLAIM_STATE")" "fleet:reviewing-mac-other" "confirmation refusal preserves the competitor"
+assert_eq "$(labels_flat)" "fleet:reviewing-mac-other" "confirmation refusal preserves the competitor"
 
 for mode in http-fail malformed wrong-shape absent-own later-page later-page-fail; do
     run_single "$mode" 1 "$mode response fails closed"
@@ -365,7 +347,7 @@ assert_eq "$(grep -c '^POST ' "$CLAIM_LOG")" 1 "failed cleanup does not re-POST"
 echo "helper seams validate complete snapshots directly"
 reset_fixture
 export CLAIM_MODE=normal CLAIMANT=solo FLEET_TEST_HOST=mac
-printf '%s\n' 'fleet:reviewing-mac-solo' > "$CLAIM_STATE"
+race_labels_add "$CLAIM_STATE" 'fleet:reviewing-mac-solo'
 set --
 FLEET_CLAIM_LIB=1 source "$FLEET_CLAIM"
 if declare -F _fetch_live_labels >/dev/null && declare -F _read_claim_decision >/dev/null; then
