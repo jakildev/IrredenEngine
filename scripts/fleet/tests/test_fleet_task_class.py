@@ -724,6 +724,33 @@ class DispatchTargets(HostSeamCase):
             finally:
                 os.environ.pop("FLEET_STATE_DIR", None)
 
+    def test_sleeping_display_declines_read_as_host(self):
+        sleeping = (
+            "render-verify job 20261116T143033Z-render-verify-746fb0 found one online "
+            "CoreGraphics display but awake=0, so engine monitor discovery would see "
+            "zero; exited 69 before launch.",
+            "job 20261116T153050Z-render-verify-3f76d6 exited 69, CoreGraphics online=1 "
+            "awake=0 NSScreen=1 (engine discovers 0 monitors).",
+            "1 online CoreGraphics display(s), awake=0, NSScreen=1; MISMATCH: engine "
+            "monitor discovery will see 0",
+            "ENV-FAIL: display domain mismatch (CoreGraphics online=1 awake=0 NSScreen=1; "
+            "the engine will discover 0 monitors)",
+        )
+        awake = (
+            "1 online CoreGraphics display(s), awake=1, NSScreen=1",
+            "ENV-FAIL (CoreGraphics online=1 awake=1 NSScreen=1)",
+            "CoreGraphics online=2 awake=10 NSScreen=2",
+            "found one online CoreGraphics display, awake=1, one screen",
+        )
+        for reason in sleeping:
+            with self.subTest(reason=reason):
+                self.assertEqual(fleet_task_class.decline_reason_class(reason), "host")
+        for reason in awake + ("verdict already standing",
+                               "CoreGraphics probe reported nothing usable"):
+            with self.subTest(reason=reason):
+                self.assertEqual(fleet_task_class.decline_reason_class(reason),
+                                 "substantive")
+
     def test_decline_reason_classes_use_transient_ttl_and_runtime_scope(self):
         reasons = {
             "host": (
