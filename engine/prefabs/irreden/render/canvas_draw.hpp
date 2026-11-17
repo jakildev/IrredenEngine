@@ -27,7 +27,15 @@
 // on screen after the pass) stays clean. `createLayer` makes a canvas sized
 // like the main one, parented to the main framebuffer, that nothing else
 // draws into — the usual target for an overlay behind or in front of the
-// scene. Adoption: `docs/design/canvas-draw-layers.md`.
+// scene.
+//
+// A canvas texel is two framebuffer pixels wide, so an image drawn on a
+// canvas keeps half its horizontal detail. `queueFramebufferImage` draws the
+// same loaded image straight into the main framebuffer, one sample per
+// framebuffer pixel, through `System<IMAGE_TO_FRAMEBUFFER>`. It takes the same
+// depths: an image sits half an encode step behind a canvas texel of its own
+// distance, so canvas draws at that distance or nearer cover it and anything
+// farther is covered by it. Adoption: `docs/design/canvas-draw-layers.md`.
 
 #include <irreden/ir_constants.hpp>
 #include <irreden/ir_entity.hpp>
@@ -40,9 +48,11 @@
 #include <irreden/render/components/component_canvas_draw_images.hpp>
 #include <irreden/render/components/component_canvas_draw_layer.hpp>
 #include <irreden/render/components/component_canvas_draw_queue.hpp>
+#include <irreden/render/components/component_framebuffer_image_queue.hpp>
 #include <irreden/render/components/component_text_style.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/entities/entity_trixel_canvas.hpp>
 #include <irreden/render/async_texture.hpp>
 #include <irreden/render/gui_text_batch.hpp>
@@ -122,7 +132,8 @@ struct ImageOptions {
     // The source crop mapped onto the drawn box, (u0, v0, u1, v1) in 0..1
     // with (0, 0) the image's top-left. u1 < u0 or v1 < v0 mirrors.
     IRMath::vec4 uvRect_ = IRMath::vec4(0.0f, 0.0f, 1.0f, 1.0f);
-    // Mosaic: every cell_ x cell_ block of canvas texels, counted from the
+    // Mosaic: every cell_ x cell_ block of the target's texels (canvas
+    // texels, or framebuffer pixels for a framebuffer image), counted from the
     // box's top-left, is the one averaged colour of the source under it.
     int cell_ = 1;
     IRMath::Color tint_ = IRMath::IRColors::kWhite;
@@ -159,6 +170,14 @@ inline void ensureQueueSingleton() {
 
 inline void ensureImagesSingleton() {
     images();
+}
+
+inline IRComponents::C_FramebufferImageQueue &framebufferImageQueue() {
+    return IREntity::singleton<IRComponents::C_FramebufferImageQueue>();
+}
+
+inline void ensureFramebufferImageQueueSingleton() {
+    framebufferImageQueue();
 }
 
 namespace detail {
@@ -539,6 +558,61 @@ inline void queueImage(
     );
     batch.primitives_.push_back(
         {lo, hi, batch.commands_.size(), static_cast<int>(batch.images_.size()) - 1}
+    );
+}
+
+// The main framebuffer's size in pixels, the unit of a framebuffer image's
+// box. It is the game resolution plus `IRConstants::kSizeExtraPixelBuffer`,
+// and a main-sized layer canvas spans it at two pixels per texel across and
+// one down.
+inline IRMath::ivec2 framebufferSize() {
+    return IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>("mainFramebuffer")
+        .getResolutionPlusBuffer();
+}
+
+// The image stretched over the `pos` / `size` box of main framebuffer pixels
+// (origin top-left, y down, as canvas texels run), one sample per pixel, so a
+// box shows its crop undistorted when size.x / size.y equals the crop's pixel
+// aspect. `options` mean what they mean to `queueImage`, with `cell_` in
+// framebuffer pixels. The image is depth-tested against everything the
+// composite drew: it lands half an encode step behind a canvas texel at
+// `distance`. Among framebuffer images the nearer distance wins and, at one
+// distance, the later call. Pixels the source leaves transparent keep what the
+// framebuffer held. Shown by `System<IMAGE_TO_FRAMEBUFFER>`, which empties the
+// queue; nothing for a handle that names no image, an empty box, or a queue
+// already holding `C_FramebufferImageQueue::kMaxDraws` draws.
+inline void queueFramebufferImage(
+    ImageHandle handle,
+    IRMath::ivec2 pos,
+    IRMath::ivec2 size,
+    const ImageOptions &options,
+    int distance
+) {
+    if (size.x <= 0 || size.y <= 0) {
+        return;
+    }
+    const IRComponents::C_CanvasDrawImages::Image *image = detail::findImage(images(), handle);
+    if (image == nullptr) {
+        return;
+    }
+    IRComponents::C_FramebufferImageQueue &drawQueue = framebufferImageQueue();
+    if (drawQueue.draws_.size() >= IRComponents::C_FramebufferImageQueue::kMaxDraws) {
+        return;
+    }
+    drawQueue.draws_.push_back(
+        {handle, detail::imageCommand(*image, pos, size, pos, pos + size, options, distance)}
+    );
+}
+
+// Cuts a queued framebuffer image's clip to a target of `targetSize` pixels.
+// False when none of its box is on the target.
+inline bool clipFramebufferImage(IRRender::CanvasImageCommand &command, IRMath::ivec2 targetSize) {
+    return IRRender::clipRectToCanvas(
+        command.origin_,
+        command.size_,
+        targetSize,
+        command.clipLo_,
+        command.clipHi_
     );
 }
 

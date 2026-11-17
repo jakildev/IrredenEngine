@@ -102,6 +102,7 @@
 #include <irreden/render/components/component_gui_position.hpp>
 #include <irreden/render/components/component_text_segment.hpp>
 #include <irreden/render/components/component_text_style.hpp>
+#include <irreden/render/systems/system_image_to_framebuffer.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_auto_yaw_rotate.hpp>
@@ -671,6 +672,27 @@ IRPrefab::CanvasDraw::ImageHandle g_canvasImageHandle = IRPrefab::CanvasDraw::kI
 int g_canvasImageFrame = 0;
 constexpr IRVideo::AutoScreenshotShot kCanvasImageSampleShots[] = {
     {1.0f, vec2(0, 0), 0.0f, "canvas_image_sample"},
+};
+
+// --framebuffer-image-sample: images drawn into the main framebuffer, one
+// sample per framebuffer pixel, around a world cube. Top left, a probe of
+// one-pixel detail at one framebuffer pixel per image pixel, through a
+// canvas-draw layer (CANVAS) and through the framebuffer (FRAMEBUFFER): a
+// layer texel is two pixels wide, so the layer's copy loses the vertical
+// lines, the checker and the lettering. Top right, the colour probe on the
+// framebuffer path as a mosaic and posterized under a tint. In the centre, the
+// colour probe at the BEHIND depth, so the cube covers it and BEHIND canvas
+// text paints over it. Over the cube's corner, a crop and a tinted copy at the
+// FRONT depth, the later call on top where they meet, under FRONT canvas text.
+bool g_framebufferImageSample = false;
+constexpr const char *kFramebufferImageLayerName = "framebufferImageSample";
+constexpr const char *kFramebufferImageDetailPath = "data/shape_debug/framebuffer_image_sample.png";
+constexpr int kFramebufferImageCubeSize = 40;
+IREntity::EntityId g_framebufferImageLayer = IREntity::kNullEntity;
+IRPrefab::CanvasDraw::ImageHandle g_framebufferImageDetail = IRPrefab::CanvasDraw::kInvalidImage;
+IRPrefab::CanvasDraw::ImageHandle g_framebufferImageColour = IRPrefab::CanvasDraw::kInvalidImage;
+constexpr IRVideo::AutoScreenshotShot kFramebufferImageSampleShots[] = {
+    {1.0f, vec2(0, 0), 0.0f, "framebuffer_image_sample"},
 };
 
 // --load-prefab <path>: the scene is the prefab manifest at <path> (exe-relative)
@@ -1868,6 +1890,12 @@ void registerCliArgs() {
         "With --canvas-image-sample, the image file to draw (exe-relative or absolute path)",
         ""
     );
+    args.flag(
+        "--framebuffer-image-sample",
+        "Replace the scene + capture table with images drawn into the main framebuffer per "
+        "framebuffer pixel: a fine-detail probe beside its canvas-draw copy, a mosaic, a "
+        "posterized tint, one behind a world cube under canvas text and two in front of it"
+    );
     args.numbers(
         "--framebuffer-size",
         "Resize the logical window to produce the requested framebuffer width and height",
@@ -1937,6 +1965,7 @@ void readCliArgs() {
     g_voxelTextSample = args.getFlag("--voxel-text-sample");
     g_canvasImageSample = args.getFlag("--canvas-image-sample");
     g_canvasImagePan = args.getFlag("--canvas-image-pan");
+    g_framebufferImageSample = args.getFlag("--framebuffer-image-sample");
     if (args.wasProvided("--canvas-image-file")) {
         g_canvasImagePath = args.getString("--canvas-image-file");
     }
@@ -2074,6 +2103,7 @@ void initEntities();
 void initGlitchFixture();
 void initGlitchSubjectFixture();
 void queueCanvasImageSample();
+void queueFramebufferImageSample();
 void registerDemoSettings();
 
 int main(int argc, char **argv) {
@@ -4605,6 +4635,27 @@ void initSystems() {
             }
         );
     }
+    if (g_framebufferImageSample) {
+        // The layer's draws flush immediately before the composite; the
+        // framebuffer images land on the composite's depth right after it.
+        renderPipeline.insert(
+            std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId),
+            {
+                IRSystem::createSystem<IRComponents::C_CanvasDrawLayer>(
+                    "ShapeDebugFramebufferImageSample",
+                    [](const IRComponents::C_CanvasDrawLayer &) {},
+                    []() { queueFramebufferImageSample(); }
+                ),
+                IRSystem::createSystem<IRSystem::CANVAS_DRAW>(),
+            }
+        );
+        renderPipeline.insert(
+            std::next(
+                std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId)
+            ),
+            IRSystem::createSystem<IRSystem::IMAGE_TO_FRAMEBUFFER>()
+        );
+    }
     if (g_viewportPortrait) {
         // The sync feeds the viewport's pool before the voxel raster reads it;
         // the composite lands on top of the world + GUI composite.
@@ -5271,6 +5322,8 @@ void initSystems() {
             IRVideo::setAutoScreenshotShots(cfg, kVoxelTextSampleShots);
         } else if (g_canvasImageSample) {
             IRVideo::setAutoScreenshotShots(cfg, kCanvasImageSampleShots);
+        } else if (g_framebufferImageSample) {
+            IRVideo::setAutoScreenshotShots(cfg, kFramebufferImageSampleShots);
         } else if (!g_loadPrefabPath.empty()) {
             buildLoadPrefabShots();
             cfg.shots_ = g_loadPrefabShots.data();
@@ -6148,6 +6201,120 @@ void queueCanvasImageSample() {
     );
 }
 
+// The --framebuffer-image-sample scene (see g_framebufferImageSample).
+void initFramebufferImageSampleScene() {
+    namespace Draw = IRPrefab::CanvasDraw;
+    IREntity::createEntity(
+        C_LocalTransform{vec3(0.0f)},
+        C_VoxelSetNew{
+            ivec3(kFramebufferImageCubeSize),
+            Color{200, 205, 215, 255},
+            IRComponents::EntityAnchor::CENTER
+        }
+    );
+    g_framebufferImageLayer = Draw::createLayer(kFramebufferImageLayerName);
+    g_framebufferImageDetail = Draw::loadImage(kFramebufferImageDetailPath);
+    g_framebufferImageColour = Draw::loadImage(g_canvasImagePath);
+    IR_ASSERT(
+        g_framebufferImageDetail != Draw::kInvalidImage &&
+            g_framebufferImageColour != Draw::kInvalidImage,
+        "the framebuffer image sample needs {} and {}",
+        kFramebufferImageDetailPath,
+        g_canvasImagePath
+    );
+}
+
+// One frame of the --framebuffer-image-sample draws; re-issued every frame.
+void queueFramebufferImageSample() {
+    namespace Draw = IRPrefab::CanvasDraw;
+    constexpr int kGap = 12;
+    constexpr int kLabelGap = 4;
+    const ivec2 framebuffer = Draw::framebufferSize();
+    // A layer texel is two framebuffer pixels wide and one tall.
+    const auto texel = [](ivec2 pixel) { return ivec2(pixel.x / 2, pixel.y); };
+    const auto label = [&texel](const char *text, ivec2 pixel, int distance, int fontSize = 1) {
+        Draw::TextOptions options;
+        options.fontSize_ = fontSize;
+        Draw::queueText(g_framebufferImageLayer, text, texel(pixel), options, distance);
+    };
+
+    // One framebuffer pixel per image pixel on both paths.
+    const ivec2 detail = Draw::imageSize(g_framebufferImageDetail);
+    const ivec2 canvasPos(kGap, kGap);
+    const ivec2 framebufferPos(canvasPos.x + detail.x + kGap, kGap);
+    Draw::queueImage(
+        g_framebufferImageLayer,
+        g_framebufferImageDetail,
+        texel(canvasPos),
+        texel(detail),
+        {},
+        Draw::kDepthFront
+    );
+    Draw::queueFramebufferImage(
+        g_framebufferImageDetail,
+        framebufferPos,
+        detail,
+        {},
+        Draw::kDepthFront
+    );
+    label("CANVAS", canvasPos + ivec2(0, detail.y + kLabelGap), Draw::kDepthFront);
+    label("FRAMEBUFFER", framebufferPos + ivec2(0, detail.y + kLabelGap), Draw::kDepthFront);
+
+    struct Tile {
+        const char *label_;
+        Draw::ImageOptions options_;
+    };
+    const Tile tiles[] = {
+        {"CELL 6", {.cell_ = 6}},
+        {"POSTER", {.levels_ = 4}},
+        {"TINT", {.tint_ = Color{255, 170, 90, 255}}},
+    };
+    const ivec2 tile(240, 160);
+    ivec2 tilePos(framebufferPos.x + detail.x + 2 * kGap, kGap);
+    for (const Tile &entry : tiles) {
+        Draw::queueFramebufferImage(
+            g_framebufferImageColour,
+            tilePos,
+            tile,
+            entry.options_,
+            Draw::kDepthFront
+        );
+        label(entry.label_, tilePos + ivec2(0, tile.y + kLabelGap), Draw::kDepthFront);
+        tilePos.x += tile.x + kGap;
+    }
+
+    // Around the framebuffer's centre, where the world origin's cube projects.
+    const ivec2 centre = framebuffer / 2;
+    const ivec2 backdrop(540, 360);
+    const ivec2 backdropPos = centre - ivec2(backdrop.x / 2, 160);
+    Draw::queueFramebufferImage(
+        g_framebufferImageColour,
+        backdropPos,
+        backdrop,
+        {},
+        Draw::kDepthBehind
+    );
+    label("TEXT OVER", backdropPos + ivec2(24, 290), Draw::kDepthBehind, 2);
+
+    const ivec2 inset(180, 120);
+    const ivec2 insetPos = centre + ivec2(20, 10);
+    Draw::queueFramebufferImage(
+        g_framebufferImageColour,
+        insetPos,
+        inset,
+        {.uvRect_ = vec4(0.12f, 0.2f, 0.52f, 0.6f)},
+        Draw::kDepthFront
+    );
+    Draw::queueFramebufferImage(
+        g_framebufferImageColour,
+        insetPos + ivec2(100, 70),
+        inset,
+        {.tint_ = Color{150, 220, 255, 255}},
+        Draw::kDepthFront
+    );
+    label("FRONT", insetPos + ivec2(6, 4), Draw::kDepthFront);
+}
+
 // The --text-size-sample scene (see g_textSizeSample).
 void initTextSizeSampleScene() {
     // The 63 characters both sets cover, 21 per line.
@@ -6454,6 +6621,12 @@ void initEntities() {
     if (g_canvasImageSample) {
         IR_LOG_INFO("--- Canvas image sample scene ---");
         initCanvasImageSampleScene();
+        setupCanvasLighting();
+        return;
+    }
+    if (g_framebufferImageSample) {
+        IR_LOG_INFO("--- Framebuffer image sample scene ---");
+        initFramebufferImageSampleScene();
         setupCanvasLighting();
         return;
     }

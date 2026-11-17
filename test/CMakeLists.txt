@@ -183,6 +183,7 @@ add_executable(IrredenEngineTest
   render/voxel_editor_array_preview_test.cpp
   render/voxel_editor_lod_preview_test.cpp
   render/canvas_draw_image_test.cpp
+  render/framebuffer_image_test.cpp
   render/comparison_image_test.cpp
   render/voxel_editor_sculpt_grid_test.cpp
   render/voxel_editor_part_edit_history_test.cpp
@@ -265,6 +266,7 @@ add_executable(IrredenEngineTest
   script/lua_viewport_bindings_test.cpp
   script/lua_canvas_draw_bindings_test.cpp
   script/lua_canvas_draw_image_test.cpp
+  script/lua_framebuffer_image_test.cpp
   script/lua_midi_note_spacing_test.cpp
   script/lua_widget_color_swatch_test.cpp
   script/lua_script_utils_test.cpp

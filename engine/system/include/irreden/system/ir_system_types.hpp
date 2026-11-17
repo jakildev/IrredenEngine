@@ -282,6 +282,13 @@ enum SystemName {
     // FRAMEBUFFER_TO_SCREEN.
     SYNC_VIEWPORT_SUBJECTS,
     VIEWPORT_TO_FRAMEBUFFER,
+    // Draws the frame's queued framebuffer images
+    // (`IRPrefab::CanvasDraw::queueFramebufferImage`) into the main framebuffer
+    // at framebuffer-pixel resolution, depth-tested against the composite.
+    // RENDER after TRIXEL_TO_FRAMEBUFFER (which clears the framebuffer) and
+    // before VIEWPORT_TO_FRAMEBUFFER, the framebuffer debug overlays,
+    // FRAMEBUFFER_GLITCH and FRAMEBUFFER_TO_SCREEN.
+    IMAGE_TO_FRAMEBUFFER,
     // Period-quantised framebuffer glitch (engine/prefabs/irreden/render/glitch.hpp).
     // RENDER after every main-framebuffer producer (TRIXEL_TO_FRAMEBUFFER,
     // VIEWPORT_TO_FRAMEBUFFER, framebuffer debug overlays) and immediately

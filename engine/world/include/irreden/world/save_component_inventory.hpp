@@ -91,6 +91,7 @@
 #include <irreden/render/components/component_fog_reveal_settings.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
+#include <irreden/render/components/component_framebuffer_image_queue.hpp>
 #include <irreden/render/components/component_geometric_shape.hpp>
 #include <irreden/render/components/component_glitch_state.hpp>
 #include <irreden/render/components/component_glitch_subject.hpp>
@@ -502,6 +503,9 @@ IR_SAVE_OPT_OUT(IRComponents::C_CanvasDrawImages)
 // C_CanvasDrawLayer: OPT-OUT — tags a GPU-backed layer canvas the creation
 // makes at setup, like the canvas textures it rides on.
 IR_SAVE_OPT_OUT(IRComponents::C_CanvasDrawLayer)
+// C_FramebufferImageQueue: OPT-OUT — one frame's queued framebuffer image
+// draws, re-issued by the creation every frame, like C_CanvasDrawQueue.
+IR_SAVE_OPT_OUT(IRComponents::C_FramebufferImageQueue)
 // C_GlitchSubject: OPT-OUT — same reasoning: a per-entity presentation mark
 // the creation re-establishes every run.
 IR_SAVE_OPT_OUT(IRComponents::C_GlitchSubject)
@@ -739,6 +743,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_CanvasDrawQueue,
     IRComponents::C_CanvasDrawImages,
     IRComponents::C_CanvasDrawLayer,
+    IRComponents::C_FramebufferImageQueue,
     IRComponents::C_GlitchSubject,
     IRComponents::C_GuiCanvasDisplay,
     IRComponents::C_SettingsRegistry,

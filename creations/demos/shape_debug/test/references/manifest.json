@@ -252,6 +252,12 @@
       "capture_offset": 0
     },
     {
+      "name": "framebuffer_image",
+      "demo_args": ["--framebuffer-image-sample"],
+      "shots": ["framebuffer_image_sample"],
+      "capture_offset": 0
+    },
+    {
       "name": "glitch_standard_off",
       "demo_args": ["--glitch-test", "standard-off"],
       "shots": [

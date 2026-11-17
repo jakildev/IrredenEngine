@@ -113,9 +113,10 @@ class LuaScript {
     // Bind the opt-in canvas draw service as the `IRCanvas` table: text,
     // voxel text, rectangles, borders and images queued onto any named canvas
     // at a composite depth, plus `createLayer`. Needs `CANVAS_DRAW` in RENDER
-    // to show anything. Extends an existing IRCanvas table and rejects a
-    // non-table collision. `IRCanvas.loadImage` reads only under the image
-    // base; the no-arg form uses the run directory. See
+    // to show anything (`framebufferImage`, which draws into the main
+    // framebuffer, needs `IMAGE_TO_FRAMEBUFFER`). Extends an existing IRCanvas
+    // table and rejects a non-table collision. `IRCanvas.loadImage` reads only
+    // under the image base; the no-arg form uses the run directory. See
     // engine/script/CLAUDE.md "Engine service bindings".
     void bindLuaCanvasDraw();
     void bindLuaCanvasDraw(const std::filesystem::path &imageBase);
