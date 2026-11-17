@@ -112,6 +112,9 @@ kernel void IR_AO_KERNEL_NAME(
     constant FrameDataSun &sunFrameData [[buffer(29)]],
     texture2d<int, access::read> trixelDistances [[texture(0)]],
     texture2d<float, access::write> canvasAO [[texture(1)]],
+    texture2d<int, access::read> perAxisDistancesX [[texture(2)]],
+    texture2d<int, access::read> perAxisDistancesY [[texture(3)]],
+    texture2d<int, access::read> perAxisDistancesZ [[texture(4)]],
     const device uint* compactedCells [[buffer(25)]],
     const device uint* cellDrawArgs [[buffer(26)]],
     uint3 globalId [[thread_position_in_grid]],
@@ -215,6 +218,52 @@ kernel void IR_AO_KERNEL_NAME(
     }
 
     float occlusion = 0.0;
+    if (perAxis && (frameData.perAxisRoute & 2) == 0) {
+        const float3 receiverCenter = perAxisFaceCenter(pos3D, faceId);
+        const int3 tangents[4] = {t1, -t1, t2, -t2};
+        for (int contact = 0; contact < 4; ++contact) {
+            const int3 tangent = tangents[contact];
+            const int candidateFaceId = perAxisContactFaceId(tangent);
+            const float3 candidateOrigin =
+                perAxisContactCandidateOrigin(pos3D, faceId, tangent);
+            const int2 candidateCell = perAxisFaceOriginToStoreCell(
+                candidateOrigin, frameData.perAxisStoreFrame
+            );
+            if (!isInsideCanvas(candidateCell, size)) continue;
+            int candidateEncoded;
+            const int candidateAxis = candidateFaceId >> 1;
+            if (candidateAxis == 0)
+                candidateEncoded = perAxisDistancesX.read(uint2(candidateCell)).x;
+            else if (candidateAxis == 1)
+                candidateEncoded = perAxisDistancesY.read(uint2(candidateCell)).x;
+            else
+                candidateEncoded = perAxisDistancesZ.read(uint2(candidateCell)).x;
+            if (candidateEncoded == 0x7FFFFFFF) continue;
+            const int recoveredFaceId = frameData.visibleFaceIds[decodeSlot(candidateEncoded)] ^
+                decodeFlipPerAxis(candidateEncoded);
+            if (recoveredFaceId != candidateFaceId) continue;
+            const float3 recoveredOrigin = perAxisCellToWorld3DSubCell(
+                candidateCell, candidateEncoded, recoveredFaceId, frameData.perAxisStoreFrame
+            );
+            const float3 originError = recoveredOrigin - candidateOrigin;
+            if (dot(originError, originError) > 0.004f) continue;
+            const float3 separation = perAxisFaceCenter(recoveredOrigin, recoveredFaceId) -
+                                      receiverCenter;
+            const float distanceSquared = dot(separation, separation);
+            if (distanceSquared <= kAOMinDistanceSquared || distanceSquared >= kAORadiusSquared)
+                continue;
+            const float receiverFacing = max(
+                dot(separation, float3(faceOutwardNormal6I(faceId))), 0.0f
+            );
+            const float occluderFacing = max(
+                dot(-separation, float3(faceOutwardNormal6I(recoveredFaceId))), 0.0f
+            );
+            const float facing = receiverFacing * occluderFacing;
+            if (facing <= 0.0f) continue;
+            const float rangeWeight = 1.0f - distanceSquared / kAORadiusSquared;
+            occlusion += facing / distanceSquared * rangeWeight * rangeWeight;
+        }
+    }
     for (int dir = 0; dir < 4; ++dir) {
         int2 delta;
         if (dir == 0) delta = deltaT1;

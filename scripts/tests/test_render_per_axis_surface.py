@@ -37,7 +37,13 @@ vec2 clamp(vec2 point,vec2 low,vec2 high){
     return {std::clamp(point.x,low.x,high.x),std::clamp(point.y,low.y,high.y)};
 }
 vec4 fragmentColor;
-struct FaceFields {vec3 faceOrigin;int faceId;ivec2 ownerPixel;ivec2 overflowEntityId{0};};
+struct FaceFields {
+    vec3 faceOrigin;
+    int faceId;
+    ivec2 ownerPixel;
+    ivec2 overflowEntityId{0};
+    float overflowAO=1.f;
+};
 struct DistanceSample {int r;};
 struct DistanceTexture {
     ivec2 cell;
@@ -84,7 +90,8 @@ int main(int argc,char** argv) {
                                              storeFrame,visibleFaceIds);
         const FaceFields overflow=scatterFace(true,cell,encoded,canvasSize,
                                               storeFrame,visibleFaceIds);
-        if(overflow.overflowEntityId.x!=123 || overflow.overflowEntityId.y!=456) return 12;
+        if(overflow.overflowEntityId.x!=123 || overflow.overflowEntityId.y!=456 ||
+           overflow.overflowAO!=11.f/15.f || regular.overflowAO!=1.f) return 12;
         if(regular.faceId!=faceId || overflow.faceId!=faceId) {
             std::fprintf(stderr,"signed face identity\n");return 1;
         }
@@ -152,6 +159,7 @@ def vertex_decode(vertex):
     fetch = re.sub(r"^\s*color(?:\.a)? = [^;]+;", "", fetch, flags=re.MULTILINE)
     fetch = fetch.replace("gl_InstanceID", "instanceId")
     fetch = fetch.replace("vOverflowEntityId", "out.overflowEntityId")
+    fetch = fetch.replace("vOverflowAO", "out.overflowAO")
     decode = re.search(r"const int slot = decodeSlot\(rawDist\);.*?"
                        r"const vec3 origin = baseOrigin\b[^;]+;", vertex, re.DOTALL)[0]
     output_source = vertex[vertex.index(decode) + len(decode):]
@@ -170,7 +178,7 @@ FaceFields scatterFace(bool overflowMode,ivec2 cell,int encoded,ivec2 canvasSize
     const uint linear=uint(cell.y*canvasSize.x+cell.x);
     const uint packed=uint(cell.x)|(uint(cell.y)<<16u);
     const uint regularCells[]={0u,linear,0u};
-    const uint overflowCells[]={0u,0u,0u,0u,packed,0u,uint(encoded),1u};
+    const uint overflowCells[]={0u,0u,0u,0u,packed,0u,uint(encoded),0xB0000001u};
     const ivec2 entityIds[]={ivec2(0),ivec2(123,456)};
     FaceFields out;
     const uint* compactedCells=overflowMode?overflowCells:regularCells;
@@ -275,9 +283,12 @@ struct vec4 {
 };
 """)
     helpers = "\n".join(functions(common, name) for name in (
-        "faceOutwardNormal6", "decodeSlot", "decodeFlipPerAxis", "overflowEntryCell"))
-    flag = re.search(r"(?:const|constant) uint kOverflowCutFaceBit = [^;]+;", common).group()
-    helpers = flag.replace("constant", "const") + "\n" + helpers
+        "faceOutwardNormal6", "decodeSlot", "decodeFlipPerAxis", "overflowEntryCell",
+        "overflowVoxelIndex", "overflowAO"))
+    constants = "\n".join(re.search(
+        r"(?:const|constant) uint " + name + r" = [^;]+;", common).group()
+        for name in ("kOverflowCutFaceBit", "kOverflowVoxelIndexMask"))
+    helpers = constants.replace("constant", "const") + "\n" + helpers
     entry = host(functions(sampler, "worldSurfaceSunShadowFactor"))
     controls = surface_controls(host(functions(surface, "perAxisFaceSurfacePoint")))
     return (f"#define METAL_BACKEND {int(suffix == 'metal')}\n" + geometry + SPY + ADAPTER

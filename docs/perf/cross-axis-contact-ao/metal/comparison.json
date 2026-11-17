@@ -1,0 +1,399 @@
+{
+  "scene": "million-voxel fixed yaw 45, wave frozen, stage profiling on",
+  "pairs": 5,
+  "frames_per_run": 300,
+  "commits": {
+    "parent": "e5c0ce713",
+    "head": "1ce3d77be"
+  },
+  "trees": {
+    "parent": "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build-release-parent",
+    "head": "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build-release-head"
+  },
+  "commands": {
+    "parent": [
+      "fleet-run",
+      "--build-dir",
+      "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build-release-parent",
+      "--timeout",
+      "900",
+      "IRPerfGrid",
+      "--config-preset",
+      "configs/perf/million.lua",
+      "--yaw",
+      "0.785398163",
+      "--wave-freeze",
+      "--no-overlay",
+      "--pivot-origin",
+      "--auto-profile",
+      "301"
+    ],
+    "head": [
+      "fleet-run",
+      "--build-dir",
+      "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build-release-head",
+      "--timeout",
+      "900",
+      "IRPerfGrid",
+      "--config-preset",
+      "configs/perf/million.lua",
+      "--yaw",
+      "0.785398163",
+      "--wave-freeze",
+      "--no-overlay",
+      "--pivot-origin",
+      "--auto-profile",
+      "301"
+    ]
+  },
+  "identities": {
+    "parent": [
+      "798726bd14901229f9c42eaa7fce29b77f447992a2623f186ee902842540fc07",
+      "1d9b6075955bb3caf94e5299417780b0d58dbf05de7aa4a85dc430466377e0bb",
+      "85a4c4c0e04ff77ce830640f6b8935b4ab8dcad11f1ff0dfccbc3dd918d927f6",
+      "Release",
+      "AC Power"
+    ],
+    "head": [
+      "7ba379d71dba1192d73b98fc37a990dde31dc0e9d9a29375092ffd2e9d11f300",
+      "8e46d8eeea7faf542c31c6f56148abf2a7cbd07816acc8f701fc9dc382d31e87",
+      "85a4c4c0e04ff77ce830640f6b8935b4ab8dcad11f1ff0dfccbc3dd918d927f6",
+      "Release",
+      "AC Power"
+    ]
+  },
+  "base_runs": [
+    {
+      "frame_mean_ms": 11.28,
+      "frame_p99_ms": 11.68,
+      "gpu_frame_ms": 10.278,
+      "computeVoxelAoPerAxis": 0.032,
+      "lightingOverflow": 0.115
+    },
+    {
+      "frame_mean_ms": 11.4,
+      "frame_p99_ms": 12.57,
+      "gpu_frame_ms": 10.353,
+      "computeVoxelAoPerAxis": 0.034,
+      "lightingOverflow": 0.117
+    },
+    {
+      "frame_mean_ms": 11.35,
+      "frame_p99_ms": 12.24,
+      "gpu_frame_ms": 10.262,
+      "computeVoxelAoPerAxis": 0.031,
+      "lightingOverflow": 0.116
+    },
+    {
+      "frame_mean_ms": 11.28,
+      "frame_p99_ms": 11.6,
+      "gpu_frame_ms": 10.258,
+      "computeVoxelAoPerAxis": 0.032,
+      "lightingOverflow": 0.116
+    },
+    {
+      "frame_mean_ms": 11.49,
+      "frame_p99_ms": 13.17,
+      "gpu_frame_ms": 10.195,
+      "computeVoxelAoPerAxis": 0.029,
+      "lightingOverflow": 0.116
+    }
+  ],
+  "head_runs": [
+    {
+      "frame_mean_ms": 11.29,
+      "frame_p99_ms": 11.73,
+      "gpu_frame_ms": 10.251,
+      "computeVoxelAoPerAxis": 0.045,
+      "lightingOverflow": 0.121
+    },
+    {
+      "frame_mean_ms": 11.37,
+      "frame_p99_ms": 12.93,
+      "gpu_frame_ms": 10.265,
+      "computeVoxelAoPerAxis": 0.046,
+      "lightingOverflow": 0.121
+    },
+    {
+      "frame_mean_ms": 11.32,
+      "frame_p99_ms": 12.12,
+      "gpu_frame_ms": 10.259,
+      "computeVoxelAoPerAxis": 0.047,
+      "lightingOverflow": 0.122
+    },
+    {
+      "frame_mean_ms": 11.49,
+      "frame_p99_ms": 12.51,
+      "gpu_frame_ms": 10.253,
+      "computeVoxelAoPerAxis": 0.046,
+      "lightingOverflow": 0.121
+    },
+    {
+      "frame_mean_ms": 11.38,
+      "frame_p99_ms": 12.64,
+      "gpu_frame_ms": 10.264,
+      "computeVoxelAoPerAxis": 0.048,
+      "lightingOverflow": 0.122
+    }
+  ],
+  "rows": {
+    "frame_mean_ms": {
+      "parent": {
+        "values": [
+          11.28,
+          11.4,
+          11.35,
+          11.28,
+          11.49
+        ],
+        "mean": 11.36,
+        "min": 11.28,
+        "max": 11.49,
+        "spread": 0.21000000000000085,
+        "sd": 0.08860022573334717,
+        "n": 5
+      },
+      "head": {
+        "values": [
+          11.29,
+          11.37,
+          11.32,
+          11.49,
+          11.38
+        ],
+        "mean": 11.370000000000001,
+        "min": 11.29,
+        "max": 11.49,
+        "spread": 0.20000000000000107,
+        "sd": 0.07648529270389205,
+        "n": 5
+      },
+      "head_over_parent": 1.000880281690141,
+      "paired": {
+        "deltas": [
+          0.009999999999999787,
+          -0.030000000000001137,
+          -0.02999999999999936,
+          0.21000000000000085,
+          -0.10999999999999943
+        ],
+        "mean": 0.010000000000000142,
+        "sd": 0.12000000000000026,
+        "n": 5,
+        "lower95": -0.10441512627270934
+      },
+      "limit": {
+        "ratio": 1.1
+      },
+      "verdict": "pass"
+    },
+    "frame_p99_ms": {
+      "parent": {
+        "values": [
+          11.68,
+          12.57,
+          12.24,
+          11.6,
+          13.17
+        ],
+        "mean": 12.251999999999999,
+        "min": 11.6,
+        "max": 13.17,
+        "spread": 1.5700000000000003,
+        "sd": 0.6512065724484053,
+        "n": 5
+      },
+      "head": {
+        "values": [
+          11.73,
+          12.93,
+          12.12,
+          12.51,
+          12.64
+        ],
+        "mean": 12.386,
+        "min": 11.73,
+        "max": 12.93,
+        "spread": 1.1999999999999993,
+        "sd": 0.4682200337448195,
+        "n": 5
+      },
+      "head_over_parent": 1.0109369898792033,
+      "paired": {
+        "deltas": [
+          0.05000000000000071,
+          0.35999999999999943,
+          -0.120000000000001,
+          0.9100000000000001,
+          -0.5299999999999994
+        ],
+        "mean": 0.13399999999999998,
+        "sd": 0.5398425696441509,
+        "n": 5,
+        "lower95": -0.38071796477682796
+      },
+      "limit": {
+        "ratio": 1.1
+      },
+      "verdict": "pass"
+    },
+    "gpu_frame_ms": {
+      "parent": {
+        "values": [
+          10.278,
+          10.353,
+          10.262,
+          10.258,
+          10.195
+        ],
+        "mean": 10.269200000000001,
+        "min": 10.195,
+        "max": 10.353,
+        "spread": 0.15799999999999947,
+        "sd": 0.05653052272887617,
+        "n": 5
+      },
+      "head": {
+        "values": [
+          10.251,
+          10.265,
+          10.259,
+          10.253,
+          10.264
+        ],
+        "mean": 10.2584,
+        "min": 10.251,
+        "max": 10.265,
+        "spread": 0.014000000000001123,
+        "sd": 0.006308724118235152,
+        "n": 5
+      },
+      "head_over_parent": 0.9989483114556147,
+      "paired": {
+        "deltas": [
+          -0.027000000000001023,
+          -0.08799999999999919,
+          -0.0030000000000001137,
+          -0.004999999999999005,
+          0.06899999999999906
+        ],
+        "mean": -0.010800000000000054,
+        "sd": 0.056313408705209296,
+        "n": 5,
+        "lower95": -0.06449254806544344
+      },
+      "limit": {
+        "ratio": 1.1
+      },
+      "verdict": "pass"
+    },
+    "computeVoxelAoPerAxis": {
+      "parent": {
+        "values": [
+          0.032,
+          0.034,
+          0.031,
+          0.032,
+          0.029
+        ],
+        "mean": 0.0316,
+        "min": 0.029,
+        "max": 0.034,
+        "spread": 0.005000000000000001,
+        "sd": 0.0018165902124584953,
+        "n": 5
+      },
+      "head": {
+        "values": [
+          0.045,
+          0.046,
+          0.047,
+          0.046,
+          0.048
+        ],
+        "mean": 0.0464,
+        "min": 0.045,
+        "max": 0.048,
+        "spread": 0.0030000000000000027,
+        "sd": 0.001140175425099139,
+        "n": 5
+      },
+      "head_over_parent": 1.4683544303797467,
+      "paired": {
+        "deltas": [
+          0.012999999999999998,
+          0.011999999999999997,
+          0.016,
+          0.013999999999999999,
+          0.019
+        ],
+        "mean": 0.014799999999999999,
+        "sd": 0.0027748873851023226,
+        "n": 5,
+        "lower95": 0.012154257578674747
+      },
+      "limit": {
+        "ratio": 1.1,
+        "absolute_floor_ms": 0.02,
+        "measured_base_spread_ms": 0.005000000000000001,
+        "paired_allowed_delta_ms": 0.02,
+        "fallback_ratio_cap": 1.15
+      },
+      "verdict": "pass (i)"
+    },
+    "lightingOverflow": {
+      "parent": {
+        "values": [
+          0.115,
+          0.117,
+          0.116,
+          0.116,
+          0.116
+        ],
+        "mean": 0.11600000000000002,
+        "min": 0.115,
+        "max": 0.117,
+        "spread": 0.0020000000000000018,
+        "sd": 0.0007071067811865482,
+        "n": 5
+      },
+      "head": {
+        "values": [
+          0.121,
+          0.121,
+          0.122,
+          0.121,
+          0.122
+        ],
+        "mean": 0.1214,
+        "min": 0.121,
+        "max": 0.122,
+        "spread": 0.0010000000000000009,
+        "sd": 0.0005477225575051667,
+        "n": 5
+      },
+      "head_over_parent": 1.0465517241379307,
+      "paired": {
+        "deltas": [
+          0.0059999999999999915,
+          0.00399999999999999,
+          0.0059999999999999915,
+          0.0049999999999999906,
+          0.0059999999999999915
+        ],
+        "mean": 0.005399999999999991,
+        "sd": 0.0008944271909999167,
+        "n": 5,
+        "lower95": 0.00454719999999999
+      },
+      "limit": {
+        "ratio": 1.1,
+        "absolute_floor_ms": 0.01,
+        "measured_base_spread_ms": 0.0020000000000000018,
+        "paired_allowed_delta_ms": 0.011600000000000013,
+        "fallback_ratio_cap": 1.15
+      },
+      "verdict": "pass (i)"
+    }
+  }
+}

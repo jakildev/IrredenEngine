@@ -4,9 +4,10 @@
 Pass demo arguments after --, including its auto-profile/exit options.
 Optional macOS CPU sampling retains call stacks; sampled timings include its overhead.
 The fleet runner owns benchmark resource coordination. No build is performed.
-Use --release for the worktree's build-release tree or IRREDEN_BUILD_DIR for an
-explicit tree. --render-env sets approved experiment variables without a shell
-environment prefix. The manifest records the tree, build type and variables.
+Use --release for the worktree's build-release tree, --build-dir for an explicit
+tree, or IRREDEN_BUILD_DIR for an inherited explicit tree. --render-env sets
+approved experiment variables without a shell environment prefix. The manifest
+records the tree, build type and variables.
 """
 
 import argparse
@@ -530,12 +531,19 @@ def yaw_pose_mismatch(target: str, demo_args: list[str], witness: RunWitness) ->
     if witness.yaw_first_deg is None or witness.pose_samples == 0:
         return "the report witnessed no camera yaw"
     frames = requested_frames(demo_args)
-    if frames is not None and witness.pose_samples != frames:
+    step = requested_yaw_step(demo_args)
+    # The terminal auto-profile frame can trigger report generation before its
+    # camera witness is appended. A fixed-pose run remains fully witnessed
+    # when the report contains the preceding requested-1 timed frames. Sweeps
+    # still require the exact count because it determines their travelled arc.
+    allowed_samples = {frames} if frames is not None else set()
+    if frames is not None and step == 0.0 and frames > 1:
+        allowed_samples.add(frames - 1)
+    if frames is not None and witness.pose_samples not in allowed_samples:
         return (
             f"the report witnessed {witness.pose_samples} frames; "
             f"--auto-profile asked for {frames}"
         )
-    step = requested_yaw_step(demo_args)
     steps = witness.pose_samples - 1
     expected = (("first", 1), ("last", witness.pose_samples))
     for (label, frame), witnessed in zip(expected, (witness.yaw_first_deg, witness.yaw_last_deg)):
@@ -945,10 +953,16 @@ def run_profile(command, root, log_path, binary, sample_seconds, sample_delay):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target", choices=TARGETS, default="IRPerfGrid")
-    parser.add_argument(
+    build_selection = parser.add_mutually_exclusive_group()
+    build_selection.add_argument(
         "--release",
         action="store_true",
         help="Profile the worktree's build-release tree through fleet-run --release",
+    )
+    build_selection.add_argument(
+        "--build-dir",
+        type=Path,
+        help="Profile an explicit existing build tree through fleet-run --build-dir",
     )
     parser.add_argument(
         "--allow-unsupported-gpu-frame",
@@ -1021,13 +1035,18 @@ def main() -> int:
     command = [
         "fleet-run",
         *(["--release"] if args.release else []),
+        *(["--build-dir", str(args.build_dir.resolve())] if args.build_dir else []),
         "--timeout",
         str(args.timeout),
         args.target,
         *demo_args,
     ]
     default_build_dir = root / ("build-release" if args.release else "build")
-    build_dir = Path(os.environ.get("IRREDEN_BUILD_DIR", default_build_dir)).resolve()
+    build_dir = (
+        args.build_dir.resolve()
+        if args.build_dir
+        else Path(os.environ.get("IRREDEN_BUILD_DIR", default_build_dir)).resolve()
+    )
     binary = demo_binary(build_dir, args.target)
     source = cmake_source_dir(build_dir, root)
     manifest = {

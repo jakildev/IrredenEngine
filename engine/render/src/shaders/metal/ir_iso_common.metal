@@ -310,6 +310,19 @@ inline bool overflowEntryIsCutFace(uint word) {
     return (word & kOverflowCutFaceBit) != 0u;
 }
 
+// Overflow word 3 carries a 28-bit voxel-pool index and a 4-bit AO factor.
+constant uint kOverflowVoxelIndexMask = 0x0FFFFFFFu;
+inline uint packOverflowVoxelAO(uint voxelIndex, float ao) {
+    const uint ao4 = uint(clamp(ao, 0.0f, 1.0f) * 15.0f + 0.5f);
+    return (voxelIndex & kOverflowVoxelIndexMask) | (ao4 << 28u);
+}
+inline uint overflowVoxelIndex(uint word) {
+    return word & kOverflowVoxelIndexMask;
+}
+inline float overflowAO(uint word) {
+    return float(word >> 28u) / 15.0f;
+}
+
 // Overflow-entry fog class byte — GLSL twin: 255 FIELD, a BODY factor rescaled
 // onto 0..254.
 constant uint kFogOverflowFieldByte = 255u;

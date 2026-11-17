@@ -115,6 +115,7 @@ vertex VertexOut v_peraxis_scatter(
 ) {
     VertexOut out;
     out.overflowEntityId = uint2(0);
+    out.overflowAO = 1.0f;
     out.visibilityExtent = int3(frameData.scatterFbResolution.xyz);
     const int2 canvasSize = int2(triangleColors.get_width(), triangleColors.get_height());
     int2 ij;
@@ -126,7 +127,9 @@ vertex VertexOut v_peraxis_scatter(
         // color. Everything below is bit-identical to
         // the cell path; only the data source differs.
         const uint entryBase = instanceId * 4u;
-        out.overflowEntityId = entityIds[compactedCells[entryBase + 3u]];
+        const uint voxelAO = compactedCells[entryBase + 3u];
+        out.overflowEntityId = entityIds[overflowVoxelIndex(voxelAO)];
+        out.overflowAO = overflowAO(voxelAO);
         const uint packedCell = overflowEntryCell(compactedCells[entryBase + 0u]);
         ij = int2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
         color = unpackColor(compactedCells[entryBase + 1u]);

@@ -10,8 +10,10 @@
 // Mirrors shaders/c_light_overflow_faces.glsl. Dispatched inside
 // LIGHTING_TO_TRIXEL after the per-axis CELL lighting, and ONLY while rotating
 // — the cardinal path never dispatches this kernel. The relight is the same
-// world sample as c_lighting_to_trixel with AO = 1.0, and it rewrites the
-// entry's colorPacked in place (the scatter reads the relit value).
+// world sample as c_lighting_to_trixel plus bounded cross-axis contact AO, and
+// it rewrites the entry's colorPacked in place. The surface route sets
+// perAxisStoreFrame.w bit 0 to request AO-carrier-only output;
+// perAxisRoute bit 1 is the diagnostic cross-axis disable.
 
 kernel void c_light_overflow_faces(
     constant FrameDataLightingToTrixel& frameData [[buffer(27)]],
@@ -27,6 +29,9 @@ kernel void c_light_overflow_faces(
     texture2d<float, access::sample> paletteLUT [[texture(3)]],
     texture3d<float, access::sample> lightVolume [[texture(5)]],
     texture3d<float, access::read> lightVolumeId [[texture(7)]],
+    texture2d<int, access::read> perAxisDistancesX [[texture(10)]],
+    texture2d<int, access::read> perAxisDistancesY [[texture(11)]],
+    texture2d<int, access::read> perAxisDistancesZ [[texture(12)]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 groupCount [[threadgroups_per_grid]],
     uint3 localId [[thread_position_in_threadgroup]]
@@ -43,7 +48,7 @@ kernel void c_light_overflow_faces(
         return;
     }
     // Only the shadow and normals diagnostics recolor overflow faces.
-    if (frameData.lightingEnabled == 0 || (frameData.debugOverlayMode != 0 && frameData.debugOverlayMode != 3 && frameData.debugOverlayMode != 8)) {
+    if (frameData.lightingEnabled == 0 || (frameData.debugOverlayMode != 0 && frameData.debugOverlayMode != 1 && frameData.debugOverlayMode != 3 && frameData.debugOverlayMode != 8)) {
         return;
     }
 
@@ -51,6 +56,7 @@ kernel void c_light_overflow_faces(
     const uint packedCell = overflowEntryCell(overflowScratch[entryBase + 0u]);
     const uint colorPacked = overflowScratch[entryBase + 1u];
     const int  rawDist = int(overflowScratch[entryBase + 2u]);
+    const uint voxelAO = overflowScratch[entryBase + 3u];
 
     const float4 albedo = unpackColor(colorPacked);
 
@@ -71,7 +77,65 @@ kernel void c_light_overflow_faces(
         cell, rawDist, faceId, voxelFrameData.perAxisStoreFrame
     );
 
-    const float ao = 1.0f;
+    float3 tangentU;
+    float3 tangentV;
+    faceInPlaneUnitAxes(faceId >> 1, tangentU, tangentV);
+    const int3 tangents[4] = {
+        int3(tangentU), -int3(tangentU), int3(tangentV), -int3(tangentV)
+    };
+    float occlusion = 0.0f;
+    const float3 receiverCenter = perAxisFaceCenter(pos3D, faceId);
+    const int2 storeSize = int2(
+        int(perAxisDistancesX.get_width()), int(perAxisDistancesX.get_height())
+    );
+    for (int contact = 0;
+         contact < ((voxelFrameData.perAxisRoute & 2) == 0 ? 4 : 0);
+         ++contact) {
+        const int3 tangent = tangents[contact];
+        const int candidateFaceId = perAxisContactFaceId(tangent);
+        const float3 candidateOrigin =
+            perAxisContactCandidateOrigin(pos3D, faceId, tangent);
+        const int2 candidateCell = perAxisFaceOriginToStoreCell(
+            candidateOrigin, voxelFrameData.perAxisStoreFrame
+        );
+        if (!isInsideCanvas(candidateCell, storeSize)) continue;
+        int candidateEncoded;
+        const int candidateAxis = candidateFaceId >> 1;
+        if (candidateAxis == 0)
+            candidateEncoded = perAxisDistancesX.read(uint2(candidateCell)).x;
+        else if (candidateAxis == 1)
+            candidateEncoded = perAxisDistancesY.read(uint2(candidateCell)).x;
+        else
+            candidateEncoded = perAxisDistancesZ.read(uint2(candidateCell)).x;
+        if (candidateEncoded == 0x7FFFFFFF) continue;
+        const int recoveredFaceId = voxelFrameData.visibleFaceIds[decodeSlot(candidateEncoded)] ^
+            decodeFlipPerAxis(candidateEncoded);
+        if (recoveredFaceId != candidateFaceId) continue;
+        const float3 recoveredOrigin = perAxisCellToWorld3DSubCell(
+            candidateCell, candidateEncoded, recoveredFaceId, voxelFrameData.perAxisStoreFrame
+        );
+        const float3 originError = recoveredOrigin - candidateOrigin;
+        if (dot(originError, originError) > 0.004f) continue;
+        const float3 separation = perAxisFaceCenter(recoveredOrigin, recoveredFaceId) -
+                                  receiverCenter;
+        const float distanceSquared = dot(separation, separation);
+        if (distanceSquared <= 1.0e-6f || distanceSquared >= 4.0f) continue;
+        const float facing = max(
+            dot(separation, float3(faceOutwardNormal6I(faceId))), 0.0f
+        ) * max(dot(-separation, float3(faceOutwardNormal6I(recoveredFaceId))), 0.0f);
+        if (facing <= 0.0f) continue;
+        const float rangeWeight = 1.0f - distanceSquared / 4.0f;
+        occlusion += facing / distanceSquared * rangeWeight * rangeWeight;
+    }
+    const float ao = 1.0f - occlusion * 0.25f;
+    overflowScratch[entryBase + 3u] = packOverflowVoxelAO(overflowVoxelIndex(voxelAO), ao);
+    if (frameData.debugOverlayMode == 1) {
+        overflowScratch[entryBase + 1u] = packColor(float4(float3(ao), albedo.a));
+        return;
+    }
+    if ((voxelFrameData.perAxisStoreFrame.w & 1) != 0) {
+        return;
+    }
     const float shadow = sunFrameData.shadowsEnabled != 0
         ? perAxisSunShadowFactor(pos3D, faceId, sunFrameData, sunDepthBuf)
         : 1.0f;

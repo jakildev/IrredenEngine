@@ -346,6 +346,21 @@ bool overflowEntryIsCutFace(uint word) {
     return (word & kOverflowCutFaceBit) != 0u;
 }
 
+// Overflow word 3 carries a 28-bit voxel-pool index and a 4-bit AO factor.
+// The configured maximum pool has fewer than 2^28 entries; the CPU asserts
+// that bound beside VoxelPoolConfig::kMaxEdge.
+const uint kOverflowVoxelIndexMask = 0x0FFFFFFFu;
+uint packOverflowVoxelAO(uint voxelIndex, float ao) {
+    const uint ao4 = uint(clamp(ao, 0.0, 1.0) * 15.0 + 0.5);
+    return (voxelIndex & kOverflowVoxelIndexMask) | (ao4 << 28u);
+}
+uint overflowVoxelIndex(uint word) {
+    return word & kOverflowVoxelIndexMask;
+}
+float overflowAO(uint word) {
+    return float(word >> 28u) / 15.0;
+}
+
 // The scatter's flat fog carrier for an overflow entry (word 0, colour word):
 // the class byte in bits 7:0 and kScatterFogCarrierCutFace for a cut face.
 const uint kScatterFogCarrierCutFace = 0x100u;

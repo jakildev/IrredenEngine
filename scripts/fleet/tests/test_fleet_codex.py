@@ -434,6 +434,7 @@ class Transport(unittest.TestCase):
         # This matrix reaches fleet-run through profile_matrix.run_rounds.
         drivers.add("scripts/perf/sdf_controls.py")
         drivers.add("scripts/perf/sun_depth_slab_timing.py")
+        drivers.add("scripts/perf/cross_axis_contact_ao_timing.py")
         self.assertEqual(drivers, set(policy.DISPLAY_VALIDATORS))
 
     def test_stderr_quota_and_stdout_notice(self):

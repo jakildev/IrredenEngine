@@ -28,6 +28,7 @@
 #include <irreden/render/gpu_substage_timing.hpp>
 
 #include <cstddef>
+#include <cstdlib>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -71,6 +72,9 @@ template <> struct System<COMPUTE_VOXEL_AO> {
     // cell list. See IRPrefab::PerAxisCanvas::restoreVoxelCompactionSlots.
     Buffer *voxelCompactedBuf_ = nullptr;
     Buffer *voxelIndirectBuf_ = nullptr;
+    // Diagnostic control used by the retained contact fixture. Bit 1 of the
+    // per-axis route selector suppresses only the new four reads.
+    bool crossAxisContactDisabled_ = false;
 
     // Per-pass voxel-frame author/restore for multi-lit-canvas scenes
     // for re-voxelized canvases. The shared voxel UBO (binding 7) is authored
@@ -140,6 +144,10 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             canvasTextures.getTextureDistances()
                 ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
             ao.getTexture()->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+            for (int slot = 2; slot <= 4; ++slot) {
+                canvasTextures.getTextureDistances()
+                    ->bindAsImage(slot, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            }
             voxelFrameDataBuf_->bindBase(
                 BufferTarget::UNIFORM,
                 kBufferIndex_FrameDataVoxelToCanvas
@@ -183,11 +191,27 @@ template <> struct System<COMPUTE_VOXEL_AO> {
                 axes.size_,
                 mainTextures.size_
             );
+            if (crossAxisContactDisabled_) {
+                const int diagnosticPerAxisRoute = 3;
+                voxelFrameDataBuf_->subData(
+                    offsetof(FrameDataVoxelToCanvas, perAxisRoute_),
+                    sizeof(diagnosticPerAxisRoute),
+                    &diagnosticPerAxisRoute
+                );
+            }
             IRPrefab::PerAxisCanvas::dispatchPerAxisCells(axes, [&](int axis) {
                 auto &tex = axes.axes_[axis];
                 tex.distances_.second
                     ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
                 tex.ao_.second->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                for (int sourceAxis = 0; sourceAxis < C_PerAxisTrixelCanvases::kAxisCount;
+                     ++sourceAxis) {
+                    axes.axes_[sourceAxis].distances_.second->bindAsImage(
+                        2 + sourceAxis,
+                        TextureAccess::READ_ONLY,
+                        TextureFormat::R32I
+                    );
+                }
             });
             // One barrier after the 3 independent per-axis dispatches (each axis
             // writes its own AO image texture — disjoint outputs, so dispatch
@@ -202,6 +226,10 @@ template <> struct System<COMPUTE_VOXEL_AO> {
         mainTextures.getTextureDistances()
             ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
         mainAO.getTexture()->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+        for (int slot = 2; slot <= 4; ++slot) {
+            mainTextures.getTextureDistances()
+                ->bindAsImage(slot, TextureAccess::READ_ONLY, TextureFormat::R32I);
+        }
     }
 
     void beginTick() {
@@ -300,6 +328,7 @@ template <> struct System<COMPUTE_VOXEL_AO> {
         p->shapeSmoothYawProgram_ =
             IRRender::getNamedResource<ShaderProgram>("ComputeVoxelAOShapesSmoothYawProgram");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
+        p->crossAxisContactDisabled_ = std::getenv("IR_CROSS_AXIS_CONTACT_AO_DISABLE") != nullptr;
         // NOT observer-tagged: the tick owns GpuSubStageScopes, which
         // reuse the observer's timestamp attachment slot.
         return systemId;

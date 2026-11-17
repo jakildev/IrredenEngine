@@ -273,7 +273,7 @@ void overflowAppendTap(
         packOverflowEntryCell(cardPix, isCutFace);
     perAxisWinnerIds[entryBase + 1u] = colorPacked;
     perAxisWinnerIds[entryBase + 2u] = uint(voxelDistance);
-    perAxisWinnerIds[entryBase + 3u] = voxelIndex;
+    perAxisWinnerIds[entryBase + 3u] = packOverflowVoxelAO(voxelIndex, 1.0);
 }
 #endif
 

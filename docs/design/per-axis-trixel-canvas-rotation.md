@@ -1519,20 +1519,16 @@ the full rotation, which is the part #1396 did not do).
     — built clean and hardware-verified on macOS/Metal — and handed the detached
     lighting integration to #1375/#1376 rather than duplicating it here.
 
-  - **Cross-axis AO correction (#4966, 2026-11-11).** The earlier
-    "AO is same-axis" claim confused storage locality with the geometric AO
-    neighbourhood. The contact fixture has a positive cardinal control
-    (`occluded_px = 4096`) but the rotating path records zero occluded pixels
-    at yaw 15°, 30°, 45°, 60°, and 75°. Source tracing confirms that each
-    per-axis dispatch binds only its own distance texture; perpendicular faces
-    cannot enter the kernel's neighbour loop, while same-axis candidates have
-    zero facing for the concave contact. A local Metal probe that also sampled
-    the two existing perpendicular distance textures restored nonzero yaw-45
-    AO, proving the missing information is already resident, but a 5×5 search
-    cost 50 extra reads per cell and a 9×9 search cost 162 while still reaching
-    only `occluded_px = 956`. That brute-force search was rejected. #5015
-    tracks a bounded direct-projection design, backend parity, overflow-lane
-    treatment, and performance validation.
+  - **Cross-axis AO.** Each rotating receiver projects its four signed tangent
+    contacts into the existing perpendicular face stores. The candidate face
+    polarity must point back toward the receiver; the decoded face id and
+    recovered sub-cell origin must both match before the ordinary mutual-facing
+    and radius terms contribute. This adds exactly four distance reads per
+    active AO cell, with no neighbourhood scan and no new GPU resource.
+    Surviving overflow records run the same four reads once during overflow
+    relight. Their existing fourth word packs a 28-bit voxel-pool index and a
+    4-bit AO factor; the scatter masks the index and carries the factor into
+    surface lighting. Cardinal frames never execute or bind this path.
 - **Memory / allocation policy.** Three worst-case textures during rotation;
   gate allocation on `residualYaw != 0` so static scenes pay nothing. Define
   the allocate/free churn behavior at rotation start/stop.
