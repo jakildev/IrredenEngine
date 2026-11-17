@@ -3,7 +3,8 @@
 
 // Lua surface for `IRPrefab::CanvasDraw`, installed as the `IRCanvas` table by
 // `LuaScript::bindLuaCanvasDraw()`. Every draw is queued for the frame and
-// shown by `CANVAS_DRAW`, so a script re-issues it each frame.
+// shown by `CANVAS_DRAW` (`framebufferImage` by `IMAGE_TO_FRAMEBUFFER`), so a
+// script re-issues it each frame.
 //
 //   IRCanvas.createLayer(name)                 -- a main-sized layer canvas
 //   local w, h = IRCanvas.size(name)
@@ -19,15 +20,19 @@
 //   IRCanvas.releaseImage(handle)
 //   IRCanvas.image(name, handle, x, y, w, h, { uv = { u0, v0, u1, v1 }, cell, tint, levels,
 //                                              distance })
+//   local w, h = IRCanvas.framebufferSize()        -- the main framebuffer, in pixels
+//   IRCanvas.framebufferImage(handle, x, y, w, h, { uv, cell, tint, levels, distance })
+//                                                  -- the box and cell in framebuffer pixels
 //   IRCanvas.Depth.{BEHIND, WORLD_NEAR, WORLD_FAR, FRONT}  -- composite depths
 //   IRCanvas.AlignH.{LEFT, CENTER, RIGHT}, IRCanvas.AlignV.{TOP, CENTER, BOTTOM}
 //
 // A canvas is named as `IRRender.getCanvas` knows it ("gui", "background",
-// or a layer). `distance` defaults to IRCanvas.Depth.FRONT. An unknown
-// option key, an unknown canvas, an unknown image handle, or a value outside
-// its range raises before anything is queued. `loadImage` reports a file it
-// cannot decode, or a path outside the image base, through its second return
-// instead.
+// or a layer); `framebufferImage` names none, it draws into the main
+// framebuffer at one sample per pixel. `distance` defaults to
+// IRCanvas.Depth.FRONT. An unknown option key, an unknown canvas, an unknown
+// image handle, or a value outside its range raises before anything is queued.
+// `loadImage` reports a file it cannot decode, or a path outside the image
+// base, through its second return instead.
 
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
@@ -80,6 +85,13 @@ inline IREntity::EntityId renderLayer(const std::string &name) {
 
 inline IRPrefab::CanvasDraw::ImageHandle renderImage(const std::string &path, std::string &error) {
     return IRPrefab::CanvasDraw::loadImage(path, error);
+}
+
+// The main framebuffer's size in pixels.
+using FramebufferSizeResolver = std::function<IRMath::ivec2()>;
+
+inline IRMath::ivec2 renderFramebufferSize() {
+    return IRPrefab::CanvasDraw::framebufferSize();
 }
 
 // The handle a Lua value spells, or kInvalidImage when it is not a positive
@@ -214,6 +226,32 @@ inline constexpr std::array<std::string_view, 5> kCanvasDrawImageKeys{
     "uv", "cell", "tint", "levels", "distance"
 };
 
+// The crop, mosaic cell, posterize count and tint of an image draw from
+// `options`, whose keys the caller has already checked.
+inline IRPrefab::CanvasDraw::ImageOptions
+canvasDrawImageOptions(const sol::table &options, const char *caller) {
+    IRPrefab::CanvasDraw::ImageOptions imageOptions;
+    imageOptions.uvRect_ = canvasDrawUvRect(options, caller);
+    imageOptions.cell_ =
+        integerOption(options, "cell", 1, 1, IRPrefab::CanvasDraw::kMaxImageCell, caller);
+    imageOptions.tint_ = colorOption(options, "tint", imageOptions.tint_);
+    imageOptions.levels_ = integerOption(
+        options,
+        "levels",
+        0,
+        0,
+        IRPrefab::CanvasDraw::kMaxImagePosterizeLevels,
+        caller
+    );
+    if (imageOptions.levels_ == 1) {
+        throw sol::error{
+            std::string(caller) + ": levels must be 0 (off) or a whole number in [2, " +
+            std::to_string(IRPrefab::CanvasDraw::kMaxImagePosterizeLevels) + "]"
+        };
+    }
+    return imageOptions;
+}
+
 // An `IRCanvas.Axis` value, X when absent.
 inline IRRender::VoxelRunAxis canvasDrawAxis(const sol::table &options, const char *caller) {
     const int value = integerOption(options, "axis", 0, 0, 2, caller);
@@ -260,13 +298,15 @@ canvasDrawVoxelStyle(const sol::table &options, const char *caller) {
 /// does; it is canonicalized once here, and a base that cannot be resolved
 /// throws. @p resolve names a canvas for the draw calls; @p createLayer stands
 /// up a layer for `createLayer`, returning kNullEntity when the name is taken;
-/// @p loadImage decodes a contained path.
+/// @p loadImage decodes a contained path; @p framebufferSize answers
+/// `framebufferSize`.
 inline void bindCanvasDraw(
     LuaScript &script,
     const std::filesystem::path &imageBase,
     CanvasResolver resolve = renderCanvasByName,
     LayerFactory createLayer = renderLayer,
-    ImageLoader loadImage = renderImage
+    ImageLoader loadImage = renderImage,
+    FramebufferSizeResolver framebufferSize = renderFramebufferSize
 ) {
     std::error_code baseError;
     const std::filesystem::path canonicalImageBase =
@@ -567,25 +607,8 @@ inline void bindCanvasDraw(
         const IRPrefab::CanvasDraw::ImageHandle image = requireCanvasDrawImage(handle, kCaller);
         const sol::table options = optionsTable(state, optionsObject, kCaller);
         rejectUnknownKeys(options, kCanvasDrawImageKeys, kCaller);
-        IRPrefab::CanvasDraw::ImageOptions imageOptions;
-        imageOptions.uvRect_ = canvasDrawUvRect(options, kCaller);
-        imageOptions.cell_ =
-            integerOption(options, "cell", 1, 1, IRPrefab::CanvasDraw::kMaxImageCell, kCaller);
-        imageOptions.tint_ = colorOption(options, "tint", imageOptions.tint_);
-        imageOptions.levels_ = integerOption(
-            options,
-            "levels",
-            0,
-            0,
-            IRPrefab::CanvasDraw::kMaxImagePosterizeLevels,
-            kCaller
-        );
-        if (imageOptions.levels_ == 1) {
-            throw sol::error{
-                std::string(kCaller) + ": levels must be 0 (off) or a whole number in [2, " +
-                std::to_string(IRPrefab::CanvasDraw::kMaxImagePosterizeLevels) + "]"
-            };
-        }
+        const IRPrefab::CanvasDraw::ImageOptions imageOptions =
+            canvasDrawImageOptions(options, kCaller);
         IRPrefab::CanvasDraw::queueImage(
             target,
             image,
@@ -595,6 +618,33 @@ inline void bindCanvasDraw(
             canvasDrawDistance(options, kCaller)
         );
     });
+
+    canvas["framebufferSize"] = statefulLuaFunction([framebufferSize]() {
+        const IRMath::ivec2 size = framebufferSize();
+        return std::make_tuple(size.x, size.y);
+    });
+
+    canvas["framebufferImage"] = [](sol::this_state state,
+                                    sol::object handle,
+                                    int x,
+                                    int y,
+                                    int w,
+                                    int h,
+                                    sol::object optionsObject) {
+        constexpr const char *kCaller = "IRCanvas.framebufferImage";
+        const IRPrefab::CanvasDraw::ImageHandle image = requireCanvasDrawImage(handle, kCaller);
+        const sol::table options = optionsTable(state, optionsObject, kCaller);
+        rejectUnknownKeys(options, kCanvasDrawImageKeys, kCaller);
+        const IRPrefab::CanvasDraw::ImageOptions imageOptions =
+            canvasDrawImageOptions(options, kCaller);
+        IRPrefab::CanvasDraw::queueFramebufferImage(
+            image,
+            IRMath::ivec2(x, y),
+            IRMath::ivec2(w, h),
+            imageOptions,
+            canvasDrawDistance(options, kCaller)
+        );
+    };
 }
 
 // The image base defaults to the run directory, the tree `IRFile` reads.

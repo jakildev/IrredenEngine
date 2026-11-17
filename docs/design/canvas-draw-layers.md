@@ -7,14 +7,17 @@ after the framebuffer, clean of everything. `IRPrefab::CanvasDraw` is the
 missing piece: immediate-mode text, voxel text, rectangles, borders and
 decoded images queued onto **any named canvas at a chosen depth**, flushed
 once per frame by `CANVAS_DRAW` through the text compute path and an image
-kernel.
+kernel. A canvas texel is two framebuffer pixels wide, so the same loaded
+image can also be drawn straight into the main framebuffer, one sample per
+pixel, at the same depths: [framebuffer images](#framebuffer-images).
 
 Code: [`canvas_draw.hpp`](../../engine/prefabs/irreden/render/canvas_draw.hpp)
 (the queue API, `createLayer`, the depth constants),
 [`system_canvas_draw.hpp`](../../engine/prefabs/irreden/render/systems/system_canvas_draw.hpp)
-(the flush), [`lua_canvas_draw_bindings.hpp`](../../engine/script/include/irreden/script/lua_canvas_draw_bindings.hpp)
-(`IRCanvas`), the `C_CanvasDrawQueue` and `C_CanvasDrawImages` singletons and
-the `C_CanvasDrawLayer` tag.
+(the flush), [`system_image_to_framebuffer.hpp`](../../engine/prefabs/irreden/render/systems/system_image_to_framebuffer.hpp)
+(the framebuffer image pass), [`lua_canvas_draw_bindings.hpp`](../../engine/script/include/irreden/script/lua_canvas_draw_bindings.hpp)
+(`IRCanvas`), the `C_CanvasDrawQueue`, `C_CanvasDrawImages` and
+`C_FramebufferImageQueue` singletons and the `C_CanvasDrawLayer` tag.
 
 ## Using it
 
@@ -145,6 +148,71 @@ answers `nil, reason` for a path outside it or a file it cannot decode.
    texel of GPU memory. There is no cap on loaded images or on image draws
    per frame beyond that memory and one dispatch per draw.
 
+## Framebuffer images
+
+```cpp
+// after TRIXEL_TO_FRAMEBUFFER, before VIEWPORT_TO_FRAMEBUFFER / FRAMEBUFFER_GLITCH / FRAMEBUFFER_TO_SCREEN
+renderPipeline.push_back(IRSystem::createSystem<IRSystem::IMAGE_TO_FRAMEBUFFER>());
+```
+
+```lua
+local photo = assert(IRCanvas.loadImage("data/photo.jpg"))   -- the same handle a canvas draw uses
+local fw, fh = IRCanvas.framebufferSize()
+-- every frame, anywhere before IMAGE_TO_FRAMEBUFFER runs:
+IRCanvas.framebufferImage(photo, 0, 0, fw, fh, { uv = { u0, v0, u1, v1 }, distance = IRCanvas.Depth.BEHIND })
+IRCanvas.text("overlay", "TITLE", 14, 28, { distance = IRCanvas.Depth.BEHIND })   -- over the photo
+IRCanvas.framebufferImage(photo, 40, 40, 192, 256, { cell = 6, levels = 4, tint = { 255, 170, 90 } })
+```
+
+C++: `IRPrefab::CanvasDraw::queueFramebufferImage(handle, pos, size, options, distance)`
+and `framebufferSize()`.
+
+1. **Units.** `x, y, w, h` and `cell` are main framebuffer pixels, origin
+   top-left, y down. The framebuffer is the game resolution plus
+   `IRConstants::kSizeExtraPixelBuffer`, and a main-sized layer canvas spans it
+   at two pixels per texel across and one down, so framebuffer pixel `(x, y)`
+   lies in layer texel `(x / 2, y)`. Half of that buffer lies off each screen
+   edge, as it does for a layer canvas: with the camera at rest the screen's
+   top-left pixel is framebuffer pixel `(2, 1)`. A box shows its crop
+   undistorted when `w / h` equals the crop's pixel aspect. Every other option
+   means what it means to `IRCanvas.image`.
+2. **Depth.** The composite gives a canvas texel at distance `d` on a
+   world-tier canvas (a layer canvas: no priority tier, no distance offset)
+   the depth `(max(d, kDepthForegroundCeil + 1) - kMin) / (kMax - kMin)`. A
+   framebuffer image writes that plus half an encode step,
+   `0.5 / (kMax - kMin)`, with the depth test on. So at distance `d` it is
+   behind every composited texel at `d` or nearer, and in front of every one
+   farther, whichever pass draws first, and the constants keep their meaning:
+   `BEHIND` shows wherever nothing was composited, under every voxel and under
+   canvas draws at `BEHIND`; `FRONT` is over all world content and under
+   canvas draws at `FRONT`. Among framebuffer images the nearer distance wins
+   and, at one distance, the later call. Two consequences: an opaque
+   background-canvas fill sits at `BEHIND` and therefore hides a `BEHIND`
+   image (leave that canvas transparent under a backdrop image), and a
+   distance of `kTrixelDistanceMaxDistance` shows nothing, as on a canvas.
+3. **Queue.** A draw is queued into the `C_FramebufferImageQueue` singleton in
+   call order and the pass empties it. The queue holds at most 256 draws
+   (`kMaxDraws`); one queued past that is dropped. Without
+   `IMAGE_TO_FRAMEBUFFER` in the pipeline nothing is shown and the queue fills
+   once and stays at that size.
+4. **Sampling.** The fragment shader runs the kernel's filter
+   (`ir_canvas_image_sample`, included by both programs) on the same
+   `MipAtlas`, so a crop looks the same through either path apart from the
+   texel it is resolved to. Pixels where the source is mostly transparent are
+   discarded and keep the framebuffer's colour and depth.
+5. **Cost.** One 96-byte uniform upload and one quad draw per image; on Metal
+   each draw is its own render encoder and a fresh uniform backing. The
+   fragment writes its own depth, so every pixel of the clipped box is shaded
+   before the depth test, hidden ones included: up to 32 atlas reads per pixel
+   (four taps, two levels, four texels). A full-framebuffer image is that work
+   once over the framebuffer.
+6. **Limits.** The image is unlit and unfogged, casts and receives nothing,
+   reports no hovered entity (a pick goes to what it covers) and has no
+   translucency. It is part of the main framebuffer, so `FRAMEBUFFER_GLITCH`
+   tears it and the recorder captures it; passes that overlay the framebuffer
+   without depth (`VIEWPORT_TO_FRAMEBUFFER`, the debug overlays) must run
+   after it or the image paints over them.
+
 ## Headless coverage
 
 `test/script/lua_canvas_draw_bindings_test.cpp` drives `IRCanvas` with an
@@ -158,3 +226,8 @@ release, the image base, the packed command, painter order among other
 draws), and `test/render/canvas_draw_image_test.cpp` covers the C++ registry
 and the mip atlas. What the kernel paints is captured by
 `IRShapeDebug --canvas-image-sample --auto-screenshot`.
+`test/render/framebuffer_image_test.cpp` and
+`test/script/lua_framebuffer_image_test.cpp` cover the framebuffer image
+queue, its clip and the two bindings; what the pass paints, and where it sits
+in depth, is captured by `IRShapeDebug --framebuffer-image-sample
+--auto-screenshot`.

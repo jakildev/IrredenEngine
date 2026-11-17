@@ -22,6 +22,12 @@ const char *const kFileCompTrixelGlitchPerAxisMark = "shaders/c_trixel_glitch_pe
 const char *const kFileCompTrixelGlitchPerAxisWriteback =
     "shaders/c_trixel_glitch_per_axis_writeback.glsl";
 
+// A decoded image drawn into the main framebuffer per framebuffer pixel (Metal
+// mirror in metal/image_to_framebuffer.metal). Its filter is the canvas image
+// kernel's, in ir_canvas_image_sample.{glsl,metal}.
+const char *const kFileVertImageToFramebuffer = "shaders/v_image_to_framebuffer.glsl";
+const char *const kFileFragImageToFramebuffer = "shaders/f_image_to_framebuffer.glsl";
+
 const char *const kFileVertSpritesToScreen = "shaders/v_sprites_to_screen.glsl";
 const char *const kFileFragSpritesToScreen = "shaders/f_sprites_to_screen.glsl";
 
