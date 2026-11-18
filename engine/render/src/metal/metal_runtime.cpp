@@ -78,6 +78,7 @@ struct MetalRuntimeState {
     BufferWriteStats bufferWriteStats_;
     DeviceErrorStats deviceErrorStats_;
     std::string firstCommandBufferErrorText_;
+    bool hasFirstCommandBufferError_ = false;
     MetalAllocationKind failNextAllocation_ = MetalAllocationKind::BUFFER;
     bool failNextAllocationArmed_ = false;
     bool failNextRenderPipeline_ = false;
@@ -291,7 +292,8 @@ void recordMetalCommandBufferCompletion(
     auto &runtime = g_runtime();
     DeviceErrorStats &stats = runtime.deviceErrorStats_;
     ++stats.commandBufferErrors_;
-    if (stats.firstCommandBufferError_.empty()) {
+    if (!runtime.hasFirstCommandBufferError_) {
+        runtime.hasFirstCommandBufferError_ = true;
         runtime.firstCommandBufferErrorText_ = errorText;
         stats.firstCommandBufferError_ = runtime.firstCommandBufferErrorText_;
         stats.firstCommandBufferErrorFrame_ = frameNumber;
@@ -304,6 +306,14 @@ void recordMetalCommandBufferCompletion(
             errorText
         );
     }
+}
+
+void resetMetalDeviceErrorStatsForTesting() {
+    auto &runtime = g_runtime();
+    runtime.deviceErrorStats_ = DeviceErrorStats{};
+    runtime.firstCommandBufferErrorText_.clear();
+    runtime.hasFirstCommandBufferError_ = false;
+    runtime.loggedCommandBufferErrorCodes_.clear();
 }
 
 void recordMetalSkippedFrame() {

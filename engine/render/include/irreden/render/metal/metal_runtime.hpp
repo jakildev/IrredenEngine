@@ -148,6 +148,7 @@ void recordMetalCommandBufferCompletion(
     std::uint64_t frameNumber
 );
 void recordMetalSkippedFrame();
+void resetMetalDeviceErrorStatsForTesting();
 DeviceErrorStats &metalDeviceErrorStats();
 void compileMetalRenderPipelineForTesting(
     const char *vertexShaderPath, const char *fragmentShaderPath
