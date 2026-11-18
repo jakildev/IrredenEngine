@@ -447,6 +447,25 @@ class Queue(FleetSurveyFixture):
         self.assertEqual(self.ids("claimable_here", "linux"), ["#100", "#104", "#109"])
         self.assertEqual(self.ids("pinned_away", "linux"), ["#103", "#105"])
 
+    def test_contradictory_pins_print_both_needs_on_every_host(self):
+        # A macOS pin plus a GL need is refused by every host, so a
+        # bare "needs mac" on the macOS host itself reads as a routing fact.
+        state = copy.deepcopy(STATE)
+        state["repos"]["engine"]["tasks"]["open"].append(
+            task(110, needs_host="mac", needs_gl_host=True))
+        for host in ("mac", "linux", "windows"):
+            report = self.run_survey(host, state=state)
+            rows = {r["id"]: r for r in report["repos"]["engine"]["queue"]["pinned_away"]}
+            self.assertEqual(rows["#110"]["needs"], "mac + gl-host", host)
+            self.assertEqual(rows["#110"]["claimable_on"], "no host", host)
+            self.assertIn("#110", _mod.render(report))
+            self.assertIn("needs mac + gl-host — claimable on no host", _mod.render(report))
+        # A plain pin is still a routing fact, printed as one need.
+        rows = {r["id"]: r for r in self.run_survey("linux", state=state)
+                ["repos"]["engine"]["queue"]["pinned_away"]}
+        self.assertEqual(rows["#105"]["needs"], "mac")
+        self.assertNotIn("claimable_on", rows["#105"])
+
     def test_ghost_row_names_the_merged_pr(self):
         ghost = self.run_survey()["repos"]["engine"]["queue"]["ghost"][0]
         self.assertEqual(ghost["shadow_pr"], 900)

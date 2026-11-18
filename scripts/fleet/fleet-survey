@@ -202,6 +202,11 @@ def queue_section(repo_key, repo_state, host, runtime_env=None):
             buckets["declined"].append(row)
         elif fleet_task_class._host_incompatible(task, host):
             row["needs"] = fleet_task_class._required_host(task) or "gl-host"
+            if fleet_task_class._claimable_on_no_host(task):
+                # Contradictory pins: "needs mac" on the macOS host itself
+                # would read as a routing fact, not the filing defect it is.
+                row["needs"] += " + gl-host"
+                row["claimable_on"] = "no host"
             buckets["pinned_away"].append(row)
         else:
             buckets["claimable_here"].append(row)
@@ -457,6 +462,8 @@ def render(report):
                     extra = f"  <- merged PR #{r['shadow_pr']}; declined: {r['reason']}"
                 elif bucket == "pinned_away":
                     extra = f"  needs {r['needs']}"
+                    if r.get("claimable_on") == "no host":
+                        extra += " — claimable on no host; fix the filing"
                 elif bucket == "declined":
                     extra = (f"  {r['target']} age={r['age_seconds']}s role={r['role']} "
                              f"runtime={r['runtime']} reason={r['reason']}")

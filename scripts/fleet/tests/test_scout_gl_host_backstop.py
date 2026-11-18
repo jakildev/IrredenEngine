@@ -12,7 +12,9 @@ negative case below is load-bearing, not filler.
 """
 import importlib.machinery
 import importlib.util
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -367,6 +369,135 @@ class TestBackendSymmetric(unittest.TestCase):
     def test_none_and_empty(self):
         self.assertFalse(backend_symmetric(None))
         self.assertFalse(backend_symmetric(""))
+
+
+# --- an explicit macOS pin outranks the cited-path inference ---------------
+
+# A macOS Host line, and a context bullet citing the GL
+# backend's render-implementation file to say what that backend already does.
+# Read as `needs_host: mac` + `needs_gl_host: true`, no host could claim it.
+ISSUE_5000_BODY = (
+    "**Area:** engine/render\n**Host:** macos\n\n## Context\n\n"
+    "- The OpenGL backend already clears it in "
+    "`engine/render/src/opengl/opengl_render_impl.cpp`; Metal does not.\n"
+)
+
+
+class TestMacPinOutranksCitedPath(unittest.TestCase):
+
+    def test_issue_5000_body_is_mac_work(self):
+        self.assertTrue(_mod._GL_ONLY_SOURCE_PATH_RE.search(ISSUE_5000_BODY),
+                        "the cited path still matches; the pin outranks it")
+        self.assertEqual(required_host(ISSUE_5000_BODY), "mac")
+        self.assertFalse(requires_gl_host(ISSUE_5000_BODY))
+
+    def test_a_prose_mac_pin_outranks_it_too(self):
+        body = ("This must run on a macOS host. Compare "
+                "engine/render/src/opengl/opengl_render_impl.cpp.")
+        self.assertEqual(required_host(body), "mac")
+        self.assertFalse(requires_gl_host(body))
+
+    def test_without_a_mac_pin_the_cited_path_still_reads_gl(self):
+        unpinned = ISSUE_5000_BODY.replace("**Host:** macos\n", "")
+        self.assertIsNone(required_host(unpinned))
+        self.assertTrue(requires_gl_host(unpinned))
+        for host in ("linux", "windows"):
+            self.assertTrue(requires_gl_host(
+                ISSUE_5000_BODY.replace("macos", host)), host)
+
+    def test_a_declared_gl_need_is_not_outranked(self):
+        # Contradictory filings stay contradictory (the scout reports them):
+        # the prose declaration, and a body whose quoted
+        # Host field the unanchored reader took as the task's own.
+        for body in (
+            "**Host:** macos\n\nIt must be run on an OpenGL host.",
+            "It quoted #5000's `**Host:** mac` field, while the OpenGL "
+            "backend already handles it.",
+        ):
+            self.assertEqual(required_host(body), "mac", body)
+            self.assertTrue(requires_gl_host(body), body)
+
+
+# --- the claimable-on-no-host report (escalate-then-quiet) -----------------
+
+def _conflict_check(state):
+    check = getattr(_mod, "check_host_pin_conflicts", None)
+    if check is None:
+        raise AssertionError("fleet-state-scout has no check_host_pin_conflicts")
+    check(state)
+
+
+def _queue_state(*tasks):
+    return {"repos": {"engine": {"prs": [],
+                                 "tasks": {"open": list(tasks), "in_progress": []}}}}
+
+
+def _task_record(number, body, **kw):
+    """The host fields `fetch_task_queue` stamps on a task record."""
+    record = {"id": f"#{number}", "issue": f"#{number}",
+              "needs_gl_host": requires_gl_host(body),
+              "needs_host": required_host(body),
+              "backend_symmetric": backend_symmetric(body)}
+    record.update(kw)
+    return record
+
+
+class TestHostPinConflictAlert(unittest.TestCase):
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._saved = (_mod.log, os.environ.get("FLEET_ALERTS_DIR"))
+        self.logged = []
+        _mod.log = self.logged.append
+        os.environ["FLEET_ALERTS_DIR"] = self._tmp.name
+        self.alert = Path(self._tmp.name) / "state-scout-host-pin-conflict-engine-5147"
+
+    def tearDown(self):
+        _mod.log = self._saved[0]
+        getattr(_mod, "_host_pin_conflict_streak", {}).clear()
+        if self._saved[1] is None:
+            os.environ.pop("FLEET_ALERTS_DIR", None)
+        else:
+            os.environ["FLEET_ALERTS_DIR"] = self._saved[1]
+        self._tmp.cleanup()
+
+    def test_contradictory_task_escalates_then_quiets_then_clears(self):
+        conflicted = _queue_state(_task_record(
+            5147, "**Host:** macos\n\nIt must be run on an OpenGL host."))
+        _conflict_check(conflicted)
+        _conflict_check(conflicted)
+        self.assertEqual(len(self.logged), 1, self.logged)
+        self.assertIn("engine#5147", self.logged[0])
+        self.assertIn("consecutive_ticks=2", self.alert.read_text())
+        # Fixed filing: one all-clear line, the alert gone.
+        _conflict_check(_queue_state(_task_record(5147, "**Host:** macos")))
+        self.assertEqual(len(self.logged), 2, self.logged)
+        self.assertFalse(self.alert.exists())
+        # A fresh streak is loud again.
+        _conflict_check(conflicted)
+        self.assertEqual(len(self.logged), 3, self.logged)
+
+    def test_issue_5000_body_raises_no_alert(self):
+        _conflict_check(_queue_state(_task_record(5147, ISSUE_5000_BODY)))
+        self.assertEqual(self.logged, [])
+        self.assertEqual(list(Path(self._tmp.name).iterdir()), [])
+
+    def test_a_backend_symmetric_mac_gl_task_is_claimable_on_mac(self):
+        _conflict_check(_queue_state(_task_record(
+            5147, "", needs_host="mac", needs_gl_host=True, backend_symmetric=True)))
+        self.assertEqual(self.logged, [])
+
+    def test_the_scout_predicate_agrees_with_the_dispatcher_gate(self):
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        import fleet_task_class
+        for needs_host in (None, "mac", "linux", "windows"):
+            for needs_gl_host in (False, True):
+                for symmetric in (False, True):
+                    record = {"needs_host": needs_host, "needs_gl_host": needs_gl_host,
+                              "backend_symmetric": symmetric}
+                    self.assertEqual(_mod._task_host_pins_conflict(record),
+                                     fleet_task_class._claimable_on_no_host(record),
+                                     record)
 
 
 if __name__ == "__main__":

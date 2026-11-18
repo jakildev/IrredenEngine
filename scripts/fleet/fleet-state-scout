@@ -2021,7 +2021,8 @@ _EPIC_CHECKLIST_RE = re.compile(
 # worse than a miss (a miss just churns like before), so recall is sacrificed for
 # precision; the explicit label remains the primary, recommended signal. macOS
 # host declarations don't match (the OS alternation is linux/windows/opengl), so
-# a mac-only task is never self-gated off its own host.
+# a mac-only task is never self-gated off its own host by this form, nor by the
+# cited-path form below, which an explicit macOS pin outranks.
 #
 # Two requirement shapes are matched (both deliberate declarations, both
 # precision-safe): a verb form ("must run on a Linux host", "only builds on an
@@ -2064,6 +2065,14 @@ _GL_HOST_REQUIRED_RE = _host_requirement_re(
 #     there is no `fleet:needs-metal-host` label, and a mac task is never
 #     self-gated off the only host that can build it.
 #
+# Outranked by an explicit macOS pin (`_body_required_host` == "mac"): the pin
+# is the filer's declaration of the one host that can do the work, the cited
+# path only an inference about which files it edits — and a mac task cites an
+# `opengl/` file to say what the other backend already does. Letting
+# the inference stand would make the task claimable on no host. A GL need the
+# body DECLARES (prose form, `**Host:**` naming the backend) is not outranked:
+# that pair is a contradictory filing, and `check_host_pin_conflicts` reports it.
+#
 # Both forms pin the SAME extension set, and share one fragment so they cannot
 # drift apart. A path form accepting any extension after the `opengl/` segment
 # would make the `.glsl` exclusion above incidental to the tree layout (no
@@ -2081,11 +2090,13 @@ def _body_requires_gl_host(body):
     """True when the task body declares a Linux/Windows/OpenGL host requirement
     (in prose, or as a `**Host:**` field that names only GL-capable hosts or
     the backend itself) or names a source file in a CMake-platform-gated
-    GL-only source set — a backstop for a missing fleet:needs-gl-host label."""
+    GL-only source set without pinning the task to macOS — a backstop for a
+    missing fleet:needs-gl-host label."""
     body = body or ""
-    return bool(_GL_HOST_REQUIRED_RE.search(body)
-                or _GL_ONLY_SOURCE_PATH_RE.search(body)
-                or _host_field_requires_gl_host(body))
+    if _GL_HOST_REQUIRED_RE.search(body) or _host_field_requires_gl_host(body):
+        return True
+    return (bool(_GL_ONLY_SOURCE_PATH_RE.search(body))
+            and _body_required_host(body) != "mac")
 
 
 # Keep in sync with `fleet_task_class.GL_CAPABLE_HOSTS` (the dispatcher's
@@ -2309,13 +2320,8 @@ def fetch_task_queue(repo_slug):
             "updatedAt": issue.get("updated_at", "") or "",
         }
 
-        # A macOS pin plus a GL-host need is unsatisfiable: the OS pin refuses
-        # linux/windows and the GL gate refuses mac, so no fleet host can
-        # claim the task and it would vanish from every lane without a trace.
-        # Keep both (the filing is wrong, not the gates) but say so.
-        if task["needs_host"] == "mac" and task["needs_gl_host"]:
-            log(f"{repo_slug}#{number}: body pins the task to macOS but it "
-                "also needs a GL host — no fleet host can claim it; fix the filing")
+        # A macOS pin plus a declared GL need is claimable on no host;
+        # check_host_pin_conflicts reports it once per streak, not here per pass.
 
         if status == "~":
             sections["in_progress"].append(task)
@@ -5066,48 +5072,81 @@ def check_state_size(size_bytes: int) -> None:
         pass
 
 
-# A PR carrying both residual host labels is refused by every host (the macOS
-# pin refuses linux/windows, the GL gate refuses mac) and vanishes from every
-# lane until a human drops the stale label. "<repo>-<number>" -> consecutive
-# ticks; in-process, like _state_size_over_streak.
+# A record no fleet host can claim vanishes from every lane without a trace,
+# so it is reported where an operator looks (the alerts directory), not only in
+# the log. Two shapes, both filing defects rather than gate defects — the gates
+# are kept as they are and the record is reported until someone fixes it:
+#   - a PR carrying both residual host labels (the macOS pin refuses
+#     linux/windows, the GL gate refuses mac) until a human drops the stale one;
+#   - a task whose body pins it to macOS AND declares a GL need. A cited
+#     `opengl/` path alone no longer makes this pair (an explicit macOS pin
+#     outranks it — see `_GL_ONLY_SOURCE_PATH_RE`), but a declared need still
+#     does, and so does the unanchored `**Host:**` reader taking a quoted
+#     field's sentence as the task's own.
+# Alert name -> (consecutive ticks, subject); in-process, like
+# _state_size_over_streak.
 _DUAL_HOST_LABELS = {"fleet:needs-macos-host", "fleet:needs-gl-host"}
-_dual_host_label_streak = {}
+_host_pin_conflict_streak = {}
 
 
-def _dual_host_label_alert_path(key) -> Path:
-    return _alerts_dir() / f"state-scout-dual-host-labels-{key}"
+def _host_pin_conflict_alert_path(name) -> Path:
+    return _alerts_dir() / f"state-scout-{name}"
 
 
-def check_dual_host_labels(state) -> None:
-    """Escalate-then-quiet for PRs carrying both residual host labels: loud on
-    the first tick and every Nth after, alert file rewritten every tick,
-    one all-clear line and the file removed once the PR is gone or fixed.
-    Best-effort: a read-only $HOME never breaks the tick."""
-    live = set()
+def _task_host_pins_conflict(task):
+    """True when the dispatcher's host gate refuses the task on every host.
+    Mirrors `fleet_task_class._claimable_on_no_host` for a task record (the
+    scout does not import that module); the scout suite asserts the two agree.
+    A backend-symmetric task is not a conflict: its Metal half opens mac."""
+    return (task.get("needs_host") == "mac" and bool(task.get("needs_gl_host"))
+            and not task.get("backend_symmetric"))
+
+
+def _host_pin_conflicts(state):
+    """{alert name: (subject, problem)} for every record no host can claim."""
+    found = {}
     for repo_key, repo_state in state.get("repos", {}).items():
         for pr in repo_state.get("prs", []):
-            if not _DUAL_HOST_LABELS <= set(pr.get("labels", [])):
-                continue
-            key = f"{repo_key}-{pr.get('number')}"
-            live.add(key)
-            streak = _dual_host_label_streak.get(key, 0) + 1
-            _dual_host_label_streak[key] = streak
-            if streak == 1 or streak % STATE_SIZE_WARN_REPEAT_TICKS == 0:
-                log(f"{repo_key} PR#{pr.get('number')}: carries both "
-                    "fleet:needs-macos-host and fleet:needs-gl-host — no fleet "
-                    f"host can claim it; drop the stale one [tick {streak}]")
-            try:
-                path = _dual_host_label_alert_path(key)
-                path.parent.mkdir(parents=True, exist_ok=True)
-                write_atomic(path, "dual residual host labels\n"
-                                   f"pr={key}\nconsecutive_ticks={streak}\n")
-            except OSError:
-                pass
-    for key in [k for k in _dual_host_label_streak if k not in live]:
-        log(f"{key}: no longer carries both residual host labels")
-        del _dual_host_label_streak[key]
+            if _DUAL_HOST_LABELS <= set(pr.get("labels", [])):
+                number = pr.get("number")
+                found[f"dual-host-labels-{repo_key}-{number}"] = (
+                    f"{repo_key} PR#{number}",
+                    "carries both fleet:needs-macos-host and fleet:needs-gl-host "
+                    "— no fleet host can claim it; drop the stale one")
+        for task in repo_state.get("tasks", {}).get("open", []):
+            if _task_host_pins_conflict(task):
+                number = str(task.get("issue") or task.get("id") or "").lstrip("#")
+                found[f"host-pin-conflict-{repo_key}-{number}"] = (
+                    f"{repo_key}#{number}",
+                    "body pins the task to macOS but it also needs a GL host "
+                    "— no fleet host can claim it; fix the filing")
+    return found
+
+
+def check_host_pin_conflicts(state) -> None:
+    """Escalate-then-quiet for records no fleet host can claim: loud on the
+    first tick and every Nth after, alert file rewritten every tick, one
+    all-clear line and the file removed once the record is claimable again
+    (or gone). Best-effort: a read-only $HOME never breaks the tick."""
+    live = _host_pin_conflicts(state)
+    for name, (subject, problem) in live.items():
+        streak = _host_pin_conflict_streak.get(name, (0, subject))[0] + 1
+        _host_pin_conflict_streak[name] = (streak, subject)
+        if streak == 1 or streak % STATE_SIZE_WARN_REPEAT_TICKS == 0:
+            log(f"{subject}: {problem} [tick {streak}]")
         try:
-            _dual_host_label_alert_path(key).unlink()
+            path = _host_pin_conflict_alert_path(name)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            write_atomic(path, "claimable on no host\n"
+                               f"subject={subject}\nproblem={problem}\n"
+                               f"consecutive_ticks={streak}\n")
+        except OSError:
+            pass
+    for name in [n for n in _host_pin_conflict_streak if n not in live]:
+        subject = _host_pin_conflict_streak.pop(name)[1]
+        log(f"{subject}: claimable by a fleet host again")
+        try:
+            _host_pin_conflict_alert_path(name).unlink()
         except OSError:
             pass
 
@@ -6641,7 +6680,7 @@ def tick_once():
         elif update_role_trigger(role, projection):
             triggers_fired.append(role)
 
-    check_dual_host_labels(state)
+    check_host_pin_conflicts(state)
     for role, slicer in SLICERS.items():
         try:
             sliced = slicer(state)
