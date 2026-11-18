@@ -102,7 +102,7 @@ and falls through to the next priority tier.
 
 ## Commands
 
-- `command_close_window.hpp` — `IRWindow::requestClose()`.
+- `command_close_window.hpp` — `IRWindow::closeWindow()`.
 
 ## Entity builders
 

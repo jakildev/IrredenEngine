@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Ratchet: an agent-facing instruction file cites only paths, labels and
-components that exist.
+"""Ratchet: an agent-facing instruction file cites only paths, labels,
+components and C++ symbols that exist.
 
 `docs/agents/CLAUDE-BASELINE.md` §"What belongs in agent-facing docs" requires
 every citation to resolve and every cited name to exist. An agent that follows
@@ -15,7 +15,7 @@ existence check come from `git ls-files` (tracked plus untracked-unignored
 files, so a new file counts before it is staged), never a directory walk,
 which would descend into gitignored worktree checkouts and build trees.
 
-Four kinds of reference, each reported as `file:line: <kind> '<token>' ...`:
+Five kinds of reference, each reported as `file:line: <kind> '<token>' ...`:
 
 - `path`: a relative Markdown link target (inline, image or reference
   definition), or a whitespace-separated word of an inline code span that
@@ -41,6 +41,12 @@ Four kinds of reference, each reported as `file:line: <kind> '<token>' ...`:
   when the name has a whole-word hit in a tracked non-Markdown, non-binary file
   other than this lint's own baseline and suite. A one-letter name (`C_A`) or
   a metasyntactic one (`C_Foo...`) is a placeholder and is skipped.
+- `symbol`: a `::`-qualified name or literal zero-argument call shape inside an
+  inline code span. It resolves when its terminal identifier has a whole-word
+  hit in the same source population as components. The `std` and `glm`
+  namespaces, glob spellings, metasyntactic names (`IRCommand::MY_COMMAND`,
+  `IRSystem::MY_SYSTEM`, `getX()`), and documented prefixes whose terminal
+  identifier ends in `_` are skipped. A qualified call is reported once.
 - `command`: a fenced command-position `fleet-*` token in a nested `CLAUDE.md`
   or an `AGENTS.md` that `scripts/fleet/lint_rules_commands.py` does not read,
   judged by that lint's own predicate (`find_candidates` / `resolve`, its
@@ -108,7 +114,14 @@ TEMPLATE_RE = re.compile(r"(?:fleet|human):[a-z0-9.]+(?:-[a-z0-9.]+)*-(?:[a-z0-9
 CATALOG_ENTRY_RE = re.compile(r"^\s*\"((?:fleet|human):[^|\"]+)\|", re.M)
 COMPONENT_RE = re.compile(r"\bC_[A-Z][A-Za-z0-9_]*\b")
 PLACEHOLDER_COMPONENT_RE = re.compile(r"^C_(?:[A-Z]|(?:Foo|Bar|Baz|Qux)(?:[A-Z_].*)?)$")
-COMPONENT_BYTES_RE = re.compile(rb"\bC_[A-Z][A-Za-z0-9_]*\b")
+IDENTIFIER_BYTES_RE = re.compile(rb"\b[A-Za-z_][A-Za-z0-9_]*\b")
+SYMBOL_RE = re.compile(
+    r"(?<![\w:*])(?:\*?[A-Za-z_][A-Za-z0-9_*]*::)+"
+    r"\*?[A-Za-z_][A-Za-z0-9_*]*(?:\(\))?"
+    r"|(?<![\w:*])\*?[A-Za-z_][A-Za-z0-9_*]*\(\)"
+)
+EXTERNAL_SYMBOL_ROOTS = {"glm", "std"}
+PLACEHOLDER_SYMBOLS = {"IRCommand::MY_COMMAND", "IRSystem::MY_SYSTEM", "getX()"}
 LINE_SUFFIX_RE = re.compile(r"(?::\d+(?:[-:]\d+)*|::.*)$")
 URL_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
@@ -200,10 +213,10 @@ def _wanted_blob(rel):
     or a component source."""
     return (lint_instruction_size.instruction_class(rel, on_disk=False) is not None
             or rel in (LABEL_CATALOG_REL, STATE_MACHINE_REL, LABEL_REFERENCE_REL)
-            or _component_source(rel))
+            or _source_file(rel))
 
 
-def _component_source(rel):
+def _source_file(rel):
     return (not rel.endswith(".md") and rel not in (BASELINE_REL, SUITE_REL)
             and Path(rel).suffix.lower() not in BINARY_SUFFIXES)
 
@@ -288,15 +301,29 @@ def _sections(lines):
 
 # ---------------------------------------------------------------- scan
 
-def component_names(tree):
+def source_identifiers(tree):
     names = set()
     for rel in tree.paths:
-        if rel in tree.symlinks or not _component_source(rel):
+        if rel in tree.symlinks or not _source_file(rel):
             continue
         data = tree.read_bytes(rel)
-        if data and b"C_" in data:
-            names.update(m.decode() for m in COMPONENT_BYTES_RE.findall(data))
+        if data:
+            names.update(m.decode() for m in IDENTIFIER_BYTES_RE.findall(data))
     return names
+
+
+def symbol_candidates(span):
+    """`(full citation, terminal identifier)` for lintable symbols in `span`."""
+    for match in SYMBOL_RE.finditer(span):
+        token = match.group(0)
+        bare = token.removesuffix("()")
+        terminal = bare.rsplit("::", 1)[-1]
+        root = bare.split("::", 1)[0]
+        if ("*" in token or token in PLACEHOLDER_SYMBOLS
+                or root in EXTERNAL_SYMBOL_ROOTS or terminal.endswith("_")
+                or COMPONENT_RE.fullmatch(terminal)):
+            continue
+        yield token, terminal
 
 
 def _path_candidates(target):
@@ -324,7 +351,7 @@ def path_resolves(tree, rel, target, ignored, inline):
     return ignored(target) or (inline and tree.exists_under_some_dir(target))
 
 
-def scan_file(tree, rel, labels, components, ignored, command_names):
+def scan_file(tree, rel, labels, identifiers, ignored, command_names):
     """Yield `(lineno, kind, token, resolved)` for every reference in `rel`
     that is not suppressed."""
     text = tree.read(rel)
@@ -364,7 +391,10 @@ def scan_file(tree, rel, labels, components, ignored, command_names):
                         and not w.endswith(":")]
             for name in COMPONENT_RE.findall(span):
                 if name not in allow and not PLACEHOLDER_COMPONENT_RE.match(name):
-                    yield lineno, "component", name, name in components
+                    yield lineno, "component", name, name in identifiers
+            for token, terminal in symbol_candidates(span):
+                if token not in allow:
+                    yield lineno, "symbol", token, terminal in identifiers
         for raw, inline in targets:
             target = _path_candidates(raw)
             if target and target not in allow and raw not in allow:
@@ -401,14 +431,14 @@ def commands_population(rel):
 def scan(tree, ignored):
     """`{file: [(lineno, kind, token, resolved)]}` over the population."""
     labels = build_label_index(tree)
-    components = component_names(tree)
+    identifiers = source_identifiers(tree)
     command_names = (
         {posixpath.basename(p) for p in tree.paths},
         {Path(p).stem for p in tree.paths},
     )
     refs = {}
     for rel in population(tree):
-        refs[rel] = list(scan_file(tree, rel, labels, components, ignored,
+        refs[rel] = list(scan_file(tree, rel, labels, identifiers, ignored,
                                    command_names if commands_population(rel) else None))
     return refs
 
