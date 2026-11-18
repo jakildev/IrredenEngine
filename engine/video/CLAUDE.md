@@ -29,8 +29,8 @@ functions:
   libavutil, libswscale). Opens a format context, encodes frames, muxes
   with optional audio, finalizes on async thread.
 - **Frame readback** — a capture reads the render it runs in. OpenGL copies
-  through a three-PBO ring mapped two captures later; Metal must `finish()`
-  first (`readFrameImage`): `present()` commits the frame after the capture.
+  through a three-PBO ring mapped two captures later, drained at stop; Metal
+  must `finish()` first (`readFrameImage`): `present()` commits after capture.
 - **Screenshot numbering** — seeded by scanning the output dir for
   existing files, so numbers don't collide across runs.
 - **Audio arming** — delegates to `IRAudio::Audio` (or an external
@@ -191,8 +191,8 @@ per run with `--config-preset <file>` (its `config = { … }` overlays
 
 - **FFmpeg missing → silent.** `IR_VIDEO_HAS_FFMPEG=0` makes
   `startRecording()` a no-op. Check build logs if recording "doesn't work".
-- **PBO priming (OpenGL).** A frame is encoded two captures after it is
-  read, so a take's last two captures are not: short clips come out shorter.
+- **PBO ring (OpenGL).** A frame is encoded two captures after it is read;
+  a stop drains the ring on the main thread (GL context) before the finalize.
 - **Finalize-thread races.** Don't call `toggleRecording()` while the
   finalize thread is still joining — locks are there, but you can still
   deadlock if the main thread is holding the recorder mutex.

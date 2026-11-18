@@ -1,5 +1,6 @@
 #include "../video_backend.hpp"
 
+#include <irreden/ir_math.hpp>
 #include <irreden/render/opengl/opengl_types.hpp>
 
 #include <cstring>
@@ -8,7 +9,20 @@ namespace IRVideo {
 
 namespace {
 constexpr int kReadbackPboCount = 3;
+
+// Leaves `pbo` bound to GL_PIXEL_PACK_BUFFER.
+bool copyFromPbo(unsigned int pbo, std::size_t bytes, std::uint8_t *dst) {
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
+    void *mappedPtr =
+        glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, static_cast<GLsizeiptr>(bytes), GL_MAP_READ_BIT);
+    if (mappedPtr == nullptr) {
+        return false;
+    }
+    std::memcpy(dst, mappedPtr, bytes);
+    glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+    return true;
 }
+} // namespace
 
 void readFrameImage(
     const IRRender::Texture2D &textureColor, int width, int height, std::uint8_t *rgbaData
@@ -55,21 +69,9 @@ CaptureFrameStatus captureFrame(
             nullptr
         );
 
-        bool hasCpuFrame = false;
-        if (pboPrimingFrames >= (kReadbackPboCount - 1)) {
-            glBindBuffer(GL_PIXEL_PACK_BUFFER, readbackPbos[pboRead]);
-            void *mappedPtr = glMapBufferRange(
-                GL_PIXEL_PACK_BUFFER,
-                0,
-                static_cast<GLsizeiptr>(sourceFrameBytes),
-                GL_MAP_READ_BIT
-            );
-            if (mappedPtr != nullptr) {
-                std::memcpy(rawFrameBuffer.data(), mappedPtr, sourceFrameBytes);
-                glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
-                hasCpuFrame = true;
-            }
-        }
+        const bool hasCpuFrame =
+            pboPrimingFrames >= (kReadbackPboCount - 1) &&
+            copyFromPbo(readbackPbos[pboRead], sourceFrameBytes, rawFrameBuffer.data());
         glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
         pboWriteIndex = (pboWriteIndex + 1) % kReadbackPboCount;
@@ -82,6 +84,30 @@ CaptureFrameStatus captureFrame(
 
     readFrameImage(textureColor, sourceFrameWidth, sourceFrameHeight, rawFrameBuffer.data());
     return CaptureFrameStatus::READY;
+}
+
+bool readPendingFrame(
+    std::size_t sourceFrameBytes,
+    std::vector<std::uint8_t> &rawFrameBuffer,
+    std::vector<unsigned int> &readbackPbos,
+    int pboWriteIndex,
+    int &pboPrimingFrames
+) {
+    const int pending = IRMath::min(pboPrimingFrames, kReadbackPboCount - 1);
+    if (readbackPbos.empty() || pending <= 0) {
+        return false;
+    }
+    const int pboRead = (pboWriteIndex - pending + kReadbackPboCount) % kReadbackPboCount;
+    pboPrimingFrames = pending - 1;
+
+    // The newest slot's copy was queued this frame, so mapping it waits for
+    // the GPU: the one stall a take pays, at its stop.
+    const bool copied = copyFromPbo(readbackPbos[pboRead], sourceFrameBytes, rawFrameBuffer.data());
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    if (!copied) {
+        pboPrimingFrames = 0;
+    }
+    return copied;
 }
 
 void initReadback(

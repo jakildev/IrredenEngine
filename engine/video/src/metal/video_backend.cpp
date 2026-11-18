@@ -35,6 +35,12 @@ CaptureFrameStatus captureFrame(
     return CaptureFrameStatus::READY;
 }
 
+bool readPendingFrame(
+    std::size_t, std::vector<std::uint8_t> &, std::vector<unsigned int> &, int, int &
+) {
+    return false;
+}
+
 void initReadback(std::size_t, std::vector<unsigned int> &, int &pboWriteIndex, int &pboPrimingFrames) {
     pboWriteIndex = 0;
     pboPrimingFrames = 0;
