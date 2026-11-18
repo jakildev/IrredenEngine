@@ -1,6 +1,6 @@
-"""lint_instruction_refs.py: the path, label, component and command arms, the
-placeholder and suppression skips, the shrink-only token baseline, and the
-`--against` split into introduced and inherited findings.
+"""lint_instruction_refs.py: the path, label, component, symbol and command
+arms, the placeholder and suppression skips, the shrink-only token baseline,
+and the `--against` split into introduced and inherited findings.
 
 Hermetic: every case builds a throwaway git repository holding its own label
 catalog, state machine, label reference and sources, and points the lint at
@@ -74,6 +74,7 @@ class Repo(unittest.TestCase):
         self.write("docs/agents/fleet-state-machine.json", json.dumps(STATE_MACHINE))
         self.write("docs/agents/fleet-labels-reference.md", REFERENCE)
         self.write("engine/real/real.hpp", "struct C_RealThing {};\n")
+        self.write("engine/real/api.cpp", "void liveCall() {}\nvoid liveQualified() {}\n")
         self.write("engine/real/CMakeLists.txt", "add_library(real)\n")
         self.write("scripts/fleet/fleet-real-tool", "#!/bin/sh\n")
         self.write(".gitignore", "build/\n")
@@ -174,6 +175,25 @@ class Fires(Repo):
         self.assertEqual(self.finding_lines(out),
                          ["CLAUDE.md:1: component 'C_OnlyInDocs' does not resolve"])
 
+    def test_dead_qualified_and_call_shaped_symbols(self):
+        self.write("docs/agents/doc.md", "`IRWindow::goneCall()` and `alsoGone()`.\n")
+        rc, out, _ = self.run_main()
+        self.assertEqual(rc, 1)
+        self.assertEqual(self.finding_lines(out), [
+            "docs/agents/doc.md:1: symbol 'IRWindow::goneCall()' does not resolve",
+            "docs/agents/doc.md:1: symbol 'alsoGone()' does not resolve",
+        ])
+
+    def test_symbol_named_only_in_markdown_or_suite_does_not_resolve(self):
+        self.write("docs/design/notes.md", "`IRWindow::docsOnly()` was removed.\n")
+        self.write("CLAUDE.md", "`IRWindow::docsOnly()` and `suiteOnly()`.\n")
+        rc, out, _ = self.run_main()
+        self.assertEqual(rc, 1)
+        self.assertEqual(self.finding_lines(out), [
+            "CLAUDE.md:1: symbol 'IRWindow::docsOnly()' does not resolve",
+            "CLAUDE.md:1: symbol 'suiteOnly()' does not resolve",
+        ])
+
     def test_fenced_command_in_a_nested_claude_md(self):
         self.write("engine/real/CLAUDE.md", """\
             ```
@@ -198,6 +218,16 @@ class Fires(Repo):
 
 
 class Silent(Repo):
+    def test_symbol_candidates_keep_full_spelling_and_skip_exclusions(self):
+        span = ("IRWindow::liveQualified() liveCall() std::make_unique() "
+                "glm::half_pi detail::makeCanvas*Texture *Fps() "
+                "IRCommand::MY_COMMAND IRSystem::MY_SYSTEM getX() "
+                "IRSystem::knownPrefix_ IRWindow::C_RealThing")
+        self.assertEqual(list(lint.symbol_candidates(span)), [
+            ("IRWindow::liveQualified()", "liveQualified"),
+            ("liveCall()", "liveCall"),
+        ])
+
     def test_resolving_references(self):
         self.write("docs/agents/sibling.md", "x\n")
         self.write("docs/agents/doc.md", """\
@@ -209,6 +239,7 @@ class Silent(Repo):
             `fleet:queued`, `fleet:wip`, `human:approved`, `fleet:needs-fix`,
             `fleet:nit-of-pr`, `fleet:claim-mac-pool-1`, the `fleet:claim-` prefix.
             `C_RealThing`, `getComponent<C_RealThing>()`.
+            `IRWindow::liveQualified()`, `liveCall()`.
             """)
         rc, out, _ = self.run_main()
         self.assertEqual(rc, 0, out)
@@ -220,6 +251,9 @@ class Silent(Repo):
             `engine/…/x.hpp`, `engine/.../x.hpp`, `engine/$DIR/x`, `engine/voxel:` scope.
             `fleet:claim-<host>-<agent>`, `fleet:needs-<host>-smoke`, `fleet:amending-*`.
             `C_A&`, `C_B`, `C_Foo`, `C_FooBar`, `C_Foo_declared_twice`.
+            `std::make_unique()`, `glm::half_pi()`, `detail::makeCanvas*Texture`,
+            `*Fps()`, `IRCommand::MY_COMMAND`, `IRSystem::MY_SYSTEM`, `getX()`,
+            `std::make_`, `std::mem`, `std::uniform_`, `IRSystem::knownPrefix_`.
             """)
         rc, out, _ = self.run_main()
         self.assertEqual(rc, 0, out)
@@ -228,6 +262,15 @@ class Silent(Repo):
         self.write("docs/agents/doc.md", """\
             ```
             cat engine/gone/gone.hpp
+            ```
+            """)
+        rc, out, _ = self.run_main()
+        self.assertEqual(rc, 0, out)
+
+    def test_symbols_inside_a_fence_are_not_checked(self):
+        self.write("docs/agents/doc.md", """\
+            ```cpp
+            IRWindow::goneCall();
             ```
             """)
         rc, out, _ = self.run_main()
@@ -245,6 +288,8 @@ class Silent(Repo):
             ```
             <!-- lint: ref-ok C_Gone -- the retired name -->
             `C_Gone`.
+            <!-- lint: ref-ok IRWindow::goneCall() -- deliberate historical spelling -->
+            `IRWindow::goneCall()`.
             """)
         rc, out, _ = self.run_main()
         self.assertEqual(rc, 0, out)
@@ -299,6 +344,13 @@ class Baseline(Repo):
         self.assertEqual(rc, 0, out)
         self.assertIn("2 accepted", out)
 
+    def test_listed_dead_symbol_passes(self):
+        self.write("CLAUDE.md", "`IRWindow::goneCall()`\n")
+        self.baseline({"CLAUDE.md": ["IRWindow::goneCall()"]})
+        rc, out, _ = self.run_main()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("1 accepted", out)
+
     def test_entry_that_now_resolves_is_stale(self):
         self.write("CLAUDE.md", "`engine/real/real.hpp`\n")
         self.baseline({"CLAUDE.md": ["engine/real/real.hpp"]})
@@ -350,6 +402,17 @@ class Against(Repo):
         self.assertNotIn("C_OldGone", introduced)
         self.assertIn("component 'C_OldGone' does not resolve", inherited)
         self.assertIn(base, err)
+
+    def test_symbol_inherited_and_introduced(self):
+        self.write("CLAUDE.md", "`IRWindow::oldGone()`\n")
+        base = self.commit("base")
+        self.write("CLAUDE.md", "`IRWindow::oldGone()` `newGone()`\n")
+        rc, out, _ = self.run_main("--against", base)
+        self.assertEqual(rc, 1)
+        introduced, inherited = out.split("inherited:")
+        self.assertIn("symbol 'newGone()' does not resolve", introduced)
+        self.assertNotIn("oldGone", introduced)
+        self.assertIn("symbol 'IRWindow::oldGone()' does not resolve", inherited)
 
     def test_only_inherited_passes(self):
         self.write("CLAUDE.md", "`C_OldGone`\n")
