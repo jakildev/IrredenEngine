@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import shlex
+import signal
 import subprocess
 import sys
 import tempfile
@@ -73,6 +74,10 @@ def _control_path(preset: str, commit: str) -> Path:
     return _state_dir() / "render-verify-controls" / preset / f"{commit}.json"
 
 
+def _preset() -> str:
+    return os.environ.get("FLEET_RENDER_WATCH_PRESET") or DEFAULT_PRESET
+
+
 def _write_json_atomic(path: Path, value: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -137,10 +142,31 @@ def _single_sweep_lock():
 def _run(argv: list[str], *, cwd: Path | None = None,
          env: dict[str, str] | None = None,
          timeout: int | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        argv, cwd=cwd, env=env, capture_output=True, text=True,
-        timeout=timeout, check=False,
+    """Run a command in its own session so a timeout can reap its process group.
+
+    A descendant that creates its own session is outside this cleanup boundary.
+    """
+    process = subprocess.Popen(
+        argv, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, start_new_session=True,
     )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            process.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.communicate()
+        raise
+    return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
 
 
 def _git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -371,7 +397,7 @@ def run_watch(commit: str) -> int:
             _status(commit=commit, outcome="failed", started=started,
                     reason=f"render sweep record unreadable: {exc}")
             return 1
-        if record.get("commit") != commit or record.get("preset") != DEFAULT_PRESET:
+        if record.get("commit") != commit or record.get("preset") != _preset():
             _status(commit=commit, outcome="failed", started=started,
                     reason="render sweep record identity did not match the request")
             return 1

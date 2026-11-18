@@ -378,6 +378,7 @@
 #
 # FLEET_RENDER_WATCH=1
 # FLEET_RENDER_WATCH_INTERVAL_SECS=21600
+# Must match the preset detected by render-verify on this host.
 # FLEET_RENDER_WATCH_PRESET=macos-debug
 
 # --- fleet-run default watchdog -------------------------------------------
