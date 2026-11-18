@@ -30,6 +30,7 @@
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/components/component_screen_space_marker.hpp>
@@ -7534,6 +7535,23 @@ bool evaluateAnimationBoundaryCheck(const void *context, std::string &actual) {
 // subdivision (>= 1) away.
 constexpr float kPickDepthAgreement = 0.75f;
 
+// The spatial scatter's world/view anchor: a voxel's faces are projected and
+// depth-keyed at its lattice corner less this offset (ir_iso_common's
+// kVoxelRasterCellAnchor).
+constexpr IRMath::vec3 kVoxelRasterCellAnchor = IRMath::vec3(0.5f);
+
+// How far, in raw composite depth units, a spatial pick may sit from the drawn
+// depth. The scatter floors its depth onto the cell-tie band lattice and a
+// receding edge yields one more band, so the drawn value trails the face plane
+// by at most two bands. The next voxel along the view is a whole
+// kDepthEncodeShift-scaled unit away.
+constexpr float kSpatialPickDepthAgreement =
+    2.0f * static_cast<float>(IRRender::kScatterCellTieBandSteps) /
+    static_cast<float>(1 << IRRender::kScatterCellTieStepShift) *
+    static_cast<float>(
+        IRConstants::kTrixelDistanceMaxDistance - IRConstants::kTrixelDistanceMinDistance
+    );
+
 // Calls visit(texel, flat index) for every texel of @p canvas whose entity id
 // @p accepts: the texels such an entity is the nearest surface on.
 template <typename Accepts, typename Visit>
@@ -7564,23 +7582,18 @@ void forEachTexelOwnedBy(
     );
 }
 
-// The whole-frame form of the picking contract: every main-canvas texel that
-// shows the editable set must pick the face it shows, at the depth it shows it.
-// The canvas's own distance readback is the oracle — it records which face slot
-// won each texel — so this fails on a pick that is self-consistent with the
-// session's aims yet offset from what is actually drawn. Cardinal camera only:
-// a slot names its axis directly there.
-bool evaluatePickMatchesRender(const void *, std::string &actual) {
-    if (g_sceneVoxelSetEntity == IREntity::kNullEntity) {
-        actual = "no-editable-set";
-        return false;
-    }
+// The whole-frame form of the picking contract on the yaw-only camera: every
+// main-canvas texel that shows the editable set must pick the face it shows, at
+// the depth it shows it. The canvas's own distance readback is the oracle — it
+// records which face slot won each texel — so this fails on a pick that is
+// self-consistent with the session's aims yet offset from what is actually
+// drawn. Cardinal camera only: a slot names its axis directly there.
+bool evaluateCardinalPickMatchesRender(const C_VoxelSetNew &set, std::string &actual) {
     const auto &canvas =
         IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
     std::vector<int> distances;
     canvas.readDistances(distances);
 
-    const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
     const IRMath::vec3 origin = set.globalPositions_[0].pos_;
     const float subdivisions = static_cast<float>(IRRender::getVoxelRenderEffectiveSubdivisions());
     // A drawn face cell is stamped with the depth of the corner-anchored
@@ -7614,6 +7627,112 @@ bool evaluatePickMatchesRender(const void *, std::string &actual) {
     actual = "texels=" + std::to_string(shown) + " agree=" + std::to_string(agree) +
              " worstDepthError=" + std::to_string(worstDepthError);
     return shown > 0 && agree == shown;
+}
+
+// The same contract on the spatial view, where the per-axis scatter presents
+// the voxels straight into the main framebuffer and the cardinal canvas is
+// dormant. The oracle is the framebuffer's depth-tested owner attachment and
+// composite depth: every pixel the editable set owns replays the cursor ray of
+// that pixel's centre, and the pick must enter the set at the depth drawn
+// there. The ray enters a voxel at exactly one point, so a pick on the wrong
+// face or the wrong voxel lands off the drawn depth; no face slot is needed,
+// and the spatial composite key carries none. A pixel later content covered
+// still holds its scatter owner, but its depth is the cover's, so it reads as a
+// disagreement rather than a pass.
+bool evaluateSpatialPickMatchesRender(
+    const C_VoxelSetNew &set, IRMath::vec2 rayOffsetPx, std::string &actual
+) {
+    const auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+    const IRMath::ivec2 size = framebuffer.getResolutionPlusBuffer();
+    const std::size_t pixelCount =
+        static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y);
+    std::vector<IRMath::uvec2> owners(pixelCount);
+    std::vector<float> depths(pixelCount);
+    IRRender::device()->finish();
+    framebuffer.framebuffer_.second->getTextureEntityIds().getSubImage2D(
+        0,
+        0,
+        size.x,
+        size.y,
+        IRRender::PixelDataFormat::RG_INTEGER,
+        IRRender::PixelDataType::UINT32,
+        owners.data()
+    );
+    framebuffer.getTextureDepth().getSubImage2D(
+        0,
+        0,
+        size.x,
+        size.y,
+        IRRender::PixelDataFormat::DEPTH_COMPONENT,
+        IRRender::PixelDataType::FLOAT32,
+        depths.data()
+    );
+
+    const IRMath::vec3 origin = set.globalPositions_[0].pos_;
+    const float depthScale = static_cast<float>(IRRender::kDepthEncodeShift) *
+                             static_cast<float>(IRRender::getVoxelRenderEffectiveSubdivisions());
+    const auto active = [&set](IRMath::ivec3 local) {
+        return set.voxels_[IRMath::index3DtoIndex1D(local, set.size_)].color_.alpha_ != 0;
+    };
+    int shown = 0;
+    int agree = 0;
+    std::array<int, 3> shownByAxis{};
+    std::array<int, 3> agreeByAxis{};
+    float worstDepthError = 0.0f;
+    for (int y = 0; y < size.y; ++y) {
+        const std::size_t row =
+            static_cast<std::size_t>(IRRender::compositeDepthTextureRow(y, size.y)) *
+            static_cast<std::size_t>(size.x);
+        for (int x = 0; x < size.x; ++x) {
+            const std::size_t flat = row + static_cast<std::size_t>(x);
+            if (static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(owners[flat])) !=
+                g_sceneVoxelSetEntity)
+                continue;
+            ++shown;
+            const IRMath::vec2 window = IRRender::mainFramebufferPixelToWindowPoints(
+                IRMath::vec2(x, y) + IRMath::vec2(0.5f) + rayOffsetPx
+            );
+            const IRMath::vec3 rayOrigin =
+                IRRender::windowPointsToDisplayedWorldPos3DAtViewDepth(window, 0.0f);
+            const IRMath::vec3 rayStep =
+                IRRender::windowPointsToDisplayedWorldPos3DAtViewDepth(window, 1.0f) - rayOrigin;
+            const std::optional<IRPrefab::Picking::GridRayHit> hit =
+                IRPrefab::Picking::castGridRay(rayOrigin - origin, rayStep, set.size_, active);
+            if (!hit)
+                continue;
+            const int axis = hit->faceNormal_.x != 0 ? 0 : (hit->faceNormal_.y != 0 ? 1 : 2);
+            ++shownByAxis[axis];
+            const IRMath::vec3 entry = rayOrigin + rayStep * hit->rayT_;
+            const float depthError = IRMath::abs(
+                IRRender::viewDepth(entry - kVoxelRasterCellAnchor) * depthScale -
+                IRRender::compositeRawDepthFromNormalized(depths[flat])
+            );
+            worstDepthError = IRMath::max(worstDepthError, depthError);
+            if (depthError < kSpatialPickDepthAgreement) {
+                ++agree;
+                ++agreeByAxis[axis];
+            }
+        }
+    }
+    actual = "texels=" + std::to_string(shown) + " agree=" + std::to_string(agree) +
+             " worstDepthError=" + std::to_string(worstDepthError) + " xyzFaces=";
+    for (int axis = 0; axis < 3; ++axis) {
+        actual += std::to_string(agreeByAxis[axis]) + "/" + std::to_string(shownByAxis[axis]) +
+                  (axis < 2 ? "," : "");
+    }
+    return shown > 0 && agree == shown;
+}
+
+bool evaluatePickMatchesRender(const void *context, std::string &actual) {
+    const auto &check = *static_cast<const PickMatchesRenderCheck *>(context);
+    if (g_sceneVoxelSetEntity == IREntity::kNullEntity) {
+        actual = "no-editable-set";
+        return false;
+    }
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
+    if (IRRender::isSpatialViewEnabled())
+        return evaluateSpatialPickMatchesRender(set, check.spatialRayOffsetPx_, actual);
+    return evaluateCardinalPickMatchesRender(set, actual);
 }
 
 // Reads one recipe pick expectation through the editor's own edit pick, so a

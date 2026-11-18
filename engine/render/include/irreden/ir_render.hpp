@@ -264,7 +264,13 @@ vec2 getMousePositionOutputView();
 /// the extra pixel buffer, top-left origin): the output view with the output
 /// upscale divided out. The space GUI-canvas and hitbox hover tests compare in.
 vec2 getMousePositionMainFramebuffer();
+/// Main-framebuffer pixel (top-left origin, extra pixel buffer included) under
+/// the cursor, as the scatter hover resolve reads it.
 ivec2 mouseMainFramebufferPixel();
+/// Window point a cursor would sit at for @ref mouseMainFramebufferPixel to
+/// read @p framebufferPixel; pass a pixel centre (`pixel + 0.5`) to aim inside
+/// it. Lets a probe replay the cursor ray of every framebuffer pixel.
+vec2 mainFramebufferPixelToWindowPoints(vec2 framebufferPixel);
 /// Inverse of the cursor → GUI-canvas-trixel chain that
 /// @c getMousePositionMainFramebuffer feeds: maps a point on the GUI canvas
 /// back to the cursor position, in window points, that lands on it.
