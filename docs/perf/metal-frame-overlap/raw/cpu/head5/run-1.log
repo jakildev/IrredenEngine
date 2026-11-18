@@ -1,0 +1,12 @@
+ir-run: running release tree <worktree>/build-release
+ir-run: <engine-root>/engine/tools/bin/ir-acquire benchmark -- <worktree>/build-release/creations/demos/perf_grid/IRPerfGrid --auto-profile 300 --config-preset configs/perf/profiling-off.lua --yaw 0 --no-overlay --pivot-origin --worker-threads 0 (timeout: 120s) (window mode: offscreen)
+
+MidiInCore::initialize: error creating OS-X MIDI client object (-304).
+
+
+MidiInCore::initialize: error creating OS-X MIDI client object (-304).
+
+FOG-EVALUATED subjects=262144.0 sd=0.0 max=262144 n=225
+ir-run: IRPerfGrid exited cleanly after 9s
+ir-run: QUIET=guarded exe=IRPerfGrid
+ir-run: RESULT=CLEAN exe=IRPerfGrid exit=0

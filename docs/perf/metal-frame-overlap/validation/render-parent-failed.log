@@ -1,0 +1,237 @@
+[fleet-jobs] display: 1 online CoreGraphics display(s), awake=1, NSScreen=1
+[render-verify] --all: 13 demo(s) — IRAnalyticOracle, IRCanvasStress, IRFogDemo, IRLightingSdfBlocker, IRLuaPerfGrid, IRLuaPipelineDemo, IRMetalClearTest, IRPerfGrid, IRShapeDebug, IRUIWidgetsDemo, IRFontMaker, IRVoxelEditor, IRLauncher
+
+============================================================================
+[render-verify] target=IRAnalyticOracle demo=analytic_oracle backend=macos-debug warmup=20
+[render-verify] 1 shots: oracle_box_zoom
++ fleet-build --target IRAnalyticOracle
+[  0%] Built target luajit_build
+[  4%] Built target enkiTS
+[  8%] Built target rtaudio
+[  8%] Built target rtmidi
+[  8%] Built target IRAnalyticOracleAssets
+[ 17%] Built target easy_profiler
+[ 17%] Built target fmt
+[ 17%] Built target glm
+[ 30%] Built target meshoptimizer
+[ 39%] Built target glfw
+[ 43%] Built target spdlog
+[ 47%] Built target IrredenEngineMath
+[ 47%] Built target IrredenEngineProfile
+[ 47%] Built target IrredenEngineUtility
+[ 47%] Built target IrredenEngineJob
+[ 47%] Built target IrredenEngineTime
+[ 52%] Built target IrredenEngineAsset
+[ 56%] Built target IrredenEngineEntity
+[ 60%] Built target IrredenEngineCatalog
+[ 65%] Built target IrredenEngineSystem
+[ 69%] Built target IrredenEngineAudio
+[ 73%] Built target IrredenEngineWindow
+[ 73%] Built target IrredenEngineInput
+[ 86%] Built target IrredenEngineRendering
+[ 91%] Built target IrredenEngineVideo
+[ 91%] Built target IrredenEngineCommand
+[ 95%] Built target IrredenEngineWorld
+[ 95%] Built target IrredenEngineScripting
+[ 95%] Built target IrredenEngine
+[ 95%] Building CXX object creations/demos/analytic_oracle/CMakeFiles/IRAnalyticOracle.dir/main.cpp.o
+[100%] Linking CXX executable IRAnalyticOracle
+ld: warning: ignoring duplicate libraries: '../../../engine/script/libIrredenEngineScripting.a', '../../../engine/world/libIrredenEngineWorld.a'
+[100%] Built target IRAnalyticOracle
++ fleet-run --timeout 60 IRAnalyticOracle --auto-screenshot 20
+
+shot                                     result     match%  max_d     psnr
+----------------------------------------------------------------------------
+oracle_box_zoom:shadow                   PASS
+
+[render-verify] all 1 checks PASS
+
+============================================================================
+[render-verify] target=IRCanvasStress demo=canvas_stress backend=macos-debug warmup=120
+[render-verify] 6 shots: so3_smooth_sweep, so3_offsnap_disc, so3_wide_parity, so3_grid_cross, so3_offsnap_wide, revoxelize_solids
+[render-verify] 15 extra run(s): modeswitch, sharedparts, detach, compare, impulse, floor_selfshadow, shadow_overlay_floor, world_placed_cast, gridspin_shadow_palette, grid_orbit_facing, grid_orbit_cardinals, grid_capacity_plate_normals, grid_capacity_plate_beauty, cylinder_receiver, cylinder_receiver_pitched
++ fleet-build --target IRCanvasStress
+[  0%] Built target luajit_build
+[  4%] Built target enkiTS
+[  9%] Built target rtaudio
+[  9%] Built target rtmidi
+[  9%] Built target IRCanvasStressAssets
+[ 18%] Built target easy_profiler
+[ 18%] Built target fmt
+[ 18%] Built target glm
+[ 31%] Built target meshoptimizer
+[ 40%] Built target glfw
+[ 45%] Built target spdlog
+[ 50%] Built target IrredenEngineMath
+[ 50%] Built target IrredenEngineProfile
+[ 50%] Built target IrredenEngineUtility
+[ 50%] Built target IrredenEngineJob
+[ 50%] Built target IrredenEngineTime
+[ 54%] Built target IrredenEngineAsset
+[ 59%] Built target IrredenEngineEntity
+[ 63%] Built target IrredenEngineCatalog
+[ 68%] Built target IrredenEngineSystem
+[ 72%] Built target IrredenEngineAudio
+[ 77%] Built target IrredenEngineWindow
+[ 77%] Built target IrredenEngineInput
+[ 90%] Built target IrredenEngineRendering
+[ 95%] Built target IrredenEngineVideo
+[ 95%] Built target IrredenEngineCommand
+[100%] Built target IrredenEngineWorld
+[100%] Built target IrredenEngineScripting
+[100%] Built target IrredenEngine
+[100%] Built target IRCanvasStress
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120
+[render-verify] warning: captured 12 shots, manifest expects 6; ignoring extras
+[render-verify] extra run 'modeswitch': --only modeswitch --no-auto-rotate --no-spin
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 12 --only modeswitch --no-auto-rotate --no-spin
+[render-verify] extra run 'sharedparts': --only sharedparts --no-auto-rotate
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 30 --only sharedparts --no-auto-rotate
+[render-verify] extra run 'detach': --only detach --no-auto-rotate --no-spin
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 30 --only detach --no-auto-rotate --no-spin
+[render-verify] extra run 'compare': --only compare
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only compare
+[render-verify] extra run 'impulse': --only impulse --no-auto-rotate
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only impulse --no-auto-rotate
+[render-verify] extra run 'floor_selfshadow': --only floor --debug-overlay shadow
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only floor --debug-overlay shadow
+[render-verify] extra run 'shadow_overlay_floor': --only floor --no-auto-rotate --no-spin --debug-overlay shadow
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only floor --no-auto-rotate --no-spin --debug-overlay shadow
+[render-verify] extra run 'world_placed_cast': --only revox,floor --no-auto-rotate --no-spin --debug-overlay shadow
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only revox,floor --no-auto-rotate --no-spin --debug-overlay shadow
+[render-verify] extra run 'gridspin_shadow_palette': --only gridspin --frozen-pose 0.5235987756 --no-auto-rotate --no-ao --pivot-origin --zoom 4 --debug-overlay shadow --sweep-yaw 0.39269908 0.39269908 1
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only gridspin --frozen-pose 0.5235987756 --no-auto-rotate --no-ao --pivot-origin --zoom 4 --debug-overlay shadow --sweep-yaw 0.39269908 0.39269908 1
+[render-verify] extra run 'grid_orbit_facing': --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 2.35619449 2.35619449 1
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 2.35619449 2.35619449 1
+[render-verify] extra run 'grid_orbit_cardinals': --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 0 4.71238898 4
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 0 4.71238898 4
+[render-verify] extra run 'grid_capacity_plate_normals': --only orbit --focus-orbit 6 --focus-exact-fit-plate --no-spin --no-auto-rotate --pivot-origin --no-ao --no-shadows --debug-overlay normals --zoom 8 --subdivisions 1 --sweep-yaw 0 4.71238898 4
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --focus-exact-fit-plate --no-spin --no-auto-rotate --pivot-origin --no-ao --no-shadows --debug-overlay normals --zoom 8 --subdivisions 1 --sweep-yaw 0 4.71238898 4
+[render-verify] extra run 'grid_capacity_plate_beauty': --only orbit --focus-orbit 6 --focus-exact-fit-plate --no-spin --no-auto-rotate --pivot-origin --zoom 8 --subdivisions 1 --sweep-yaw 0 4.71238898 4
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --focus-exact-fit-plate --no-spin --no-auto-rotate --pivot-origin --zoom 8 --subdivisions 1 --sweep-yaw 0 4.71238898 4
+[render-verify] extra run 'cylinder_receiver': --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source
+[render-verify] extra run 'cylinder_receiver_pitched': --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source --analytic-shape-tilt .45
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source --analytic-shape-tilt .45
+[render-verify] (cylinder_receiver_pitched) fleet-run exited 69, RESULT=NO-DISPLAY; tail of output follows (screenshot count will be checked against manifest below):
+    [2026-11-17 18:54:31.077] [EngineLog] [info]  Resource 109 named SunHierarchyOrderFrameBuffer2
+    [2026-11-17 18:54:31.077] [EngineLog] [info] Created ResourceId=110, type=5
+    [2026-11-17 18:54:31.077] [EngineLog] [info]  Resource 110 named SunHierarchyOrderFrameBuffer3
+    [2026-11-17 18:54:31.212] [EngineLog] [info] Created ResourceId=111, type=4
+    [2026-11-17 18:54:31.212] [EngineLog] [info]  Resource 111 named VoxelSunFacesProgram
+    [2026-11-17 18:54:31.212] [EngineLog] [info] Created ResourceId=112, type=5
+    [2026-11-17 18:54:31.212] [EngineLog] [info]  Resource 112 named VoxelSunFaceFrameBuffer
+    [2026-11-17 18:54:31.212] [EngineLog] [info] Created ResourceId=113, type=5
+    [2026-11-17 18:54:31.212] [EngineLog] [info]  Resource 113 named VoxelSunFaceAdmissionScratch
+    [2026-11-17 18:54:31.212] [EngineLog] [info] Created ResourceId=114, type=5
+    [2026-11-17 18:54:31.212] [EngineLog] [info]  Resource 114 named DetachedShadowFrameBuffer
+    [2026-11-17 18:54:31.212] [EngineLog] [info] Created ResourceId=115, type=5
+    [2026-11-17 18:54:31.212] [EngineLog] [info]  Resource 115 named SunShadowFogObservers
+    [2026-11-17 18:54:31.503] [EngineLog] [info] Created ResourceId=116, type=4
+    [2026-11-17 18:54:31.503] [EngineLog] [info]  Resource 116 named ComputeSunShadowProgram
+    [2026-11-17 18:54:31.816] [EngineLog] [info] Created ResourceId=117, type=4
+    [2026-11-17 18:54:31.816] [EngineLog] [info]  Resource 117 named ComputeSunShadowShapesProgram
+    [2026-11-17 18:54:32.102] [EngineLog] [info] Created ResourceId=118, type=4
+    [2026-11-17 18:54:32.102] [EngineLog] [info]  Resource 118 named ComputeSunShadowSurfaceProgram
+    [2026-11-17 18:54:32.415] [EngineLog] [info] Created ResourceId=119, type=4
+    [2026-11-17 18:54:32.415] [EngineLog] [info]  Resource 119 named ComputeSunShadowShapesSurfaceProgram
+    [2026-11-17 18:54:32.415] [EngineLog] [info] Created ResourceId=120, type=5
+    [2026-11-17 18:54:32.415] [EngineLog] [info]  Resource 120 named ComputeSunShadowFrameData
+    [2026-11-17 18:54:32.415] [EngineLog] [info] Created ResourceId=121, type=5
+    [2026-11-17 18:54:32.415] [EngineLog] [info]  Resource 121 named ShapeReceiverFrameData
+    [2026-11-17 18:54:32.415] [EngineLog] [info] Created ResourceId=122, type=5
+    [2026-11-17 18:54:32.415] [EngineLog] [info]  Resource 122 named ShapeReceiverFallback
+    [2026-11-17 18:54:32.416] [EngineLog] [info] Created ResourceId=123, type=4
+    [2026-11-17 18:54:32.416] [EngineLog] [info]  Resource 123 named ClearLightVolumeProgram
+    [2026-11-17 18:54:32.455] [EngineLog] [info] Created ResourceId=124, type=4
+    [2026-11-17 18:54:32.455] [EngineLog] [info]  Resource 124 named SeedLightVolumeProgram
+    [2026-11-17 18:54:32.455] [EngineLog] [info] Created ResourceId=125, type=4
+    [2026-11-17 18:54:32.455] [EngineLog] [info]  Resource 125 named PropagateLightVolumeProgram
+    [2026-11-17 18:54:32.455] [EngineLog] [info] Created ResourceId=126, type=5
+    [2026-11-17 18:54:32.455] [EngineLog] [info]  Resource 126 named LightSourceBuffer
+    [2026-11-17 18:54:32.455] [EngineLog] [info] Created ResourceId=127, type=5
+    [2026-11-17 18:54:32.455] [EngineLog] [info]  Resource 127 named LightVolumeParamsBuffer
+    [2026-11-17 18:54:32.455] [EngineLog] [info] Regestered component type=N12IRComponents19C_CanvasLightVolumeE, sizeof=80 with id=430
+    Terminated: 15             "$@"
+    ir-run: RESULT=NO-DISPLAY exe=IRCanvasStress exit=69
+[render-verify] IRCanvasStress: extra run 'cylinder_receiver_pitched': capture_offset 0 + 8 shots is out of range for the 0 captured screenshots — did the demo args emit a different shot count than expected?
+[render-verify] 12 demo(s) produced NO checks: IRCanvasStress, IRFogDemo, IRLightingSdfBlocker, IRLuaPerfGrid, IRLuaPipelineDemo, IRMetalClearTest, IRPerfGrid, IRShapeDebug, IRUIWidgetsDemo, IRFontMaker, IRVoxelEditor, IRLauncher — their coverage is missing from the total above.
+
+============================================================================
+[render-verify] target=IRFogDemo demo=fog_demo backend=macos-debug warmup=10
+[render-verify] 3 shots: fog_zoom2_origin, fog_zoom4_origin, fog_zoom8_origin
+[render-verify] 36 extra run(s): edge, detached, detached_body, detached_body_soft, detached_body_hidden, detached_body_no_solid, detached_exempt, detached_field_hidden, edge_smooth, edge_sdf_blocker, edge_zcost, edge_zcost_asym, edge_zcost_ceiling, edge_zcost_ceiling_paint, peraxis_overflow, entity_reveal, occlusion, occlusion_high_ground, occlusion_blocker, occlusion_blocker_inert, occlusion_two_sources, occlusion_flat, occlusion_high_ground_soft, occlusion_high_ground_soft_treated, occlusion_column_top, ceiling, ceiling_hard, ceiling_treatment, ceiling_shadow, world_pan, depth_slab, entity_reveal_soft, ghost_policy, channel_probe, many_sources, explored_decay
+[render-verify] ENV-FAIL: display domain mismatch (CoreGraphics online=1 awake=0 NSScreen=1; the engine will discover 0 monitors) — wake the display or run from the logged-in Aqua session
+
+============================================================================
+[render-verify] target=IRLightingSdfBlocker demo=lighting backend=macos-debug warmup=10
+[render-verify] 5 shots: zoom1_origin, zoom2_origin, zoom4_origin, zoom4_offset_3_5, zoom8_origin
+[render-verify] ENV-FAIL: display domain mismatch (CoreGraphics online=1 awake=0 NSScreen=1; the engine will discover 0 monitors) — wake the display or run from the logged-in Aqua session
+
+============================================================================
+[render-verify] target=IRLuaPerfGrid demo=lua_perf_grid backend=macos-debug warmup=10
+[render-verify] 2 shots: fit_grid, zoom1_origin
+[render-verify] default pass demo args: --wave-amplitude 0
+[render-verify] ENV-FAIL: display domain mismatch (CoreGraphics online=1 awake=0 NSScreen=1; the engine will discover 0 monitors) — wake the display or run from the logged-in Aqua session
+
+============================================================================
+[render-verify] target=IRLuaPipelineDemo demo=lua_pipeline_demo backend=macos-debug warmup=10
+[render-verify] 1 shots: lua_pipeline_demo_zoom4
+[render-verify] ENV-FAIL: display domain mismatch (CoreGraphics online=1 awake=0 NSScreen=1; the engine will discover 0 monitors) — wake the display or run from the logged-in Aqua session
+
+============================================================================
+[render-verify] target=IRMetalClearTest demo=metal_clear_test backend=macos-debug warmup=10
+[render-verify] 3 shots: metal_clear_zoom1, metal_clear_zoom2, metal_clear_zoom4_offset
+[render-verify] ENV-FAIL: display domain mismatch (CoreGraphics online=1 awake=0 NSScreen=1; the engine will discover 0 monitors) — wake the display or run from the logged-in Aqua session
+
+============================================================================
+[render-verify] target=IRPerfGrid demo=perf_grid backend=macos-debug warmup=10
+[render-verify] 7 shots: fit_grid, zoom1_origin, profiler_overlay, zoom1_rot, zoom4_rot, zoom4_pan, zoom4_rot_pan
+[render-verify] default pass demo args: --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode none
+[render-verify] 4 extra run(s): cull_on, chunk_only, static_cycle, static_cycle_dynamic
+[render-verify] ENV-FAIL: display domain mismatch (CoreGraphics online=1 awake=0 NSScreen=1; the engine will discover 0 monitors) — wake the display or run from the logged-in Aqua session
+
+============================================================================
+[render-verify] target=IRShapeDebug demo=shape_debug backend=macos-debug warmup=10
+[render-verify] 21 shots: zoom1_origin, zoom2_origin, zoom4_origin, zoom1_odd_offset, zoom8_origin, zoom4_offset_3_5, zoom16_lod_fine_sphere, lod_swap_zoom1_cube, lod_swap_zoom2_cube, lod_swap_zoom4_cone, lod_swap_zoom8_cone, lod_swap_zoom16_sphere, zoom4_yaw90, zoom4_yaw180, zoom4_yaw270, zoom4_yaw45_inter_cardinal, zoom8_yaw180, zoom4_pan16_yaw0_pivot, zoom4_pan16_yaw90_pivot, zoom4_pan16_yaw180_pivot, zoom4_pan16_yaw45_pivot
+[render-verify] 56 extra run(s): sdf_baked_surface_parented, sdf_baked_pose_root, sdf_baked_pose_parented, lod_scene, moving_caster, pivot_focus_ctr_z4, lod_dense_swap, viewport_portrait, viewport_portrait_lod_swap, prefab_flower, editor_parts_z4, composite_proof, text_sizes, text_scale1_legibility, voxel_text, canvas_image, framebuffer_image, glitch_standard_off, glitch_off, glitch_tear, glitch_hold, glitch_split, glitch_bars, glitch_cells, glitch_depth_tear, glitch_depth_hold, glitch_hold_divisor2, glitch_subject_standard_off, glitch_subject_off, glitch_subject_tear, glitch_subject_hold, glitch_subject_split, glitch_subject_echo, glitch_subject_dissolve, glitch_subject_depth, glitch_subject_spill_far_off, glitch_subject_spill_far_on, glitch_subject_spill_near_off, glitch_subject_spill_near_on, glitch_subject_choreography, glitch_subject_yaw22_off, glitch_subject_yaw22_tear, glitch_subject_yaw22_hold, glitch_subject_yaw22_split, glitch_subject_yaw22_echo, glitch_subject_yaw22_dissolve, glitch_subject_yaw22_depth, glitch_subject_yaw22_spill_far_on, glitch_subject_yaw22_spill_near_on, glitch_subject_yaw22_all, post_effects_standard_off, post_effects_off, post_effects_blur, post_effects_bloom, post_effects_grade, post_effects_all
+[render-verify] ENV-FAIL: display domain mismatch (CoreGraphics online=1 awake=0 NSScreen=1; the engine will discover 0 monitors) — wake the display or run from the logged-in Aqua session
+
+============================================================================
+[render-verify] target=IRUIWidgetsDemo demo=ui_widgets backend=macos-debug warmup=10
+[render-verify] 6 shots: widgets_idle, widgets_after_settle, widgets_followup, number_field_focused, number_field_committed, number_field_cancelled
+[render-verify] ENV-FAIL: display domain mismatch (CoreGraphics online=1 awake=0 NSScreen=1; the engine will discover 0 monitors) — wake the display or run from the logged-in Aqua session
+
+============================================================================
+[render-verify] target=IRFontMaker demo=font_maker backend=macos-debug warmup=10
+[render-verify] 4 shots: sample_screen_scale1, sample_screen_scale2, sample_pixelated_scale1, sample_pixelated_scale2
+[render-verify] default pass demo args: --font-maker-test sample
+[render-verify] ENV-FAIL: display domain mismatch (CoreGraphics online=1 awake=0 NSScreen=1; the engine will discover 0 monitors) — wake the display or run from the logged-in Aqua session
+
+============================================================================
+[render-verify] target=IRVoxelEditor demo=voxel_editor backend=macos-debug warmup=10
+[render-verify] 2 shots: mode_preview_grid, mode_preview_revox
+[render-verify] default pass demo args: --gui-session mode_preview_shots
+[render-verify] ENV-FAIL: display domain mismatch (CoreGraphics online=1 awake=0 NSScreen=1; the engine will discover 0 monitors) — wake the display or run from the logged-in Aqua session
+
+============================================================================
+[render-verify] target=IRLauncher demo=launcher backend=macos-debug warmup=10
+[render-verify] 1 shots: launcher_main
+[render-verify] default pass demo args: --catalog-root creations/launcher/test/fixture_root
+[render-verify] ENV-FAIL: display domain mismatch (CoreGraphics online=1 awake=0 NSScreen=1; the engine will discover 0 monitors) — wake the display or run from the logged-in Aqua session
+
+[render-verify] --all summary over 13 demo(s):
+  IRAnalyticOracle         analytic_oracle        1 checks                 PASS
+  IRCanvasStress           demos/canvas_stress    0 checks                 ERROR (extra run 'cylinder_receiver_pitched': capture_offset 0 + 8 shots is out of range for the 0 captured screenshots — did the demo args emit a different shot count than expected?)
+  IRFogDemo                fog_demo               0 checks                 ERROR (exit 69)
+  IRLightingSdfBlocker     lighting               0 checks                 ERROR (exit 69)
+  IRLuaPerfGrid            lua_perf_grid          0 checks                 ERROR (exit 69)
+  IRLuaPipelineDemo        lua_pipeline_demo      0 checks                 ERROR (exit 69)
+  IRMetalClearTest         metal_clear_test       0 checks                 ERROR (exit 69)
+  IRPerfGrid               perf_grid              0 checks                 ERROR (exit 69)
+  IRShapeDebug             shape_debug            0 checks                 ERROR (exit 69)
+  IRUIWidgetsDemo          ui_widgets             0 checks                 ERROR (exit 69)
+  IRFontMaker              font_maker             0 checks                 ERROR (exit 69)
+  IRVoxelEditor            voxel_editor           0 checks                 ERROR (exit 69)
+  IRLauncher               launcher               0 checks                 ERROR (exit 69)
+[render-verify] total: 1 checks across 13 demos, 0 FAIL, 0 skipped
