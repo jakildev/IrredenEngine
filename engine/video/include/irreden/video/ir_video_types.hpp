@@ -2,6 +2,7 @@
 #define IR_VIDEO_TYPES_H
 
 #include <cstdint>
+#include <functional>
 
 namespace IRVideo {
 
@@ -23,6 +24,13 @@ using VideoStrideBytes = int;
 /// Default capture frame rate used when no @c target_fps_ is specified in
 /// @c VideoRecorderConfig.
 constexpr int kDefaultCaptureFps = 60;
+
+/// Receives each frame a recording hands to its encoder, in encode order, on
+/// the main thread: @p width x @p height tightly packed RGBA8, rows in the
+/// order the active backend reads its textures. @p rgbaData is valid for the
+/// call only.
+using EncodedFrameObserver =
+    std::function<void(const std::uint8_t *rgbaData, int width, int height)>;
 
 /// Lifecycle of the capture recorder as seen from the main thread.
 /// @c FINALIZING is the window between a stop and the async finalize thread

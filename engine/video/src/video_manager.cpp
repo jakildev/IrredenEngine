@@ -82,6 +82,10 @@ void VideoManager::configureScreenshotOutputDir(const std::string &outputDirPath
     m_screenshotOutputDirPath = outputDirPath;
 }
 
+void VideoManager::setEncodedFrameObserver(EncodedFrameObserver observer) {
+    m_encodedFrameObserver = std::move(observer);
+}
+
 void VideoManager::toggleRecording() {
     m_toggleRequested = true;
 }
@@ -595,16 +599,12 @@ bool VideoManager::captureCanvasScreenshot() {
     const std::size_t pixelCount =
         static_cast<std::size_t>(sourceResolution.x) * static_cast<std::size_t>(sourceResolution.y);
     std::vector<std::uint8_t> imageData(pixelCount * 4U);
-    presentedMainColor(framebuffer)
-        .getSubImage2D(
-            0,
-            0,
-            sourceResolution.x,
-            sourceResolution.y,
-            IRRender::PixelDataFormat::RGBA,
-            IRRender::PixelDataType::UNSIGNED_BYTE,
-            imageData.data()
-        );
+    readFrameImage(
+        presentedMainColor(framebuffer),
+        sourceResolution.x,
+        sourceResolution.y,
+        imageData.data()
+    );
 
     // OpenGL texture origin is lower-left, flip for PNG output.
     const std::size_t rowBytes = static_cast<std::size_t>(sourceResolution.x) * 4U;
@@ -682,6 +682,9 @@ void VideoManager::joinFinalizeThreadIfDone() {
 
 bool VideoManager::encodeCurrentRawFrame() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_VIDEO);
+    if (m_encodedFrameObserver) {
+        m_encodedFrameObserver(m_rawFrameBuffer.data(), m_sourceFrameWidth, m_sourceFrameHeight);
+    }
     std::lock_guard<std::mutex> lock(m_recorderMutex);
     auto buf = m_videoRecorder.acquireFrameBuffer(m_sourceFrameBytes);
     std::memcpy(buf.data(), m_rawFrameBuffer.data(), m_sourceFrameBytes);

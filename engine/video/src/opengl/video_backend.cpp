@@ -10,6 +10,21 @@ namespace {
 constexpr int kReadbackPboCount = 3;
 }
 
+void readFrameImage(
+    const IRRender::Texture2D &textureColor, int width, int height, std::uint8_t *rgbaData
+) {
+    // A GL read runs in command order, after the frame's draws.
+    textureColor.getSubImage2D(
+        0,
+        0,
+        width,
+        height,
+        IRRender::PixelDataFormat::RGBA,
+        IRRender::PixelDataType::UNSIGNED_BYTE,
+        rgbaData
+    );
+}
+
 CaptureFrameStatus captureFrame(
     const IRRender::Texture2D &textureColor,
     int sourceFrameWidth,
@@ -65,15 +80,7 @@ CaptureFrameStatus captureFrame(
         return hasCpuFrame ? CaptureFrameStatus::READY : CaptureFrameStatus::PRIMING;
     }
 
-    textureColor.getSubImage2D(
-        0,
-        0,
-        sourceFrameWidth,
-        sourceFrameHeight,
-        IRRender::PixelDataFormat::RGBA,
-        IRRender::PixelDataType::UNSIGNED_BYTE,
-        rawFrameBuffer.data()
-    );
+    readFrameImage(textureColor, sourceFrameWidth, sourceFrameHeight, rawFrameBuffer.data());
     return CaptureFrameStatus::READY;
 }
 

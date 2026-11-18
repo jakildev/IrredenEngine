@@ -51,6 +51,11 @@ void requestScreenshotWithCrops(
 void requestCanvasScreenshot();
 /// @}
 
+/// Observe each frame a recording hands to its encoder; an empty function
+/// stops observing. For harnesses that check what a take holds while it is
+/// recorded.
+void setEncodedFrameObserver(EncodedFrameObserver observer);
+
 /// Notify the video manager that a fixed-update tick has elapsed. Call once per
 /// fixed-step update so the encoder can align audio/video timestamps correctly.
 void notifyFixedUpdate();
