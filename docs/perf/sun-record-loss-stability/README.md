@@ -20,7 +20,7 @@ word, and that order is not stable on this GPU.
 | Host | macOS 26.5.2 (25F84), Apple M4 Max, Metal, Debug |
 | Binary | `IRCanvasStress` `711064fac69d…`; `IRPerfGrid` hash in `perfgrid-64/compare.json` |
 | Resolution | 1280×720 game framebuffer, 2560×1440 screenshots |
-| OpenGL | **Owed.** Needs a Linux or Windows GL host: `python3 scripts/perf/sun_record_loss_stability.py capture <fixture> --launches N --raw <dir>`, then `compare`. Identical sets on one GPU and driver would not prove determinism on another. The committed Windows/OpenGL captures in [`sun-overflowed-tile-query`](../sun-overflowed-tile-query/README.md) already differ by 118 and 100 lost tiles between two launches of the same frozen case, against 366 and 652 on Metal. |
+| OpenGL | Not reproduced here, and the pre-fix set was not captured on GL. The committed Windows/OpenGL captures in [`sun-overflowed-tile-query`](../sun-overflowed-tile-query/README.md) already differ by 118 and 100 lost tiles between two launches of the same frozen case, against 366 and 652 on Metal. The post-fix gate on OpenGL is in [§ Deterministic admission on OpenGL](#deterministic-admission-on-opengl). |
 
 ## Fixtures
 
@@ -156,6 +156,39 @@ in what order, not the pool ceiling or how a lost tile is answered.
 Determinism does not make an exhausted pool correct
 ([§ Candidates measured](../../design/sun-face-index-capacity.md#candidates-measured)).
 It makes the wrong answer the same on every frame.
+
+## Deterministic admission on OpenGL
+
+**Result: the gate passes on OpenGL.** After #5022, `canvas-frozen` keeps one
+lost set in all 100 captures (10 launches × 10 shots), with 0 changed pixels
+in every comparison, and loses the same number of tiles as Metal (3,214). This
+reading covers the GLSL `c_bake_voxel_sun_faces` admission as of master at
+`44955ae9f`. That tree already has the 64-lane round scan from #5125 in pass 1.
+
+| | |
+|---|---|
+| Source | `44955ae9f` (clean `engine/` and `creations/demos`, recorded in each `compare.json` manifest) |
+| Host | Windows 10 Pro 19045, NVIDIA GeForce RTX 3060 Ti, driver 581.80, OpenGL, MSYS2 mingw64 Debug |
+| Binary | `IRCanvasStress` `2418cdbdc1c9…` |
+| Resolution | 1280×720 game framebuffer and screenshots. `compare` scales the receiver crop by frame width / 2560, to `(550,356)-(730,420)`. |
+
+| Fixture | Records requested / pool | Captures | Distinct sets | Lost tiles | Differing | Floor window lost | Crop pixels, in-run / vs launch 0 | Whole-frame pixels, in-run |
+|---|---:|---:|---:|---:|---:|---:|---|---|
+| `windows-opengl/canvas-frozen` | 95,164 / 65,536 | 100 | **1** | 3,214 every capture | **0** | 0 | all 0 (90) / all 0 (9) | all 0 (90) |
+| `windows-opengl/canvas-unfrozen` | 95,164 / 131,072 | 10 | 1 | 0 | 0 | 0 | all 0 (9) / — | all 0 (9) |
+
+The frozen fixture still exhausts the pool on this host, so the gate is not
+vacuous: 29,628 of 95,164 records do not fit. None of the 3,214 lost tiles
+overlaps the floor window, though, so the receiver crop sits under no lost
+tile. Its 0 is weaker evidence than it was before the fix, when the pool
+boundary ran through the receiver. The determinism evidence is the identical
+3,214-tile lost set in every capture.
+
+The pixel counts come from `changed_pixels`, run with a stdlib stand-in for
+`PIL.Image` / `PIL.ImageChops` built on `scripts/render-compare.py`'s
+`read_png`, because no Python on this host has Pillow. The stand-in reproduces
+the 368 crop pixels of both published Metal pairs above, and reads 0 for a
+frame against itself.
 
 ## Replay
 
