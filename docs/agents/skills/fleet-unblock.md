@@ -94,6 +94,7 @@ One line per cause, from the queue partition:
 |---|---|---|
 | `ghost` | a queued task delivered by a merged `Refs` PR; workers decline it | the ghost close (authority table) |
 | `pinned_away` | `**Host:**` or `fleet:needs-gl-host` for another OS | a satellite host, or a wrong pin corrected in the body |
+| `pinned_away`, `needs mac + gl-host — claimable on no host` | contradictory pins: every host refuses it (the scout also writes a `state-scout-host-pin-conflict-*` alert) | a filing defect, never a satellite-host item: correct the body's Host line or GL wording |
 | `in_flight` | an open PR exists | that PR's own state |
 | `blocked` | `**Blocked by:**` names an open issue | the named issue; check whether it is itself a ghost |
 | `in_progress` | a pane holds the claim | nothing unless the owner's heartbeat is stale |

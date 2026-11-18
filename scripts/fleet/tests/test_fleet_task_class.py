@@ -568,6 +568,26 @@ class RequiredHostGate(HostSeamCase):
         self.assertEqual(self._resolve_on("linux", slice_data), "defer")
         self.assertEqual(self._resolve_on("windows", slice_data), "defer")
 
+    def test_mac_pin_outranks_a_cited_opengl_path(self):
+        # A macOS Host line plus a context bullet citing the GL
+        # backend's source file. The record the scout builds from that body
+        # is mac work, not a contradiction no host can claim.
+        body = ("**Host:** macos\n\n- The OpenGL backend already does this in "
+                "`engine/render/src/opengl/opengl_render_impl.cpp`.\n")
+        record = _task("#5000", "opus",
+                       needs_gl_host=_scout_mod._body_requires_gl_host(body),
+                       needs_host=_scout_mod._body_required_host(body))
+        self.assertFalse(_host_incompatible(record, "mac"))
+        for host in ("linux", "windows", "unknown"):
+            self.assertTrue(_host_incompatible(record, host), host)
+        self.assertFalse(fleet_task_class._claimable_on_no_host(record))
+
+    def test_contradictory_pins_are_claimable_on_no_host(self):
+        record = _task("#5147", "opus", needs_gl_host=True, needs_host="mac")
+        for host in ("mac", "linux", "windows"):
+            self.assertTrue(_host_incompatible(record, host), host)
+        self.assertTrue(fleet_task_class._claimable_on_no_host(record))
+
     def test_unknown_host_is_fail_closed(self):
         out = self._resolve_on("unknown", {"tasks_open": [
             _task("#1969", "sonnet", needs_host="linux")]})
@@ -1504,20 +1524,20 @@ class MacosResidualLabelGate(SliceHostCase):
         os.environ["FLEET_ALERTS_DIR"] = self._tmp.name
         alert = Path(self._tmp.name) / "state-scout-dual-host-labels-engine-3643"
         try:
-            _scout_mod.check_dual_host_labels(dual)
-            _scout_mod.check_dual_host_labels(dual)
+            _scout_mod.check_host_pin_conflicts(dual)
+            _scout_mod.check_host_pin_conflicts(dual)
             self.assertEqual(len(logged), 1)
             self.assertIn("PR#3643", logged[0])
             self.assertIn("consecutive_ticks=2", alert.read_text())
-            _scout_mod.check_dual_host_labels(self._state([self._pr(3643, [], labels=(
+            _scout_mod.check_host_pin_conflicts(self._state([self._pr(3643, [], labels=(
                 "fleet:design-unblocked", self.MACOS))]))
             self.assertEqual(len(logged), 2)
             self.assertFalse(alert.exists())
-            _scout_mod.check_dual_host_labels(dual)
+            _scout_mod.check_host_pin_conflicts(dual)
             self.assertEqual(len(logged), 3)
         finally:
             _scout_mod.log = saved[0]
-            _scout_mod._dual_host_label_streak.clear()
+            _scout_mod._host_pin_conflict_streak.clear()
             if saved[1] is None:
                 os.environ.pop("FLEET_ALERTS_DIR", None)
             else:

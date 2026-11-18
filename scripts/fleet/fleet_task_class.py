@@ -342,6 +342,15 @@ def _host_incompatible(item, host):
     return not (host in METAL_CAPABLE_HOSTS and bool(item.get("backend_symmetric")))
 
 
+
+def _claimable_on_no_host(item):
+    """True when every dispatch host (the `HOST_SMOKE_LABELS` keys) refuses
+    the item: contradictory pins (a macOS pin plus a GL need with no
+    backend-symmetric narrowing), a filing defect the scout reports and
+    `fleet-survey` prints with both needs."""
+    return all(_host_incompatible(item, host) for host in HOST_SMOKE_LABELS)
+
+
 def _task_claimable(task, host):
     # `inflight_pr` (set by the scout) means an open PR already implements this
     # issue — parked on a design question or otherwise in flight — so a fresh
