@@ -1,0 +1,233 @@
+{
+  "method": "Five interleaved off/on pairs per scene, 300 frames per run. Frame and latency means exclude the first 75 frames; GPU commandBufferSpans is the 300-frame report mean. Aggregate rows average each run metric, including each run p99 (same convention as the baseline noise-bound table). Pick age and stale ticks cover all profiled INPUT ticks.",
+  "scenes": {
+    "million45": {
+      "base": {
+        "runs": [
+          {
+            "pair": 1,
+            "frame_ms": 11.09368,
+            "cpu_ms": 0.757,
+            "gpu_ms": 10.114,
+            "input_mean_ms": 14.632,
+            "input_p99_ms": 22.326,
+            "pick_age_mean_ms": 11.071,
+            "pick_age_p99_ms": 11.41,
+            "stale_ticks": 0,
+            "updates_per_frame": 0.6655518394648829,
+            "overlap_frames": 0,
+            "steady_frames": 225,
+            "max_in_flight": 0,
+            "drains": 0,
+            "throughput_ratio": 1.0968637532133676
+          },
+          {
+            "pair": 2,
+            "frame_ms": 11.098542222222223,
+            "cpu_ms": 0.85,
+            "gpu_ms": 10.058,
+            "input_mean_ms": 14.636,
+            "input_p99_ms": 22.744,
+            "pick_age_mean_ms": 11.092,
+            "pick_age_p99_ms": 11.748,
+            "stale_ticks": 0,
+            "updates_per_frame": 0.6666666666666666,
+            "overlap_frames": 0,
+            "steady_frames": 225,
+            "max_in_flight": 0,
+            "drains": 0,
+            "throughput_ratio": 1.1034541879322155
+          },
+          {
+            "pair": 3,
+            "frame_ms": 11.096422222222222,
+            "cpu_ms": 0.801,
+            "gpu_ms": 10.088,
+            "input_mean_ms": 14.64,
+            "input_p99_ms": 22.735,
+            "pick_age_mean_ms": 11.071,
+            "pick_age_p99_ms": 11.624,
+            "stale_ticks": 0,
+            "updates_per_frame": 0.6666666666666666,
+            "overlap_frames": 0,
+            "steady_frames": 225,
+            "max_in_flight": 0,
+            "drains": 0,
+            "throughput_ratio": 1.0999625517666756
+          },
+          {
+            "pair": 4,
+            "frame_ms": 11.081417777777778,
+            "cpu_ms": 0.782,
+            "gpu_ms": 10.098,
+            "input_mean_ms": 14.668,
+            "input_p99_ms": 22.232,
+            "pick_age_mean_ms": 11.091,
+            "pick_age_p99_ms": 11.64,
+            "stale_ticks": 0,
+            "updates_per_frame": 0.6666666666666666,
+            "overlap_frames": 0,
+            "steady_frames": 225,
+            "max_in_flight": 0,
+            "drains": 0,
+            "throughput_ratio": 1.097387381439669
+          },
+          {
+            "pair": 5,
+            "frame_ms": 11.13996888888889,
+            "cpu_ms": 0.847,
+            "gpu_ms": 10.051,
+            "input_mean_ms": 14.693,
+            "input_p99_ms": 23.095,
+            "pick_age_mean_ms": 11.127,
+            "pick_age_p99_ms": 12.516,
+            "stale_ticks": 0,
+            "updates_per_frame": 0.67,
+            "overlap_frames": 0,
+            "steady_frames": 225,
+            "max_in_flight": 0,
+            "drains": 0,
+            "throughput_ratio": 1.1083443327916516
+          }
+        ],
+        "means": {
+          "frame_ms": 11.102006222222222,
+          "cpu_ms": 0.8074,
+          "gpu_ms": 10.0818,
+          "input_mean_ms": 14.6538,
+          "input_p99_ms": 22.6264,
+          "pick_age_mean_ms": 11.0904,
+          "pick_age_p99_ms": 11.7876,
+          "stale_ticks": 0,
+          "updates_per_frame": 0.6671103678929766,
+          "overlap_frames": 0,
+          "steady_frames": 225,
+          "max_in_flight": 0,
+          "drains": 0,
+          "throughput_ratio": 1.1012024414287158
+        }
+      },
+      "head": {
+        "runs": [
+          {
+            "pair": 1,
+            "frame_ms": 10.782017777777778,
+            "cpu_ms": 0.911,
+            "gpu_ms": 10.094,
+            "input_mean_ms": 14.82,
+            "input_p99_ms": 22.829,
+            "pick_age_mean_ms": 21.18,
+            "pick_age_p99_ms": 22.983,
+            "stale_ticks": 0,
+            "updates_per_frame": 0.65,
+            "overlap_frames": 218,
+            "steady_frames": 225,
+            "max_in_flight": 1,
+            "drains": 0,
+            "throughput_ratio": 1.0681610637782621
+          },
+          {
+            "pair": 2,
+            "frame_ms": 10.83824,
+            "cpu_ms": 0.934,
+            "gpu_ms": 10.074,
+            "input_mean_ms": 14.858,
+            "input_p99_ms": 23.102,
+            "pick_age_mean_ms": 21.495,
+            "pick_age_p99_ms": 23.485,
+            "stale_ticks": 0,
+            "updates_per_frame": 0.65,
+            "overlap_frames": 223,
+            "steady_frames": 225,
+            "max_in_flight": 1,
+            "drains": 0,
+            "throughput_ratio": 1.0758626166368872
+          },
+          {
+            "pair": 3,
+            "frame_ms": 10.79828,
+            "cpu_ms": 1.006,
+            "gpu_ms": 10.043,
+            "input_mean_ms": 14.855,
+            "input_p99_ms": 23.069,
+            "pick_age_mean_ms": 21.245,
+            "pick_age_p99_ms": 22.912,
+            "stale_ticks": 0,
+            "updates_per_frame": 0.65,
+            "overlap_frames": 219,
+            "steady_frames": 225,
+            "max_in_flight": 1,
+            "drains": 0,
+            "throughput_ratio": 1.0752046201334264
+          },
+          {
+            "pair": 4,
+            "frame_ms": 10.789253333333333,
+            "cpu_ms": 0.885,
+            "gpu_ms": 10.1,
+            "input_mean_ms": 14.86,
+            "input_p99_ms": 22.735,
+            "pick_age_mean_ms": 21.332,
+            "pick_age_p99_ms": 22.78,
+            "stale_ticks": 0,
+            "updates_per_frame": 0.6466666666666666,
+            "overlap_frames": 224,
+            "steady_frames": 225,
+            "max_in_flight": 1,
+            "drains": 0,
+            "throughput_ratio": 1.0682429042904291
+          },
+          {
+            "pair": 5,
+            "frame_ms": 10.776653333333334,
+            "cpu_ms": 0.991,
+            "gpu_ms": 10.017,
+            "input_mean_ms": 14.892,
+            "input_p99_ms": 23.05,
+            "pick_age_mean_ms": 21.313,
+            "pick_age_p99_ms": 22.876,
+            "stale_ticks": 0,
+            "updates_per_frame": 0.6466666666666666,
+            "overlap_frames": 225,
+            "steady_frames": 225,
+            "max_in_flight": 1,
+            "drains": 0,
+            "throughput_ratio": 1.0758364114338959
+          }
+        ],
+        "means": {
+          "frame_ms": 10.796888888888889,
+          "cpu_ms": 0.9454,
+          "gpu_ms": 10.0656,
+          "input_mean_ms": 14.857,
+          "input_p99_ms": 22.957,
+          "pick_age_mean_ms": 21.313,
+          "pick_age_p99_ms": 23.0072,
+          "stale_ticks": 0,
+          "updates_per_frame": 0.6486666666666666,
+          "overlap_frames": 221.8,
+          "steady_frames": 225,
+          "max_in_flight": 1,
+          "drains": 0,
+          "throughput_ratio": 1.0726615232545802
+        }
+      },
+      "delta": {
+        "input_mean_ms": 0.20319999999999894,
+        "input_p99_ms": 0.33060000000000045,
+        "pick_age_mean_ms": 10.222599999999998,
+        "pick_age_p99_ms": 11.219600000000002,
+        "updates_per_frame": -0.018443701226310005
+      },
+      "noise_bound_ms": {
+        "mean": 0.118,
+        "p99": 0.361
+      },
+      "latency_pass": false
+    }
+  },
+  "binary_sha256": [
+    "8989c5322257907e672fc1fb36f2894889f6cfde38676498c9d02e04db8ea256"
+  ],
+  "status": "Rejected prototype; not the final code"
+}

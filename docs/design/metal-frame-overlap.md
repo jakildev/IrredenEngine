@@ -1,7 +1,10 @@
 # Metal frame overlap
 
-This implementation is under validation. Its acceptance measurements are not
-yet complete; it must not be treated as a demonstrated latency improvement.
+This implementation is WIP. The [complete measurement record](../perf/metal-frame-overlap/README.md)
+passes the CPU-bound latency check and the million-entity 45° checks, but
+fails latency and overlap coverage in the later million-entity 0° runs.
+The full render comparison is blocked by a sleeping display. It must not be
+treated as a demonstrated latency improvement or an accepted default.
 
 ## Mechanism
 

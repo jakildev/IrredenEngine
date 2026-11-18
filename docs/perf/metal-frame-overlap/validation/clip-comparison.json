@@ -1,0 +1,11 @@
+{
+  "base": "6236f5854df959f532add8b23645580318e09a18",
+  "head": "226c7b22e",
+  "frames": 90,
+  "all_decoded_frame_hashes_equal": true,
+  "update_ticks": {
+    "before": 180,
+    "after": 180
+  },
+  "both_runs": "RESULT=CLEAN exit=0"
+}
