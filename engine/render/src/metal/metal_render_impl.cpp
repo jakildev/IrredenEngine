@@ -33,6 +33,7 @@ constexpr NS::UInteger kTimestampAttachmentIndex = 0;
 // encoder. The largest stage at the million rotated control creates 72 encoders.
 constexpr NS::UInteger kTimestampEncoderPairCapacity = 128;
 constexpr double kCpuOverlapFraction = 0.3;
+constexpr double kMaxCpuLeadSeconds = 0.00015;
 constexpr double kPacingSpinSeconds = 0.002;
 
 // Host time in seconds: the timebase of a command buffer's GPUStartTime and
@@ -475,8 +476,9 @@ class MetalRenderDevice final : public RenderDevice {
             collectSubmittedFrame(true);
         } else if (m_submittedFrame != nullptr && m_submitToEndSeconds > m_cpuSeconds &&
                    m_cpuSeconds > 0.0) {
-            const double deadline =
-                m_submitSeconds + m_submitToEndSeconds - kCpuOverlapFraction * m_cpuSeconds;
+            const double cpuLead =
+                std::min(kCpuOverlapFraction * m_cpuSeconds, kMaxCpuLeadSeconds);
+            const double deadline = m_submitSeconds + m_submitToEndSeconds - cpuLead;
             const double delay = deadline - steadyClockSeconds();
             // Coalesced sleeps can overshoot a sub-millisecond CPU frame.
             // Bound the active wait to the final part of the pacing interval.
@@ -537,7 +539,10 @@ class MetalRenderDevice final : public RenderDevice {
         commandBuffer->commit();
         setMetalDrawable(nullptr);
         setMetalCommandBuffer(nullptr);
-        if (!m_overlap) {
+        // A CPU-bound frame keeps the serialized cadence: otherwise more frames
+        // reuse the preceding fixed update's input poll and input latency rises.
+        const bool cpuBound = m_submitToEndSeconds > 0.0 && m_cpuSeconds >= m_submitToEndSeconds;
+        if (!m_overlap || cpuBound) {
             collectSubmittedFrame(true);
         } else {
             setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
