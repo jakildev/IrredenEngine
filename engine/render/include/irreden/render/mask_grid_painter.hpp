@@ -94,12 +94,7 @@ inline void drawMaskGridOntoCanvas(
         IRRender::PixelDataType::UNSIGNED_BYTE,
         scratch.colors_.data()
     );
-    canvas.textureTriangleDistances_.second->subImage2D(
-        origin.x, origin.y, gridW, gridH,
-        IRRender::PixelDataFormat::RED_INTEGER,
-        IRRender::PixelDataType::INT32,
-        scratch.distances_.data()
-    );
+    canvas.writeDistances(origin, IRMath::ivec2(gridW, gridH), scratch.distances_.data());
 }
 
 // Map a GUI-trixel mouse position to the (h, v) cell of a mask grid

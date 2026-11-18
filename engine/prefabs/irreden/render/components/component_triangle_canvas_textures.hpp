@@ -95,10 +95,17 @@ struct C_TriangleCanvasTextures {
     ivec2 size_;
     CanvasShapeGeometry shapeGeometry_;
     std::pair<ResourceId, Texture2D *> textureTriangleColors_;
-    std::pair<ResourceId, Texture2D *> textureTriangleDistances_;
+
+  private:
+    // Private so every distance write goes through a mutator that records
+    // holdsQueriedContent(); getTextureDistances() hands out a const texture,
+    // which admits reads and GPU image binds only.
+    std::pair<ResourceId, Texture2D *> m_textureTriangleDistances;
+
+  public:
     std::pair<ResourceId, Texture2D *> textureTriangleEntityIds_;
-    // Hi-Z max-depth mip chain over textureTriangleDistances_.
-    // Conceptual level 0 IS textureTriangleDistances_; these are the downsampled
+    // Hi-Z max-depth mip chain over getTextureDistances().
+    // Conceptual level 0 IS getTextureDistances(); these are the downsampled
     // levels 1..N (each ceil(prev / 2), R32I), holding the per-texel MAX
     // (farthest) encoded distance over the source footprint. Produced each frame
     // by COMPUTE_DISTANCE_HIZ and consumed NEXT frame by the chunk-occlusion
@@ -165,7 +172,7 @@ struct C_TriangleCanvasTextures {
     C_TriangleCanvasTextures(ivec2 size)
         : size_{size}
         , textureTriangleColors_{detail::makeCanvasColorTexture(size)}
-        , textureTriangleDistances_{detail::makeCanvasDistanceTexture(size)}
+        , m_textureTriangleDistances{detail::makeCanvasDistanceTexture(size)}
         , textureTriangleEntityIds_{detail::makeCanvasEntityIdTexture(size)}
         , hiZMips_{detail::makeHiZMipChain(size)} {}
 
@@ -189,7 +196,7 @@ struct C_TriangleCanvasTextures {
         auto mips = detail::makeHiZMipChain(size);
         destroyBackingTextures();
         textureTriangleColors_ = colors;
-        textureTriangleDistances_ = distances;
+        m_textureTriangleDistances = distances;
         textureTriangleEntityIds_ = ids;
         hiZMips_ = std::move(mips);
         size_ = size;
@@ -262,7 +269,7 @@ struct C_TriangleCanvasTextures {
     }
 
     const Texture2D *getTextureDistances() const {
-        return textureTriangleDistances_.second;
+        return m_textureTriangleDistances.second;
     }
 
     const Texture2D *getTextureEntityIds() const {
@@ -271,12 +278,12 @@ struct C_TriangleCanvasTextures {
 
     void bind(int textureUnitColors, int textureUnitDistances) const {
         textureTriangleColors_.second->bind(textureUnitColors);
-        textureTriangleDistances_.second->bind(textureUnitDistances);
+        m_textureTriangleDistances.second->bind(textureUnitDistances);
     }
 
     void bind(int textureUnitColors, int textureUnitDistances, int textureUnitEntityIds) const {
         textureTriangleColors_.second->bind(textureUnitColors);
-        textureTriangleDistances_.second->bind(textureUnitDistances);
+        m_textureTriangleDistances.second->bind(textureUnitDistances);
         textureTriangleEntityIds_.second->bind(textureUnitEntityIds);
     }
 
@@ -288,13 +295,13 @@ struct C_TriangleCanvasTextures {
     // clearDistancesToEmpty resets it. A writer that binds the distance texture any other way
     // leaves stale sun-shadow texels visible on such a frame.
     bool holdsQueriedContent() const {
-        return holdsQueriedContent_;
+        return m_holdsQueriedContent;
     }
 
     void
     bindDistancesForWrite(int unit, TextureAccess access, CanvasDistanceContent content) const {
         recordDistanceContent(content);
-        textureTriangleDistances_.second->bindAsImage(unit, access, TextureFormat::R32I);
+        m_textureTriangleDistances.second->bindAsImage(unit, access, TextureFormat::R32I);
     }
 
     // Texture-unit bind of this canvas as the destination of a canvas-onto-canvas
@@ -312,8 +319,8 @@ struct C_TriangleCanvasTextures {
         static constexpr std::int32_t kDistanceClear =
             static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
         shapeGeometry_.invalidateSamples();
-        IRRender::device()->clearTexImage(textureTriangleDistances_.second, 0, &kDistanceClear);
-        holdsQueriedContent_ = false;
+        IRRender::device()->clearTexImage(m_textureTriangleDistances.second, 0, &kDistanceClear);
+        m_holdsQueriedContent = false;
     }
 
     // Every Texture2D::clear-based clear records QUERIED rather than
@@ -324,7 +331,7 @@ struct C_TriangleCanvasTextures {
         shapeGeometry_.invalidateSamples();
         textureTriangleColors_.second
             ->clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, &u8vec4(0, 0, 0, 0)[0]);
-        textureTriangleDistances_.second->clear(
+        m_textureTriangleDistances.second->clear(
             PixelDataFormat::RED_INTEGER,
             PixelDataType::INT32,
             &ivec1(IRConstants::kTrixelDistanceMaxDistance)[0]
@@ -369,7 +376,7 @@ struct C_TriangleCanvasTextures {
             PixelDataType::UNSIGNED_BYTE,
             &color
         );
-        textureTriangleDistances_.second->subImage2D(
+        m_textureTriangleDistances.second->subImage2D(
             index.x,
             index.y,
             1,
@@ -427,7 +434,7 @@ struct C_TriangleCanvasTextures {
     // readEntityIdCarriers.
     void readDistances(std::vector<int> &out) const {
         out.resize(static_cast<std::size_t>(size_.x) * static_cast<std::size_t>(size_.y));
-        textureTriangleDistances_.second->getSubImage2D(
+        m_textureTriangleDistances.second->getSubImage2D(
             0,
             0,
             size_.x,
@@ -464,7 +471,8 @@ struct C_TriangleCanvasTextures {
     // Row-major encoded distances over the `size` box at `origin`.
     void writeDistances(ivec2 origin, ivec2 size, const int *distances) const {
         recordDistanceContent(CanvasDistanceContent::QUERIED);
-        textureTriangleDistances_.second->subImage2D(
+        shapeGeometry_.invalidateSamples();
+        m_textureTriangleDistances.second->subImage2D(
             origin.x,
             origin.y,
             size.x,
@@ -478,7 +486,7 @@ struct C_TriangleCanvasTextures {
     void clearDistances() const {
         recordDistanceContent(CanvasDistanceContent::QUERIED);
         shapeGeometry_.invalidateSamples();
-        textureTriangleDistances_.second->clear(
+        m_textureTriangleDistances.second->clear(
             PixelDataFormat::RED_INTEGER,
             PixelDataType::INT32,
             &ivec1(IRConstants::kTrixelDistanceMaxDistance)[0]
@@ -490,17 +498,17 @@ struct C_TriangleCanvasTextures {
   private:
     // Starts true: a new texture's contents are undefined until the first
     // clearDistancesToEmpty.
-    mutable bool holdsQueriedContent_ = true;
+    mutable bool m_holdsQueriedContent = true;
 
     void recordDistanceContent(CanvasDistanceContent content) const {
         if (content == CanvasDistanceContent::QUERIED) {
-            holdsQueriedContent_ = true;
+            m_holdsQueriedContent = true;
         }
     }
 
     void destroyBackingTextures() {
         IRRender::destroyResource<Texture2D>(textureTriangleColors_.first);
-        IRRender::destroyResource<Texture2D>(textureTriangleDistances_.first);
+        IRRender::destroyResource<Texture2D>(m_textureTriangleDistances.first);
         IRRender::destroyResource<Texture2D>(textureTriangleEntityIds_.first);
         for (const auto &mip : hiZMips_) {
             IRRender::destroyResource<Texture2D>(mip.first);
@@ -566,15 +574,14 @@ struct C_TriangleCanvasTextures {
     //
     // When invoked via clearCanvasWithBackground() → clearCanvasAndDistances(),
     // the 65534 value is immediately overwritten by the unconditional
-    // IRRender::device()->clearTexImage(...) call at the end of
-    // clearCanvasAndDistances(), which restores kTrixelDistanceMaxDistance
-    // (65535) on every frame. The
+    // clearDistancesToEmpty() call at the end of clearCanvasAndDistances(),
+    // which restores kTrixelDistanceMaxDistance (65535) on every frame. The
     // redundant GPU clear here is negligible in cost but retained for correctness
     // on call-sites (e.g. entity_trixel_canvas.hpp) that invoke clearWithColor()
     // or clearWithColorData() without a subsequent clearDistances().
     void clearDistanceTexture() const {
         shapeGeometry_.invalidateSamples();
-        textureTriangleDistances_.second->clear(
+        m_textureTriangleDistances.second->clear(
             PixelDataFormat::RED_INTEGER,
             PixelDataType::INT32,
             &ivec1(IRConstants::kTrixelDistanceMaxDistance - 1)[0]

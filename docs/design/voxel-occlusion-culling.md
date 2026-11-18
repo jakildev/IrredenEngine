@@ -92,7 +92,7 @@ occluded** — every projected tap loses to closer geometry — therefore writes
 1 leave the distance texture unchanged. **The final `trixelDistances`
 (the `R32I` distance texture; called `triangleCanvasDistances` in stage 1/2
 shaders at binding 1, and `trixelDistances` in the sun-shadow bake shader at
-binding 0 — both refer to the same `C_TriangleCanvasTextures::textureTriangleDistances_`),
+binding 0 — both refer to the same `C_TriangleCanvasTextures::getTextureDistances()`),
 `triangleCanvasColors`, and `triangleCanvasEntityIds` are bit-identical
 whether or not a fully-occluded voxel was dispatched.** Occlusion culling buys
 exactly the *compute* of those losing taps — never a change in output. This is

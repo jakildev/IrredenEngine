@@ -258,6 +258,40 @@ def source_for(backend):
     predicates = predicates.replace("constant uint", "const uint").replace("uint2", "uvec2")
     return host + predicates + CHECKS
 
+DISTANCE_MEMBER = "m_textureTriangleDistances"
+CPU_DISTANCE_WRITERS = (
+    "engine/render/include/irreden/render/trixel_rect.hpp",
+    "engine/render/include/irreden/render/mask_grid_painter.hpp",
+    "creations/editors/font_maker/systems/system_font_maker.hpp",
+)
+
+
+def distance_write_census(component, texture, outside):
+    """Ways a CPU distance write could skip the canvas content record.
+
+    `outside` maps a path to source for every tracked file except the owner
+    component. The compiler enforces the record only while the member stays
+    private and the public accessor hands out a texture with no const CPU writer.
+    """
+    violations = []
+    declaration = component.index(f"std::pair<ResourceId, Texture2D *> {DISTANCE_MEMBER};")
+    access = re.findall(r"^  (public|private):", component[:declaration], re.MULTILINE)
+    if not access or access[-1] != "private":
+        violations.append("distance texture member is not private")
+    if not re.search(r"const Texture2D \*getTextureDistances\(\) const", component):
+        violations.append("getTextureDistances hands out a mutable texture")
+    start = texture.index("class Texture2D {")
+    texture_class = texture[start:texture.index("class Texture3D {", start)]
+    for writer in ("subImage2D", "clear"):
+        signature = re.search(r"void " + writer + r"\([^;]*\)\s*(const)?\s*;", texture_class)
+        if signature is None or signature.group(1):
+            violations.append(f"Texture2D::{writer} is callable through a const texture")
+    for path, source in outside.items():
+        if DISTANCE_MEMBER in source:
+            violations.append(f"{path} names the distance texture member")
+    return violations
+
+
 
 @unittest.skipUnless(COMPILER, "cardinal routing controls require a C++ compiler")
 class CardinalSurfaceLightingTest(unittest.TestCase):
@@ -397,6 +431,49 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
                         self.assertNotEqual(candidate, source)
                         self.assertEqual(run.returncode, 1, run.stderr)
                         self.assertIn(messages[name], run.stderr)
+
+    def test_cpu_distance_writes_record_canvas_content(self):
+        component_path = ("engine/prefabs/irreden/render/components/"
+                          "component_triangle_canvas_textures.hpp")
+        component = (ROOT / component_path).read_text()
+        texture = (ROOT / "engine/render/include/irreden/render/texture.hpp").read_text()
+        tracked = subprocess.run(
+            ["git", "ls-files", "--", "*.hpp", "*.cpp", "*.h", "*.mm"],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+        ).stdout.split()
+        self.assertGreater(len(tracked), 100)
+        outside = {
+            path: (ROOT / path).read_text(errors="replace")
+            for path in tracked if path != component_path and (ROOT / path).is_file()
+        }
+        self.assertEqual(distance_write_census(component, texture, outside), [])
+
+        writer = extract_block(component, "void writeDistances(")
+        self.assertIn("recordDistanceContent(CanvasDistanceContent::QUERIED)", writer)
+        for path in CPU_DISTANCE_WRITERS:
+            source = (ROOT / path).read_text()
+            self.assertIn("writeDistances(", source, path)
+            self.assertNotIn("textureTriangleDistances", source, path)
+
+        mutations = {
+            "public member": (
+                replace_once(component, "  private:\n    // Private so every distance",
+                             "  public:\n    // Private so every distance"), texture, {}),
+            "mutable accessor": (
+                replace_once(component, "const Texture2D *getTextureDistances() const",
+                             "Texture2D *getTextureDistances() const"), texture, {}),
+            "const CPU writer": (
+                component, replace_once(
+                    texture, "PixelDataType type, const void *data);",
+                    "PixelDataType type, const void *data) const;"), {}),
+            "outside writer": (
+                component, texture,
+                {"trixel_rect.hpp": f"canvas.{DISTANCE_MEMBER}.second->subImage2D("}),
+        }
+        for name, (candidate, candidate_texture, candidate_outside) in mutations.items():
+            with self.subTest(mutation=name):
+                self.assertNotEqual(
+                    distance_write_census(candidate, candidate_texture, candidate_outside), [])
 
     def test_overflow_distance_images_fit_minimum_gl_image_units(self):
         systems = ROOT / "engine/prefabs/irreden/render/systems"
