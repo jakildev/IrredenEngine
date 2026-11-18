@@ -2,10 +2,10 @@
   "target": "both",
   "matrix": "quick",
   "frames": 60,
-  "git_sha": "a661037da",
+  "git_sha": "40cb99890",
   "git_dirty": false,
-  "run_name": "a661037da-ci",
-  "started_at": "2026-11-17T06:36:22Z",
+  "run_name": "40cb99890-ci",
+  "started_at": "2026-11-18T00:31:33Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -17,13 +17,13 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 70.003,
+        "before": 70.036,
         "before_samples": [
-          69.902,
-          70.003,
-          70.013
+          69.825,
+          70.036,
+          70.115
         ],
-        "after": 69.945
+        "after": 69.971
       }
     },
     {
@@ -36,13 +36,13 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 69.818,
+        "before": 69.859,
         "before_samples": [
-          69.86,
-          69.818,
-          69.727
+          69.89,
+          69.859,
+          69.838
         ],
-        "after": 69.918
+        "after": 70.369
       }
     },
     {
@@ -55,13 +55,13 @@
       "status": "ok",
       "report": "target=IRLuaPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 69.793,
+        "before": 70.142,
         "before_samples": [
-          69.888,
-          69.793,
-          69.777
+          70.142,
+          70.121,
+          70.26
         ],
-        "after": 70.598
+        "after": 69.815
       }
     },
     {
@@ -74,25 +74,25 @@
       "status": "ok",
       "report": "target=IRLuaPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 69.833,
+        "before": 69.751,
         "before_samples": [
-          70.341,
-          69.833,
-          69.73
+          69.751,
+          69.676,
+          69.992
         ],
-        "after": 70.41
+        "after": 70.635
       }
     }
   ],
-  "finished_at": "2026-11-17T06:40:04Z",
+  "finished_at": "2026-11-18T00:35:20Z",
   "calibration": {
-    "ref_ms": 73.966,
+    "ref_ms": 69.983,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-xeon-6975p-c-03-0-vga",
     "host_fingerprint": {
       "cpu": {
         "cores": 2,
-        "mhz": 3098,
+        "mhz": 2805,
         "model": "Intel(R) Xeon(R) 6975P-C",
         "threads": 4
       },
@@ -108,6 +108,6 @@
       },
       "slug": "linux-x86_64-xeon-6975p-c-03-0-vga"
     },
-    "math_sha": "4406d3733681ef209e32eb9f047ea74490d6ada1"
+    "math_sha": "0724838e0eca9a810f0ee6f772b7bd73c6561f7a"
   }
 }
