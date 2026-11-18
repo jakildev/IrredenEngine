@@ -1,0 +1,179 @@
+{
+  "provenance": {
+    "source_revision": "45a220089c6b843cab5fb09007ae34356b2df275",
+    "backend": "opengl",
+    "build": "release",
+    "trees": {
+      "post": {
+        "build_dir": "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build-release",
+        "build_type": "Release",
+        "binary_sha256": "71387cb90d784eb8ccb82f0aeac89d662bbdef77d0e3e7277815c99cd48471ae",
+        "pristine_sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+        "pristine_shader_dir_sha256": "ab59efd9f287bc6e5f45bcd37bcd507f008878c1dba3805b2e90ee0cff230d0f",
+        "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b"
+      }
+    },
+    "controller_sha256": "2a3bd59a6f52b13b0fcbdb92cedf6493ad8d1becb188818634908c4e5bd752a2",
+    "variant_sampler_sha256": {
+      "production": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "ablation": "5d4ddb6b34c239d20c5cb9255f94b66eae663d37b6500e000d554de63fc0ec08"
+    },
+    "host": "Windows-10-10.0.19045-SP0",
+    "host_gpu": [
+      {
+        "Name": "NVIDIA GeForce RTX 3060 Ti",
+        "DriverVersion": "32.0.15.8180"
+      }
+    ],
+    "python": "3.14.3"
+  },
+  "cases": {
+    "far-128": {
+      "pairs": 5,
+      "contrasts": {
+        "entityCanvasToFb": {
+          "query term, post": {
+            "n": 5,
+            "production_mean": 48.7768,
+            "production_min": 47.941,
+            "production_max": 49.543,
+            "ablation_mean": 0.2904,
+            "ablation_min": 0.259,
+            "ablation_max": 0.325,
+            "delta_mean": 48.4864,
+            "deltas": [
+              47.753,
+              48.995999999999995,
+              49.253,
+              47.647000000000006,
+              48.783
+            ],
+            "delta_sd": 0.7378697717077157,
+            "delta_lower_95": 47.78287114081039,
+            "delta_upper_95": 49.189928859189614,
+            "share": 0.9940463499040528,
+            "change_share": 166.9641873278237,
+            "upper_share": 169.3868073663554
+          },
+          "early tests vs production, post": {
+            "n": 5,
+            "production_mean": 2.7526,
+            "production_min": 2.735,
+            "production_max": 2.769,
+            "ablation_mean": 48.7768,
+            "ablation_min": 47.941,
+            "ablation_max": 49.543,
+            "delta_mean": -46.0242,
+            "deltas": [
+              -45.277,
+              -46.552,
+              -46.775,
+              -45.197,
+              -46.32
+            ],
+            "delta_sd": 0.7369428064646523,
+            "delta_lower_95": -46.72684503547848,
+            "delta_upper_95": -45.32155496452152,
+            "share": -16.720264477221534,
+            "change_share": -0.9435674336979876,
+            "upper_share": -0.9291621214290712
+          },
+          "early tests vs ablation, post": {
+            "n": 5,
+            "production_mean": 2.7526,
+            "production_min": 2.735,
+            "production_max": 2.769,
+            "ablation_mean": 0.2904,
+            "ablation_min": 0.259,
+            "ablation_max": 0.325,
+            "delta_mean": 2.4622,
+            "deltas": [
+              2.476,
+              2.444,
+              2.4779999999999998,
+              2.45,
+              2.463
+            ],
+            "delta_sd": 0.015172343260024054,
+            "delta_lower_95": 2.447733786917096,
+            "delta_upper_95": 2.4766662130829045,
+            "share": 0.8944997456949793,
+            "change_share": 8.478650137741047,
+            "upper_share": 8.528464921084382
+          }
+        },
+        "steady_frame_avg": {
+          "query term, post": {
+            "n": 5,
+            "production_mean": 79.094,
+            "production_min": 78.2,
+            "production_max": 80.6,
+            "ablation_mean": 30.936,
+            "ablation_min": 30.8,
+            "ablation_max": 31.08,
+            "delta_mean": 48.158,
+            "deltas": [
+              47.36,
+              48.63000000000001,
+              49.519999999999996,
+              47.39,
+              47.89
+            ],
+            "delta_sd": 0.9187328229686798,
+            "delta_lower_95": 47.2820255670763,
+            "delta_upper_95": 49.0339744329237,
+            "share": 0.6088704579361267,
+            "change_share": 1.5566976984742695,
+            "upper_share": 1.5850133964612005
+          },
+          "early tests vs production, post": {
+            "n": 5,
+            "production_mean": 33.698,
+            "production_min": 33.39,
+            "production_max": 34.2,
+            "ablation_mean": 79.094,
+            "ablation_min": 78.2,
+            "ablation_max": 80.6,
+            "delta_mean": -45.396,
+            "deltas": [
+              -44.739999999999995,
+              -46.040000000000006,
+              -46.39999999999999,
+              -44.64,
+              -45.16
+            ],
+            "delta_sd": 0.7874515858133754,
+            "delta_lower_95": -46.14680310520402,
+            "delta_upper_95": -44.64519689479598,
+            "share": -1.3471422636358241,
+            "change_share": -0.5739499835638607,
+            "upper_share": -0.564457441712342
+          },
+          "early tests vs ablation, post": {
+            "n": 5,
+            "production_mean": 33.698,
+            "production_min": 33.39,
+            "production_max": 34.2,
+            "ablation_mean": 30.936,
+            "ablation_min": 30.8,
+            "ablation_max": 31.08,
+            "delta_mean": 2.7620000000000027,
+            "deltas": [
+              2.6200000000000045,
+              2.59,
+              3.1200000000000045,
+              2.7500000000000036,
+              2.7300000000000004
+            ],
+            "delta_sd": 0.21158922467838592,
+            "delta_lower_95": 2.560258267837318,
+            "delta_upper_95": 2.9637417321626875,
+            "share": 0.08196332126535708,
+            "change_share": 0.08928109645720206,
+            "upper_share": 0.09580235751754226
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,49 @@
+| Measurement | Mean ms | Run min–max ms | One-sided 95% upper bound ms |
+|---|---:|---:|---:|
+| frame avg | 124.630 | 124.630–124.630 | n/a |
+| frame p95 | 194.770 | 194.770–194.770 | n/a |
+| frame p99 | 268.330 | 268.330–268.330 | n/a |
+| steady frame avg | 113.630 | 113.630–113.630 | n/a |
+| steady frame p95 | 154.980 | 154.980–154.980 | n/a |
+| steady frame p99 | 169.030 | 169.030–169.030 | n/a |
+| frame split INPUT | 0.494 | 0.494–0.494 | n/a |
+| frame split UPDATE | 76.751 | 76.751–76.751 | n/a |
+| frame split RENDER | 45.619 | 45.619–45.619 | n/a |
+| frame split Pacing | 0.000 | 0.000–0.000 | n/a |
+| frame split Remainder (includes GPU time) | 1.766 | 1.766–1.766 | n/a |
+| GPU exclusive stage sum | 40.803 | 40.803–40.803 | n/a |
+| GPU bakeSunShadowMap | 0.129 | 0.129–0.129 | n/a |
+| GPU buildLightOcclusionGrid | 0.001 | 0.001–0.001 | n/a |
+| GPU canvasClear | 0.004 | 0.004–0.004 | n/a |
+| GPU cardinalSurfaceFb | 0.121 | 0.121–0.121 | n/a |
+| GPU computeLightVolume | 0.031 | 0.031–0.031 | n/a |
+| GPU computeSunShadow | 0.044 | 0.044–0.044 | n/a |
+| GPU computeVoxelAO | 0.008 | 0.008–0.008 | n/a |
+| GPU entityCanvasToFb | 40.276 | 40.276–40.276 | n/a |
+| GPU fbToScreen | 0.018 | 0.018–0.018 | n/a |
+| GPU lightingToTrixel | 0.026 | 0.026–0.026 | n/a |
+| GPU resolvePerAxisScreenDepth | 0.001 | 0.001–0.001 | n/a |
+| GPU trixelToFb | 0.018 | 0.018–0.018 | n/a |
+| GPU voxelCardinalElect | 0.021 | 0.021–0.021 | n/a |
+| GPU voxelCompact | 0.010 | 0.010–0.010 | n/a |
+| GPU voxelStage1 | 0.027 | 0.027–0.027 | n/a |
+| GPU voxelStage2 | 0.011 | 0.011–0.011 | n/a |
+| GPU voxelSunFaces | 0.057 | 0.057–0.057 | n/a |
+
+| Steady frames pooled over runs | Frames | Mean ms | p95 ms | p99 ms | Max ms |
+|---|---:|---:|---:|---:|---:|
+| first 90 of each run excluded | 270 | 113.629 | 154.981 | 169.027 | 184.919 |
+
+| Fixed updates per rendered frame | Mean | Run min–max | Max in a frame |
+|---|---:|---:|---:|
+| update ticks | 6.80 | 6.80–6.80 | 8 |
+
+| Run | Frame GPU supported | Valid / attempted | Invalid | Command buffers | Yaw deg (travel) | Overflow max entries / dropped (frames sampled) |
+|---|---|---:|---:|---:|---:|---:|
+| 1 | False | 0 / 0 | 0 | 0 | 0.000 (0.000) | 0 / 0 (0) |
+
+| Run | Input latency end event | Samples / steady frames | Max frames in flight | Clock mapping error ms |
+|---|---|---:|---:|---:|
+| run-1 | not measured | n/a | not measured | n/a |
+
+Render device counters: unsupported by this backend.
