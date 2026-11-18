@@ -299,6 +299,12 @@ Run mode
                                 the comment above ir_host_closed_event).
     IR_RUN_NO_DISPLAY_GRACE     Seconds to wait after a zero-monitor log line
                                 before reporting NO-DISPLAY (default 5).
+    FLEET_DISPLAY_*             macOS display wake for capture verbs: the
+                                helper scripts/fleet/fleet_display_session.py
+                                wakes a sleeping display and holds it awake
+                                for the run; FLEET_DISPLAY_HOLDER (set by an
+                                outer owner) reuses its hold. The helper's
+                                docstring lists its test seams.
 
   Exported to the program (IREngine.handOff launches its child through them):
     IR_RUN_WRAPPER, IRREDEN_BUILD_DIR, IR_RUN_BASH (native Windows), and
@@ -321,8 +327,11 @@ Run mode
         Watchdog killed a still-healthy process at --timeout. Says
         nothing about shutdown-path health (teardown never ran).
     ir-run: RESULT=NO-DISPLAY exe=<name> exit=69
-        The program reported zero display monitors and remained alive past
-        IR_RUN_NO_DISPLAY_GRACE (default 5 seconds).
+        macOS capture runs: the display could not be woken into a state the
+        engine can discover (the line before it names the condition), so the
+        program never ran. Otherwise: the program reported zero display
+        monitors and remained alive past IR_RUN_NO_DISPLAY_GRACE (default 5
+        seconds).
     ir-run: RESULT=LOCK-FAILED exe=<name> exit=<rc> ...
         ir-acquire never granted the lock (queue timeout), so the
         program did not run. Exit code propagated as 1.
@@ -805,6 +814,9 @@ ir_launch_cleanup() {
     if [[ -n "${TEE_ERR_PID:-}" ]]; then
         kill "$TEE_ERR_PID" 2>/dev/null || true
     fi
+    if [[ -n "${DISPLAY_HOLDER:-}" ]]; then
+        kill "$DISPLAY_HOLDER" 2>/dev/null || true
+    fi
 }
 trap ir_launch_cleanup EXIT
 
@@ -965,6 +977,41 @@ ir_report_result() {
          "shipping, whoever introduced it (docs/agents/FLEET.md" \
          "§\"Clean-exit policy\")." >&2
 }
+
+# --- Display session (macOS capture runs) ----------------------------------
+# A display that idled to sleep reads awake=0 and the engine discovers 0
+# monitors. Before a capture verb launches, the shared helper wakes the
+# display and starts a caffeinate that holds PreventUserIdleDisplaySleep
+# until this script exits (caffeinate -w on $$ covers SIGKILL; the EXIT trap
+# covers the rest). The helper reuses an outer run's hold named by
+# FLEET_DISPLAY_HOLDER and prints no pid then, so this run never ends a hold
+# it does not own. A host it cannot make ready is NO-DISPLAY before launch.
+# A helper that cannot run leaves the launch to the zero-monitor backstop.
+DISPLAY_SESSION="$SCRIPT_DIR/../../../scripts/fleet/fleet_display_session.py"
+DISPLAY_HOLDER=""
+if (( capture_verb )) &&
+   [[ "${FLEET_DISPLAY_PLATFORM:-$(uname -s)}" == [Dd]arwin ]]; then
+    display_rc=0
+    if [[ -f "$DISPLAY_SESSION" ]]; then
+        DISPLAY_HOLDER="$(python3 "$DISPLAY_SESSION" hold \
+            --owner-pid "$$" --prefix "ir-run: ")" || display_rc=$?
+    else
+        display_rc=127
+    fi
+    if (( display_rc == 69 )); then
+        DISPLAY_HOLDER=""
+        echo "ir-run: RESULT=NO-DISPLAY exe=$EXE_NAME exit=69" \
+             "— the display could not be made ready (see the line above); the exe never ran" >&2
+        ir_write_result "NO-DISPLAY" 69
+        exit 69
+    elif (( display_rc != 0 )); then
+        DISPLAY_HOLDER=""
+        echo "ir-run: warning: display wake helper failed (exit $display_rc);" \
+             "launching without a display hold" >&2
+    elif [[ -n "$DISPLAY_HOLDER" ]]; then
+        export FLEET_DISPLAY_HOLDER="$DISPLAY_HOLDER"
+    fi
+fi
 
 # --- No timeout: interactive mode, exec replaces this process --------------
 # Exception: `--auto-screenshot` / `--auto-record` / `--auto-profile` are

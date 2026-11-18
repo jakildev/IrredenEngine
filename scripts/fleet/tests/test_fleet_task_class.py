@@ -735,6 +735,14 @@ class DispatchTargets(HostSeamCase):
             "monitor discovery will see 0",
             "ENV-FAIL: display domain mismatch (CoreGraphics online=1 awake=0 NSScreen=1; "
             "the engine will discover 0 monitors)",
+            "ENV-FAIL: display not ready after requesting a wake and waiting 15.0s: the "
+            "online display stayed asleep (CoreGraphics online=1 awake=0 NSScreen=1); "
+            "the engine would discover 0 display monitors",
+            "not started: display not ready after requesting a wake and waiting 15.0s: an "
+            "awake CoreGraphics display but no Aqua NSScreen (CoreGraphics online=1 awake=1 "
+            "NSScreen=0); the engine would discover 0 display monitors",
+            "ir-run: RESULT=NO-DISPLAY exe=IRShapeDebug exit=69 — the display could not be "
+            "made ready (see the line above); the exe never ran",
         )
         awake = (
             "1 online CoreGraphics display(s), awake=1, NSScreen=1",

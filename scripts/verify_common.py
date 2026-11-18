@@ -16,6 +16,7 @@ harnesses that import it (they run as ``__main__`` from this directory, so
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import platform
@@ -28,7 +29,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from fleet.fleet_codex_doctor import classify_display, display_counts
+from fleet import fleet_display_session
+from fleet.fleet_codex_doctor import display_counts
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 RENDER_COMPARE = SCRIPT_DIR / "render-compare.py"
@@ -121,17 +123,25 @@ def _display_counts() -> tuple[int, int, int] | None:
 
 
 def display_preflight(prefix: str) -> int | None:
-    """Stop a verifier before launch when macOS cannot expose engine monitors."""
-    counts = _display_counts()
-    if counts is None or classify_display(*counts) != "mismatch":
-        return None
-    online, awake, screens = counts
-    print(
-        f"{prefix}ENV-FAIL: display domain mismatch (CoreGraphics online={online} "
-        f"awake={awake} NSScreen={screens}; the engine will discover 0 monitors) "
-        "— wake the display or run from the logged-in Aqua session"
-    )
-    return EXIT_ENV_FAIL
+    """Wake and hold the macOS display for this verifier, or stop it before launch.
+
+    The hold lasts until this process exits, and its holder pid reaches every
+    fleet-run child through ``HOLDER_ENV`` so they reuse it. A probe that
+    cannot run leaves the launch to ir-run's zero-monitor backstop.
+    """
+    hold = fleet_display_session.hold_display(os.getpid())
+    if hold.blocks_launch:
+        hold.release()
+        for line in hold.lines[:-1]:
+            print(f"{prefix}{line}")
+        print(f"{prefix}ENV-FAIL: {hold.failure}")
+        return EXIT_ENV_FAIL
+    for line in hold.lines:
+        print(f"{prefix}{line}")
+    if hold.holder_pid is not None:
+        os.environ[fleet_display_session.HOLDER_ENV] = str(hold.holder_pid)
+        atexit.register(hold.release)
+    return None
 
 
 def run_result(output: str) -> str | None:

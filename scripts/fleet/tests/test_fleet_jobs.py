@@ -30,6 +30,9 @@ SUBJECT = Path(__file__).resolve().parents[1] / "fleet-jobs"
 if not SUBJECT.is_file():
     print("SKIP: scripts/fleet/fleet-jobs absent", file=sys.stderr)
     sys.exit(3)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from fake_display import FakeDisplay, wait_gone  # noqa: E402
+
 # Only NaturalExit, BreakawayRefusal and the Windows* classes run on native
 # Windows (the job-object arm); the rest of the suite drives POSIX process
 # groups and signals.
@@ -85,12 +88,17 @@ while not os.path.exists(sys.argv[1]):
 """
 RUN_ALL = '#!/usr/bin/env bash\necho "run_all $*"\nexit 0\n'
 # One stub for the three verifier profiles: it echoes its own script name.
+# With VERIFIER_RECORD set it first records the display hold it runs under.
 VERIFIER = r"""import os, sys, time
+if os.environ.get("VERIFIER_RECORD"):
+    holder = os.environ.get("FLEET_DISPLAY_HOLDER", "")
+    with open(os.environ["VERIFIER_RECORD"], "w") as record:
+        record.write(holder)
 hold = [a[5:] for a in sys.argv if a.startswith("hold=")]
 while hold and not os.path.exists(hold[0]):
     time.sleep(0.05)
 print(os.path.basename(sys.argv[0])[:-3], *sys.argv[1:])
-sys.exit(3)
+sys.exit(int(os.environ.get("VERIFIER_EXIT", "3")))
 """
 VERIFIERS = ("render-verify", "light-verify", "gui-verify")
 
@@ -189,7 +197,8 @@ class JobsCase(unittest.TestCase):
         (self.repo / "scripts/fleet/tests").mkdir(parents=True)
         (self.repo / "engine/tools/bin").mkdir(parents=True)
         shutil.copy2(SUBJECT, self.repo / "scripts/fleet/fleet-jobs")
-        shutil.copy2(SUBJECT.with_name("fleet_codex_doctor.py"), self.repo / "scripts/fleet")
+        for helper in ("fleet_codex_doctor.py", "fleet_display_session.py"):
+            shutil.copy2(SUBJECT.with_name(helper), self.repo / "scripts/fleet")
         for rel, text in (("engine/tools/bin/ir-build", IR_BUILD),
                           ("scripts/fleet/tests/run_all.sh", RUN_ALL),
                           *((f"scripts/{name}.py", VERIFIER) for name in VERIFIERS)):
@@ -198,6 +207,10 @@ class JobsCase(unittest.TestCase):
         self.clone(self.checkout(self.pane_b))
         self.state = self.root / "state"
         self.subject = self.repo / "scripts/fleet/fleet-jobs"
+        # Every display profile runs against a fake, awake display, so no
+        # test wakes or holds the host's real one.
+        self.display = FakeDisplay(self.root / "display", state="1 1 1")
+        self.extra_env = {}
 
     def tearDown(self):
         # Every live job, not only the ones a test expected to start: a
@@ -228,7 +241,8 @@ class JobsCase(unittest.TestCase):
         env = {k: v for k, v in os.environ.items()
                if not k.startswith(("FLEET_", "IRREDEN_", "IR_"))}
         env.update(HOME=str(self.root / "home"), FLEET_STATE_DIR=str(self.state),
-                   ORPHAN=ORPHAN)
+                   ORPHAN=ORPHAN, **self.display.env())
+        env.update(self.extra_env)
         if pane is not None:
             env["FLEET_ASSIGNED_WORKTREE"] = str(self.checkout(pane))
         return env
@@ -338,7 +352,7 @@ class Lifecycle(JobsCase):
                 lines = waited.stdout.splitlines()
                 if args[0] in VERIFIERS:
                     self.assertTrue(lines[0].startswith("[fleet-jobs] display: "), lines)
-                    lines = lines[1:]
+                    lines = [x for x in lines if not x.startswith("[fleet-jobs] ")]
                 self.assertEqual("\n".join(lines).strip(), line)
 
     def test_display_discovery_reports_engine_domain_mismatch(self):
@@ -434,6 +448,122 @@ class Lifecycle(JobsCase):
         status = self.status(late_dir.name)
         self.assertEqual((status["status"], status["exit_code"]), ("failed", 127))
         self.assertIn("did not report", status["reason"])
+
+
+# A gui-verify that leaves a descendant behind and exits: on the drain's
+# SIGTERM the descendant records whether the display hold is still alive.
+DRAIN_VERIFIER = r"""import os, signal, subprocess, sys, time
+LINGER = '''
+import os, signal, subprocess, sys, time
+def record(*_):
+    # Late enough that a holder signalled in the same drain sweep has died;
+    # ps, because the supervisor has not reaped that zombie yet.
+    time.sleep(0.5)
+    stat = subprocess.run(["ps", "-o", "stat=", "-p", os.environ["FLEET_DISPLAY_HOLDER"]],
+                          capture_output=True, text=True).stdout.strip()
+    state = "alive" if stat and not stat.startswith("Z") else "dead"
+    with open(sys.argv[1], "w") as out:
+        out.write(state)
+    os._exit(0)
+signal.signal(signal.SIGTERM, record)
+open(sys.argv[1] + ".ready", "w").close()
+while True:
+    time.sleep(0.05)
+'''
+target = os.environ["DRAIN_RECORD"]
+subprocess.Popen([sys.executable, "-c", LINGER, target])
+while not os.path.exists(target + ".ready"):
+    time.sleep(0.05)
+sys.exit(0)
+"""
+
+
+@posix_only
+class DisplayHold(JobsCase):
+    def setUp(self):
+        super().setUp()
+        self.display.set_state("1 0 1")
+        self.record = self.root / "verifier-record"
+        self.extra_env = {"VERIFIER_RECORD": str(self.record)}
+
+    def holder(self, job):
+        """The pid of the one fake caffeinate the job's supervisor started."""
+        [(pid, argv)] = self.display.invocations()
+        supervisor = json.loads((self.state / "jobs" / self.pane_a / job /
+                                 "meta.json").read_text())["supervisor"]["pid"]
+        self.assertEqual(argv, ["-d", "-u", "-w", str(supervisor)])
+        return pid
+
+    def test_sleeping_display_is_woken_and_held_for_the_verifier(self):
+        for code in (0, 3):
+            with self.subTest(exit=code):
+                self.display.log.unlink(missing_ok=True)
+                self.display.set_state("1 0 1")
+                self.extra_env["VERIFIER_EXIT"] = str(code)
+                job = self.start(["gui-verify", "--", "IRVoxelEditor", "--no-build"])
+                waited = self.jobs(["wait", job])
+                self.assertEqual(waited.returncode, code, waited.stderr)
+                pid = self.holder(job)
+                self.assertEqual(self.record.read_text(), str(pid))
+                self.assertTrue(wait_gone(pid), f"display holder {pid} outlived the job")
+                lines = waited.stdout.splitlines()
+                self.assertTrue(lines[0].startswith("[fleet-jobs] display: "), lines)
+                self.assertEqual(lines[1], "[fleet-jobs] display before wake: "
+                                           "CoreGraphics online=1 awake=0 NSScreen=1")
+                self.assertTrue(lines[3].startswith("[fleet-jobs] display ready after "),
+                                lines)
+                self.assertEqual(lines[4], "gui-verify IRVoxelEditor --no-build")
+
+    def test_kill_ends_the_hold(self):
+        release = self.root / "release"
+        job = self.start(["gui-verify", "--", "IRVoxelEditor", "--", f"hold={release}"])
+        self.assertTrue(wait_for(self.record.exists))
+        pid = self.holder(job)
+        self.assertFalse(gone(pid), "the hold ended while the verifier ran")
+        self.assertEqual(self.jobs(["kill", job]).returncode, 0)
+        self.assertEqual(self.status(job)["status"], "killed")
+        self.assertTrue(wait_gone(pid), f"display holder {pid} outlived a killed job")
+
+    def test_hold_outlives_the_child_until_the_tree_drains(self):
+        (self.repo / "scripts" / f"{VERIFIERS[2]}.py").write_text(DRAIN_VERIFIER)
+        drained = self.root / "drained"
+        self.extra_env["DRAIN_RECORD"] = str(drained)
+        job = self.start(["gui-verify", "--", "IRVoxelEditor"])
+        self.assertEqual(self.jobs(["wait", "--quiet", job]).returncode, 0)
+        self.assertEqual(drained.read_text(), "alive")
+        self.assertTrue(wait_gone(self.holder(job)))
+
+    def test_unready_display_fails_the_job_before_the_verifier(self):
+        self.extra_env["FLEET_DISPLAY_WAKE_TIMEOUT"] = "0.5"
+        self.extra_env["FAKE_WAKE_TO"] = ""
+        started = self.jobs(["start", "render-verify", "--", "--target", "IRAnalyticOracle"])
+        self.assertEqual(started.returncode, 69, started.stderr)
+        self.assertIn("not started: display not ready after requesting a wake",
+                      started.stderr)
+        self.assertIn("0 display monitors", started.stderr)
+        [job_dir] = self.job_dirs()
+        job = job_dir.name
+        waited = self.jobs(["wait", job])
+        self.assertEqual(waited.returncode, 69, waited.stderr)
+        self.assertFalse(self.record.exists(), "the verifier ran on an unready display")
+        self.assertIn("[fleet-jobs] ENV-FAIL: display not ready after requesting a wake",
+                      waited.stdout)
+        self.assertIn("the online display stayed asleep (CoreGraphics online=1 awake=0",
+                      waited.stdout)
+        final = self.status(job)
+        self.assertEqual((final["status"], final["exit_code"]), ("failed", 69))
+        self.assertIn("the online display stayed asleep", final["reason"])
+        self.assertTrue(wait_gone(self.holder(job)))
+
+    def test_no_caffeinate_off_macos_or_for_a_build(self):
+        build = self.start(["build", "--", "plain"])
+        self.assertEqual(self.jobs(["wait", "--quiet", build]).returncode, 0)
+        self.extra_env["FLEET_DISPLAY_PLATFORM"] = "linux"
+        self.extra_env["VERIFIER_EXIT"] = "0"
+        gui = self.start(["gui-verify", "--", "IRVoxelEditor"])
+        self.assertEqual(self.jobs(["wait", "--quiet", gui]).returncode, 0)
+        self.assertEqual(self.display.invocations(), [])
+        self.assertEqual(self.record.read_text(), "")
 
 
 class NaturalExit(JobsCase):
