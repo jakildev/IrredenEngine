@@ -114,6 +114,21 @@ filer-authored `## Plan` + `fleet:plan-review` is vetted first ([`TASK-FILING.md
 approach gate (the human steers with `human:revise-plan`, `fleet:needs-human`,
 and PR review) and no plan-doc PR: plan and code land in one merge.
 
+### Red master incidents
+
+The authoritative scout's master-CI lane keeps one open `fleet:master-red`
+issue per failing engine workflow. A first red creates approved, no-plan work;
+each later red run and each red-to-green transition adds a deduplicated GitHub
+event. Green is evidence only: the issue remains open until its fixing PR closes
+it. Inside the task tier the dispatcher serves these incidents before ordinary
+open tasks, while semantic conflicts and feedback retain their higher priority.
+
+The alert payload links the incident to the workflow. Reconcile R12 uses that
+link to tell a PR when all of its failures are inherited from master and names
+the tracking issue once per head and tracker set. A mixed own/inherited failure
+keeps the ordinary `fleet:checks-red` path. `fleet-decisions` lists open master
+incidents before the merge queue, including their newest red or green event.
+
 ### Cursor flow (human-in-the-loop)
 
 Same correctness rules, different timing: the human drives when to commit.

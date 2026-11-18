@@ -104,12 +104,13 @@ slice_worker = _scout_mod.slice_worker
 
 def _task(issue, model=None, effort=None, owner="free", blocked=False,
           inflight_pr=None, needs_gl_host=False, stackable_blocker_pr=None,
-          backend_symmetric=False, needs_host=None):
+          backend_symmetric=False, needs_host=None, master_red=False):
     return {"issue": issue, "model": model, "effort": effort,
             "owner": owner, "blocked": blocked, "inflight_pr": inflight_pr,
             "needs_gl_host": needs_gl_host,
             "needs_host": needs_host,
             "backend_symmetric": backend_symmetric,
+            "master_red": master_red,
             "stackable_blocker_pr": stackable_blocker_pr}
 
 
@@ -142,6 +143,20 @@ class FeedbackClassFromLabels(unittest.TestCase):
 
 
 class TaskResolution(unittest.TestCase):
+    def test_master_red_task_wins_within_the_open_task_tier(self):
+        tasks = [_task("#10", "opus"), _task("#99", "opus", master_red=True)]
+        self.assertEqual(pick({"tasks_open": tasks}, "opus", False),
+                         ["task:engine:99", "task:engine:10"])
+
+    def test_feedback_still_precedes_a_master_red_task(self):
+        slice_data = {
+            "feedback_prs": [{"number": 50, "repo": "engine",
+                              "labels": ["fleet:needs-fix"]}],
+            "tasks_open": [_task("#99", "opus", master_red=True)],
+        }
+        self.assertEqual(pick(slice_data, "opus", False),
+                         ["feedback:engine:50", "task:engine:99"])
+
     def test_oldest_claimable_task_wins(self):
         out = resolve({"tasks_open": [_task("#10", "sonnet"),
                                       _task("#11", "fable")]},

@@ -219,6 +219,9 @@ OWNER_VERDICT_LABELS = {
     "human:needs-fix", "human:blocker", "fleet:needs-fix", "fleet:has-nits",
     "fleet:semantic-conflict",
 }
+MASTER_RED_RUN_RE = re.compile(
+    r"<!-- fleet-master-ci run=(\d+) conclusion=(red|green) -->"
+)
 
 # pull_request filters that keep a workflow off some head pushes. A `types`
 # list is a filter only when it drops one of GitHub's defaults.
@@ -590,6 +593,7 @@ not_starting = []  # (repo, first created_at, annotation)
 coding_improvements = 0
 untriaged = []
 status = []        # (repo, open_prs, queued, needs_plan)
+master_red = []    # (repo, issue, newest_event_or_error)
 
 for repo, prs, issues, reader in repos:
     queued = needs_plan = 0
@@ -634,6 +638,19 @@ for repo, prs, issues, reader in repos:
         merge_queue.append((repo, pr, has_nits, holds, list(notes) + smoke_debt, wip_mismatch))
     for issue in issues:
         labels = names(issue)
+        if "fleet:master-red" in labels:
+            try:
+                comments = gh_api_list(
+                    f"repos/{reader.slug}/issues/{issue['number']}/comments"
+                )
+                events = MASTER_RED_RUN_RE.findall(str(issue.get("body") or ""))
+                for comment in comments:
+                    events.extend(MASTER_RED_RUN_RE.findall(str(comment.get("body") or "")))
+                event = (f"{events[-1][1]} run {events[-1][0]}" if events
+                         else "unreadable: no lane event marker")
+            except Unreadable as exc:
+                event = f"unreadable: {exc}"
+            master_red.append((repo, issue, event))
         tags = [DECISION_TAGS[label] for label in labels if label in DECISION_TAGS]
         if tags:
             decisions.append((repo, "issue", issue, tags))
@@ -746,7 +763,7 @@ for raw in am_bytes[am_start:am_end].split(b"\n"):
     if repo in in_scope and entry.get("event") in ("merge", "rollback", "merge-failed"):
         automerges.append((repo, entry))
 
-total = len(merge_queue) + len(decisions) + len(closeouts)
+total = len(merge_queue) + len(decisions) + len(closeouts) + len(master_red)
 scope = "+".join(repo for repo, _, _, _ in repos)
 ready = [row for row in merge_queue if not row[3]]
 held = [row for row in merge_queue if row[3]]
@@ -772,6 +789,12 @@ def print_merge_rows(rows):
                 "      warn: title still carries [WIP] with no fleet:wip label — "
                 "strip before merge (squash uses the title as the commit subject)"
             )
+
+
+if master_red:
+    print(f"\n## Master red ({len(master_red)})")
+    for repo, issue, event in master_red:
+        print(f"  {repo} issue #{issue['number']}  {issue['title']}  [{event}]")
 
 
 # A PR with any hold is listed apart from the ready ones: branch protection

@@ -50,6 +50,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fleet_alerts
 import fleet_gh_fallback
 import fleet_github
+import fleet_master_ci
 import fleet_not_started
 import fleet_poll_topology
 import fleet_review_replay
@@ -194,7 +195,7 @@ STALLED_SWEEP_MARKER_NAME = "stalled-sweep.last-run"
 # cause rather than as their own problem.
 MASTER_CI_INTERVAL_DEFAULT_SECONDS = 15 * 60
 MASTER_CI_MARKER_NAME = "master-ci.last-run"
-MASTER_CI_ALERT_PREFIX = "scout-master-ci-"
+MASTER_CI_ALERT_PREFIX = fleet_master_ci.ALERT_PREFIX
 
 # The render watch is host-local and opt-in because it consumes the macOS GPU
 # for a full reference sweep. A successful spawn consumes the deadline; every
@@ -2280,6 +2281,7 @@ def fetch_task_queue(repo_slug):
             "effort": effort,
             "labels": sorted(x for x in labels
                              if x.startswith(("fleet:runtime-", "fleet:author-"))),
+            "master_red": "fleet:master-red" in labels,
             "owner": owner,
             "area": area,
             "blocked_by": blocked_by,
@@ -5552,42 +5554,11 @@ def _master_ci_latest_run(workflow: str) -> dict | None:
     return runs[0] if runs else None
 
 
-def _master_ci_run_has_skipped_job(workflow: str, run: dict) -> bool:
-    """Return whether `run` has a skipped job, failing closed on an unreadable list."""
-    run_id = run.get("databaseId")
-    if not isinstance(run_id, int):
-        raise _MasterCiMiss("bad-json", f"{workflow}: missing run databaseId")
-    endpoint = (f"repos/{REPO_SWEEP_SLUGS['engine']}/actions/runs/{run_id}/jobs?per_page=100")
-    try:
-        proc = fleet_github.run(["api", "--paginate", "--slurp", endpoint],
-                                capture_output=True, text=True,
-                                timeout=GH_TIMEOUT_SECONDS)
-    except (OSError, subprocess.SubprocessError) as e:
-        raise _MasterCiMiss("gh-unreachable", f"{workflow}: {type(e).__name__}: {e}")
-    if proc.returncode != 0:
-        raise _MasterCiMiss("gh-failed", f"{workflow}: jobs exit {proc.returncode}: "
-                             f"{(proc.stderr or '').strip()[:200]}")
-    try:
-        pages = json.loads(proc.stdout)
-    except ValueError as e:
-        raise _MasterCiMiss("bad-json", f"{workflow}: jobs: {e}")
-    if not isinstance(pages, list) or any(
-            not isinstance(page, dict) or not isinstance(page.get("jobs"), list)
-            for page in pages):
-        raise _MasterCiMiss("bad-json", f"{workflow}: unexpected jobs shape")
-    return any(job.get("conclusion") == "skipped"
-               for page in pages for job in page["jobs"] if isinstance(job, dict))
-
-
-def _master_ci_mark_red(workflow: str, run: dict) -> None:
+def _master_ci_mark_red(workflow: str, run: dict, issue: int) -> None:
     def field(key: str) -> str:
         return str(run.get(key) or "unknown").replace("\n", " ")
 
-    payload = (f"master CI red: {workflow}\n"
-               f"workflow={workflow}\n"
-               f"sha={field('headSha')}\n"
-               f"created_at={field('createdAt')}\n"
-               f"url={field('url')}\n")
+    payload = fleet_master_ci.render_alert(workflow, run, issue)
     path = _master_ci_alert_path(workflow)
     try:
         if path.read_text() == payload:
@@ -5637,13 +5608,15 @@ def _master_ci_red_workflows() -> list[str]:
 
 
 def run_master_ci_lane() -> None:
-    """Alert on a red master workflow run, per workflow, until its next green run.
+    """Track each red master workflow in GitHub and the host alert cache.
 
     Authoritative poller only (the caller gates it), so the alert lives in that
     host's alerts dir: a clean `fleet-health` on a follower host does not mean
-    master is green. A `failure` writes the alert, and a `success` with no
-    skipped jobs clears it. Everything else (queued or in-progress runs report
-    an empty conclusion, plus cancelled/skipped/neutral) leaves it as it was.
+    master is green. A `failure` creates or advances the workflow incident and
+    writes its linked alert. A `success` with no skipped jobs records the
+    transition and clears the alert without closing the incident. Everything
+    else (queued or in-progress runs report an empty conclusion, plus
+    cancelled/skipped/neutral) leaves both as they were.
     A workflow with no master run (pull_request-only triggers) is a quiet skip.
     A real read miss is fail-closed: nothing written, nothing cleared, the
     deadline marker left unwritten so the next tick retries, and `_spawn_failed`
@@ -5664,9 +5637,30 @@ def run_master_ci_lane() -> None:
             conclusion = run.get("conclusion")
             if conclusion not in ("failure", "success"):
                 continue
+            try:
+                run_id = run.get("databaseId")
+                if not isinstance(run_id, int):
+                    raise fleet_master_ci.MasterCiError("missing run databaseId")
+                details = fleet_master_ci.failed_run_details(run_id)
+            except fleet_master_ci.MasterCiError as exc:
+                raise _MasterCiMiss("gh-failed", f"{workflow}: {exc}") from exc
             if conclusion == "failure":
-                _master_ci_mark_red(workflow, run)
-            elif not _master_ci_run_has_skipped_job(workflow, run):
+                try:
+                    issue = fleet_master_ci.upsert_tracker(
+                        workflow, run, details, "red", ENGINE, logger=log
+                    )
+                except fleet_master_ci.MasterCiError as exc:
+                    raise _MasterCiMiss("gh-failed", f"{workflow}: {exc}") from exc
+                if issue is None:
+                    raise _MasterCiMiss("bad-json", f"{workflow}: tracker has no issue")
+                _master_ci_mark_red(workflow, run, issue)
+            elif not details["has_skipped_job"]:
+                try:
+                    fleet_master_ci.upsert_tracker(
+                        workflow, run, details, "green", ENGINE, logger=log
+                    )
+                except fleet_master_ci.MasterCiError as exc:
+                    raise _MasterCiMiss("gh-failed", f"{workflow}: {exc}") from exc
                 _master_ci_mark_green(workflow)
     except _MasterCiMiss as miss:
         _spawn_failed("master-ci", miss.kind,
