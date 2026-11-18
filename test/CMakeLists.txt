@@ -262,6 +262,7 @@ add_executable(IrredenEngineTest
   script/lua_spawn_tool_test.cpp
   script/lua_file_bindings_test.cpp
   script/lua_file_dialog_bindings_test.cpp
+  script/lua_file_drop_test.cpp
   script/path_grants_test.cpp
   script/lua_script_get_table_test.cpp
   script/lua_viewport_bindings_test.cpp
@@ -298,6 +299,7 @@ add_executable(IrredenEngineTest
   time/stopwatch_test.cpp
   time/lua_sim_test.cpp
   time/time_manager_hand_off_test.cpp
+  input/file_drop_test.cpp
   job/ir_job_test.cpp
   job/worker_block_queue_test.cpp
   utility/contained_path_test.cpp

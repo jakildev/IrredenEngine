@@ -4,6 +4,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_platform.hpp>
 #include <irreden/window/close_guard.hpp>
+#include <irreden/window/file_drop.hpp>
 #include <irreden/window/pointer_gesture.hpp>
 
 #define GLFW_INCLUDE_NONE
@@ -165,6 +166,7 @@ class IRGLFWWindow {
     void setCallbackKey(GLFWkeyfun callbackFunction);
     void setCallbackMouseButton(GLFWmousebuttonfun callbackFunction);
     void setCallbackScroll(GLFWscrollfun callbackFunction);
+    void setCallbackDrop(GLFWdropfun callbackFunction);
     void setWindowIcon(const GLFWimage *image) const;
     /// @}
 
@@ -176,6 +178,8 @@ class IRGLFWWindow {
     void addMouseButtonReleasedToProcess(int button);
     void addScrollToProcess(double xoffset, double yoffset);
     void addPointerGestureToProcess(const PointerGestureEvent &event);
+    /// Enqueues @p paths as one drop at the current cursor position.
+    void addFileDropToProcess(std::vector<std::string> paths);
     /// @}
 
     /// @name Event-queue drain accessors (called by InputManager each frame)
@@ -198,6 +202,9 @@ class IRGLFWWindow {
     inline std::queue<PointerGestureEvent> &getPointerGesturesToProcess() {
         return m_pointerGesturesToProcess;
     }
+    inline std::queue<FileDropEvent> &getFileDropsToProcess() {
+        return m_fileDropsToProcess;
+    }
     /// @}
 
   private:
@@ -215,6 +222,7 @@ class IRGLFWWindow {
     std::queue<int> m_mouseButtonsReleasedToProcess;
     std::queue<std::pair<double, double>> m_scrollsToProcess;
     std::queue<PointerGestureEvent> m_pointerGesturesToProcess;
+    std::queue<FileDropEvent> m_fileDropsToProcess;
     void *m_pointerGestureMonitor = nullptr;
 };
 
@@ -226,6 +234,9 @@ void irglfwCallback_key(GLFWwindow *window, int key, int scancode, int action, i
 void irglfwCallback_mouseButton(GLFWwindow *window, int button, int action, int mods);
 /// GLFW scroll callback — enqueues scroll delta events.
 void irglfwCallback_scroll(GLFWwindow *window, double xoffset, double yoffset);
+/// GLFW drop callback — enqueues the dropped paths as one event. GLFW frees
+/// @p paths when the callback returns, so the strings are copied here.
+void irglfwCallback_drop(GLFWwindow *window, int count, const char **paths);
 
 } // namespace IRWindow
 

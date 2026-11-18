@@ -49,6 +49,7 @@ void InputManager::tick() {
     m_scrollStepsThisFrame = 0;
     m_scrollOffsetThisFrame = IRMath::dvec2(0.0, 0.0);
     m_pointerGesturesThisFrame.clear();
+    m_fileDropsThisFrame.clear();
     std::fill(m_buttonPressesThisFrame.begin(), m_buttonPressesThisFrame.end(), 0);
     std::fill(m_buttonReleasesThisFrame.begin(), m_buttonReleasesThisFrame.end(), 0);
 
@@ -75,6 +76,7 @@ void InputManager::tick() {
     );
     processScrolls(IRWindow::getWindow().getScrollsToProcess());
     processPointerGestures(IRWindow::getWindow().getPointerGesturesToProcess());
+    processFileDrops(IRWindow::getWindow().getFileDropsToProcess());
 }
 
 // TODO: Do we need pressed and resleased as its own state, or can we get away
@@ -249,11 +251,19 @@ void InputManager::drainInjectedInput() {
     // entities, drained by the LIFETIME system.
     processScrolls(m_injectedScrolls);
     processPointerGestures(m_injectedPointerGestures);
+    processFileDrops(m_injectedFileDrops);
 }
 
 void InputManager::processPointerGestures(std::queue<PointerGestureEvent> &events) {
     while (!events.empty()) {
         m_pointerGesturesThisFrame.push_back(events.front());
+        events.pop();
+    }
+}
+
+void InputManager::processFileDrops(std::queue<FileDropEvent> &events) {
+    while (!events.empty()) {
+        m_fileDropsThisFrame.push_back(std::move(events.front()));
         events.pop();
     }
 }
@@ -357,6 +367,11 @@ void InputManager::injectPointerGesture(const PointerGestureEvent &event) {
     if (event.kind_ == PointerGestureKind::SCROLL &&
         (event.scroll_.x != 0.0 || event.scroll_.y != 0.0))
         m_injectedScrolls.push({event.scroll_.x, event.scroll_.y});
+}
+
+void InputManager::injectFileDrop(FileDropEvent event) {
+    IR_ASSERT(m_syntheticInputActive, "injectFileDrop requires beginSyntheticInput()");
+    m_injectedFileDrops.push(std::move(event));
 }
 
 } // namespace IRInput

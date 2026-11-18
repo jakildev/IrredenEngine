@@ -1024,6 +1024,7 @@ void LuaScript::bindLuaCommands() {
     detail::bindActionFunctions(*this);
     detail::bindEntityEvents(*this);
     detail::bindCursorPosition(*this);
+    detail::bindFileDrops(*this);
 }
 
 void LuaScript::bindLuaText() {
@@ -1078,6 +1079,7 @@ void LuaScript::bindLuaInput() {
     detail::bindKeyMouseButtonEnum(*this);
     detail::bindButtonStatusesEnum(*this);
     detail::bindSyntheticInput(*this);
+    detail::bindFileDrops(*this);
 }
 
 namespace {

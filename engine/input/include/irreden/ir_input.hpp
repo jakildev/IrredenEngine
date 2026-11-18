@@ -60,6 +60,13 @@ IRMath::vec2 scrollOffset();
 /// zero deltas; magnification never contributes to the legacy scroll totals.
 std::span<const PointerGestureEvent> pointerGestures();
 
+/// The file drops delivered this frame: each is the absolute paths the user
+/// dragged from the host onto the window, plus the cursor at the drop in the
+/// window points @ref getMousePosition reports. Unchanged across INPUT /
+/// UPDATE / RENDER; the view expires at the next InputManager::tick(), and a
+/// drop nobody read by then is gone. Empty on a frame with no drop.
+std::span<const FileDropEvent> droppedFiles();
+
 /// @name Synthetic input (headless GUI/mouse verification harness)
 /// Flip the active `InputManager` to consume injected events instead of GLFW
 /// for the rest of the run, so a headless run can move the cursor and press
@@ -79,6 +86,9 @@ void injectScroll(double xOffset, double yOffset);
 /// Enqueue complete gesture metadata without changing the cursor snapshot.
 /// Uses the same ordered frame stream as native input, including zero deltas.
 void injectPointerGesture(const PointerGestureEvent &event);
+/// Enqueue a file drop, delivered through @ref droppedFiles at the next frame
+/// boundary. The cursor snapshot is unchanged.
+void injectFileDrop(FileDropEvent event);
 /// @}
 
 /// @name Internal input counters (used by input systems, not for general use)

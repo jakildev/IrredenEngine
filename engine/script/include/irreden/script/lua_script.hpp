@@ -82,7 +82,9 @@ class LuaScript {
     // ButtonStatus, Key, Modifier, GamepadButton, GamepadAxis}, and the
     // entity hover/click handlers IRInput.{onEntityHovered, onEntityUnhovered,
     // onEntityClicked, onRightClick, removeEntityHandler, MouseButton}, and cursor
-    // readers IRInput.{mouseWorldPosAt, mouseIsoScreen}. Idempotent (each detail
+    // readers IRInput.{mouseWorldPosAt, mouseIsoScreen}, and the file-drop poll
+    // IRInput.droppedFiles, which grants the paths it returns to this script's
+    // confined readers. Idempotent (each detail
     // bind helper guards on its own bound-table key). Required
     // for any creation that wants to declare commands or bind input from
     // Lua. See docs/design/lua-input-commands.md and engine/script/CLAUDE.md
@@ -146,7 +148,8 @@ class LuaScript {
     }
 
     // The absolute paths this script's confined readers accept. Only C++
-    // adds to it; `IRDialog.open` does so for what the user picked.
+    // adds to it; `IRDialog.open` does so for what the user picked and
+    // `IRInput.droppedFiles` for what the user dropped on the window.
     PathGrants &pathGrants() {
         return m_pathGrants;
     }
@@ -161,10 +164,13 @@ class LuaScript {
 
     // Bind the synthetic-input surface — IRInput.KeyMouseButtons,
     // IRInput.ButtonStatuses, and IRInput.{beginSyntheticInput,
-    // isSyntheticInputActive, injectButton, injectMouseMove, injectScroll}.
+    // isSyntheticInputActive, injectButton, injectMouseMove, injectScroll,
+    // injectFileDrop}, plus IRInput.droppedFiles.
     // Idempotent. Extends the IRInput table without displacing the short-name
     // tables populated by bindLuaCommands(). Used by behavior-smoke tests and
-    // headless harnesses. See engine/input/CLAUDE.md "Synthetic input".
+    // headless harnesses: a script holding it can act as the user, an injected
+    // file drop's path grant included, so a creation that runs scripts it does
+    // not trust leaves it unbound. See engine/input/CLAUDE.md "Synthetic input".
     void bindLuaInput();
 
     // Set the creation-default mode used by

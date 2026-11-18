@@ -80,7 +80,9 @@
 // and closes the window 30 ticks after it returns. The panel needs a person:
 // `fleet-run --timeout 120 IRLuaWidgetsDemo --file-dialog-fixture auto
 // --window-mode normal`. Without `--window-mode normal` an unattended launch
-// is refused (status=REFUSED) and nothing opens.
+// is refused (status=REFUSED) and nothing opens. Either mode also logs
+// `LUA_WIDGETS FILEDROP` for every file or folder dragged onto the window,
+// read back the same way.
 
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_entity.hpp>

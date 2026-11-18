@@ -9,6 +9,7 @@
 #include <irreden/input/components/component_mouse_position.hpp>
 #include <irreden/input/entities/entity_key_mouse_button.hpp>
 #include <irreden/time/ir_time_types.hpp>
+#include <irreden/window/file_drop.hpp>
 #include <irreden/window/pointer_gesture.hpp>
 
 #include <array>
@@ -23,6 +24,7 @@ using namespace IREntity;
 
 namespace IRInput {
 
+using IRWindow::FileDropEvent;
 using IRWindow::hasGesturePhase;
 using IRWindow::PointerGestureEvent;
 using IRWindow::PointerGestureKind;
@@ -79,6 +81,12 @@ class InputManager {
     std::span<const PointerGestureEvent> getPointerGestures() const {
         return m_pointerGesturesThisFrame;
     }
+    // The file drops delivered this frame, in arrival order. Filled in
+    // `tick()` and unchanged across INPUT, UPDATE and RENDER; the view expires
+    // at the next `tick()`, and a drop nobody read by then is gone.
+    std::span<const FileDropEvent> getFileDrops() const {
+        return m_fileDropsThisFrame;
+    }
     bool
     checkGamepadButton(GamepadButtons button, ButtonStatuses status, int irGamepadId = 0) const;
     float getGamepadAxis(GamepadAxes axis, int irGamepadId = 0) const;
@@ -100,6 +108,9 @@ class InputManager {
     // Enqueue a scroll delta, applied at the next frame boundary.
     void injectScroll(double xOffset, double yOffset);
     void injectPointerGesture(const PointerGestureEvent &event);
+    // Enqueue a file drop, delivered at the next frame boundary. The cursor
+    // snapshot is unchanged.
+    void injectFileDrop(FileDropEvent event);
 
   private:
     std::unordered_map<KeyMouseButtons, EntityId> m_keyMouseButtonEntities;
@@ -109,6 +120,7 @@ class InputManager {
     int m_scrollStepsThisFrame = 0;
     IRMath::dvec2 m_scrollOffsetThisFrame{0.0, 0.0};
     std::vector<PointerGestureEvent> m_pointerGesturesThisFrame;
+    std::vector<FileDropEvent> m_fileDropsThisFrame;
     std::vector<int> m_buttonPressesThisFrame;
     std::vector<int> m_buttonReleasesThisFrame;
 
@@ -127,6 +139,7 @@ class InputManager {
     std::queue<std::pair<KeyMouseButtons, ButtonStatuses>> m_injectedButtons;
     std::queue<std::pair<double, double>> m_injectedScrolls;
     std::queue<PointerGestureEvent> m_injectedPointerGestures;
+    std::queue<FileDropEvent> m_injectedFileDrops;
     std::array<bool, kNumKeyMouseButtons> m_syntheticButtonsDown{};
     std::uint64_t m_inputTick = 0;
 
@@ -134,6 +147,7 @@ class InputManager {
 
     void processScrolls(std::queue<std::pair<double, double>> &queueOfScrolls);
     void processPointerGestures(std::queue<PointerGestureEvent> &events);
+    void processFileDrops(std::queue<FileDropEvent> &events);
 
     // Records one button event into the per-event accumulators + frame counters.
     // Shared by the GLFW drain (`processKeyMouseButtons`) and synthetic injection.

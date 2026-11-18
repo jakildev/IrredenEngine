@@ -17,8 +17,9 @@ Owns:
 
 - `GLFWwindow*` and the monitor list.
 - Fullscreen state.
-- Event queues for keys, mouse buttons, and scroll that `InputManager` drains
-  each frame.
+- Event queues for keys, mouse buttons, scroll, and file drops
+  (`FileDropEvent`, one per drop: paths plus the cursor) that `InputManager`
+  drains each frame.
 
 Construction sets GLFW hints: OpenGL 4.5 core profile when
 `IR_GRAPHICS_OPENGL`, no API (`GLFW_NO_API`) for Metal/Vulkan builds.

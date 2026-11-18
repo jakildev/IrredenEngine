@@ -127,6 +127,8 @@ TEST_F(LuaInputBindingsTest, SyntheticInputFunctionsBound) {
     EXPECT_TRUE(isFunction("IRInput.injectScroll"));
     EXPECT_TRUE(isFunction("IRInput.injectPointerGesture"));
     EXPECT_TRUE(isFunction("IRInput.pointerGestures"));
+    EXPECT_TRUE(isFunction("IRInput.injectFileDrop"));
+    EXPECT_TRUE(isFunction("IRInput.droppedFiles"));
 }
 
 TEST_F(LuaInputBindingsTest, PointerGestureEnumsMatchCpp) {
