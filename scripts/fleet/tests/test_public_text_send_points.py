@@ -58,6 +58,9 @@ PROTECTED = {
     ("fleet-claim", "cmd_decline"): 1,
     ("fleet-claim", "reconcile_escalate_drift"): 2,
     ("fleet-issue", "cmd_set_field"): 2,
+    ("fleet-render-watch", "create_tracker"): 1,
+    ("fleet-render-watch", "update_tracker"): 1,
+    ("fleet-render-watch", "close_tracker"): 2,
 }
 
 

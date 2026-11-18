@@ -46,6 +46,7 @@ EXEMPT=(
     "fleet-session-track"                # hook wired by fleet-up / fleet-babysit
     "fleet-quiet-wait"                   # hook wired by fleet-up / dispatch wrap
     "fleet-stalled-sweep"                # scout-invoked idle sweep
+    "fleet-render-watch"                 # scout-invoked macOS reference sweep
     "fleet-queue-backfill-model-labels"  # one-time human backfill
     "fleet-worktree-sweep"               # fleet-health runs its listing in-process; --prune
                                          # (incl. --dirty-too deletion) is a human cleanup step

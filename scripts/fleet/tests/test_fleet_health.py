@@ -841,6 +841,41 @@ class DaemonsAndWindow(Env):
         self.assertIn("witness-roster.stuck", res.stdout)
 
 
+class RenderWatchHealth(Env):
+
+    def enable(self, interval=100):
+        (self.root / "fleet-up.conf").write_text(
+            f'FLEET_RUNTIMES="claude"\nFLEET_RENDER_WATCH=1\n'
+            f'FLEET_RENDER_WATCH_INTERVAL_SECS={interval}\n')
+
+    def record(self, generated, red=0, tracker=None):
+        path = self.root / "state" / "render-verify-controls" / "macos-debug" / "a.json"
+        path.parent.mkdir(parents=True)
+        rows = [{"verdict": "FAIL" if index < red else "PASS"} for index in range(3)]
+        value = {"commit": "a" * 40, "preset": "macos-debug",
+                 "generated_at": generated, "rows": rows}
+        if tracker is not None:
+            value["tracker"] = tracker
+        path.write_text(json.dumps(value))
+
+    def test_red_and_three_interval_staleness_each_warn_with_pinned_clock(self):
+        self.enable(interval=100)
+        self.record("2026-09-09T04:00:00Z", red=2, tracker=77)
+        _, report = self.run_report_at("2026-09-09T04:06:00Z")
+        warnings = [row for row in report["warnings"] if row.startswith("render watch")]
+        self.assertEqual(len(warnings), 2, warnings)
+        self.assertIn("2 of 3 rows tracker=#77", warnings[0])
+        self.assertIn("overdue", warnings[1])
+
+    def test_failed_latest_sweep_warns(self):
+        self.enable()
+        (self.root / "state" / "render-watch-status.json").write_text(json.dumps({
+            "commit": "b" * 40, "outcome": "failed", "reason": "no display",
+        }))
+        _, report = self.run_report_at("2026-09-09T04:06:00Z")
+        self.assertIn("render watch failed at bbbbbbbbb: no display", report["warnings"])
+
+
 class WorktreeLeaks(Env):
     """A worktree outside the pool layout is a named warning; a clean sweep clears it."""
 
@@ -897,6 +932,13 @@ class WorktreeLeaks(Env):
         pool = self.engine / ".claude" / "worktrees" / "pool-1"
         pool.parent.mkdir(parents=True)
         self._git(self.engine, "worktree", "add", "-q", "--detach", str(pool))
+        _, rep = self.run_report()
+        self.assertEqual(rep["worktree_leaks"]["leaks"], [])
+
+    def test_render_watch_owned_worktree_does_not_warn(self):
+        watch = self.root / "render-watch" / "worktree"
+        watch.parent.mkdir(parents=True)
+        self._git(self.engine, "worktree", "add", "-q", "--detach", str(watch))
         _, rep = self.run_report()
         self.assertEqual(rep["worktree_leaks"]["leaks"], [])
 

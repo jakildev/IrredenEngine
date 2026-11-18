@@ -1,0 +1,419 @@
+#!/usr/bin/env python3
+"""Sweep master render references and maintain one tracker for red rows."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shlex
+import subprocess
+import sys
+import tempfile
+import time
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import fleet_github  # noqa: E402
+
+ENGINE_REPO = "jakildev/IrredenEngine"
+TRACKER_PREFIX = "render watch: macOS master reference sweep"
+TRACKER_MARKER = "<!-- fleet-render-watch preset={preset} -->"
+DEFAULT_PRESET = "macos-debug"
+DEFAULT_TIMEOUT_SECONDS = 3 * 60 * 60
+
+
+class WatchError(RuntimeError):
+    pass
+
+
+class WatchAlreadyRunning(WatchError):
+    pass
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _fleet_dir() -> Path:
+    return Path(os.environ.get("FLEET_DIR") or Path.home() / ".fleet")
+
+
+def _state_dir() -> Path:
+    return Path(os.environ.get("FLEET_STATE_DIR") or _fleet_dir() / "state")
+
+
+def _engine_root() -> Path:
+    return Path(os.environ.get("FLEET_ENGINE_ROOT") or Path.home() / "src" / "IrredenEngine")
+
+
+def _watch_root() -> Path:
+    return Path(os.environ.get("FLEET_RENDER_WATCH_ROOT") or _fleet_dir() / "render-watch")
+
+
+def _worktree() -> Path:
+    return _watch_root() / "worktree"
+
+
+def _build_dir() -> Path:
+    return _watch_root() / "build"
+
+
+def _status_path() -> Path:
+    return _state_dir() / "render-watch-status.json"
+
+
+def _lock_path() -> Path:
+    return _state_dir() / "render-watch.lock"
+
+
+def _control_path(preset: str, commit: str) -> Path:
+    return _state_dir() / "render-verify-controls" / preset / f"{commit}.json"
+
+
+def _write_json_atomic(path: Path, value: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=path.parent,
+        prefix=f".{path.name}.", suffix=".tmp", delete=False,
+    ) as stream:
+        temp = Path(stream.name)
+        json.dump(value, stream, indent=2, sort_keys=True)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    try:
+        temp.replace(path)
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
+
+
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+@contextmanager
+def _single_sweep_lock():
+    path = _lock_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    for _attempt in range(2):
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            try:
+                holder = json.loads(path.read_text(encoding="utf-8"))
+                pid = int(holder.get("pid", 0))
+            except (OSError, ValueError, TypeError):
+                pid = 0
+            if _pid_alive(pid):
+                raise WatchAlreadyRunning(f"sweep already running under pid {pid}")
+            path.unlink(missing_ok=True)
+            continue
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump({"pid": os.getpid(), "started_at": _now_iso()}, stream)
+            stream.write("\n")
+        break
+    else:
+        raise WatchError("could not acquire sweep lock")
+    try:
+        yield
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def _run(argv: list[str], *, cwd: Path | None = None,
+         env: dict[str, str] | None = None,
+         timeout: int | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        argv, cwd=cwd, env=env, capture_output=True, text=True,
+        timeout=timeout, check=False,
+    )
+
+
+def _git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    root = cwd or _engine_root()
+    return _run(["git", "-C", str(root), *args])
+
+
+def _prepare_worktree(commit: str) -> Path:
+    worktree = _worktree()
+    worktree.parent.mkdir(parents=True, exist_ok=True)
+    if not worktree.exists():
+        result = _git("worktree", "add", "--force", "--detach", str(worktree), commit)
+        if result.returncode != 0:
+            raise WatchError(f"git worktree add failed: {result.stderr.strip()[:300]}")
+    else:
+        dirty = _git("status", "--porcelain", cwd=worktree)
+        if dirty.returncode != 0 or dirty.stdout.strip():
+            raise WatchError("render-watch worktree is dirty or unreadable")
+        result = _git("checkout", "--detach", "--force", commit, cwd=worktree)
+        if result.returncode != 0:
+            raise WatchError(f"git checkout failed: {result.stderr.strip()[:300]}")
+    actual = _git("rev-parse", "HEAD", cwd=worktree)
+    if actual.returncode != 0 or actual.stdout.strip() != commit:
+        raise WatchError("render-watch worktree did not reach the requested commit")
+    return worktree
+
+
+def _run_sweep(worktree: Path, result_path: Path) -> subprocess.CompletedProcess[str]:
+    override = os.environ.get("FLEET_RENDER_WATCH_SWEEP_COMMAND")
+    if override:
+        argv = shlex.split(override)
+    else:
+        argv = [sys.executable, str(worktree / "scripts" / "render-verify.py"), "--all"]
+    argv += ["--json-out", str(result_path)]
+    env = os.environ.copy()
+    env["IRREDEN_BUILD_DIR"] = str(_build_dir())
+    timeout = int(os.environ.get("FLEET_RENDER_WATCH_TIMEOUT_SECS")
+                  or DEFAULT_TIMEOUT_SECONDS)
+    return _run(argv, cwd=worktree, env=env, timeout=timeout)
+
+
+def _red_rows(record: dict) -> list[dict]:
+    return [row for row in record.get("rows", []) if row.get("verdict") == "FAIL"]
+
+
+def _tracker_title(preset: str) -> str:
+    return f"{TRACKER_PREFIX} [{preset}]"
+
+
+def _tracker_body(record: dict, red_rows: list[dict]) -> str:
+    preset = record["preset"]
+    lines = [
+        TRACKER_MARKER.format(preset=preset),
+        "",
+        f"Latest scheduled sweep of engine master `{record['commit']}` is red.",
+        "",
+        f"Preset: `{preset}`",
+        f"Generated: `{record['generated_at']}`",
+        f"Red rows: {len(red_rows)} / {len(record.get('rows', []))}",
+        "",
+        "## Red rows",
+        "",
+    ]
+    for row in red_rows:
+        metrics = json.dumps(row.get("metrics") or {}, sort_keys=True, separators=(",", ":"))
+        lines.append(f"- `{row.get('demo')}:{row.get('shot')}` — `{metrics}`")
+    lines += ["", "This issue is refreshed by the macOS fleet render watch.", ""]
+    return "\n".join(lines)
+
+
+def _public_text_check(body_path: Path, worktree: Path) -> None:
+    try:
+        import fleet_public_text
+        findings = fleet_public_text.find_public_text(
+            body_path.read_text(encoding="utf-8"), "engine", git_root=worktree,
+        )
+    except (ImportError, OSError, UnicodeDecodeError, ValueError) as exc:
+        raise WatchError(f"public-text gate could not run: {exc}") from exc
+    if findings:
+        detail = ", ".join(fleet_public_text.format_finding(row) for row in findings)
+        raise WatchError(f"public-text gate rejected tracker body: {detail}")
+
+
+def _body_file(body: str, worktree: Path) -> Path:
+    _watch_root().mkdir(parents=True, exist_ok=True)
+    path = _watch_root() / "tracker-body.md"
+    path.write_text(body, encoding="utf-8")
+    _public_text_check(path, worktree)
+    return path
+
+
+def _tracker_lookup(preset: str) -> int | None:
+    result = fleet_github.run(
+        ["issue", "list", "--repo", ENGINE_REPO, "--state", "open",
+         "--search", f"{TRACKER_PREFIX} in:title", "--limit", "100",
+         "--json", "number,title,body"],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode != 0:
+        raise WatchError(f"tracker lookup failed: {(result.stderr or '').strip()[:300]}")
+    try:
+        rows = json.loads(result.stdout)
+    except (TypeError, ValueError) as exc:
+        raise WatchError(f"tracker lookup returned unreadable JSON: {exc}") from exc
+    if not isinstance(rows, list):
+        raise WatchError("tracker lookup returned an unexpected shape")
+    marker = TRACKER_MARKER.format(preset=preset)
+    matches = [row for row in rows if isinstance(row, dict)
+               and row.get("title") == _tracker_title(preset)
+               and marker in str(row.get("body") or "")]
+    if len(matches) > 1:
+        raise WatchError("tracker lookup found duplicate open trackers")
+    return int(matches[0]["number"]) if matches else None
+
+
+def create_tracker(record: dict, red_rows: list[dict], worktree: Path) -> int:
+    body_path = _body_file(_tracker_body(record, red_rows), worktree)
+    result = fleet_github.run(
+        ["issue", "create", "--repo", ENGINE_REPO,
+         "--title", _tracker_title(record["preset"]),
+         "--body-file", str(body_path), "--label", "fleet:needs-human"],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode != 0:
+        raise WatchError(f"tracker create failed: {(result.stderr or '').strip()[:300]}")
+    url = (result.stdout or "").strip().rstrip("/")
+    try:
+        return int(url.rsplit("/", 1)[1])
+    except (IndexError, ValueError) as exc:
+        raise WatchError(f"tracker create returned no issue number: {url!r}") from exc
+
+
+def update_tracker(number: int, record: dict, red_rows: list[dict], worktree: Path) -> None:
+    body_path = _body_file(_tracker_body(record, red_rows), worktree)
+    result = fleet_github.run(
+        ["issue", "edit", str(number), "--repo", ENGINE_REPO,
+         "--title", _tracker_title(record["preset"]),
+         "--body-file", str(body_path)],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode != 0:
+        raise WatchError(f"tracker edit failed: {(result.stderr or '').strip()[:300]}")
+
+
+def close_tracker(number: int, record: dict, worktree: Path) -> None:
+    body_path = _body_file(
+        f"Scheduled sweep of engine master `{record['commit']}` is fully green.\n",
+        worktree,
+    )
+    comment = fleet_github.run(
+        ["issue", "comment", str(number), "--repo", ENGINE_REPO,
+         "--body-file", str(body_path)],
+        capture_output=True, text=True, timeout=30,
+    )
+    if comment.returncode != 0:
+        raise WatchError(f"tracker close comment failed: {(comment.stderr or '').strip()[:300]}")
+    closed = fleet_github.run(
+        ["issue", "edit", str(number), "--repo", ENGINE_REPO, "--state", "closed"],
+        capture_output=True, text=True, timeout=30,
+    )
+    if closed.returncode != 0:
+        raise WatchError(f"tracker close failed: {(closed.stderr or '').strip()[:300]}")
+
+
+def _store_control(record: dict) -> Path:
+    path = _control_path(record["preset"], record["commit"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        return path
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=path.parent,
+        prefix=f".{path.name}.", suffix=".tmp", delete=False,
+    ) as stream:
+        temp = Path(stream.name)
+        json.dump(record, stream, indent=2, sort_keys=True)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    try:
+        os.link(temp, path)
+    except FileExistsError:
+        pass
+    finally:
+        temp.unlink(missing_ok=True)
+    return path
+
+
+def _status(*, commit: str, outcome: str, started: float,
+            record: dict | None = None, tracker: int | None = None,
+            reason: str | None = None) -> None:
+    value = {
+        "commit": commit,
+        "completed_at": _now_iso(),
+        "outcome": outcome,
+        "wall_seconds": round(time.monotonic() - started, 3),
+    }
+    if record is not None:
+        rows = record.get("rows", [])
+        value.update({"preset": record.get("preset"), "row_count": len(rows),
+                      "red_count": len(_red_rows(record))})
+    if tracker is not None:
+        value["tracker"] = tracker
+    if reason:
+        value["reason"] = reason
+    _write_json_atomic(_status_path(), value)
+
+
+def run_watch(commit: str) -> int:
+    started = time.monotonic()
+    result_path = _watch_root() / "latest-result.json"
+    with _single_sweep_lock():
+        worktree = _prepare_worktree(commit)
+        result_path.unlink(missing_ok=True)
+        try:
+            sweep = _run_sweep(worktree, result_path)
+        except subprocess.TimeoutExpired:
+            _status(commit=commit, outcome="failed", started=started,
+                    reason="render sweep timed out")
+            return 1
+        if not result_path.is_file():
+            detail = (sweep.stdout + sweep.stderr).strip()[-500:]
+            _status(commit=commit, outcome="failed", started=started,
+                    reason=f"render sweep produced no record (exit {sweep.returncode}): {detail}")
+            return 1
+        try:
+            record = json.loads(result_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            _status(commit=commit, outcome="failed", started=started,
+                    reason=f"render sweep record unreadable: {exc}")
+            return 1
+        if record.get("commit") != commit or record.get("preset") != DEFAULT_PRESET:
+            _status(commit=commit, outcome="failed", started=started,
+                    reason="render sweep record identity did not match the request")
+            return 1
+
+        red_rows = _red_rows(record)
+        tracker = _tracker_lookup(record["preset"])
+        if red_rows:
+            if tracker is None:
+                tracker = create_tracker(record, red_rows, worktree)
+            else:
+                update_tracker(tracker, record, red_rows, worktree)
+            record["tracker"] = tracker
+            outcome = "red"
+        else:
+            if tracker is not None:
+                close_tracker(tracker, record, worktree)
+                record["tracker"] = tracker
+            outcome = "green"
+        _store_control(record)
+        _status(commit=commit, outcome=outcome, started=started,
+                record=record, tracker=tracker)
+        wall_seconds = time.monotonic() - started
+        print(f"fleet-render-watch: {commit[:9]} rows={len(record.get('rows', []))} "
+              f"red={len(red_rows)} tracker={tracker or '-'} wall={wall_seconds:.1f}s")
+        return 0
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--commit", required=True, help="exact origin/master commit to sweep")
+    args = parser.parse_args(argv)
+    started = time.monotonic()
+    try:
+        return run_watch(args.commit)
+    except WatchAlreadyRunning as exc:
+        print(f"fleet-render-watch: {exc}", file=sys.stderr)
+        return 1
+    except WatchError as exc:
+        _status(commit=args.commit, outcome="failed", started=started, reason=str(exc))
+        print(f"fleet-render-watch: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

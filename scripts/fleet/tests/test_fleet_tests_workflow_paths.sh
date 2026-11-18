@@ -144,6 +144,7 @@ OUT_OF_TREE_SUBJECTS=(
     'engine/video/src/opengl/video_backend.cpp'
     'engine/world/include/irreden/world/save_component_inventory.hpp'
     'scripts/package-smoke.py'
+    'scripts/perf/cross_axis_contact_ao_timing.py'
     'scripts/perf/perf_grid_matrix.sh'
     'scripts/perf/repeat_profile.py'
     'scripts/perf/sdf_controls.py'

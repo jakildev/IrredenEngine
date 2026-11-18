@@ -368,6 +368,18 @@
 # window clears. Default 90s.
 # FLEET_DISPATCHER_RATE429_DELAY=90
 
+# --- Scheduled macOS render reference watch -------------------------------
+#
+# Opt in only on the macOS fleet host whose Metal references are committed.
+# The authoritative scout starts at most one full master sweep per interval;
+# fleet-render-watch owns ~/.fleet/render-watch/{worktree,build}, fills the
+# render control cache, and refreshes one fleet:needs-human tracker for red
+# rows. The lane is off unless FLEET_RENDER_WATCH=1.
+#
+# FLEET_RENDER_WATCH=1
+# FLEET_RENDER_WATCH_INTERVAL_SECS=21600
+# FLEET_RENDER_WATCH_PRESET=macos-debug
+
 # --- fleet-run default watchdog -------------------------------------------
 #
 # When fleet-run is invoked without an explicit --timeout, apply this
