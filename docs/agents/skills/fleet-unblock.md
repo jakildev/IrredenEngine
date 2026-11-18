@@ -50,7 +50,7 @@ points here and answers the delta keys below
 
 | Finding | The session does | The human does |
 |---|---|---|
-| Ghost: a queued issue delivered by a merged PR (`shadow_merged_pr` set, no PR in flight, a decline or the thread confirms nothing is left) | closes it: `gh issue close <N> --comment "Delivered by PR #<M>; <residual owner if any>"` | nothing |
+| Ghost: a queued issue with no PR in flight and a current worker decline marked `--delivered-by <PR>` | closes it: `gh issue close <N> --comment "Delivered by PR #<M>; <residual owner if any>"` | nothing |
 | Unapproved `fleet:task` that is defect-shaped with verifiable forensics, an epic child under a `human:approved` umbrella, or filed by the human with a structured body | stamps `human:approved` plus the body's model label | nothing |
 | Unapproved `fleet:task` that is direction-shaped: a new capability, a public API addition, a Non-goal crossing, a design choice | asks the human in the session, one-line recommendation first; stamps the labels an approve answer names | answers |
 | Untriaged issue | judges per `triage-protocol.md`, writes the staging file, confirms the granted-class entries itself, asks the human the rest (Step 4), writes the answers into the file, runs `fleet-triage-sweep apply` and closes each confirmed recommend-close entry | answers one question per entry |
@@ -92,7 +92,7 @@ One line per cause, from the queue partition:
 
 | bucket | what it means | what unblocks it |
 |---|---|---|
-| `ghost` | a queued task delivered by a merged `Refs` PR; workers decline it | the ghost close (authority table) |
+| `ghost` | a queued task with a delivered-marked worker decline | the ghost close (authority table) |
 | `pinned_away` | `**Host:**` or `fleet:needs-gl-host` for another OS | a satellite host, or a wrong pin corrected in the body |
 | `pinned_away`, `needs mac + gl-host — claimable on no host` | contradictory pins: every host refuses it (the scout also writes a `state-scout-host-pin-conflict-*` alert) | a filing defect, never a satellite-host item: correct the body's Host line or GL wording |
 | `in_flight` | an open PR exists | that PR's own state |

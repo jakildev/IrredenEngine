@@ -167,8 +167,9 @@ bold/backtick emphasis is tolerated, a marker mid-sentence is not), comment
 the rationale, keep `fleet:wip`, and release the claim; reconcile un-parks
 it when the blocker (every listed blocker, in whichever repo) closes. A wait
 on the other repo's issue is this park, not a `declined:` exit — a decline
-is remembered against the PR's `updatedAt`, which that repo's merge never
-changes, so the PR would sit un-elected until a human touches it. No park
+is remembered against the PR's `updatedAt`: an unmarked one re-dispatches
+every 30 minutes until the cap parks it, while a marked one waits for a PR
+change. No park
 when the backing issue is `fleet:blocked` (a plain label clear is terminal)
 or when the residual is host-class-only (`fleet:needs-gl-host` or
 `fleet:needs-macos-host` — stamp the one naming the residual's host if the

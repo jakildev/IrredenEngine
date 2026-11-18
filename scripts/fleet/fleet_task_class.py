@@ -121,7 +121,6 @@ import calendar
 import json
 import os
 import platform
-import re
 import sys
 import time
 
@@ -693,16 +692,11 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False, declined_on
 # claim-time gate cannot see a refusal the iteration only discovers by reading
 # the body.
 DECLINE_TTL_SECONDS = fleet_decline.DECLINE_TTL_SECONDS
-# A decline whose reason was the host's own failure (an expired token, a
-# GitHub 5xx, a rate-limit refusal, a timeout) says nothing about the item,
-# so it expires after this much time instead of shelving the item until
-# something else touches it. Two opus rechecks once sat 19 hours behind a
-# "HTTP 401 Bad credentials" decline.
+# An unmarked decline says nothing durable about the item, so it expires after
+# this much time. Reason patterns still classify it for reporting and runtime
+# routing, but only an explicit marker grants the full decline TTL.
 DECLINE_TRANSIENT_TTL_SECONDS = fleet_decline.DECLINE_TRANSIENT_TTL_SECONDS
 DECLINE_TRANSIENT_RE = fleet_decline.DECLINE_TRANSIENT_RE
-HOST_SCOPED_DECLINE_RE = re.compile(
-    r"fleet:needs-(?:gl|macos|windows)-host|\*\*Host:\*\*|fleet-claim host=",
-    re.IGNORECASE)
 
 
 def _declined_dir():
@@ -783,17 +777,13 @@ def _shadow_number(record):
 
 
 def _shadowed_closeout(record):
-    """Validated durable merged-delivery evidence plus a substantive worker decline."""
+    """Validated merged-delivery marker from a current worker decline."""
     if _task_blocked(record):
         return None
     metadata = _decline_metadata("task", record, "worker")
-    if (metadata is None or metadata["transient"]
-            or HOST_SCOPED_DECLINE_RE.search(metadata["reason"])):
+    if metadata is None or metadata["delivered_pr"] is None:
         return None
-    shadow = metadata["shadow_merged_pr"] or _shadow_number(record)
-    if shadow is None:
-        return None
-    return {"shadow_pr": shadow, "reason": metadata["reason"]}
+    return {"shadow_pr": metadata["delivered_pr"], "reason": metadata["reason"]}
 
 
 def _target(kind, record, extra=None):

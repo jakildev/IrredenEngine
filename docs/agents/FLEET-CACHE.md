@@ -110,13 +110,12 @@ and owner-free). **Read that PR before you branch** — `fleet-pr view <number>`
 and scope your change to what it left. Shadow evidence alone remains advisory:
 a `Ref` merge may be partial, so the task remains claimable.
 
-When the same task also has a current, substantive worker decline at its
-current `updatedAt`, it is a **shadowed close-out**: terminal for dispatch and
-reported by `fleet-queue-list`, `fleet-survey`, and `fleet-decisions` for a
-human to close or revise. The dispatcher persists the PR number as line four
-of the existing decline record, so the evidence survives the 30-merge cache
-window; timestamp, role, seven-day TTL, and transient-reason rules still gate
-the record. Reports are read-only and never infer completion from a merge alone.
+When the same task also has a current worker decline marked
+`--delivered-by <PR>` at its current `updatedAt`, it is a **shadowed
+close-out**: terminal for dispatch and reported by `fleet-queue-list`,
+`fleet-survey`, and `fleet-decisions` for a human to close or revise. The
+marker names the evidence PR and holds for seven days. Reports are read-only
+and never infer completion from a merge alone.
 
 `blocked` remains the ingest-owned label round-trip. `has_open_blocker` is the
 scout's separate same-repo resolution fact, and worker election treats either

@@ -16,8 +16,8 @@ per repo, and prints:
   epics      fleet:epic umbrellas with children left, flagging ghost-only remainders
   untriaged  issues with no fleet:/human: label (judge with fleet-triage-sweep)
 
-A *ghost* is a queued task with merged-delivery evidence and a current,
-substantive worker decline at the same issue version.
+A *ghost* is a queued task with a current worker decline marked as delivered
+by a merged PR at the same issue version.
 
 Read-only: never writes a label, never closes, never claims. The judgment
 layer (verdicts, staging, filing, the human checklist) is the skill's.

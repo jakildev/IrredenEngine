@@ -769,7 +769,7 @@ class DispatchTargets(HostSeamCase):
                                "CoreGraphics probe reported nothing usable"):
             with self.subTest(reason=reason):
                 self.assertEqual(fleet_task_class.decline_reason_class(reason),
-                                 "substantive")
+                                 "temporary")
 
     def test_decline_reason_classes_use_transient_ttl_and_runtime_scope(self):
         reasons = {
@@ -818,7 +818,8 @@ class DispatchTargets(HostSeamCase):
                 for reason in ("already merged", "would break its lease",
                                "pending-sweep claim window",
                                "acceptance window unavailable"):
-                    path.write_text(f"{task['updatedAt']}\n{reason}\nworker\n")
+                    path.write_text(
+                        f"{task['updatedAt']}\n[objection] {reason}\nworker\n")
                     expired = time.time() - \
                         (fleet_task_class.DECLINE_TRANSIENT_TTL_SECONDS + 1)
                     os.utime(path, (expired, expired))
@@ -885,7 +886,8 @@ class DispatchTargets(HostSeamCase):
                 task.update({"repo": "engine", "updatedAt": "2026-10-07T12:00:00Z",
                              "shadow_merged_pr": {"number": 4199}})
                 record = declined / "task-engine-4184"
-                record.write_text("2026-10-07T12:00:00Z\nalready delivered\nworker\n"
+                record.write_text("2026-10-07T12:00:00Z\n"
+                                  "[delivered-by #4199] already delivered\nworker\n"
                                   "shadow_merged_pr=4199\n")
                 slice_data = {"tasks_open": [task]}
                 self.assertEqual(pick(slice_data, "opus", False), [])
@@ -896,12 +898,18 @@ class DispatchTargets(HostSeamCase):
                     "number": "4184", "shadow_pr": 4199, "reason": "already delivered"}])
                 self.assertEqual(fleet_task_class.shadowed_closeouts(state, "game"), [])
 
-                record.write_text("2026-10-07T12:00:00Z\nalready delivered\nworker\n")
+                record.write_text("2026-10-07T12:00:00Z\n"
+                                  "[delivered-by #4199] already delivered\nworker\n")
                 self.assertEqual(fleet_task_class._shadowed_closeout(task), {
                     "shadow_pr": 4199, "reason": "already delivered"})
 
+                record.write_text("2026-10-07T12:00:00Z\nalready delivered\nworker\n"
+                                  "shadow_merged_pr=4199\n")
+                self.assertIsNone(fleet_task_class._shadowed_closeout(task))
+
                 expiry_cases = (
-                    ("already delivered", fleet_task_class.DECLINE_TTL_SECONDS),
+                    ("[delivered-by #4199] already delivered",
+                     fleet_task_class.DECLINE_TTL_SECONDS),
                     ("HTTP 503 from GitHub", fleet_task_class.DECLINE_TRANSIENT_TTL_SECONDS),
                 )
                 for reason, ttl in expiry_cases:
@@ -914,12 +922,14 @@ class DispatchTargets(HostSeamCase):
                         self.assertEqual(pick(slice_data, "opus", False),
                                          ["task:engine:4184"])
 
-                record.write_text("2026-10-07T12:00:00Z\nalready delivered\nopus-reviewer\n"
+                record.write_text("2026-10-07T12:00:00Z\n"
+                                  "[delivered-by #4199] already delivered\nopus-reviewer\n"
                                   "shadow_merged_pr=4199\n")
                 self.assertIsNone(fleet_task_class._shadowed_closeout(task))
                 self.assertEqual(pick(slice_data, "opus", False), ["task:engine:4184"])
 
-                record.write_text("2026-10-07T12:00:00Z\nalready delivered\nworker\n"
+                record.write_text("2026-10-07T12:00:00Z\n"
+                                  "[delivered-by #4199] already delivered\nworker\n"
                                   "shadow_merged_pr=4199\n")
                 for blocker_state in ({"blocked": True}, {"has_open_blocker": True}):
                     with self.subTest(blocker_state=blocker_state):
@@ -960,7 +970,8 @@ class DispatchTargets(HostSeamCase):
                 declined = Path(state_dir) / "declined"
                 declined.mkdir()
                 record = declined / "task-engine-4184"
-                record.write_text("2026-10-07T12:00:00Z\nalready delivered\nworker\n"
+                record.write_text("2026-10-07T12:00:00Z\n"
+                                  "[delivered-by #4199] already delivered\nworker\n"
                                   "shadow_merged_pr=4199\n")
                 task = {"issue": "#4184", "repo": "engine",
                         "updatedAt": "2026-10-07T12:00:00Z"}

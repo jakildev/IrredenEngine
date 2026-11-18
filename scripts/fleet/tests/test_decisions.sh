@@ -280,7 +280,7 @@ cat > "$TMP/fleet-home/state/state.json" <<'EOF'
 {"generated_at":"2099-01-01T00:00:00Z","repos":{"engine":{"tasks":{"open":[{"id":"#204","issue":"#204","updatedAt":"2026-10-07T12:00:00Z","shadow_merged_pr":{"number":900}}]}}}}
 EOF
 cp "$TMP/fleet-home/state/state.json" "$TMP/state-baseline.json"
-printf '%s\n' '2026-10-07T12:00:00Z' 'implementation already merged' 'worker' 'shadow_merged_pr=900' > "$TMP/fleet-home/state/declined/task-engine-204"
+printf '%s\n' '2026-10-07T12:00:00Z' '[delivered-by #900] implementation already merged' 'worker' 'shadow_merged_pr=900' > "$TMP/fleet-home/state/declined/task-engine-204"
 touch -t 202401010000 "$TMP/fleet-home/feedback/role-worker.md"
 touch -t 202401020000 "$TMP/fleet-home/feedback/.last-reviewed"
 touch -t 202401030000 "$TMP/fleet-home/feedback/merger.md"
@@ -360,7 +360,7 @@ out=$(cat "$TMP/out.txt")
 assert_eq "$status" "0" "missing-decline run exits 0"
 assert_absent "$out" "Shadowed queued close-outs" "row shadow alone is not a close-out"
 
-printf '%s\n' '2026-10-07T12:00:00Z' 'implementation already merged' 'worker' 'shadow_merged_pr=900' > "$TMP/fleet-home/state/declined/task-engine-204"
+printf '%s\n' '2026-10-07T12:00:00Z' '[delivered-by #900] implementation already merged' 'worker' 'shadow_merged_pr=900' > "$TMP/fleet-home/state/declined/task-engine-204"
 cat > "$TMP/fleet-home/state/state.json" <<'EOF'
 {"generated_at":"2099-01-01T00:00:00Z","repos":{"engine":{"tasks":{"open":[{"id":"#204","issue":"#204","updatedAt":"2026-10-07T12:00:00Z"}]}}}}
 EOF

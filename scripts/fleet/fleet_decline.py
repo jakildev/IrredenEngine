@@ -17,16 +17,35 @@ DECLINE_HOST_RE = re.compile(
 DECLINE_SANDBOX_RE = re.compile(
     r"sandbox|operation not permitted|rejected by .{0,40}policy|"
     r"approval required by policy|(?:command|tool) window", re.IGNORECASE)
+DECLINE_DETAIL_PREFIX = "declined this iteration: "
+DECLINE_MARKER_RE = re.compile(
+    r"^\[(?:(objection)|(delivered-by) #(\d+))\](?:\s+|$)")
+
+
+def parse_detail(detail):
+    """Return the explicit marker, delivered PR, and bare decline reason."""
+    text = detail
+    if text.startswith(DECLINE_DETAIL_PREFIX):
+        text = text[len(DECLINE_DETAIL_PREFIX):]
+    match = DECLINE_MARKER_RE.match(text)
+    if match is None:
+        return None, None, text
+    marker = "objection" if match.group(1) else "delivered"
+    delivered_pr = int(match.group(3)) if match.group(3) else None
+    return marker, delivered_pr, text[match.end():]
 
 
 def reason_class(detail):
-    if DECLINE_SANDBOX_RE.search(detail):
+    marker, _delivered_pr, reason = parse_detail(detail)
+    if marker:
+        return "objection"
+    if DECLINE_SANDBOX_RE.search(reason):
         return "sandbox"
-    if DECLINE_HOST_RE.search(detail):
+    if DECLINE_HOST_RE.search(reason):
         return "host"
-    if DECLINE_TRANSIENT_RE.search(detail):
+    if DECLINE_TRANSIENT_RE.search(reason):
         return "transient"
-    return "substantive"
+    return "temporary"
 
 
 def target(kind, record, extra=None):
@@ -63,8 +82,9 @@ def metadata(kind, record, role=None, extra=None):
         key, separator, value = line.partition("=")
         if separator:
             keyed[key] = value
+    marker, delivered_pr, reason = parse_detail(detail)
     decline_class = reason_class(detail)
-    if decline_class != "substantive" and age > DECLINE_TRANSIENT_TTL_SECONDS:
+    if marker is None and age > DECLINE_TRANSIENT_TTL_SECONDS:
         return None
     if stored_role and role and stored_role != role:
         return None
@@ -72,7 +92,8 @@ def metadata(kind, record, role=None, extra=None):
         return None
     shadow = int(keyed["shadow_merged_pr"]) \
         if keyed.get("shadow_merged_pr", "").isdigit() else None
-    return {"updated_at": stored, "reason": detail, "role": stored_role,
-            "shadow_merged_pr": shadow, "transient": decline_class != "substantive",
+    return {"updated_at": stored, "reason": reason, "role": stored_role,
+            "marker": marker, "delivered_pr": delivered_pr,
+            "shadow_merged_pr": shadow, "transient": marker is None,
             "class": decline_class, "runtime": keyed.get("runtime") or None,
             "age_seconds": max(0, int(age))}
