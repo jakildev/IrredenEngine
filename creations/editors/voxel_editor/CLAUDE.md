@@ -76,11 +76,11 @@ from an edit path.
 - Spatial orbit can reveal a voxel's underside. I places on the far side of the
   picked face; the legacy fixed-elevation camera does not reveal undersides.
 
-The cardinal executor for "the face drawn under the cursor" is `face_pick`'s
-`*_pick_matches_render`, which compares the pick with the main canvas's face
-readback on every editable texel at yaw zero. It does not validate continuous
-orbit or cursor-to-window mapping. `screen_alignment` chooses raw mouse points
-from displayed albedo/normal pixels at seven angles, including 30° and 67°;
+The executor for "the face drawn under the cursor" is `face_pick`'s
+`*_pick_matches_render`: each pixel the editable set visibly owns picks the
+depth drawn there (spatial view), or each canvas texel its face
+(`--legacy-view`). It does not validate continuous orbit. `screen_alignment`
+chooses raw mouse points from displayed albedo/normal pixels at seven angles, including 30° and 67°;
 `scripts/editor-screen-alignment.py` checks its PNGs for coverage and occlusion.
 
 ## Workspace controls

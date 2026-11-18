@@ -725,6 +725,9 @@ struct Segment {
     std::vector<GuiAimFixup> guiAims_;
     std::vector<IRPrefab::GuiTest::Assertion> assertions_;
     SceneUiPressCheck *sceneUiPressCheck_ = nullptr;
+    // Arms the composite's depth-tested owner capture while this segment runs,
+    // in the spatial view, for its whole-frame pick-versus-render check.
+    bool capturesDepthTestedOwners_ = false;
 };
 
 // A built session. `shots_` points into `segments_`, so neither collection may
@@ -2547,6 +2550,7 @@ class Builder {
             PickMatchesRenderCheck{spatialRayOffsetPx, std::move(name)}
         );
         const PickMatchesRenderCheck &check = m_recipe.pickMatchesRenderChecks_.back();
+        m_current.capturesDepthTestedOwners_ = true;
         m_current.assertions_.push_back(
             IRPrefab::GuiTest::predicate(&evaluatePickMatchesRender, &check, check.name_.c_str())
         );
