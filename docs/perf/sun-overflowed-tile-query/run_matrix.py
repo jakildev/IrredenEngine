@@ -160,9 +160,8 @@ def staged_bytes(pristine, variant):
 
 
 def early_tests_bytes(pristine):
-    """The early-route fragment wrapper with early fragment tests forced."""
-    if BACKEND != "opengl":
-        raise StageError("the early-tests control is OpenGL only")
+    """The early-route fragment wrapper with early fragment tests forced. Pure text
+    transform, valid on any host; main() refuses the variant off OpenGL."""
     text = pristine.decode("utf-8")
     version = "#version 450 core\n"
     if not text.startswith(version) or EARLY_TESTS_LINE in text:
@@ -1233,6 +1232,8 @@ def main():
             command.add_argument("--reverts", required=True,
                                  help="the commit whose revert the tree carries")
     args = parser.parse_args()
+    if EARLY_TESTS in getattr(args, "variants", ()) and BACKEND != "opengl":
+        parser.error("the early-tests control is OpenGL only")
     if args.command in ("timing", "ab-timing"):
         if args.pairs < 2 or getattr(args, "legacy_pairs", 2) < 2:
             parser.error("paired statistics need at least two pairs")

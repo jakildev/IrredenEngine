@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_matrix as rm  # noqa: E402
@@ -343,6 +344,9 @@ class BinaryAB(unittest.TestCase):
     def test_early_tests_control_forces_early_tests_on_the_early_route_only(self):
         pristine = (SHADERS / rm.EARLY_FRAGMENT).read_bytes()
         staged = rm.early_tests_bytes(pristine).decode()
+        for backend in ("opengl", "metal"):
+            with self.subTest(backend=backend), mock.patch.object(rm, "BACKEND", backend):
+                self.assertEqual(rm.early_tests_bytes(pristine).decode(), staged)
         self.assertTrue(staged.startswith("#version 450 core\n" + rm.EARLY_TESTS_LINE))
         self.assertEqual(staged.replace(rm.EARLY_TESTS_LINE, "", 1), pristine.decode())
         self.assertIn("#define IR_SOURCE_FACE_EARLY_DEPTH 1", staged)
@@ -350,6 +354,26 @@ class BinaryAB(unittest.TestCase):
             rm.early_tests_bytes(staged.encode())
         sampler = TWINS[0].read_text()
         self.assertEqual(rm.transform(sampler, rm.EARLY_TESTS), sampler)
+
+    def dispatch(self, backend, command):
+        """main() on an early-tests argv with the backend forced and the runners stubbed;
+        returns (exit code, the stubbed runner's call count)."""
+        runner = "ab_timing" if command == "ab-timing" else "witness"
+        argv = ["run_matrix.py", command, "--build", "debug", "--output", "out",
+                "--variants", rm.PRODUCTION, rm.EARLY_TESTS]
+        with mock.patch.object(rm, "BACKEND", backend), mock.patch.object(sys, "argv", argv), \
+                mock.patch.object(rm, runner) as stub, mock.patch("sys.stderr"):
+            try:
+                code = rm.main()
+            except SystemExit as exit_:
+                code = exit_.code
+        return code, stub.call_count
+
+    def test_early_tests_variant_is_refused_off_opengl(self):
+        for command in ("ab-timing", "witness"):
+            with self.subTest(command=command):
+                self.assertEqual(self.dispatch("metal", command), (2, 0))
+                self.assertEqual(self.dispatch("opengl", command), (0, 1))
 
     def test_explicit_tree_command_targets_the_snapshot(self):
         command = rm.ab_profile_command(Path("snap"), Path("arm"), ["--x"], 7)
