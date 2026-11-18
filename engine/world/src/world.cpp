@@ -387,6 +387,7 @@ struct World::FrameStages {
     void pollEvents() {
         world_.m_IRGLFWWindow.pollEvents();
         world_.m_inputLatency.recordPoll(IRRender::steadyClockSeconds);
+        world_.m_renderer.recordPickInputPoll(IRRender::steadyClockSeconds());
     }
     void input() {
         world_.input();
@@ -467,13 +468,13 @@ void World::gameLoop(std::uint32_t exitAfterRenderFrames) {
             update();
         }
         while (!m_IRGLFWWindow.shouldClose()) {
+            const auto iterationStart = Clock::now();
+            IRRender::device()->prepareCpuFrame(m_worldConfig["metal_frame_overlap"].get_boolean());
             m_toolService.tick();
             m_timeManager.beginMainLoop();
             m_timeManager.clampUpdateLag(m_maxUpdateTicksPerFrame);
 
-            Clock::time_point frameStart;
             if (m_frameTimingEnabled) {
-                frameStart = Clock::now();
                 m_inputLatency.beginFrame(
                     IRRender::device()->framesInFlight(),
                     IRRender::steadyClockSeconds
@@ -497,7 +498,7 @@ void World::gameLoop(std::uint32_t exitAfterRenderFrames) {
             IRProfile::cpuFrameHistogram().endFrame();
 
             if (m_frameTimingEnabled) {
-                auto elapsed = Clock::now() - frameStart;
+                auto elapsed = Clock::now() - iterationStart;
                 float ms = std::chrono::duration<float, std::milli>(elapsed).count();
                 m_frameTimesMs.push_back(ms);
                 m_frameUpdateTicks.push_back(updateTicksThisFrame);
@@ -522,6 +523,9 @@ void World::input() {
 
     m_inputManager.tick();
     m_inputManager.advanceInputState(IRTime::Events::INPUT);
+    if (m_frameTimingEnabled) {
+        m_renderer.mouseTrixelPick();
+    }
     m_audioManager.getMidiIn().tick();
     m_audioManager.getAudioPlayback().tickPlayback();
 
@@ -542,6 +546,7 @@ void World::start() {
 
 void World::end() {
     m_toolService.shutdown();
+    IRRender::device()->prepareCpuFrame(false);
     buildAndWriteProfileReport();
     // Release the GPU stage-timing observer's GL timestamp queries here, while
     // the render context is guaranteed live. The observer is World-owned;
@@ -614,7 +619,7 @@ void World::enableFrameTiming(bool enabled) {
         1024
     );
     m_systemManager.setTimingEnabled(enabled);
-    m_renderer.resetMouseTrixelPickStats();
+    m_renderer.resetMouseTrixelPickStats(enabled);
     if (enabled) {
         m_frameTimesMs.clear();
         m_frameTimesMs.reserve(1024);
@@ -732,6 +737,8 @@ void World::buildAndWriteProfileReport() {
     takeFrameCompletions();
     report.inputLatency_ = m_inputLatency.takeSummary(IRRender::device()->frameEndEvent());
     report.inputLatency_.stalePickInputTicks_ = m_renderer.staleMouseTrixelPickInputTicks();
+    report.inputLatency_.midFrameGpuDrains_ = IRRender::device()->deviceStats().midFrameDrains_;
+    report.inputLatency_.pickAgeMs_ = m_renderer.pickAgeAtDispatchMs();
     report.cpuPhases_.push_back(
         {"BuildLightOcclusionGrid::Clear",
          occlusionGridTiming.clear_.totalMs_,

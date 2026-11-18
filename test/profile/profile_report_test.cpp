@@ -518,6 +518,8 @@ TEST(InputLatencyReport, StatisticsCoverTheSteadyFramesOnly) {
     report.inputLatency_.endEvent_ = IRProfile::FrameEndEvent::GPU_COMPLETE;
     report.inputLatency_.clockMappingErrorMs_ = 0.0001;
     report.inputLatency_.stalePickInputTicks_ = 7;
+    report.inputLatency_.midFrameGpuDrains_ = 3;
+    report.inputLatency_.pickAgeMs_ = {10.0f, 20.0f};
     // The first two of eight frames are warm-up: their 100 ms and in-flight
     // count of 5 must not reach the statistics.
     report.inputLatency_.frames_ = {
@@ -554,6 +556,15 @@ TEST(InputLatencyReport, StatisticsCoverTheSteadyFramesOnly) {
         std::string::npos
     ) << text;
     EXPECT_NE(text.find("Frames in flight at frame start: max=1\n"), std::string::npos) << text;
+    EXPECT_NE(
+        text.find("Steady frames starting with GPU work in flight: 1/6 (16.67%)\n"),
+        std::string::npos
+    ) << text;
+    EXPECT_NE(text.find("Mid-frame GPU drains: 3\n"), std::string::npos) << text;
+    EXPECT_NE(
+        text.find("pick_age_at_dispatch_ms: mean=15.000 p99=20.000 max=20.000\n"),
+        std::string::npos
+    ) << text;
     EXPECT_NE(text.find("clock mapping error <= 0.0001ms\n"), std::string::npos) << text;
     EXPECT_NE(
         text.find(
