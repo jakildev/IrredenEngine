@@ -8,6 +8,8 @@
 #   RESULT=CLEAN exe=<name> exit=0                — ran + exited 0
 #   RESULT=CRASH exe=<name> exit=<rc> signal=<..> — FAILED, code propagated
 #   RESULT=ALIVE-TIMEOUT exe=<name> ...           — watchdog kill, healthy
+#   RESULT=TERM-IGNORED exe=<name> exit=1 ...     — TERM did not stop it;
+#                                                   SIGKILLed, FAILED
 #   RESULT=HOST-CLOSED exe=<name> exit=<rc> event=Application-Hang/1002 at=<t>
 #                                                 — Windows hang handling
 #                                                   closed it; re-run
@@ -44,7 +46,16 @@ release_holder() {
         HOLDER_PID=""
     fi
 }
-trap 'release_holder; rm -rf "$FAKE_BUILD"' EXIT
+# Every stub that can outlive a broken ir-run records its pid here, so a
+# failing case never leaves a process behind.
+kill_recorded_pids() {
+    local f
+    for f in "$FAKE_BUILD"/*.pid; do
+        [[ -s "$f" ]] && kill -KILL "$(<"$f")" 2>/dev/null
+    done
+    return 0
+}
+trap 'release_holder; kill_recorded_pids; rm -rf "$FAKE_BUILD"' EXIT
 export IR_LOCK_ROOT="$FAKE_BUILD/locks"
 export IR_QUIET_DRAIN=1
 export IR_QUIET_LINGER=0
@@ -68,6 +79,15 @@ make_exe short-run 'sleep 1; exit 0'
 make_exe breach-hold 'touch "$IR_BREACH_STARTED"; while [[ ! -f "$IR_BREACH_RELEASE" ]]; do sleep .02; done'
 # The status both Windows bashes report for a hang-closed process.
 make_exe exit127 'exit 127'
+# Ignores the watchdog's TERM; only SIGKILL stops it.
+make_exe term-ignorer 'echo $$ > "$IR_STUB_DIR/term-ignorer.pid"; trap "" TERM; while true; do sleep 1; done'
+# Leaves a descendant holding stdout/stderr open after the stub itself is gone.
+make_exe fd-holder 'sleep 300 & echo $! > "$IR_STUB_DIR/fd-holder-child.pid"; echo $$ > "$IR_STUB_DIR/fd-holder.pid"; exec sleep 30'
+make_exe fd-holder-ignorer 'sleep 300 & echo $! > "$IR_STUB_DIR/fd-ignorer-child.pid"; echo $$ > "$IR_STUB_DIR/fd-ignorer.pid"; trap "" TERM; while true; do sleep 1; done'
+make_exe fd-holder-clean 'sleep 300 & echo $! > "$IR_STUB_DIR/fd-clean-child.pid"; exit 0'
+make_exe no-display-ignorer 'echo $$ > "$IR_STUB_DIR/nd-ignorer.pid"; echo "Discovered 0 display monitors"; trap "" TERM; while true; do sleep 1; done'
+make_exe no-display-honours 'echo $$ > "$IR_STUB_DIR/nd-honours.pid"; echo "Discovered 0 display monitors"; exec sleep 30'
+export IR_STUB_DIR="$FAKE_BUILD"
 
 # --- HOST-CLOSED seams ------------------------------------------------------
 # The launch identity is a fixed native pid + creation FILETIME; the clock
@@ -204,6 +224,99 @@ run_ir --timeout 1 sleeper
 assert_eq "$RC" "0" "watchdog kill stays exit 0 (healthy for smoke)"
 assert_contains "$OUT" "RESULT=ALIVE-TIMEOUT exe=sleeper" "ALIVE-TIMEOUT verdict"
 
+# assert_gone <pid-file> <label>: the process the stub recorded is not alive.
+assert_gone() {
+    if [[ ! -s "$1" ]]; then
+        bad "$2 (stub never recorded its pid)"
+    elif kill -0 "$(<"$1")" 2>/dev/null; then
+        bad "$2 (pid $(<"$1") still alive)"
+    else
+        ok "$2"
+    fi
+}
+
+# timed_run_ir <args...>: run_ir, recording the wall time in ELAPSED.
+timed_run_ir() {
+    local start=$SECONDS
+    run_ir "$@"
+    ELAPSED=$((SECONDS - start))
+}
+
+# --timeout 1, grace 1: the watchdog fires at 1 s, TERM -> SIGKILL takes one
+# grace, the launch's exit and the output drain one more each, plus 5 s slack.
+KILL_BOUND=$((1 + 3 * 1 + 5))
+export IR_RUN_KILL_GRACE=1
+
+echo "watchdog escalates a TERM-ignoring process to SIGKILL:"
+timed_run_ir --timeout 1 term-ignorer
+assert_eq "$RC" "1" "TERM-ignoring run exits 1"
+assert_contains "$OUT" "RESULT=TERM-IGNORED exe=term-ignorer exit=1" "TERM-IGNORED verdict"
+assert_contains "$OUT" "reaped by SIGKILL" "verdict says SIGKILL reaped it"
+assert_absent "$OUT" "RESULT=ALIVE-TIMEOUT" "a TERM-ignoring run is not reported healthy"
+if (( ELAPSED <= KILL_BOUND )); then ok "returned in ${ELAPSED}s (bound ${KILL_BOUND}s)"
+else bad "returned in ${ELAPSED}s, over the ${KILL_BOUND}s bound"; fi
+assert_gone "$FAKE_BUILD/term-ignorer.pid" "no TERM-ignoring stub left alive"
+
+echo "a wrapped TERM-ignoring run releases the gpu lock once SIGKILL reaps it:"
+timed_run_ir --timeout 1 term-ignorer --auto-screenshot 1
+assert_eq "$RC" "1" "wrapped TERM-ignoring run exits 1"
+assert_contains "$OUT" "RESULT=TERM-IGNORED exe=term-ignorer exit=1" "wrapped TERM-IGNORED verdict"
+if (( ELAPSED <= KILL_BOUND )); then ok "wrapped run returned in ${ELAPSED}s"
+else bad "wrapped run returned in ${ELAPSED}s, over the ${KILL_BOUND}s bound"; fi
+assert_gone "$FAKE_BUILD/term-ignorer.pid" "no wrapped TERM-ignoring stub left alive"
+if [[ -d "$IR_LOCK_ROOT/gpu/lock" ]]; then
+    bad "gpu lock released after SIGKILL reaped the exe"
+else
+    ok "gpu lock released after SIGKILL reaped the exe"
+fi
+
+echo "output drain is bounded when a descendant holds the output open:"
+timed_run_ir --timeout 1 fd-holder
+assert_eq "$RC" "0" "TERM-honouring stub with a held output stays exit 0"
+assert_contains "$OUT" "RESULT=ALIVE-TIMEOUT exe=fd-holder" "verdict stays ALIVE-TIMEOUT"
+assert_contains "$OUT" "a descendant still holds it" "held output is reported"
+if (( ELAPSED <= KILL_BOUND )); then ok "held-output run returned in ${ELAPSED}s"
+else bad "held-output run returned in ${ELAPSED}s, over the ${KILL_BOUND}s bound"; fi
+assert_gone "$FAKE_BUILD/fd-holder.pid" "no fd-holder stub left alive"
+assert_gone "$FAKE_BUILD/fd-holder-child.pid" "no output-holding descendant left alive"
+
+timed_run_ir --timeout 1 fd-holder-ignorer
+assert_eq "$RC" "1" "TERM-ignoring stub with a held output exits 1"
+assert_contains "$OUT" "RESULT=TERM-IGNORED exe=fd-holder-ignorer exit=1" "TERM-IGNORED beside a held output"
+if (( ELAPSED <= KILL_BOUND )); then ok "TERM-ignoring held-output run returned in ${ELAPSED}s"
+else bad "TERM-ignoring held-output run returned in ${ELAPSED}s, over the ${KILL_BOUND}s bound"; fi
+assert_gone "$FAKE_BUILD/fd-ignorer.pid" "no TERM-ignoring fd-holder left alive"
+assert_gone "$FAKE_BUILD/fd-ignorer-child.pid" "its output-holding descendant is gone too"
+
+timed_run_ir --timeout 30 fd-holder-clean
+assert_eq "$RC" "0" "clean exit leaving a held output stays exit 0"
+assert_contains "$OUT" "RESULT=CLEAN exe=fd-holder-clean exit=0" "verdict stays CLEAN"
+if (( ELAPSED <= 1 + 2 * 1 + 5 )); then ok "clean held-output run returned in ${ELAPSED}s"
+else bad "clean held-output run returned in ${ELAPSED}s, not bounded by the drain grace"; fi
+assert_gone "$FAKE_BUILD/fd-clean-child.pid" "the clean run's output-holding descendant is gone"
+
+echo "NO-DISPLAY stops through the same bounded kill:"
+IR_RUN_NO_DISPLAY_GRACE=1 timed_run_ir --timeout 60 no-display-ignorer
+assert_eq "$RC" "1" "TERM-ignoring no-display run exits 1"
+assert_contains "$OUT" "RESULT=TERM-IGNORED exe=no-display-ignorer exit=1" \
+    "cleanup failure wins over NO-DISPLAY"
+assert_absent "$OUT" "RESULT=NO-DISPLAY" "no NO-DISPLAY verdict beside TERM-IGNORED"
+assert_contains "$OUT" "stopped for NO-DISPLAY" "TERM-IGNORED names why it was stopped"
+if (( ELAPSED <= KILL_BOUND + 1 )); then ok "no-display TERM-ignorer returned in ${ELAPSED}s"
+else bad "no-display TERM-ignorer returned in ${ELAPSED}s, over the bound"; fi
+assert_gone "$FAKE_BUILD/nd-ignorer.pid" "no TERM-ignoring no-display stub left alive"
+
+IR_RUN_NO_DISPLAY_GRACE=1 run_ir --timeout 60 no-display-honours
+assert_eq "$RC" "69" "TERM-honouring no-display run keeps exit 69"
+assert_contains "$OUT" "RESULT=NO-DISPLAY exe=no-display-honours exit=69" "NO-DISPLAY verdict kept"
+assert_gone "$FAKE_BUILD/nd-honours.pid" "no TERM-honouring no-display stub left alive"
+unset IR_RUN_KILL_GRACE
+
+echo "a non-integer kill grace is a usage error:"
+IR_RUN_KILL_GRACE=soon run_ir --timeout 1 clean-exit
+assert_eq "$RC" "2" "IR_RUN_KILL_GRACE=soon exits 2"
+assert_contains "$OUT" "IR_RUN_KILL_GRACE must be a non-negative integer" "usage error names the variable"
+
 hold_gpu_lock() {
     # Holds the gpu lock from a second process for $1 seconds; returns once
     # the lock dir exists so the caller is guaranteed to queue behind it.
@@ -226,6 +339,9 @@ assert_contains "$OUT" "RESULT=CLEAN exe=short-run exit=0" \
     "queued run reports CLEAN, not ALIVE-TIMEOUT"
 assert_absent "$OUT" "ALIVE-TIMEOUT exe=short-run" \
     "no watchdog verdict for a run that fits its budget"
+assert_contains "$OUT" "ir-run: queued on the gpu lock for" \
+    "a queued run says it is waiting on the lock"
+assert_contains "$OUT" "gpu lock granted after" "and says when the run clock starts"
 
 echo "watchdog still fires after the lock is granted:"
 run_ir --timeout 1 hang --auto-screenshot 1

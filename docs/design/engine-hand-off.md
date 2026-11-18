@@ -155,7 +155,7 @@ remains the compatibility surface for existing consumers.
 - `bash scripts/fleet/tests/run_all.sh --only ir_run_handoff_lock` — the real
   wrapper lending its lock to one nested `ir-run` and taking it back.
 - `bash scripts/fleet/tests/run_all.sh --only ir_run_result_file` — CLEAN,
-  CRASH and ALIVE-TIMEOUT stdout/JSON verdict parity.
+  CRASH, ALIVE-TIMEOUT and TERM-IGNORED stdout/JSON verdict parity.
 - `fleet-run --timeout 120 IRLuaWidgetsDemo --hand-off-fixture auto` — the
   round trip end to end: `LUA_WIDGETS HANDOFF before` and `resumed` print equal
   `frame=` / `tick=` readings, the child's verdict, then the parent's.

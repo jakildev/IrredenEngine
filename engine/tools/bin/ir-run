@@ -253,6 +253,15 @@ Run mode
                         N covers the executable's run time only: time queued
                         on an ir-acquire lock is not counted (the lock wait
                         has its own bound, IR_QUEUE_TIMEOUT, default 600 s).
+                        While queued, ir-run prints "ir-run: queued on the
+                        <verb> lock ..." every 15 s and "ir-run: <verb> lock
+                        granted after Ns" once the run clock starts.
+                        The kill is TERM, then SIGKILL after
+                        IR_RUN_KILL_GRACE seconds; the launch then gets one
+                        more grace to exit and one to close its output, after
+                        which its process group is killed. ir-run returns at
+                        most N + 3 x IR_RUN_KILL_GRACE (+ ~1 s) after the run
+                        clock starts.
 
   Window mode (unattended runs stay off the screen):
     A bare ir-run in your own shell always shows its window — no flags
@@ -293,6 +302,9 @@ Run mode
                                 overwrites a value already present.
     IR_QUEUE_TIMEOUT            Seconds a wrapped run may wait for its
                                 ir-acquire lock (default 600).
+    IR_RUN_KILL_GRACE           Seconds for each stage of stopping a --timeout
+                                run: TERM to SIGKILL, SIGKILL to the launch's
+                                exit, exit to its output closing (default 5).
     IR_QUIET_*                  Benchmark quiet-window tuning. Stop background
                                 jobs in the requesting session before profiling.
     IR_RUN_HOST_CLOSE_*         Test seams for the HOST-CLOSED check (see
@@ -326,6 +338,11 @@ Run mode
     ir-run: RESULT=LOCK-FAILED exe=<name> exit=<rc> ...
         ir-acquire never granted the lock (queue timeout), so the
         program did not run. Exit code propagated as 1.
+    ir-run: RESULT=TERM-IGNORED exe=<name> exit=1 ...
+        The watchdog's TERM (at --timeout, or after NO-DISPLAY) did not end
+        the program within IR_RUN_KILL_GRACE; the text says whether SIGKILL
+        then reaped it. FAILED run, exit 1: a program that ignores TERM is
+        not healthy, and one SIGKILL could not reap may still hold its lock.
     ir-run: RESULT=HOST-NOT-QUIET exe=<name> exit=75
         A dispatched session did not park before the drain deadline; the
         program did not run.
@@ -808,9 +825,65 @@ ir_launch_cleanup() {
 }
 trap ir_launch_cleanup EXIT
 
+# ir_wait_gone <pid> <seconds>: 0 once <pid> is gone, 1 if it outlives the
+# bound. A background child of this shell counts as gone once it exits: bash
+# reaps it on SIGCHLD and keeps its status for a later `wait`.
+ir_wait_gone() {
+    local pid="$1" ticks=$(( $2 * 10 ))
+    while kill -0 "$pid" 2>/dev/null; do
+        (( ticks-- > 0 )) || return 1
+        sleep 0.1
+    done
+}
+
+# ir_stop_launch <exe-pid>: TERM the exe, SIGKILL it if it outlives
+# KILL_GRACE, then give the launch (PID: the exe, or the ir-acquire wrapping
+# it) one more KILL_GRACE to exit. Never waits without bound. Sets
+# TERM_IGNORED, TERM_IGNORED_REAPED and LAUNCH_EXITED. ir-acquire is never
+# signalled here: it holds the gpu lock until the exe is really gone, so an
+# exe SIGKILL cannot reap keeps the lock and the next run fails LOCK-FAILED
+# at its queue timeout instead of sharing the GPU with it.
+ir_stop_launch() {
+    local exe_pid="$1"
+    TERM_IGNORED=0
+    TERM_IGNORED_REAPED=0
+    kill "$exe_pid" 2>/dev/null || true
+    if ! ir_wait_gone "$exe_pid" "$KILL_GRACE"; then
+        TERM_IGNORED=1
+        kill -KILL "$exe_pid" 2>/dev/null || true
+        ir_wait_gone "$exe_pid" "$KILL_GRACE" && TERM_IGNORED_REAPED=1
+    fi
+    if ir_wait_gone "$PID" "$KILL_GRACE"; then
+        wait "$PID" 2>/dev/null || true
+        LAUNCH_EXITED=1
+    fi
+}
+
+# Waits for the output tees, at most KILL_GRACE. A tee still open after that
+# is held by a descendant the exe left behind: once the launch itself has
+# exited, its process group (started under `set -m`, so its pgid is PID) is
+# SIGKILLed, and the tees get one more grace to flush before they are killed.
 ir_finish_scan() {
+    if ! { ir_wait_gone "$TEE_OUT_PID" "$KILL_GRACE" &&
+           ir_wait_gone "$TEE_ERR_PID" "$KILL_GRACE"; }; then
+        echo "ir-run: $EXE_NAME's output stayed open ${KILL_GRACE}s after the" \
+             "launch ended; a descendant still holds it — stopping it" >&2
+        if (( LAUNCH_EXITED )); then
+            kill -KILL -- "-$PID" 2>/dev/null || true
+        fi
+        ir_wait_gone "$TEE_OUT_PID" "$KILL_GRACE" || kill "$TEE_OUT_PID" 2>/dev/null || true
+        ir_wait_gone "$TEE_ERR_PID" "$KILL_GRACE" || kill "$TEE_ERR_PID" 2>/dev/null || true
+    fi
     wait "$TEE_OUT_PID" 2>/dev/null || true
     wait "$TEE_ERR_PID" 2>/dev/null || true
+}
+
+ir_report_term_ignored() {
+    local fate="reaped by SIGKILL"
+    (( TERM_IGNORED_REAPED )) || fate="still alive after SIGKILL + ${KILL_GRACE}s"
+    echo "ir-run: RESULT=TERM-IGNORED exe=$EXE_NAME exit=1 — SIGTERM did not" \
+         "stop it within ${KILL_GRACE}s ($1); $fate" >&2
+    ir_write_result "TERM-IGNORED" 1
 }
 
 # Newest Application Hang/1002 events as XML, one per line. Never fails:
@@ -1028,28 +1101,43 @@ if ! [[ "$NO_DISPLAY_GRACE" =~ ^[0-9]+$ ]]; then
     echo "ir-run: IR_RUN_NO_DISPLAY_GRACE must be a non-negative integer" >&2
     exit 2
 fi
+KILL_GRACE="${IR_RUN_KILL_GRACE:-5}"
+if ! [[ "$KILL_GRACE" =~ ^[0-9]+$ ]]; then
+    echo "ir-run: IR_RUN_KILL_GRACE must be a non-negative integer" >&2
+    exit 2
+fi
+LAUNCH_EXITED=0
 ir_launch_begin
+# `set -m` gives the launch its own process group (pgid = PID), which is how
+# ir_finish_scan reaches a descendant still holding the output after the exe
+# is gone. Job control would also hand the launch the terminal's stdin, so it
+# is pinned to /dev/null, as an asynchronous command without job control gets.
+set -m
 if (( ${#acquire_prefix[@]} > 0 )); then
     [[ -n "$LAUNCH_DIR" ]] || LAUNCH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ir-run-launch.XXXXXX")"
     READY_FILE="$LAUNCH_DIR/pid"
     "${acquire_prefix[@]}" bash -c "$IR_LAUNCH_SHIM" \
         ir-run-launch "$LAUNCH_DIR" "$HOST_CLOSE" "${child_cmd[@]}" \
-        > "$SCAN_OUT_PIPE" 2> "$SCAN_ERR_PIPE" &
+        < /dev/null > "$SCAN_OUT_PIPE" 2> "$SCAN_ERR_PIPE" &
 elif [[ -n "$LAUNCH_DIR" ]]; then
     bash -c "$IR_LAUNCH_SHIM" ir-run-launch "$LAUNCH_DIR" 1 "${child_cmd[@]}" \
-        > "$SCAN_OUT_PIPE" 2> "$SCAN_ERR_PIPE" &
+        < /dev/null > "$SCAN_OUT_PIPE" 2> "$SCAN_ERR_PIPE" &
 else
-    "${child_cmd[@]}" > "$SCAN_OUT_PIPE" 2> "$SCAN_ERR_PIPE" &
+    "${child_cmd[@]}" < /dev/null > "$SCAN_OUT_PIPE" 2> "$SCAN_ERR_PIPE" &
 fi
 PID=$!
+set +m
 
 # Wait for either the timeout or the process to exit early (crash).
 elapsed=0
+queue_start=$SECONDS
+queue_note=1
 while true; do
     if ! kill -0 "$PID" 2>/dev/null; then
         # Process exited before timeout — check if it crashed.
         exit_code=0
         wait "$PID" 2>/dev/null || exit_code=$?
+        LAUNCH_EXITED=1
         ir_launch_end
         ir_finish_scan
         if [[ -n "$READY_FILE" && ! -s "$READY_FILE" ]]; then
@@ -1076,8 +1164,20 @@ while true; do
         [[ $exit_code -eq 0 ]] && exit 0 || exit 1
     fi
     if [[ -n "$READY_FILE" && ! -s "$READY_FILE" ]]; then
-        sleep 0.2   # still queued on the lock: the run clock has not started
+        # Still queued on the lock: the run clock has not started.
+        if (( SECONDS - queue_start >= queue_note )); then
+            echo "ir-run: queued on the $acquire_verb lock for" \
+                 "$((SECONDS - queue_start))s; the ${TIMEOUT}s run clock has" \
+                 "not started (queue bound IR_QUEUE_TIMEOUT=${IR_QUEUE_TIMEOUT:-600}s)"
+            queue_note=$((queue_note + 15))
+        fi
+        sleep 0.2
         continue
+    fi
+    if (( queue_note > 1 )); then
+        echo "ir-run: $acquire_verb lock granted after $((SECONDS - queue_start))s;" \
+             "run clock started"
+        queue_note=0
     fi
     if (( NO_DISPLAY_SEEN < 0 )) && grep -q "Discovered 0 display monitors" "$SCAN_LOG" "$SCAN_ERR_LOG"; then
         NO_DISPLAY_SEEN=$elapsed
@@ -1085,10 +1185,13 @@ while true; do
     if (( NO_DISPLAY_SEEN >= 0 && elapsed - NO_DISPLAY_SEEN >= NO_DISPLAY_GRACE )); then
         KILL_PID="$PID"
         [[ -n "$READY_FILE" ]] && KILL_PID="$(<"$READY_FILE")"
-        kill "$KILL_PID" 2>/dev/null
-        wait "$PID" 2>/dev/null || true
+        ir_stop_launch "$KILL_PID"
         ir_launch_end
         ir_finish_scan
+        if (( TERM_IGNORED )); then
+            ir_report_term_ignored "stopped for NO-DISPLAY"
+            exit 1
+        fi
         echo "ir-run: RESULT=NO-DISPLAY exe=$EXE_NAME exit=69" >&2
         ir_write_result "NO-DISPLAY" 69
         exit 69
@@ -1098,16 +1201,19 @@ while true; do
     elapsed=$((elapsed + 1))
 done
 
-# Process survived the timeout — it's healthy for smoke purposes. Kill it.
-# Kill the exe itself when wrapped: TERM to ir-acquire alone is deferred by
-# bash until its foreground child exits, which would leave the run going.
-# RESULT=ALIVE-TIMEOUT is deliberately distinct from CLEAN: the run never
-# reached teardown, so it says nothing about shutdown-path health.
+# Process survived the timeout — it's healthy for smoke purposes if TERM
+# stops it. Kill the exe itself when wrapped: TERM to ir-acquire alone is
+# deferred by bash until its foreground child exits, which would leave the
+# run going. RESULT=ALIVE-TIMEOUT is deliberately distinct from CLEAN: the
+# run never reached teardown, so it says nothing about shutdown-path health.
 KILL_PID="$PID"
 [[ -n "$READY_FILE" ]] && KILL_PID="$(<"$READY_FILE")"
-kill "$KILL_PID" 2>/dev/null
-wait "$PID" 2>/dev/null || true
+ir_stop_launch "$KILL_PID"
 ir_finish_scan
+if (( TERM_IGNORED )); then
+    ir_report_term_ignored "watchdog at ${TIMEOUT}s"
+    exit 1
+fi
 echo "ir-run: RESULT=ALIVE-TIMEOUT exe=$EXE_NAME — ran for ${TIMEOUT}s without crashing, killed by watchdog"
 ir_write_result "ALIVE-TIMEOUT" 0
 exit 0
