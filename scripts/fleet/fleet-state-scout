@@ -5652,7 +5652,7 @@ def run_master_ci_lane() -> None:
                 except fleet_master_ci.MasterCiError as exc:
                     raise _MasterCiMiss("gh-failed", f"{workflow}: {exc}") from exc
                 if issue is None:
-                    raise _MasterCiMiss("bad-json", f"{workflow}: tracker has no issue")
+                    continue
                 _master_ci_mark_red(workflow, run, issue)
             elif not details["has_skipped_job"]:
                 try:

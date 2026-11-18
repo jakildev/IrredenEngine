@@ -60,9 +60,12 @@ class _MasterCiCase(_ScoutTickHarness, unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.logs = []
 
-    def tick(self, replies, workflows=None, served=False):
+    def tick(self, replies, workflows=None, served=False, tracker_result=900):
         gh = _FakeGh(replies)
-        with patch.object(_mod.fleet_master_ci, "upsert_tracker", return_value=900):
+        patch_args = ({"side_effect": tracker_result}
+                      if isinstance(tracker_result, list)
+                      else {"return_value": tracker_result})
+        with patch.object(_mod.fleet_master_ci, "upsert_tracker", **patch_args):
             self._tick(self.tmp.name, [], degraded=False, spawns=[], logs=self.logs,
                        served=served, master_ci=(gh, workflows or sorted(
                            workflow for workflow in replies if workflow != "jobs")))
@@ -239,6 +242,18 @@ class TestDeadlineMarker(_MasterCiCase):
                         "c.yml": _done(_run_json("failure"))})
         self.assertEqual(len(gh.calls), 4)
         self.assertTrue(self.alert_path("c.yml").exists())
+        self.assertTrue(self.marker().exists())
+
+    def test_closed_tracker_dedup_preserves_alert_and_continues_the_pass(self):
+        alert = self.alert_path("a.yml")
+        alert.parent.mkdir(exist_ok=True)
+        alert.write_text("standing alert\n")
+        gh = self.tick({"a.yml": _done(_run_json("failure")),
+                        "b.yml": _done(_run_json("failure"))},
+                       tracker_result=[None, 900])
+        self.assertEqual(len(gh.calls), 4)
+        self.assertEqual(alert.read_text(), "standing alert\n")
+        self.assertTrue(self.alert_path("b.yml").exists())
         self.assertTrue(self.marker().exists())
 
     def test_a_tick_inside_the_interval_does_not_call_gh(self):

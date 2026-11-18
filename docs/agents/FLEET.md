@@ -111,23 +111,8 @@ filer-authored `## Plan` + `fleet:plan-review` is vetted first ([`TASK-FILING.md
 § Agent-approved follow-up lane`](TASK-FILING.md)); planless →
 `fleet:needs-plan` → an opus+ planner posts the plan and swaps to
 `fleet:plan-review` → the plan reviewer clears it → it queues. There is no human
-approach gate (the human steers with `human:revise-plan`, `fleet:needs-human`,
-and PR review) and no plan-doc PR: plan and code land in one merge.
-
-### Red master incidents
-
-The authoritative scout's master-CI lane keeps one open `fleet:master-red`
-issue per failing engine workflow. A first red creates approved, no-plan work;
-each later red run and each red-to-green transition adds a deduplicated GitHub
-event. Green is evidence only: the issue remains open until its fixing PR closes
-it. Inside the task tier the dispatcher serves these incidents before ordinary
-open tasks, while semantic conflicts and feedback retain their higher priority.
-
-The alert payload links the incident to the workflow. Reconcile R12 uses that
-link to tell a PR when all of its failures are inherited from master and names
-the tracking issue once per head and tracker set. A mixed own/inherited failure
-keeps the ordinary `fleet:checks-red` path. `fleet-decisions` lists open master
-incidents before the merge queue, including their newest red or green event.
+approach gate (the human steers with `human:revise-plan`, `fleet:needs-human`, and PR review) and no plan-doc PR: plan and code land in one merge. The
+`fleet:master-red` incident, attribution, and priority contracts are in [`fleet-labels-reference.md`](fleet-labels-reference.md#task--model-labels).
 
 ### Cursor flow (human-in-the-loop)
 

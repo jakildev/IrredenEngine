@@ -67,12 +67,10 @@ left under a verdict would re-dispatch the sonnet lane every tick.
   (`human:no-plan`, `fleet:no-plan`, a `[no-plan]` tag, "investigation
   spike"). Ingest stamps every approved, non-skip task up front, with its
   model label and `fleet:blocked` where a predecessor is open.
-- `fleet:master-red` — **master-CI scout lane**, on the single open incident
-  for a workflow currently or recently red on engine master. The incident is
-  created with `fleet:agent-approved` and `fleet:no-plan`; later red runs and
-  red-to-green transitions are comments. Green never closes it. Within the
-  open-task tier the dispatcher elects it before every ordinary task; conflict
-  and feedback work still comes first.
+- `fleet:master-red` — **master-CI scout lane**, on the single open incident for
+  an engine workflow. Red and green transitions are comments; only a fixing PR
+  closes it. It is approved, no-plan work elected before ordinary tasks but
+  after conflict and feedback work.
 - `fleet:fable` / `fleet:opus` / `fleet:sonnet` — **ingest**, from the
   `**Model:**` field (opus when absent). The dispatcher launches each iteration
   with its task's class and `fleet-claim` exact-matches it. A reviewer may add
