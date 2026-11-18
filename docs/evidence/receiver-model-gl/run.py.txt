@@ -1,0 +1,186 @@
+"""#5138 criterion drivers.
+
+usage: run.py <arm> c1                 IRShapeDebug spin sweep + lone-frame metric
+       run.py <arm> c3 <cardinal_deg>  render-yaw-crossing-metric capture (head's script)
+       run.py <arm> c2 <set> <tag>     receiver-polygon captures; set = cardinal|intermediate
+                                       tag = unset|0|1 (IR_PERAXIS_SURFACE_LIGHTING)
+       run.py <arm> c4                 IrredenEngineTest --gtest_filter=PerAxisSurfaceLighting*
+"""
+import hashlib
+import json
+import os
+import shutil
+import struct
+import subprocess
+import sys
+from pathlib import Path
+
+ARMS = {"head": "C:/msys64/tmp/p5138/head", "parent": "C:/msys64/tmp/p5138/parent"}
+HEAD_WT = ARMS["head"]
+ORACLE_WT = "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-7"
+PILSHIM = "C:/msys64/tmp/p4813/pylib"
+OUT = Path("C:/msys64/tmp/p5138/out")
+BASH = r"C:\Program Files\Git\bin\bash.exe"
+PY = sys.executable
+
+YAWS = {
+    "cardinal": ("0", "1.57079632679", "3.14159265359", "4.71238898038"),
+    "intermediate": ("0.6", "2.17079632679", "3.74159265359", "5.31238898038"),
+}
+COMMON = ["--only", "shadowbox,floor", "--probe-grid", "--probe-floor-mode", "grid",
+          "--probe-floor-span", "40", "--sun-direction", "0", "0", "-1", "--no-spin",
+          "--no-auto-rotate", "--pivot-origin", "--zoom", "4", "--subdivisions", "1", "--no-ao",
+          "--auto-screenshot", "10", "--sweep-frames", "1", "10", "--probe-overlapping-source"]
+
+
+def head(wt):
+    return subprocess.run(["git", "-C", wt, "rev-parse", "HEAD"], capture_output=True,
+                          text=True).stdout.strip()
+
+
+def bash(cmd, cwd, env, log, timeout):
+    with open(log, "a", encoding="utf-8") as f:
+        f.write(f"\n===== {cmd}\n")
+        f.flush()
+        try:
+            r = subprocess.run([BASH, "-lc", cmd], cwd=cwd, stdin=subprocess.DEVNULL, stdout=f,
+                               stderr=subprocess.STDOUT, env=env, timeout=timeout)
+            return r.returncode
+        except subprocess.TimeoutExpired:
+            return "TIMEOUT"
+
+
+def ihdr(path):
+    with open(path, "rb") as f:
+        data = f.read(24)
+    return struct.unpack(">II", data[16:24])
+
+
+def env_for(wt, extra=None):
+    env = {k: v for k, v in os.environ.items() if k != "IR_PERAXIS_SURFACE_LIGHTING"}
+    env["IRREDEN_BUILD_DIR"] = wt + "/build"
+    env.update(extra or {})
+    return env
+
+
+def c1(arm, wt):
+    shots = Path(wt) / "build/creations/demos/shape_debug/save_files/screenshots"
+    if shots.exists():
+        shutil.rmtree(shots)
+    out = OUT / f"c1_{arm}"
+    out.mkdir(parents=True, exist_ok=True)
+    log = out / "run.log"
+    rc = bash("fleet-heartbeat pool-7; fleet-run --timeout 1500 IRShapeDebug --spin-yaw --zoom 16 "
+              "--auto-screenshot 720", wt, env_for(wt), log, 1700)
+    n = len(list(shots.glob("screenshot_*.png"))) if shots.exists() else 0
+    print(f"c1 {arm} run rc={rc} shots={n}", flush=True)
+    r = subprocess.run([PY, HEAD_WT + "/scripts/render-yaw-lone-frame-metric.py", str(shots),
+                        "--yaws", "0,90,180,270", "--max-ratio", "1.3"],
+                       capture_output=True, text=True, cwd=HEAD_WT)
+    (out / "metric.txt").write_text(r.stdout + r.stderr, encoding="utf-8")
+    print(r.stdout[-3000:], r.stderr[-1000:], "metric rc", r.returncode)
+    if n:
+        first = sorted(shots.glob("screenshot_*.png"))[0]
+        print("IHDR", ihdr(first))
+
+
+def c3(arm, wt, card, scale="1x", switch="unset"):
+    tag = "" if (scale, switch) == ("1x", "unset") else f"_{scale}_s{switch}"
+    out = OUT / f"c3_{arm}_{card}{tag}"
+    if out.exists():
+        shutil.rmtree(out)
+    script = (HEAD_WT + "/scripts/render-yaw-crossing-metric.py" if scale == "1x"
+              else "C:/msys64/tmp/p5138/cross2x.py")
+    extra = [] if switch == "unset" else ["--env", f"IR_PERAXIS_SURFACE_LIGHTING={switch}"]
+    r = subprocess.run([PY, script, "capture",
+                        "--output", str(out), "--cardinal-deg", card, "--timeout", "3000",
+                        *extra],
+                       capture_output=True, text=True, cwd=HEAD_WT, env=env_for(wt),
+                       stdin=subprocess.DEVNULL, timeout=16000)
+    (OUT / f"c3_{arm}_{card}{tag}.txt").write_text(r.stdout + r.stderr, encoding="utf-8")
+    print(r.stdout[-2500:], r.stderr[-800:], "rc", r.returncode)
+    if (out / "yaw_+0.png").exists():
+        print("IHDR", ihdr(out / "yaw_+0.png"))
+
+
+def c2(arm, wt, which, tag, only=None):
+    import time
+    out = OUT / f"c2_{arm}_{which}_{tag}" / f"run{int(time.time())}"
+    out.mkdir(parents=True, exist_ok=True)
+    extra = {} if tag == "unset" else {"IR_PERAXIS_SURFACE_LIGHTING": tag}
+    results = {"sha": head(wt), "arm": arm, "switch": tag, "cases": {}}
+    for yaw in YAWS[which]:
+        if only and yaw not in only.split(","):
+            continue
+        folder = out / f"yaw{yaw}"
+        if folder.exists():
+            n = 0
+            while (out / f"stale{n}-yaw{yaw}").exists():
+                n += 1
+            folder.rename(out / f"stale{n}-yaw{yaw}")
+        folder.mkdir()
+        cfg = folder / "config.lua"
+        cfg.write_text('config={window_mode="offscreen",profiling_enabled=false,'
+                       'gpu_stage_timing=false,init_window_width=2560,init_window_height=1440,'
+                       'game_resolution_width=1280,game_resolution_height=720,'
+                       'screenshot_output_dir=' + json.dumps(str(folder).replace("\\", "/")) + '}\n',
+                       encoding="utf-8")
+        cmd = ("fleet-heartbeat pool-7; fleet-run --timeout 3000 IRCanvasStress --config-preset "
+               + str(cfg).replace("\\", "/") + " " + " ".join(COMMON) + " --yaw " + yaw)
+        for attempt in range(8):
+            rc = bash(cmd, wt, env_for(wt, extra), folder / "run.log", 3200)
+            text = (folder / "run.log").read_text(encoding="utf-8", errors="replace")
+            if not any("RESULT=LOCK-FAILED" in l for l in text.strip().splitlines()[-3:]):
+                break
+            print(f"  lock-failed attempt {attempt}, retrying", flush=True)
+        attached = [l.strip() for l in text.splitlines() if "screen target attached" in l]
+        verdict = [l.strip()[:60] for l in text.splitlines() if "RESULT=" in l]
+        frames = sorted(p for p in folder.glob("screenshot_*.png") if "crop" not in p.name)
+        case = {"rc": rc, "verdict": verdict[-1:] , "attached": attached[-1:],
+                "frames": [p.name for p in frames]}
+        if len(frames) == 1:
+            case["ihdr"] = ihdr(frames[0])
+            case["sha256"] = hashlib.sha256(frames[0].read_bytes()).hexdigest()
+            g = subprocess.run([PY, ORACLE_WT + "/scripts/render_receiver_shadow_polygon.py",
+                                str(frames[0]), "--yaw", yaw], capture_output=True, text=True,
+                               cwd=ORACLE_WT, env={**os.environ, "PYTHONPATH": PILSHIM})
+            (folder / "oracle.json").write_text(g.stdout + g.stderr, encoding="utf-8")
+            case["oracle_rc"] = g.returncode
+            try:
+                res = json.loads(g.stdout)
+                case["passed"] = res.get("passed")
+                case["coverage_valid"] = res.get("coverage_valid")
+                case["counts"] = res.get("counts")
+            except ValueError:
+                case["oracle_err"] = (g.stdout + g.stderr)[-400:]
+        results["cases"][yaw] = case
+        print(arm, which, tag, yaw, json.dumps(case), flush=True)
+    (out / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+
+
+def c4(arm, wt):
+    out = OUT / f"c4_{arm}.log"
+    rc = bash("fleet-run --timeout 600 IrredenEngineTest --gtest_filter='PerAxisSurfaceLighting*'",
+              wt, env_for(wt), out, 900)
+    lines = out.read_text(encoding="utf-8", errors="replace").splitlines()
+    print("\n".join(l for l in lines if "[  " in l or "PASSED" in l or "FAILED" in l
+                    or "RESULT=" in l)[-4000:])
+    print("rc", rc)
+
+
+if __name__ == "__main__":
+    a = sys.argv[1:]
+    arm, step = a[0], a[1]
+    wt = ARMS[arm]
+    OUT.mkdir(parents=True, exist_ok=True)
+    print("arm", arm, head(wt), flush=True)
+    if step == "c1":
+        c1(arm, wt)
+    elif step == "c3":
+        c3(arm, wt, a[2], *a[3:5])
+    elif step == "c2":
+        c2(arm, wt, a[2], a[3], *a[4:5])
+    elif step == "c4":
+        c4(arm, wt)
+    else:
+        sys.exit(__doc__)

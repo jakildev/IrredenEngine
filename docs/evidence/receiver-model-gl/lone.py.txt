@@ -1,0 +1,23 @@
+"""Per kept crossing dir: pixels where the cardinal frame differs from both
+neighbours while the neighbours agree (a lone cardinal frame), over the
+receiver-top region. usage: lone.py <dir> <cardinal_deg> [...]"""
+import importlib.util
+import sys
+
+sys.path.insert(0, "C:/msys64/tmp/p5138/head/scripts")
+spec = importlib.util.spec_from_file_location(
+    "cm", "C:/msys64/tmp/p5138/head/scripts/render-yaw-crossing-metric.py")
+cm = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cm)
+
+args = sys.argv[1:]
+for d, card in zip(args[::2], args[1::2]):
+    card = float(card)
+    frames = cm.kept_frames(cm.Path(d))
+    imgs = {o: cm.util.read_png(str(frames[o])) for o in cm.OFFSETS}
+    yaws = [cm.yaw_radians(card, cm.DEFAULT_STEP_DEG, o) for o in cm.OFFSETS]
+    spans = cm.common_spans(yaws, imgs[0][:2])
+    c = {o: cm.classify(imgs[o], spans) for o in cm.OFFSETS}
+    lone = sum(1 for a, b, n in zip(c[-1], c[0], c[1]) if a and b and n and a == n and b != a)
+    lone_rot = sum(1 for a, b, n in zip(c[0], c[1], c[2]) if a and b and n and a == n and b != a)
+    print(f"{d.split('/')[-1]}: lone cardinal px {lone}, lone +0.25 px {lone_rot}")

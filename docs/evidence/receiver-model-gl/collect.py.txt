@@ -1,0 +1,112 @@
+"""Collect #5138 readings from C:/msys64/tmp/p5138/out into one results.json."""
+import glob
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+
+OUT = "C:/msys64/tmp/p5138/out"
+SHAS = {"head": "aa3fd7ac85a46e7ad68ba1176288ea54fce99acb",
+        "parent": "e230a0d2fad0aaadfe75523533197777c2b8a0a5"}
+OVERLAY = "f4ac60d932c436f2860525e949eb3c84dac145a7"
+
+
+def sha(p):
+    return hashlib.sha256(open(p, "rb").read()).hexdigest()
+
+
+def last_json(text):
+    for line in reversed(text.splitlines()):
+        line = line.strip()
+        if line.startswith("{"):
+            return json.loads(line)
+    return None
+
+
+res = {
+    "host": "Windows 10 Pro 10.0.19045, MSYS2 mingw64, windows-debug preset",
+    "gpu": "NVIDIA GeForce RTX 3060 Ti, driver 32.0.15.8180, OpenGL",
+    "arms": SHAS,
+    "criterion_1": {}, "criterion_2": {}, "criterion_3": {}, "criterion_4": {},
+}
+
+for arm in ("head", "parent"):
+    m = json.loads(open(f"{OUT}/c1_{arm}/metric.txt").read().strip().splitlines()[0])
+    res["criterion_1"][arm] = {
+        "command": "fleet-run IRShapeDebug --spin-yaw --zoom 16 --auto-screenshot 720; "
+                   "python3 scripts/render-yaw-lone-frame-metric.py <shots> --yaws 0,90,180,270 "
+                   "--max-ratio 1.3",
+        "size": m["size"], "pass": m["pass"],
+        "ratios": {str(int(r["yaw"])): r["ratio"] for r in m["rows"]},
+        "row_pass": {str(int(r["yaw"])): r["pass"] for r in m["rows"]},
+    }
+
+for f in sorted(glob.glob(f"{OUT}/c3_*.txt")):
+    key = os.path.basename(f)[3:-4]
+    arm, card, *rest = key.split("_")
+    g = last_json(open(f, encoding="utf-8").read())
+    if g is None or "pairs" not in g:
+        continue
+    variant = "_".join(rest) or "1x_unset"
+    p = g["pairs"]
+    frames = {}
+    for o in ("-2", "-1", "+0", "+1", "+2"):
+        png = f"{OUT}/c3_{key}/yaw_{o}.png"
+        if os.path.exists(png):
+            frames[o] = sha(png)
+    lone = subprocess.run([sys.executable, "C:/msys64/tmp/p5138/lone.py", f"{OUT}/c3_{key}", card],
+                          capture_output=True, text=True).stdout
+    lone_px = int(re.search(r"lone cardinal px (\d+)", lone).group(1))
+    res["criterion_3"].setdefault(variant, {}).setdefault(arm, {})[card] = {
+        "lone_cardinal_px": lone_px,
+        "size": g["size"], "output_scale": g["output_scale"],
+        "pairs_px": [p["rotated_before"]["differing_px"], p["cardinal_before"]["differing_px"],
+                     p["cardinal_after"]["differing_px"], p["rotated_after"]["differing_px"]],
+        "shadow_px": g["shadow_px"], "coverage_valid": g["coverage_valid"],
+        "result": "PASS" if g["pass"] else "FAIL", "frame_sha256": frames,
+    }
+
+for d in sorted(glob.glob(f"{OUT}/c2_*_*_*")):
+    _, arm, which, tag = os.path.basename(d).split("_")
+    cases = {}
+    for log in sorted(glob.glob(f"{d}/**/yaw*/oracle.json", recursive=True)):
+        folder = os.path.dirname(log)
+        yaw = os.path.basename(folder)[3:]
+        if "stale" in folder:
+            continue
+        try:
+            o = json.loads(open(log).read())
+        except ValueError:
+            continue
+        frame = [p for p in glob.glob(f"{folder}/screenshot_*.png") if "crop" not in p][0]
+        runlog = open(f"{folder}/run.log", encoding="utf-8", errors="replace").read()
+        attached = re.findall(r"offscreen screen target attached \((\d+x\d+)\)", runlog)
+        with open(frame, "rb") as fh:
+            head = fh.read(24)
+        cases[yaw] = {
+            "passed": o["passed"], "coverage_valid": o["coverage_valid"],
+            "missing": o["counts"]["missing"], "excess": o["counts"]["excess"],
+            "unknown": o["counts"]["unknown"], "eligible": o["counts"]["eligible"],
+            "ihdr": [int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")],
+            "target_attached": attached[-1] if attached else None,
+            "run_result": "CLEAN" if "RESULT=CLEAN" in runlog else "?",
+            "frame_sha256": sha(frame),
+        }
+    if cases:
+        res["criterion_2"].setdefault(arm, {})[f"{which}_switch_{tag}"] = cases
+
+log = open(f"{OUT}/c4_head.log", encoding="utf-8", errors="replace").read()
+res["criterion_4"] = {
+    "command": "fleet-run IrredenEngineTest --gtest_filter='PerAxisSurfaceLighting*'",
+    "tests": re.findall(r"\[       OK \] (\S+)", log),
+    "summary": re.findall(r"\[  PASSED  \] .*", log)[-1:],
+}
+res["criterion_2_overlay"] = {
+    "commit": OVERLAY,
+    "paths": ["engine/window", "engine/render/src/opengl/opengl_render_impl.cpp",
+              "creations/demos/shape_debug/main.cpp"],
+}
+json.dump(res, open(sys.argv[1], "w", encoding="utf-8", newline="\n"), indent=2)
+print(json.dumps({k: (list(v) if isinstance(v, dict) else v) for k, v in res.items()}, indent=1))
