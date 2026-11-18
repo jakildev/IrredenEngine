@@ -54,20 +54,6 @@ class OpenGLRenderDevice final : public RenderDevice {
         };
     }
 
-    // Frame ends are the per-frame fence queries' own GPU timestamps, so the
-    // probe adds no query and no wait. Frames presented before arming are
-    // still queued and are never reported.
-    void setGpuFrameTimingEnabled(bool enabled) override {
-        RenderDevice::setGpuFrameTimingEnabled(enabled);
-        m_frameCompletions.reset(enabled, FrameEndEvent::GPU_COMPLETE);
-        m_firstProbedSerial = m_submissions.submissionSerial();
-    }
-
-    void setMaxFramesInFlight(std::uint32_t maxFramesInFlight) override {
-        m_maxFramesInFlight =
-            IRMath::min<std::size_t>(maxFramesInFlight, detail::kMaxSelectableSubmissionsInFlight);
-    }
-
     void beginFrame() override {}
 
     void present() override {
@@ -354,6 +340,20 @@ class OpenGLRenderDevice final : public RenderDevice {
             static_cast<GLintptr>(destinationOffset),
             static_cast<GLsizeiptr>(sizeBytes)
         );
+    }
+
+    // Frame ends are the per-frame fence queries' own GPU timestamps, so the
+    // probe adds no query and no wait. Frames presented before arming are
+    // still queued and are never reported.
+    void setGpuFrameTimingEnabled(bool enabled) override {
+        RenderDevice::setGpuFrameTimingEnabled(enabled);
+        m_frameCompletions.reset(enabled, FrameEndEvent::GPU_COMPLETE);
+        m_firstProbedSerial = m_submissions.submissionSerial();
+    }
+
+    void setMaxFramesInFlight(std::uint32_t maxFramesInFlight) override {
+        m_maxFramesInFlight =
+            IRMath::min<std::size_t>(maxFramesInFlight, detail::kMaxSelectableSubmissionsInFlight);
     }
 
     void finish() override {
