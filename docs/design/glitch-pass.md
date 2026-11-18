@@ -144,6 +144,28 @@ the clip then holds the raw composite while the screen glitches, and every
 recording start logs that at WARN level so a clip that differs from the
 screen is never a quiet surprise.
 
+A capture reads the image of the render it runs in. `VideoManager::render`
+runs after the RENDER pipeline and before `present()`, and what that takes
+differs by backend:
+
+- **Metal.** The frame's draws are still in a command buffer that only
+  `present()` commits, and a texture read returns storage without waiting. The
+  capture and the canvas screenshot therefore read through `readFrameImage`
+  (`engine/video/src/metal/video_backend.cpp`), which calls
+  `RenderDevice::finish()` first. A read without it returns the last completed
+  contents of whichever image is the source: the previous render's composite,
+  or, on the tick the pass turns on, the output of the last tick it drew.
+- **OpenGL.** The copy into a pixel buffer runs in command order, so each
+  buffer holds its own render. The recorder maps a buffer two captures after
+  filling it: encoded frame j is the j-th captured render, and the two
+  captures still in the ring when a recording stops are not encoded.
+
+`IRShapeDebug --recorder-frame-probe --auto-record <N>` is the executor: it
+numbers every render's picture, switches the pass off and on every four
+renders, and checks each frame handed to the encoder against the render it
+belongs to, across both kinds of edge. It reads frames through
+`IRVideo::setEncodedFrameObserver`.
+
 ## Cost
 
 The pass draws its output image, so it shades the game-resolution pixel count

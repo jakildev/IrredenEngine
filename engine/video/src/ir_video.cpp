@@ -3,6 +3,8 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/video/video_manager.hpp>
 
+#include <utility>
+
 namespace IRVideo {
 
 VideoManager *g_videoManager = nullptr;
@@ -61,6 +63,10 @@ RecordingState recordingState() {
 
 bool isAudioInputArmed() {
     return getVideoManager().isAudioInputArmed();
+}
+
+void setEncodedFrameObserver(EncodedFrameObserver observer) {
+    getVideoManager().setEncodedFrameObserver(std::move(observer));
 }
 
 std::int64_t capturedUpdateTicks() {

@@ -60,6 +60,8 @@ class VideoManager {
     /// from the screen.
     void configureCapturePostEffects(bool enabled);
     void configureScreenshotOutputDir(const std::string &outputDirPath);
+    /// Replaces the observer of encoded frames; an empty function removes it.
+    void setEncodedFrameObserver(EncodedFrameObserver observer);
 
     void toggleRecording();
     void requestScreenshot();
@@ -130,6 +132,7 @@ class VideoManager {
     int m_pboPrimingFrames = 0;
     std::vector<unsigned int> m_readbackPbos;
     std::vector<std::uint8_t> m_rawFrameBuffer;
+    EncodedFrameObserver m_encodedFrameObserver;
     std::atomic<bool> m_finalizeInProgress = false;
     std::thread m_finalizeThread;
     std::mutex m_recorderMutex;

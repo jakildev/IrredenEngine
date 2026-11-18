@@ -23,6 +23,7 @@
 #include "glitch_fixture.hpp"
 #include "glitch_subject_fixture.hpp"
 #include "post_effects_fixture.hpp"
+#include "recorder_frame_fixture.hpp"
 #include "lod_scene.hpp"
 #include "sdf_voxel_scene.hpp"
 
@@ -688,6 +689,9 @@ constexpr IRVideo::AutoScreenshotShot kCanvasImageSampleShots[] = {
 // text paints over it. Over the cube's corner, a crop and a tinted copy at the
 // FRONT depth, the later call on top where they meet, under FRONT canvas text.
 bool g_framebufferImageSample = false;
+// --recorder-frame-probe: see recorder_frame_fixture.hpp.
+bool g_recorderFrameProbe = false;
+IRShapeDebug::RecorderFrameFixture g_recorderFrame;
 constexpr const char *kFramebufferImageLayerName = "framebufferImageSample";
 constexpr const char *kFramebufferImageDetailPath = "data/shape_debug/framebuffer_image_sample.png";
 constexpr int kFramebufferImageCubeSize = 40;
@@ -1900,6 +1904,11 @@ void registerCliArgs() {
         ""
     );
     args.flag(
+        "--recorder-frame-probe",
+        "With --auto-record <N>: number every render's picture, pulse the framebuffer glitch "
+        "pass, and check that each recorded frame holds its own render (exit 0 PASS / 2 FAIL)"
+    );
+    args.flag(
         "--framebuffer-image-sample",
         "Replace the scene + capture table with images drawn into the main framebuffer per "
         "framebuffer pixel: a fine-detail probe beside its canvas-draw copy, a mosaic, a "
@@ -1977,6 +1986,7 @@ void readCliArgs() {
     g_canvasImageSample = args.getFlag("--canvas-image-sample");
     g_canvasImagePan = args.getFlag("--canvas-image-pan");
     g_framebufferImageSample = args.getFlag("--framebuffer-image-sample");
+    g_recorderFrameProbe = args.getFlag("--recorder-frame-probe");
     if (args.wasProvided("--canvas-image-file")) {
         g_canvasImagePath = args.getString("--canvas-image-file");
     }
@@ -2261,6 +2271,9 @@ int main(int argc, char **argv) {
     initGlitchFixture();
     initGlitchSubjectFixture();
     initPostEffectsFixture();
+    if (g_recorderFrameProbe) {
+        g_recorderFrame.init(g_autoRecordFrames);
+    }
     // After initEntities: the tint setters re-apply over the shapes it created.
     registerDemoSettings();
     if (g_zoomContinuous) {
@@ -2321,6 +2334,12 @@ int main(int argc, char **argv) {
         IRPrefab::Camera::setYaw(LateCameraWrite::kBaseYaw);
     }
     IREngine::gameLoop();
+    if (g_recorderFrameProbe) {
+        if (!g_recorderFrame.verdictLogged_) {
+            g_recorderFrame.logVerdict();
+        }
+        return g_recorderFrame.passed() ? 0 : 2;
+    }
     if (g_lateCameraWriteTest)
         return lateCameraWritePassed() ? 0 : 2;
     if (g_rotationPickMode != RotationPickMode::OFF && g_rotationPickMode != RotationPickMode::GUI)
@@ -4687,7 +4706,20 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::VIEWPORT_TO_FRAMEBUFFER>()
         );
     }
-    if (g_glitchMode != IRShapeDebug::GlitchFixture::Mode::NONE) {
+    if (g_recorderFrameProbe) {
+        renderPipeline.insert(
+            std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId),
+            {
+                IRSystem::createSystem<IRComponents::C_CanvasDrawLayer>(
+                    "ShapeDebugRecorderFrameProbe",
+                    [](const IRComponents::C_CanvasDrawLayer &) {},
+                    []() { g_recorderFrame.queueFrame(); }
+                ),
+                IRSystem::createSystem<IRSystem::CANVAS_DRAW>(),
+            }
+        );
+    }
+    if (g_glitchMode != IRShapeDebug::GlitchFixture::Mode::NONE || g_recorderFrameProbe) {
         renderPipeline.insert(
             std::find(
                 renderPipeline.begin(),

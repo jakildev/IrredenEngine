@@ -19,7 +19,7 @@ functions:
 - `startRecording()` / `stopRecording()` / `toggleRecording()`.
 - `recordFrame()` — called every render frame by the
   `RECORD_FRAME` system; no-op if recording isn't armed.
-- `configureScreenshotOutputDir(path)`.
+- `configureScreenshotOutputDir(path)`; `setEncodedFrameObserver(fn)` (each frame handed to the encoder).
 - `notifyFixedUpdate()` — called by the UPDATE pipeline to keep
   audio/video sync.
 
@@ -28,9 +28,9 @@ functions:
 - **`VideoRecorder`** — FFmpeg state machine (libavcodec, libavformat,
   libavutil, libswscale). Opens a format context, encodes frames, muxes
   with optional audio, finalizes on async thread.
-- **PBO readback infrastructure** — double-buffered Pixel Buffer Objects
-  for async GPU → CPU frame copies. Priming skips the first few frames so
-  the PBO ring is valid.
+- **Frame readback** — a capture reads the render it runs in. OpenGL copies
+  through a three-PBO ring mapped two captures later; Metal must `finish()`
+  first (`readFrameImage`): `present()` commits the frame after the capture.
 - **Screenshot numbering** — seeded by scanning the output dir for
   existing files, so numbers don't collide across runs.
 - **Audio arming** — delegates to `IRAudio::Audio` (or an external
@@ -191,8 +191,8 @@ per run with `--config-preset <file>` (its `config = { … }` overlays
 
 - **FFmpeg missing → silent.** `IR_VIDEO_HAS_FFMPEG=0` makes
   `startRecording()` a no-op. Check build logs if recording "doesn't work".
-- **PBO priming.** First 2+ frames of a recording are dropped to fill the
-  PBO ring. Starting/stopping rapidly truncates short clips.
+- **PBO priming (OpenGL).** A frame is encoded two captures after it is
+  read, so a take's last two captures are not: short clips come out shorter.
 - **Finalize-thread races.** Don't call `toggleRecording()` while the
   finalize thread is still joining — locks are there, but you can still
   deadlock if the main thread is holding the recorder mutex.
