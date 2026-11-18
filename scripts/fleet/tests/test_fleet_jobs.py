@@ -555,6 +555,22 @@ class DisplayHold(JobsCase):
         self.assertIn("the online display stayed asleep", final["reason"])
         self.assertTrue(wait_gone(self.holder(job)))
 
+    def test_sandbox_denial_fails_the_job_before_the_wake_or_verifier(self):
+        self.extra_env["FLEET_DISPLAY_SANDBOX"] = "denied"
+        started = self.jobs(["start", "render-verify", "--", "--target", "IRAnalyticOracle"])
+        self.assertEqual(started.returncode, 69, started.stderr)
+        self.assertIn("not started: display unreachable: the launching process runs inside "
+                      "a sandbox", started.stderr)
+        [job_dir] = self.job_dirs()
+        waited = self.jobs(["wait", job_dir.name])
+        self.assertEqual(waited.returncode, 69, waited.stderr)
+        self.assertFalse(self.record.exists(), "the verifier ran inside the sandbox")
+        self.assertEqual((self.display.invocations(), self.display.probes()), ([], 0))
+        self.assertIn("[fleet-jobs] ENV-FAIL: display unreachable:", waited.stdout)
+        final = self.status(job_dir.name)
+        self.assertEqual((final["status"], final["exit_code"]), ("failed", 69))
+        self.assertIn("fleet-jobs start render-verify|light-verify|gui-verify", final["reason"])
+
     def test_no_caffeinate_off_macos_or_for_a_build(self):
         build = self.start(["build", "--", "plain"])
         self.assertEqual(self.jobs(["wait", "--quiet", build]).returncode, 0)

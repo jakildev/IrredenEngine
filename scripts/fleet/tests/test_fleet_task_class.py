@@ -759,6 +759,18 @@ class DispatchTargets(HostSeamCase):
                 self.assertEqual(fleet_task_class.decline_reason_class(reason),
                                  "substantive")
 
+    def test_sandboxed_display_stop_reads_as_sandbox(self):
+        import fleet_display_session
+        failure = fleet_display_session.hold_display(
+            os.getpid(), env={"FLEET_DISPLAY_PLATFORM": "darwin",
+                              "FLEET_DISPLAY_SANDBOX": "denied",
+                              "FLEET_DISPLAY_PROBE": "false",
+                              "FLEET_DISPLAY_CAFFEINATE": "/nonexistent/caffeinate"}).failure
+        for reason in (f"ENV-FAIL: {failure}", f"not started: {failure}",
+                       f"ir-run: {failure}"):
+            with self.subTest(reason=reason):
+                self.assertEqual(fleet_task_class.decline_reason_class(reason), "sandbox")
+
     def test_decline_reason_classes_use_transient_ttl_and_runtime_scope(self):
         reasons = {
             "host": (
