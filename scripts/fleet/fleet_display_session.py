@@ -11,20 +11,29 @@ when the owner is SIGKILLed. ``HOLDER_ENV`` carries the holder's pid to the
 owner's children, so a nested owner reuses the hold instead of starting a
 second one.
 
+A process inside a Seatbelt sandbox that denies the WindowServer lookup (a
+Codex shell command that missed its allow rule) cannot reach any display, so
+the helper refuses it first: before the wake, the holder and the probe, which
+aborts there.
+
 CLI (for ir-run):
   fleet_display_session.py hold --owner-pid PID [--prefix TEXT]
     exit 0  ready; stdout is the new holder's pid, empty when an inherited
             hold or a non-macOS host made one unnecessary
     exit 69 not ready; stderr names the one condition that stayed unmet
+            and ends with the failure line
 
 Test seams (environment):
   FLEET_DISPLAY_PLATFORM      replaces sys.platform
+  FLEET_DISPLAY_SANDBOX       replaces the kernel query: "denied", "allowed",
+                              or "error" (the query could not answer)
   FLEET_DISPLAY_CAFFEINATE    the caffeinate executable
   FLEET_DISPLAY_PROBE         command printing "<online> <awake> <NSScreen>"
   FLEET_DISPLAY_WAKE_TIMEOUT  seconds to wait for readiness (default 15)
 """
 
 import argparse
+import ctypes
 import os
 import shlex
 import subprocess
@@ -41,6 +50,8 @@ DEFAULT_WAKE_TIMEOUT = 15.0
 POLL = 0.25
 PROBE_TIMEOUT = 10
 CAFFEINATE = "/usr/bin/caffeinate"
+WINDOWSERVER_SERVICE = b"com.apple.windowserver.active"
+SANDBOX_FILTER_GLOBAL_NAME = 2
 # Each is a host state the tooling cannot change; the message names it
 # without guessing the physical cause (closed lid, lock, sign-out, unplug).
 CONDITIONS = {
@@ -48,11 +59,54 @@ CONDITIONS = {
     "asleep": "the online display stayed asleep",
     "no-aqua": "an awake CoreGraphics display but no Aqua NSScreen",
     "probe-failed": "the CoreGraphics/AppKit display probe failed",
+    "sandboxed": "the launching process runs inside a sandbox that denies the "
+                 "WindowServer lookup (mach-lookup com.apple.windowserver.active)",
+}
+# What the agent that hit the condition can do about it.
+REMEDIES = {
+    "sandboxed": "launch the command bare and allow-listed (no redirection, compound "
+                 "statement, subshell, `cd ... &&`, or env/VAR= prefix), or as `fleet-jobs "
+                 "start render-verify|light-verify|gui-verify` (docs/agents/CODEX.md "
+                 "\"Capability qualification\")",
 }
 
 
 def platform_name(env=os.environ):
     return env.get("FLEET_DISPLAY_PLATFORM") or sys.platform
+
+
+def _sandbox_check(*args):
+    """libSystem's sandbox_check(pid, operation, filter, ...): 1 denied, 0 allowed, -1 error.
+
+    None when the symbol cannot be loaded. The function is variadic: the fixed
+    argtypes cover pid, operation and filter, and a filter argument rides as
+    the extra (variadic) argument.
+    """
+    try:
+        check = ctypes.CDLL("/usr/lib/libSystem.B.dylib").sandbox_check
+    except (OSError, AttributeError):
+        return None
+    check.restype = ctypes.c_int
+    check.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+    return check(os.getpid(), *args)
+
+
+def in_any_sandbox():
+    """True when this process runs under any Seatbelt profile (macOS only)."""
+    return _sandbox_check(None, 0) == 1
+
+
+def windowserver_denied(env=os.environ):
+    """True only when this process's sandbox denies the WindowServer lookup.
+
+    A query that errors or cannot load counts as not denied, so the launch
+    falls through to the wake and probe path.
+    """
+    seam = env.get("FLEET_DISPLAY_SANDBOX")
+    if seam:
+        return seam == "denied"
+    return _sandbox_check(b"mach-lookup", SANDBOX_FILTER_GLOBAL_NAME,
+                          ctypes.c_char_p(WINDOWSERVER_SERVICE)) == 1
 
 
 def condition(counts):
@@ -124,7 +178,9 @@ class Hold:
 
     @property
     def failure(self):
-        return f"{self.lines[-1]}; the engine would discover 0 display monitors"
+        text = f"{self.lines[-1]}; the engine would discover 0 display monitors"
+        remedy = REMEDIES.get(self.condition)
+        return f"{text} — {remedy}" if remedy else text
 
     def release(self):
         """End the hold this call started; an inherited hold is the caller's."""
@@ -152,6 +208,8 @@ def hold_display(owner_pid, env=os.environ, clock=time.monotonic, sleep=time.sle
     """
     if platform_name(env) != "darwin":
         return Hold(True, "ok")
+    if windowserver_denied(env):
+        return Hold(False, "sandboxed", [f"display unreachable: {CONDITIONS['sandboxed']}"])
     inherited = inherited_holder(env)
     state, counts, error = _probe(env)
     if inherited is not None:
@@ -200,12 +258,14 @@ def main(argv=None):
     hold.add_argument("--prefix", default="")
     args = parser.parse_args(argv)
     result = hold_display(args.owner_pid)
-    for line in result.lines:
-        print(f"{args.prefix}{line}", file=sys.stderr)
     if not result.blocks_launch:
+        for line in result.lines:
+            print(f"{args.prefix}{line}", file=sys.stderr)
         print(result.holder_pid or "")
         return 0
     result.release()
+    for line in [*result.lines[:-1], result.failure]:
+        print(f"{args.prefix}{line}", file=sys.stderr)
     return EXIT_ENV_FAIL
 
 

@@ -32,8 +32,9 @@ Profiles are fixed; there is no executable, path, or shell-string form.
 A pane runs one display verifier (render-verify, light-verify, gui-verify)
 at a time, and that job's log opens with the displays its session can reach.
 On macOS the supervisor then wakes the display and holds it awake until the
-job has drained; a display it cannot make ready fails the job with exit 69
-before the verifier starts (start exits 69 too), naming the unmet condition.
+job has drained; a display it cannot make ready, or a supervisor started
+inside a sandbox that denies the WindowServer lookup, fails the job with exit
+69 before the verifier starts (start exits 69 too), naming the unmet condition.
 
 wait streams the job log and exits with the child's exit code; a job that is
 still running when --timeout elapses exits 124, a lost job exits 1, and a
