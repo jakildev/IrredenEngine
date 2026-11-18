@@ -119,27 +119,37 @@ MTL::IndexType toMetalIndexType(IndexType indexType) {
     return MTL::IndexTypeUInt16;
 }
 
-void bindRenderResources(MTL::RenderCommandEncoder *encoder) {
+// Uniform and storage bindings share a slot index; a storage binding wins.
+// Vertex slot 0 holds the vertex layout's buffer instead.
+void bindRenderResources(MTL::RenderCommandEncoder *encoder, MTL::Buffer *vertexBuffer) {
+    static_assert(MetalRenderPassBindings::kSlots == kMaxMetalBindings);
+    auto &bound = metalRenderPassBindings();
     for (std::uint32_t i = 0; i < kMaxMetalBindings; ++i) {
         const auto &uniform = boundMetalBuffer(BufferTarget::UNIFORM, i);
-        if (uniform.buffer_ != nullptr) {
-            encoder->setVertexBuffer(uniform.buffer_, uniform.offset_, i);
-            encoder->setFragmentBuffer(uniform.buffer_, uniform.offset_, i);
-            markMetalBufferEncoded(uniform.buffer_);
-        }
-
         const auto &storage = boundMetalBuffer(BufferTarget::SHADER_STORAGE, i);
-        if (storage.buffer_ != nullptr) {
-            encoder->setVertexBuffer(storage.buffer_, storage.offset_, i);
-            encoder->setFragmentBuffer(storage.buffer_, storage.offset_, i);
-            markMetalBufferEncoded(storage.buffer_);
+        markMetalBufferEncoded(uniform.buffer_);
+        markMetalBufferEncoded(storage.buffer_);
+        const MetalBufferBinding buffer = storage.buffer_ != nullptr   ? storage
+                                          : uniform.buffer_ != nullptr ? uniform
+                                                                       : MetalBufferBinding{};
+        const MetalBufferBinding vertex = i == 0 ? MetalBufferBinding{vertexBuffer, 0} : buffer;
+        if (bound.vertexBuffers_[i] != vertex) {
+            encoder->setVertexBuffer(vertex.buffer_, vertex.offset_, i);
+            bound.vertexBuffers_[i] = vertex;
+        }
+        if (bound.fragmentBuffers_[i] != buffer) {
+            encoder->setFragmentBuffer(buffer.buffer_, buffer.offset_, i);
+            bound.fragmentBuffers_[i] = buffer;
         }
 
-        if (MTL::Texture *texture = boundMetalTexture(i); texture != nullptr) {
+        MTL::Texture *texture = boundMetalTexture(i);
+        if (bound.textures_[i] != texture) {
             encoder->setVertexTexture(texture, i);
             encoder->setFragmentTexture(texture, i);
+            bound.textures_[i] = texture;
         }
     }
+    markMetalBufferEncoded(vertexBuffer);
 }
 
 void bindComputeResources(MTL::ComputeCommandEncoder *encoder) {
@@ -727,9 +737,7 @@ class MetalRenderDevice final : public RenderDevice {
         if (metalCurrentDepthTexture() != nullptr) {
             encoder->setDepthStencilState(currentMetalDepthStencilState());
         }
-        bindRenderResources(encoder);
-        encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
-        markMetalBufferEncoded(layout.vertexBuffer_);
+        bindRenderResources(encoder, layout.vertexBuffer_);
         markMetalBufferEncoded(layout.indexBuffer_);
         encoder->drawIndexedPrimitives(
             toMetalPrimitiveType(drawMode),
@@ -765,9 +773,7 @@ class MetalRenderDevice final : public RenderDevice {
         if (metalCurrentDepthTexture() != nullptr) {
             encoder->setDepthStencilState(currentMetalDepthStencilState());
         }
-        bindRenderResources(encoder);
-        encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
-        markMetalBufferEncoded(layout.vertexBuffer_);
+        bindRenderResources(encoder, layout.vertexBuffer_);
         markMetalBufferEncoded(layout.indexBuffer_);
         encoder->drawIndexedPrimitives(
             toMetalPrimitiveType(drawMode),
@@ -813,9 +819,7 @@ class MetalRenderDevice final : public RenderDevice {
         if (metalCurrentDepthTexture() != nullptr) {
             encoder->setDepthStencilState(currentMetalDepthStencilState());
         }
-        bindRenderResources(encoder);
-        encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
-        markMetalBufferEncoded(layout.vertexBuffer_);
+        bindRenderResources(encoder, layout.vertexBuffer_);
         markMetalBufferEncoded(layout.indexBuffer_);
         markMetalBufferEncoded(mtlIndirect);
         // Index/instance counts come from the GPU-written indirect args; the
@@ -888,9 +892,7 @@ class MetalRenderDevice final : public RenderDevice {
         if (metalCurrentDepthTexture() != nullptr) {
             encoder->setDepthStencilState(currentMetalDepthStencilState());
         }
-        bindRenderResources(encoder);
-        encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
-        markMetalBufferEncoded(layout.vertexBuffer_);
+        bindRenderResources(encoder, layout.vertexBuffer_);
         encoder->drawPrimitives(
             toMetalPrimitiveType(drawMode),
             static_cast<NS::UInteger>(first),
@@ -925,9 +927,7 @@ class MetalRenderDevice final : public RenderDevice {
         if (metalCurrentDepthTexture() != nullptr) {
             encoder->setDepthStencilState(currentMetalDepthStencilState());
         }
-        bindRenderResources(encoder);
-        encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
-        markMetalBufferEncoded(layout.vertexBuffer_);
+        bindRenderResources(encoder, layout.vertexBuffer_);
         encoder->drawPrimitives(
             toMetalPrimitiveType(drawMode),
             static_cast<NS::UInteger>(first),

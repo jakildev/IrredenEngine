@@ -61,6 +61,7 @@ struct MetalRuntimeState {
     // Retained while open; endMetalRenderPass ends and releases it.
     MTL::RenderCommandEncoder *openRenderEncoder_ = nullptr;
     MetalRenderPassAttachments openRenderAttachments_{};
+    MetalRenderPassBindings openRenderBindings_{};
     RenderPassStats renderPassStats_;
 
     // The one MTL::Texture * here that untrackMetalTexture does NOT scrub: the
@@ -549,10 +550,15 @@ void endMetalRenderPass() {
     runtime.openRenderEncoder_->release();
     runtime.openRenderEncoder_ = nullptr;
     runtime.openRenderAttachments_ = {};
+    runtime.openRenderBindings_ = {};
 }
 
 bool metalRenderPassOpen() {
     return g_runtime().openRenderEncoder_ != nullptr;
+}
+
+MetalRenderPassBindings &metalRenderPassBindings() {
+    return g_runtime().openRenderBindings_;
 }
 
 bool metalRenderPassAttaches(MTL::Texture *texture) {

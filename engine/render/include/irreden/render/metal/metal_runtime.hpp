@@ -97,6 +97,8 @@ class MetalPipelineStateProvider {
 struct MetalBufferBinding {
     MTL::Buffer *buffer_ = nullptr;
     NS::UInteger offset_ = 0;
+
+    bool operator==(const MetalBufferBinding &) const = default;
 };
 
 struct MetalVertexLayoutBinding {
@@ -244,6 +246,19 @@ void beginMetalRenderPass(
 );
 void endMetalRenderPass();
 bool metalRenderPassOpen();
+// What the open pass's encoder holds at each slot; all empty while no pass is
+// open. A shared encoder keeps every binding an earlier draw set, so a draw
+// sets each slot whose value differs from this record, nil included, leaving
+// the encoder as a fresh one bound for that draw alone. Comparing raw pointers
+// is sound: the command buffer retains everything its encoders were given, so
+// no recorded address can be reused while the pass is open.
+struct MetalRenderPassBindings {
+    static constexpr std::uint32_t kSlots = 32;
+    std::array<MetalBufferBinding, kSlots> vertexBuffers_{};
+    std::array<MetalBufferBinding, kSlots> fragmentBuffers_{};
+    std::array<MTL::Texture *, kSlots> textures_{};
+};
+MetalRenderPassBindings &metalRenderPassBindings();
 bool metalRenderPassAttaches(MTL::Texture *texture);
 // The counters RenderDevice::deviceStats() reports for draws and passes.
 RenderPassStats &metalRenderPassStats();

@@ -253,6 +253,50 @@ TEST_F(MetalRenderPassTest, UntrackingAnAttachmentEndsThePass) {
     EXPECT_FALSE(metalRenderPassOpen());
 }
 
+// A shared pass's encoder keeps what the first draw bound, so the second draw
+// must clear a slot its predecessor used and it does not: a buffer unbound,
+// and a texture destroyed, between the draws. The slots are ones the shader
+// never reads, so both draws stay valid under the Metal debug layer.
+TEST_F(MetalRenderPassTest, SlotClearedBetweenDrawsIsClearedOnTheSharedPass) {
+    constexpr std::uint32_t kBufferSlot = kBufferIndex_ShapeDescriptors;
+    constexpr std::uint32_t kTextureUnit = 3;
+    const std::vector<std::uint32_t> words(16, 7u);
+    Buffer extraBuffer{words.data(), words.size() * sizeof(std::uint32_t), BUFFER_STORAGE_NONE};
+    auto extraTexture = std::make_unique<Texture2D>(
+        TextureKind::TEXTURE_2D,
+        kTargetDim,
+        kTargetDim,
+        TextureFormat::RGBA8
+    );
+    auto *nativeBuffer = static_cast<MTL::Buffer *>(extraBuffer.getNativeBuffer());
+    auto *nativeTexture = static_cast<MTL::Texture *>(extraTexture->getNativeTexture());
+    const auto &bound = metalRenderPassBindings();
+
+    const RenderPassStats before = passStats();
+    extraBuffer.bindBase(BufferTarget::SHADER_STORAGE, kBufferSlot);
+    extraTexture->bind(kTextureUnit);
+    draw();
+    EXPECT_EQ(bound.vertexBuffers_[kBufferSlot].buffer_, nativeBuffer);
+    EXPECT_EQ(bound.fragmentBuffers_[kBufferSlot].buffer_, nativeBuffer);
+    EXPECT_EQ(bound.textures_[kTextureUnit], nativeTexture);
+    EXPECT_EQ(
+        bound.vertexBuffers_[0].buffer_,
+        static_cast<MTL::Buffer *>(scene_->quadVertices_.getNativeBuffer())
+    );
+
+    device_->unbindBufferBase(BufferTarget::SHADER_STORAGE, kBufferSlot);
+    extraTexture.reset();
+    draw();
+    EXPECT_EQ(passStats().renderPasses_ - before.renderPasses_, 1u);
+    EXPECT_EQ(bound.vertexBuffers_[kBufferSlot], MetalBufferBinding{});
+    EXPECT_EQ(bound.fragmentBuffers_[kBufferSlot], MetalBufferBinding{});
+    EXPECT_EQ(bound.textures_[kTextureUnit], nullptr);
+    EXPECT_EQ(bound.textures_[0], static_cast<MTL::Texture *>(scene_->source_.getNativeTexture()));
+
+    device_->finish();
+    EXPECT_EQ(bound.textures_[0], nullptr);
+}
+
 // The shared pass must compose its draws exactly as separate passes did: the
 // second draw blends over the first one's colour, not over a reloaded target.
 TEST_F(MetalRenderPassTest, SharedPassBlendsLaterDrawsOverEarlierOnes) {
