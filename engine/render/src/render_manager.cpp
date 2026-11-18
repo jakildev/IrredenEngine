@@ -211,7 +211,9 @@ void RenderManager::setPresentedPickPreviousCompletedFault(bool enabled) {
 void RenderManager::publishMouseTrixelPick(Buffer *hoverBuffer) {
     const int slot = m_presentedPickRing.write(
         IRRender::device()->submissionSerial(),
-        {IRRender::device()->presentingFrameId(), IRRender::mouseMainFramebufferPixel()}
+        {m_cursorSampleSeconds,
+         IRRender::device()->presentingFrameId(),
+         IRRender::mouseMainFramebufferPixel()}
     );
     if (m_presentedPickBuffers[static_cast<std::size_t>(slot)] == nullptr) {
         m_presentedPickBuffers[static_cast<std::size_t>(slot)] = IRRender::createResource<Buffer>(
@@ -238,6 +240,7 @@ void RenderManager::drainCompletedMouseTrixelPicks() {
             PresentedPickRecord record;
             m_presentedPickBuffers[static_cast<std::size_t>(slot)]
                 ->getSubData(0, sizeof(record.layout_), &record.layout_);
+            record.cursorSampleSeconds_ = producer.cursorSampleSeconds_;
             record.frameId_ = producer.frameId_;
             record.cursorPixel_ = producer.cursorPixel_;
             m_presentedPickHistory.accept(record);
@@ -263,7 +266,23 @@ MouseTrixelPick RenderManager::mouseTrixelPick() {
         m_lastStalePickInputTick = input.inputTick();
         ++m_stalePickInputTicks;
     }
+    if (m_recordPickAge && result.frameId_ != 0 && input.currentEvent() == IRTime::Events::INPUT &&
+        input.inputTick() != m_lastPickAgeInputTick) {
+        m_lastPickAgeInputTick = input.inputTick();
+        const auto *record = m_presentedPickHistory.served(m_presentedPickPreviousCompletedFault);
+        m_pickAgeMs.push_back(
+            static_cast<float>((m_pickInputPollSeconds - record->cursorSampleSeconds_) * 1000.0)
+        );
+    }
     return result;
+}
+
+void RenderManager::recordPickInputPoll(double seconds) {
+    m_pickInputPollSeconds = seconds;
+}
+
+const std::vector<float> &RenderManager::pickAgeAtDispatchMs() const {
+    return m_pickAgeMs;
 }
 
 std::uint64_t RenderManager::newestCompletedMouseTrixelPickFrameId() {
@@ -271,7 +290,11 @@ std::uint64_t RenderManager::newestCompletedMouseTrixelPickFrameId() {
     return m_presentedPickHistory.newestFrameId();
 }
 
-void RenderManager::resetMouseTrixelPickStats() {
+void RenderManager::resetMouseTrixelPickStats(bool enabled) {
+    m_recordPickAge = enabled;
+    m_lastPickAgeInputTick = 0;
+    m_pickAgeMs.clear();
+    m_pickAgeMs.reserve(1024);
     m_lastStalePickInputTick = 0;
     m_stalePickInputTicks = 0;
 }
@@ -281,6 +304,7 @@ std::uint64_t RenderManager::staleMouseTrixelPickInputTicks() const {
 }
 
 void RenderManager::beginFrame() {
+    m_cursorSampleSeconds = steadyClockSeconds();
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
     IRWindow::getFramebufferSize(m_viewport);

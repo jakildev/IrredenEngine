@@ -58,6 +58,7 @@ struct RenderDeviceStats {
     BufferWriteStats bufferWrites_;
     DeviceErrorStats errors_;
     RenderPassStats renderPasses_;
+    std::uint64_t midFrameDrains_ = 0;
 };
 
 using GpuTimestampHandle = std::uint32_t;
@@ -139,6 +140,9 @@ class RenderDevice {
         return {};
     }
 
+    // Before input sampling; a backend may delay CPU work to avoid sampling
+    // input early while the previous GPU frame is still executing.
+    virtual void prepareCpuFrame(bool) {}
     virtual void beginFrame() = 0;
     virtual void present() = 0;
 

@@ -65,6 +65,7 @@ class OpenGLRenderDevice final : public RenderDevice {
         };
     }
 
+    void prepareCpuFrame(bool) override {}
     void beginFrame() override {}
 
     void present() override {

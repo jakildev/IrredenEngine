@@ -125,7 +125,7 @@ void writeFrameDecomposition(FILE *f, const ProfileReport &report, float frameMe
         "System rows are a pipeline's summed Total(ms) over those frames. GPU is the "
         "commandBufferSpans mean.\n"
         "Pacing is the offscreen pacer's sleep. Remainder is the frame mean minus the other "
-        "rows (present() commits and waits outside any system); a negative remainder means the "
+        "rows; a negative remainder means the "
         "terms overlap.\n",
         report.frameTimesMs_.size()
     );
@@ -212,9 +212,11 @@ void writeInputLatency(FILE *f, const ProfileReport &report) {
     std::vector<float> submit;
     std::vector<float> observedLag;
     uint32_t maxInFlight = 0;
+    size_t overlappingFrames = 0;
     for (size_t i = warmup; i < last; ++i) {
         const InputLatencyFrame &frame = latency.frames_[i];
         maxInFlight = std::max(maxInFlight, frame.framesInFlight_);
+        overlappingFrames += frame.framesInFlight_ > 0;
         if (!frame.ended_)
             continue;
         input.push_back(frame.inputToEndMs_);
@@ -236,6 +238,19 @@ void writeInputLatency(FILE *f, const ProfileReport &report) {
     writeLatencyRow(f, "frame_start_to_submit_ms", cpu);
     writeLatencyRow(f, "submit_to_present_ms", submit);
     std::fprintf(f, "Frames in flight at frame start: max=%u\n", maxInFlight);
+    std::fprintf(
+        f,
+        "Steady frames starting with GPU work in flight: %zu/%zu (%.2f%%)\n",
+        overlappingFrames,
+        last > warmup ? last - warmup : 0,
+        last > warmup ? 100.0 * overlappingFrames / (last - warmup) : 0.0
+    );
+    std::fprintf(
+        f,
+        "Mid-frame GPU drains: %llu\n",
+        static_cast<unsigned long long>(latency.midFrameGpuDrains_)
+    );
+    writeLatencyRow(f, "pick_age_at_dispatch_ms", latency.pickAgeMs_);
     const Percentiles lag = computePercentiles(observedLag);
     std::fprintf(
         f,

@@ -38,6 +38,8 @@ streaming design: [`docs/design/world-streaming.md`](../../docs/design/world-str
 `TimeManager::shouldUpdate()` → `executePipeline(RENDER)` → swap + pacing; `IRPrefab::Static::drain()` follows each pipeline ([static residents](../../docs/design/static-residents.md)).
 One frame is `runMainLoopFrame` (`world/main_loop_frame.hpp`); a hand-off that lost its gpu lease stops it and the loop ([contract](../../docs/design/engine-hand-off.md)). `World::openFileDialog` parks the main thread mid-frame the same way and re-baselines the clock on return ([contract](../../docs/design/native-file-dialog.md)).
 
+Metal's `metal_frame_overlap` config controls submission overlap and pacing before INPUT ([contract](../../docs/design/metal-frame-overlap.md)).
+
 ## Lua wiring
 
 `setupLuaBindings(std::vector<LuaBindingRegistration>)` runs before
