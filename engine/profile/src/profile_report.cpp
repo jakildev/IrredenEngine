@@ -200,8 +200,8 @@ void writeInputLatency(FILE *f, const ProfileReport &report) {
         "input_to_present runs from the frame's last OS-event poll to the end event; "
         "cursor_to_present\n"
         "from RENDER's cursor sample; submit_to_present from the frame's last commit.\n"
-        "frame_start_to_submit is the frame's CPU time, from its loop iteration's start to that "
-        "commit.\n"
+        "frame_start_to_submit is the frame's CPU time, from CPU work's start after frame "
+        "pacing to that commit.\n"
     );
     const size_t recorded = report.frameTimesMs_.size();
     const size_t warmup = recorded / kProfileWarmupDivisor;

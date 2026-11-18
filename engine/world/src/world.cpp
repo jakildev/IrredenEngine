@@ -591,6 +591,15 @@ void World::start() {
 void World::end() {
     m_toolService.shutdown();
     IRRender::device()->prepareCpuFrame(false);
+    if (m_frameTimingEnabled && !m_frameDeviceErrors.empty()) {
+        // The last overlapped submission can report its error only at this join.
+        const auto errors = IRRender::device()->deviceStats().errors_;
+        for (const auto &[name, counter] : kDeviceErrorCounters) {
+            m_frameDeviceErrors.back().*counter +=
+                errors.*counter - m_deviceErrorsAtLastFrame.*counter;
+        }
+        m_deviceErrorsAtLastFrame = errors;
+    }
     buildAndWriteProfileReport();
     // Release the GPU stage-timing observer's GL timestamp queries here, while
     // the render context is guaranteed live. The observer is World-owned;

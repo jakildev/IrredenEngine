@@ -17,6 +17,10 @@ were ruled out: they would require a synchronized handoff to the main thread,
 while command-buffer status already supplies the needed completion witness.
 No render state is touched by a Metal completion handler.
 
+Command-buffer failures retain the submitted frame's number when collected
+during a later CPU frame. Shutdown collects the final submission and folds any
+late error into the profile's final counter sample before writing the report.
+
 `WorldConfig::metal_frame_overlap` defaults to true. False restores the
 blocking present in the same binary; the PerfGrid blocking presets load the
 same scene preset and change only that field. OpenGL's frame preparation is
@@ -26,7 +30,8 @@ without depending on Metal types.
 ## Input scheduling and measurement
 
 Before input or fixed-update accounting, `prepareCpuFrame` delays the next CPU
-frame toward predicted completion minus 30% of predicted CPU work. Exponential means
+frame toward predicted completion minus 30% of predicted CPU work, capped at
+0.15 ms. Exponential means
 track CPU encoding and submit-to-completion durations. The CPU estimate ends
 before the admission wait. The short lead leaves room for CPU cost variation
 without deliberately waiting behind most of the preceding GPU frame. A
@@ -35,6 +40,14 @@ two milliseconds avoids sleeping through a short CPU frame. This consumes
 CPU time while pacing and remains subject to the latency and throughput gates.
 The next poll's placement changes; fixed updates still consume input through
 the same `runMainLoopFrame` sequence.
+
+When the CPU estimate is at least the submit-to-completion estimate, admission
+keeps the blocking present. Always overlapping the CPU-bound fixture reduced
+updates per rendered frame and made more renders reuse the preceding update's
+input poll. In five guarded pairs that increased mean input latency by 1.638 ms,
+outside the 0.140 ms bound. The CPU-bound fallback preserves the serialized
+cadence; overlap targets frames whose GPU half is longer. Its measurements
+must still pass the same latency gate.
 
 The frame-time series includes this delay. The input probe's CPU interval
 starts after it, and its GPU interval ends at the command buffer's GPU end,
