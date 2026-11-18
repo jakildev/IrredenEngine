@@ -12,6 +12,25 @@
 // map this pass reads) and after VOXEL_TO_TRIXEL_STAGE_1 / SHAPES_TO_TRIXEL
 // (so the distance texture is populated), and before LIGHTING_TO_TRIXEL
 // which folds the shadow factor into final color.
+//
+// Unwritten texels. The single-canvas grid dispatch stores nothing into an
+// empty texel, nor (surface variant) into a cardinal voxel surface. On a
+// cardinal surface-lit frame the main canvas's whole dispatch is skipped when
+// C_TriangleCanvasTextures::holdsQueriedContent() says every occupied texel is
+// a cardinal voxel surface. Those texels keep whatever an earlier frame or
+// route stored. That is safe only because every reader skips them on the frame
+// this pass did:
+//   - LIGHTING_TO_TRIXEL returns on the empty sentinel, and skips cardinal
+//     voxel surfaces under this frame's resolveRoute (cardinal_ and not
+//     cardinalGlitch_, zero residual yaw). IR_ASSERTs on both sides check that
+//     the two skip sets agree.
+//   - C_CanvasSunShadow::readFactorsSynced (the fog demo's ceiling probe) reads
+//     only occupied fog-canvas texels; a canvas with fog reports its voxels as
+//     needing a query, so this pass writes them.
+// Ordering precondition: every distance and entity-id writer of a canvas runs
+// before this pass. A writer moved between it and LIGHTING_TO_TRIXEL, a new
+// reader of the canvas sun-shadow texture, or a non-detached non-main canvas
+// sampling the main canvas's placeholder would read stale values.
 
 #include <irreden/ir_render.hpp>
 #include <irreden/render/shape_receiver_bindings.hpp>
@@ -27,6 +46,8 @@
 #include <irreden/render/surface_lighting_route.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
+
+#include <irreden/render/camera.hpp>
 
 #include <cstddef>
 
@@ -60,6 +81,8 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
     bool perAxisSurfaceLightingEligible_ = false;
     bool cardinalSurfaceLightingEligible_ = false;
+    // Debug witness only: logs when the main-canvas skip starts and stops.
+    bool mainCanvasDispatchSkipped_ = false;
 
     // Lazily-resolved voxel-compaction buffers, restored onto
     // slots 25/26 after dispatchPerAxisSunShadow borrows them for its own
@@ -103,10 +126,20 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
             );
         }
 
-        const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kComputeSunShadowGroupSize);
-        const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kComputeSunShadowGroupSize);
-        IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        const bool skipDispatch = preserveCardinalSurfaces && !canvasTextures.holdsQueriedContent();
+        if (entity == perAxisCanvasEntity_ && skipDispatch != mainCanvasDispatchSkipped_) {
+            mainCanvasDispatchSkipped_ = skipDispatch;
+            IR_LOG_INFO(
+                "COMPUTE_SUN_SHADOW: main-canvas dispatch {}",
+                skipDispatch ? "skipped (cardinal voxel surfaces only)" : "resumed"
+            );
+        }
+        if (!skipDispatch) {
+            const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kComputeSunShadowGroupSize);
+            const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kComputeSunShadowGroupSize);
+            IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        }
 
         // Exact presentation queries the shared sun map directly; its per-axis
         // sampled textures have no consumer. Keep main-canvas shadow production
@@ -189,6 +222,15 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
             perAxisCanvases_ != nullptr && perAxisCanvases_->isAllocated() &&
             findSystem(LIGHTING_TO_TRIXEL) != kNullSystemId && route.perAxis_;
         cardinalSurfaceLightingEligible_ = route.cardinal_ && !route.cardinalGlitch_;
+        // Lighting's cardinal skip also needs zero residual yaw. The route
+        // reaches that only through per-axis allocation on rotating frames, so a
+        // main canvas without C_PerAxisTrixelCanvases would break the chain.
+        IR_ASSERT(
+            !cardinalSurfaceLightingEligible_ ||
+                (IRPrefab::Camera::getResidualYaw() == 0.0f && !IRRender::isSpatialViewEnabled()),
+            "COMPUTE_SUN_SHADOW: surface variant on a frame whose lighting samples cardinal "
+            "voxel surfaces (non-zero residual yaw or spatial view)"
+        );
     }
 
     static SystemId create() {

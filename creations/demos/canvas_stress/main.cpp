@@ -2934,8 +2934,7 @@ void initSystems() {
                 "ShapeOnlyCanvasClear",
                 [](C_TriangleCanvasTextures &textures) {
                     textures.clear();
-                    const int empty = IRConstants::kTrixelDistanceMaxDistance;
-                    IRRender::device()->clearTexImage(textures.getTextureDistances(), 0, &empty);
+                    textures.clearDistancesToEmpty();
                 }
             )
         );

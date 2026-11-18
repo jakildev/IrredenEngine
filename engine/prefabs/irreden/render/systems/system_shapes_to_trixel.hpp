@@ -474,8 +474,11 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             );
             shapeDepthProgram_->use();
             shapeDescriptors->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ShapeDescriptors);
-            canvasTextures.getTextureDistances()
-                ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
+            canvasTextures.bindDistancesForWrite(
+                1,
+                TextureAccess::READ_WRITE,
+                CanvasDistanceContent::QUERIED
+            );
             // All three declared kernel slots are bound ahead of BOTH passes,
             // even though pass 0 reads only distances: Metal validates every
             // argument a kernel declares at each dispatch, and unit 0 still
@@ -595,8 +598,11 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     }
                     canvasTextures.getTextureColors()
                         ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
-                    canvasTextures.getTextureDistances()
-                        ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
+                    canvasTextures.bindDistancesForWrite(
+                        1,
+                        TextureAccess::READ_WRITE,
+                        CanvasDistanceContent::QUERIED
+                    );
                 }
             }
 

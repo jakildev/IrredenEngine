@@ -29,6 +29,7 @@
 #include <irreden/render/voxel_frame_data.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_substage_timing.hpp>
+#include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/trixel_glitch_math.hpp>
 #include <irreden/ir_profile.hpp>
 
@@ -116,6 +117,9 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     bool cardinalSurfaceLightingReady_ = false;
     bool cardinalGlitchPresentationActive_ = false;
     bool cardinalGlitchSourceReady_ = false;
+    // Leaves the main-canvas texels this pass skips unwritten, so its skip set
+    // must equal ours on the same frame.
+    const System<COMPUTE_SUN_SHADOW> *sunShadowProducer_ = nullptr;
     std::uint64_t glitchPresentationImageCreationCount_ = 0;
 
     void ensureGlitchSourcePrograms() {
@@ -250,6 +254,13 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         frameData_.normalOptions_.x = entity == perAxisCanvasEntity_ ? 1 : 0;
         frameData_.normalOptions_.y =
             entity == perAxisCanvasEntity_ && cardinalSurfaceLightingEligible_ ? 1 : 0;
+        IR_ASSERT(
+            entity != perAxisCanvasEntity_ || sunShadowProducer_ == nullptr ||
+                sunShadowProducer_->cardinalSurfaceLightingEligible_ ==
+                    (frameData_.normalOptions_.y != 0 && !glitchSource),
+            "COMPUTE_SUN_SHADOW's cardinal-surface skip disagrees with this frame's lighting "
+            "skip; the canvas sun-shadow texture would be sampled unwritten"
+        );
         frameData_.shapeReceiverOptions_ = useShapeReceiver
                                                ? ivec4(
                                                      shapeGeometry.frameData_.shapeCount,
@@ -644,6 +655,10 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         cardinalSurfaceLightingReady_ = false;
         cardinalGlitchPresentationActive_ = false;
         cardinalGlitchSourceReady_ = false;
+        const SystemId sunShadowId = findSystem(COMPUTE_SUN_SHADOW);
+        sunShadowProducer_ = sunShadowId != kNullSystemId
+                                 ? getSystemParams<System<COMPUTE_SUN_SHADOW>>(sunShadowId)
+                                 : nullptr;
         perAxisSurfaceLightingEligible_ = false;
         perAxisSurfaceLightingReady_ = false;
         surfaceFogRoute_ = IRPrefab::PerAxisSurfaceLighting::SurfaceFogRoute::NONE;

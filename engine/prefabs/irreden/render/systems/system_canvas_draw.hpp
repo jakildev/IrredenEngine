@@ -108,8 +108,11 @@ template <> struct System<CANVAS_DRAW> {
         program.use();
         to.getTextureColorsForGeometryWrite()
             ->bindAsImage(0, IRRender::TextureAccess::WRITE_ONLY, IRRender::TextureFormat::RGBA8);
-        to.getTextureDistances()
-            ->bindAsImage(1, IRRender::TextureAccess::WRITE_ONLY, IRRender::TextureFormat::R32I);
+        to.bindDistancesForWrite(
+            1,
+            IRRender::TextureAccess::WRITE_ONLY,
+            IRComponents::CanvasDistanceContent::QUERIED
+        );
     }
 
     // One dispatch over the draw's clipped box, with the image program and

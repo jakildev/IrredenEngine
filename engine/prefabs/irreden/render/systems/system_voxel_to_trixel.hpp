@@ -2845,8 +2845,21 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             (cardinalElection ? stage2WinnerProgram_ : stage2Program_)->use();
             triangleCanvasTextures.getTextureColorsForGeometryWrite()
                 ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-            triangleCanvasTextures.getTextureDistances()
-                ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
+            // Stage 2 sets the cardinal-voxel bit on every tap under exactly the
+            // shader's uniform gate (single-canvas route, not detached, zero
+            // residual yaw). Without a cut-section fog no tap carries the cut-face
+            // bit, so every texel this canvas's voxels cover is a cardinal voxel
+            // surface. Stage 1's depth taps land on the same texels, apart from
+            // off-screen shadow feeders that no presented pixel reads.
+            const bool cardinalVoxelSurfaces =
+                frameData_.perAxisRoute_ == 0 && frameData_.isDetachedCanvas_ <= 0.5f &&
+                frameData_.residualYaw_ == 0.0f && cutSectionFog == nullptr && !sourceFaceDisplay;
+            triangleCanvasTextures.bindDistancesForWrite(
+                1,
+                TextureAccess::WRITE_ONLY,
+                cardinalVoxelSurfaces ? CanvasDistanceContent::CARDINAL_VOXEL_SURFACE
+                                      : CanvasDistanceContent::QUERIED
+            );
             triangleCanvasTextures.getTextureEntityIds()
                 ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
             // Fog cut-face inputs: STAGE_2 re-evaluates STAGE_1's

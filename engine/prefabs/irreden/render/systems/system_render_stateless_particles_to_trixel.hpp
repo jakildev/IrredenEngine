@@ -89,8 +89,7 @@ template <> struct System<RENDER_STATELESS_PARTICLES_TO_TRIXEL> {
 
         canvas.getTextureColorsForGeometryWrite()
             ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-        canvas.getTextureDistances()
-            ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
+        canvas.bindDistancesForWrite(1, TextureAccess::READ_WRITE, CanvasDistanceContent::QUERIED);
 
         constexpr std::uint32_t kLocalSize = 64u;
         const std::uint32_t threadCount = emitterCount * kMaxParticlesPerEmitter;

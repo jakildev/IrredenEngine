@@ -7,6 +7,7 @@
 #include <irreden/render/texture.hpp>
 #include <irreden/render/components/canvas_shape_geometry.hpp>
 
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -83,6 +84,12 @@ inline std::vector<std::pair<ResourceId, Texture2D *>> makeHiZMipChain(ivec2 siz
 }
 
 } // namespace detail
+
+// What a distance writer stores into a canvas, as the sun-shadow pass sees it.
+// A cardinal voxel surface carries the entity-id cardinal-voxel bit (and no
+// fog cut-face bit), which lighting skips on a cardinal surface-lit frame;
+// every other occupied texel needs a sun-shadow query.
+enum class CanvasDistanceContent { CARDINAL_VOXEL_SURFACE, QUERIED };
 
 struct C_TriangleCanvasTextures {
     ivec2 size_;
@@ -273,7 +280,47 @@ struct C_TriangleCanvasTextures {
         textureTriangleEntityIds_.second->bind(textureUnitEntityIds);
     }
 
+    // Whether the distance texture may hold a texel that needs a sun-shadow
+    // query. COMPUTE_SUN_SHADOW skips the main canvas on a cardinal
+    // surface-lit frame when this is false. Every distance write records into
+    // it — GPU writers through bindDistancesForWrite / bindAsCompositeTarget,
+    // CPU writers through this component's distance mutators — and only
+    // clearDistancesToEmpty resets it. A writer that binds the distance texture any other way
+    // leaves stale sun-shadow texels visible on such a frame.
+    bool holdsQueriedContent() const {
+        return holdsQueriedContent_;
+    }
+
+    void
+    bindDistancesForWrite(int unit, TextureAccess access, CanvasDistanceContent content) const {
+        recordDistanceContent(content);
+        textureTriangleDistances_.second->bindAsImage(unit, access, TextureFormat::R32I);
+    }
+
+    // Texture-unit bind of this canvas as the destination of a canvas-onto-canvas
+    // composite (TRIXEL_TO_TRIXEL writes the parent's colour and distance).
+    void bindAsCompositeTarget(int textureUnitColors, int textureUnitDistances) const {
+        recordDistanceContent(CanvasDistanceContent::QUERIED);
+        bind(textureUnitColors, textureUnitDistances);
+    }
+
+    // Resets distances to the empty sentinel through the device clear, which
+    // also mirrors the sentinel into the image-atomic scratch that
+    // imageAtomicMin writers compare against (Texture2D::clear does not
+    // reliably clear an R32I texture on Metal).
+    void clearDistancesToEmpty() const {
+        static constexpr std::int32_t kDistanceClear =
+            static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
+        shapeGeometry_.invalidateSamples();
+        IRRender::device()->clearTexImage(textureTriangleDistances_.second, 0, &kDistanceClear);
+        holdsQueriedContent_ = false;
+    }
+
+    // Every Texture2D::clear-based clear records QUERIED rather than
+    // resetting: that clear is unreliable for R32I on Metal, and
+    // clearDistanceTexture stores 65534, which lighting reads as occupied.
     void clear() const {
+        recordDistanceContent(CanvasDistanceContent::QUERIED);
         shapeGeometry_.invalidateSamples();
         textureTriangleColors_.second
             ->clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, &u8vec4(0, 0, 0, 0)[0]);
@@ -288,6 +335,7 @@ struct C_TriangleCanvasTextures {
     }
 
     void clearWithColor(const Color &color) const {
+        recordDistanceContent(CanvasDistanceContent::QUERIED);
         shapeGeometry_.invalidateSamples();
         textureTriangleColors_.second
             ->clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, &color);
@@ -295,6 +343,7 @@ struct C_TriangleCanvasTextures {
     }
 
     void clearWithColorData(ivec2 size, const std::vector<Color> &colorData) const {
+        recordDistanceContent(CanvasDistanceContent::QUERIED);
         shapeGeometry_.invalidateSamples();
         textureTriangleColors_.second->subImage2D(
             0,
@@ -309,6 +358,7 @@ struct C_TriangleCanvasTextures {
     }
 
     void setTrixel(ivec2 index, Color color, int distance = 0) {
+        recordDistanceContent(CanvasDistanceContent::QUERIED);
         shapeGeometry_.invalidateSamples();
         textureTriangleColors_.second->subImage2D(
             index.x,
@@ -411,7 +461,22 @@ struct C_TriangleCanvasTextures {
         readColorTexture(glitchPresentationOverrides_.second, out);
     }
 
+    // Row-major encoded distances over the `size` box at `origin`.
+    void writeDistances(ivec2 origin, ivec2 size, const int *distances) const {
+        recordDistanceContent(CanvasDistanceContent::QUERIED);
+        textureTriangleDistances_.second->subImage2D(
+            origin.x,
+            origin.y,
+            size.x,
+            size.y,
+            PixelDataFormat::RED_INTEGER,
+            PixelDataType::INT32,
+            distances
+        );
+    }
+
     void clearDistances() const {
+        recordDistanceContent(CanvasDistanceContent::QUERIED);
         shapeGeometry_.invalidateSamples();
         textureTriangleDistances_.second->clear(
             PixelDataFormat::RED_INTEGER,
@@ -423,6 +488,16 @@ struct C_TriangleCanvasTextures {
     void saveAsPNG() {}
 
   private:
+    // Starts true: a new texture's contents are undefined until the first
+    // clearDistancesToEmpty.
+    mutable bool holdsQueriedContent_ = true;
+
+    void recordDistanceContent(CanvasDistanceContent content) const {
+        if (content == CanvasDistanceContent::QUERIED) {
+            holdsQueriedContent_ = true;
+        }
+    }
+
     void destroyBackingTextures() {
         IRRender::destroyResource<Texture2D>(textureTriangleColors_.first);
         IRRender::destroyResource<Texture2D>(textureTriangleDistances_.first);

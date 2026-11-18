@@ -107,8 +107,14 @@ void main() {
 
     int encoded = imageLoad(trixelDistances, pixel).x;
     // Per-axis canvas uses INT_MAX as the empty sentinel; single-canvas uses 65535.
+    // A single-canvas empty texel and (surface variant) a cardinal voxel
+    // surface are left unwritten: lighting returns before sampling either on
+    // the same frame. The invariant and its readers are listed in
+    // system_compute_sun_shadow.hpp.
     if (encoded >= (perAxisRoute != 0 ? 0x7FFFFFFF : kEmptyDistanceEncoded)) {
-        imageStore(canvasSunShadow, pixel, vec4(1.0, 0.0, 0.0, 0.0));
+        if (perAxisRoute != 0) {
+            imageStore(canvasSunShadow, pixel, vec4(1.0, 0.0, 0.0, 0.0));
+        }
         return;
     }
 #if !IR_SHAPE_RECEIVER
@@ -119,7 +125,6 @@ void main() {
 #endif
 #if IR_SKIP_CARDINAL_SURFACE
     if (isCardinalVoxelSurface(imageLoad(trixelEntityIds, pixel).xy)) {
-        imageStore(canvasSunShadow, pixel, vec4(1.0, 0.0, 0.0, 0.0));
         return;
     }
 #endif
