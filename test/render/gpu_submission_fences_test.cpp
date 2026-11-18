@@ -193,9 +193,7 @@ TEST(GpuSubmissionFences, EveryRetiringPathReportsEachSubmissionOnceInOrder) {
     EXPECT_EQ(waits, std::vector<int>({11}));
     fences.completeAll(retired);
 
-    const std::vector<std::pair<int, std::uint64_t>> expected{
-        {10, 1}, {11, 2}, {12, 3}, {13, 4}
-    };
+    const std::vector<std::pair<int, std::uint64_t>> expected{{10, 1}, {11, 2}, {12, 3}, {13, 4}};
     EXPECT_EQ(log, expected);
     EXPECT_EQ(fences.completedSerial(), 5u);
 

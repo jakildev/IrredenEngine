@@ -80,7 +80,7 @@ class OpenGLRenderDevice final : public RenderDevice {
             IRWindow::getWindow().swapBuffers();
         }
         m_submissions
-            .throttle(m_maxFramesInFlight, isFenceAvailable, waitForFence, reportRetiredFrame());
+            .throttle(m_maxFramesInFlight, isFenceAvailable, waitForFence, frameEndReporter());
     }
 
     // OFFSCREEN window mode: an engine-owned framebuffer stands in for the
@@ -358,7 +358,7 @@ class OpenGLRenderDevice final : public RenderDevice {
 
     void finish() override {
         ENG_API->glFinish();
-        m_submissions.completeAll(reportRetiredFrame());
+        m_submissions.completeAll(frameEndReporter());
     }
 
     std::uint64_t submissionSerial() const override {
@@ -366,7 +366,7 @@ class OpenGLRenderDevice final : public RenderDevice {
     }
 
     std::uint64_t completedSubmissionSerial() override {
-        return m_submissions.pollCompleted(isFenceAvailable, reportRetiredFrame());
+        return m_submissions.pollCompleted(isFenceAvailable, frameEndReporter());
     }
 
     GpuTimestampHandle createTimestampPair() override {
@@ -481,7 +481,7 @@ class OpenGLRenderDevice final : public RenderDevice {
         }
     };
 
-    FrameEndReporter reportRetiredFrame() {
+    FrameEndReporter frameEndReporter() {
         return {this};
     }
 

@@ -130,11 +130,111 @@ is `IRPerfGrid --auto-profile 120 --no-overlay`, Debug: 90 samples for its 90
 steady frames, `End event: gpu-complete`, 0 frames in flight, and the
 per-frame series after the update-tick series.
 
+## OpenGL: frames in flight
+
+OpenGL lets the CPU run ahead of the GPU. `present()` fences each frame with a
+timestamp query, then waits until at most `max_frames_in_flight` presented
+frames are unfinished. The default is 1. The OpenGL device reports each frame's
+end as `gpu-complete`: the GPU timestamp of the frame's own fence query,
+moved onto the steady clock through `glGetInteger64v(GL_TIMESTAMP)` read
+between two steady-clock reads. The probe adds no query and no wait; a frame's
+end is read when its fence retires.
+
+- **Host:** Windows 10 19045, 32 logical CPUs, AC power, the NVIDIA OpenGL
+  host of [`sun-overflowed-tile-query/`](../sun-overflowed-tile-query/README.md).
+  Offscreen window mode, which flushes instead of swapping and is not paced.
+- **Tree:** `ee09a9aef`, the code of this change before its documentation.
+- **Build:** Release, stage profiling off, 300-frame `--auto-profile` windows,
+  statistics over the 225 steady frames of each run.
+- **Arms:** one binary. The bound comes from a config preset beside each
+  scene's own: `configs/perf/million-frames-in-flight-<N>.lua` (scene b) and
+  `configs/perf/profiling-off-frames-in-flight-<N>.lua` (scene c), with N 0
+  (serialized), 1 and 2. Bound 2 is the queue before this change.
+- **Rounds:** five. Each round runs scene b's three arms and then scene c's, with
+  the arm order rotated each round. Three runs were contaminated when another
+  pane's lease went busy (`QUIET=breach`) and were re-run after their round:
+  round 4's scene-c arms 0 and 1, and round 5's scene-b arm 0. All 30 retained runs report
+  `QUIET=guarded` and `RESULT=CLEAN`.
+
+The scenes are rows (b) and (c) of [§ Scenes](#scenes). On this host scene (c)
+is far more CPU-bound than on Metal. Inline, one fixed update takes about
+35 ms, so every frame runs the catch-up cap of 8 updates.
+
+| Scene | CPU / GPU ms per frame (serialized arm) |
+|---|---:|
+| (b) million control, GPU-bound | 1.75 / 30.16 |
+| (c) CPU-bound | 294.96 / 52.28 |
+
+### Three arms
+
+Each cell is the mean of five rounds with its spread (largest round minus
+smallest) in brackets. The spread is that row's noise bound.
+
+| Scene | Arm | `input_to_present_ms` mean | p99 | `cursor_to_present_ms` mean | Steady frame mean ms | Updates / frame | Max frames in flight |
+|---|---|---:|---:|---:|---:|---:|---:|
+| GPU-bound | 0 (serialized) | 31.799 (2.416) | 33.402 (1.824) | 31.732 (2.417) | 32.034 (2.430) | 1.94 | 0 |
+| GPU-bound | 1 (shipped) | 61.977 (0.785) | 63.654 (0.834) | 61.907 (0.786) | 31.094 (0.390) | 1.88 | 1 |
+| GPU-bound | 2 (before) | 93.366 (0.272) | 95.297 (1.120) | 93.297 (0.260) | 31.184 (0.090) | 1.90 | 2 |
+| CPU-bound | 0 (serialized) | 96.106 (5.579) | 112.029 (6.913) | 60.388 (6.568) | 347.360 (3.570) | 8.00 | 0 |
+| CPU-bound | 1 (shipped) | 97.517 (9.420) | 111.892 (9.328) | 61.790 (8.487) | 292.826 (11.700) | 8.00 | 1 |
+| CPU-bound | 2 (before) | 97.518 (9.208) | 111.711 (4.232) | 62.184 (9.074) | 290.740 (6.720) | 8.00 | 1 |
+
+Readings:
+
+- **GPU-bound: each frame in flight adds one GPU frame of latency.** Arm 1 reads
+  30.2 ms above the serialized arm and arm 2 reads 61.6 ms above it. The
+  serialized arm's spread is 2.4 ms. The steady frame mean improves by 0.9 ms
+  (2.9%). This is the epic's known trap. The CPU half is 1.8 ms, so the next frame
+  samples input right after `present()` returns and then queues behind the
+  frame still executing.
+- **CPU-bound: the bound moves throughput, not latency.** The three arms' latency
+  means agree within 1.4 ms, against spreads of 5.6 to 9.4 ms. Serializing
+  adds the GPU half to every frame: the frame mean rises 54.5 ms over arm 1.
+  The GPU finishes each frame before the next present, so arm 2 never holds a
+  second frame (maximum 1).
+- **Arm 1 against arm 2**, the rule for landing the bound: no reading is worse
+  beyond its noise. GPU-bound latency falls 31.4 ms (mean) and 31.6 ms (p99),
+  and the frame mean moves 0.09 ms against spreads of 0.39 and 0.09 ms.
+  CPU-bound, the p99 moves 0.18 ms and the frame mean 2.1 ms, against spreads of
+  4.2 to 11.7 ms.
+- **The shipped bound does not meet the latency rule at the GPU-bound scene.**
+  Bound 1 still reads 30.2 ms above the serialized arm. A later start for the
+  CPU frame would close that gap, and its policy is a design question shared
+  with the Metal backend.
+- **Clock mapping.** The CPU saw each end 0.10 to 0.12 ms after it (mean) where it
+  waits on the fence: arm 0, and every GPU-bound arm. Where the end is
+  only read at the next frame's `present()` (CPU-bound arms 1 and 2), the CPU sees
+  it 230 to 245 ms late. The reading is still the GPU timestamp. The mapping error is at most
+  0.78 ms per run, from the `GL_TIMESTAMP` read's round trip, against Metal's
+  0.0015 ms.
+
+Reports, summaries and manifests:
+[`opengl/frames-in-flight/`](opengl/frames-in-flight/), one directory per
+`round-<R>-<scene>-arm<N>`. Their `<worktree>` is the measuring pool worktree.
+
+### Positive control on OpenGL
+
+The [§ Positive control](#positive-control) pairs, light scene, Debug, three
+interleaved pairs, at the default bound of 1. Every run reports
+`QUIET=guarded` and 224 of 225 samples. The one unended frame is the frame
+still in flight when the window closes. The mapping error is at most 1.30 ms.
+
+| Pair | Without delay, mean ms | With delay, mean ms | Rise ms | Updates / frame without → with |
+|---:|---:|---:|---:|---|
+| 1 | 10.430 | 39.923 | 29.493 | 0.2 → 2.0 |
+| 2 | 10.160 | 39.062 | 28.902 | 0.2 → 2.0 |
+| 3 | 10.204 | 41.534 | 31.330 | 0.2 → 2.0 |
+
+Every rise exceeds the injected 20 ms. The probe sees the sleep on OpenGL.
+The extra 9 to 11 ms is the work behind the sleep. The delayed frames run two
+fixed updates each, and their last poll precedes the last update. Also,
+`cursor_to_present_ms` rises from 2.8 to 10.4 ms as `submit_to_present_ms` rises
+from 0.6 to 7.1 ms. Reports: [`opengl/positive-control/`](opengl/positive-control/).
+
 ## Not measured here
 
-- **OpenGL.** The OpenGL device reports `End event: not measured`. Its frame
-  ends, and its reading of up to two frames in flight, come with the OpenGL
-  side of the probe.
+- **OpenGL presentation time.** A visible OpenGL window also reports
+  `gpu-complete`: the end of the frame's GPU work, not the swap's scan-out.
 - **Presentation time.** A visible Metal window also reports `gpu-complete`.
   The drawable's presented time arrives later, on a Metal thread, and no
   unattended run has a drawable to exercise it.

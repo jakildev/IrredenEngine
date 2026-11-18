@@ -22,7 +22,6 @@ inline constexpr std::size_t kMaxPresentedSubmissionsInFlight = 1;
 // serializes CPU and GPU; anything past this is the unthrottled queue above.
 inline constexpr std::size_t kMaxSelectableSubmissionsInFlight = 2;
 
-// The default retirement observer: nothing to report.
 struct IgnoreRetiredSubmission {
     template <typename Fence> void operator()(const Fence &, std::uint64_t) const {}
 };
