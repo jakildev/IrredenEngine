@@ -223,6 +223,9 @@ terminal; `wait` keeps waiting) until it ends, then fails the job with exit
 share the build's screenshot directory, so a second start exits 1 while
 the first is live. A verifier job's log opens with a `[fleet-jobs]
 display:` line; `none` there means the job runs where no demo can render.
+On macOS the supervisor then wakes the display and holds it awake until the
+job drains; one it cannot make ready fails the start with exit 69, naming the
+condition (`docs/AGENT_FLEET_SETUP.md` § "Display-backed runs on an unattended Mac").
 
 **Evidence is a terminal `wait`, never a start.** A PR's validation row or
 a review's "builds / passes" claim cites the `wait` exit code and its
