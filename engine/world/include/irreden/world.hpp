@@ -118,6 +118,8 @@ class World {
     // Per-frame differences of the device's cumulative counters.
     std::vector<IRRender::BufferWriteStats> m_frameBufferWrites;
     IRRender::BufferWriteStats m_bufferWritesAtLastFrame;
+    std::vector<IRRender::DeviceErrorStats> m_frameDeviceErrors;
+    IRRender::DeviceErrorStats m_deviceErrorsAtLastFrame;
     uint64_t m_gpuProcessPeakBytes = 0;
     IRRender::InputLatencyAccumulator m_inputLatency;
     // Incremented once per RENDER; the frame id the input latency probe and

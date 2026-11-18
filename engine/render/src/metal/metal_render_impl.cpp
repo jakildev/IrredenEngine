@@ -17,6 +17,7 @@
 #include <cstring>
 #include <mach/mach_time.h>
 #include <memory>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -378,8 +379,9 @@ class MetalRenderDevice final : public RenderDevice {
             return buffer;
         }
 
-        auto *replacement = metalDevice()->newBuffer(totalBytes, MTL::ResourceStorageModeShared);
-        IR_ASSERT(replacement != nullptr, "Failed to create Metal texture clear buffer");
+        auto *replacement = newMetalBuffer(
+            totalBytes, MTL::ResourceStorageModeShared, "texture clear-source buffer"
+        );
         auto *bytes = static_cast<std::uint8_t *>(replacement->contents());
         if (data == nullptr) {
             std::memset(bytes, 0, totalBytes);
@@ -425,18 +427,36 @@ class MetalRenderDevice final : public RenderDevice {
     }
 
     RenderDeviceStats deviceStats() const override {
-        return {.supported_ = true, .bufferWrites_ = metalBufferWriteStats()};
+        return {
+            .supported_ = true,
+            .bufferWrites_ = metalBufferWriteStats(),
+            .errors_ = metalDeviceErrorStats(),
+        };
     }
 
     void recordCompletedFrameBuffer(MTL::CommandBuffer *commandBuffer) {
+        const MTL::CommandBufferStatus status = commandBuffer->status();
         m_gpuFrameTiming.addCompletedBuffer(
             commandBuffer->GPUStartTime(),
             commandBuffer->GPUEndTime(),
-            commandBuffer->status() == MTL::CommandBufferStatusCompleted
+            status == MTL::CommandBufferStatusCompleted
+        );
+        if (status != MTL::CommandBufferStatusError) {
+            return;
+        }
+        NS::Error *error = commandBuffer->error();
+        const std::int64_t errorCode = error == nullptr ? 0 : error->code();
+        const char *description =
+            error != nullptr && error->localizedDescription() != nullptr
+                ? error->localizedDescription()->utf8String()
+                : "<no Metal error description>";
+        recordMetalCommandBufferCompletion(
+            status, errorCode, description, m_frameNumber
         );
     }
 
     void beginFrame() override {
+        ++m_frameNumber;
         m_gpuFrameTiming.beginFrame();
         if (isOffscreen()) {
             // No swapchain: the frame renders into the engine-owned target
@@ -445,8 +465,15 @@ class MetalRenderDevice final : public RenderDevice {
             setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
             return;
         }
-        auto *drawable = metalLayer()->nextDrawable();
+        auto *layer = metalLayer();
+        if (layer == nullptr) {
+            setMetalDrawable(nullptr);
+            setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
+            return;
+        }
+        auto *drawable = layer->nextDrawable();
         if (drawable == nullptr) {
+            recordMetalSkippedFrame();
             setMetalDrawable(nullptr);
             setMetalCommandBuffer(nullptr);
             return;
@@ -508,9 +535,15 @@ class MetalRenderDevice final : public RenderDevice {
             )
         );
         descriptor->setStorageMode(MTL::StorageModeShared);
-        m_offscreenTarget = metalDevice()->newTexture(descriptor);
+        try {
+            m_offscreenTarget = newMetalTexture(
+                descriptor, MetalAllocationKind::TEXTURE_2D, "offscreen screen target"
+            );
+        } catch (...) {
+            descriptor->release();
+            throw;
+        }
         descriptor->release();
-        IR_ASSERT(m_offscreenTarget != nullptr, "Failed to create the offscreen screen target");
         setMetalOffscreenColorTexture(m_offscreenTarget);
         m_offscreenRefreshHz = refreshHz;
         m_offscreenPacer.reset(
@@ -1392,6 +1425,7 @@ class MetalRenderDevice final : public RenderDevice {
     bool m_blendingEnabled = false;
     // The command buffer now recording; a commit-and-wait advances it.
     std::uint64_t m_submissionSerial = 1;
+    std::uint64_t m_frameNumber = 0;
     GpuTimestampHandle m_nextTimestampHandle = 1;
     std::vector<MetalTimestampPair> m_timestamps;
     MTL::CounterSet *m_timestampCounterSet = nullptr;
