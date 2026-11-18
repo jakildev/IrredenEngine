@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -245,6 +246,73 @@ class ProvenanceRefusal(unittest.TestCase):
             rm.check_provenance(tmp, {**current, "host_gpu": [2]})
             with self.assertRaises(rm.ProvenanceError):
                 rm.check_provenance(tmp, {**current, "binary_sha256": "c"})
+
+
+class PreTreeProvenance(unittest.TestCase):
+    DIFF = "diff --git a/engine/x.cpp b/engine/x.cpp\n-old\n+new"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.build = Path(self.tmp.name) / "build"
+        demo = self.build / "creations/demos" / rm.DEMO
+        sampler = demo / "shaders" / rm.SUBDIR / rm.SAMPLER
+        sampler.parent.mkdir(parents=True)
+        sampler.write_bytes(rm.SOURCE_SAMPLER.read_bytes())
+        (demo / "shaders/other.glsl").write_bytes(b"void main() {}\n")
+        (demo / "scripts").mkdir()
+        (demo / rm.TARGET).write_bytes(b"binary")
+        (self.build / "CMakeCache.txt").write_text("CMAKE_BUILD_TYPE:STRING=Debug\n")
+        self.count = 0
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def snapshot(self):
+        """A fresh `snapshot` of the fake Debug build, taken over a non-empty revert diff."""
+        self.count += 1
+        dest = Path(self.tmp.name) / f"pre-{self.count}"
+        binary = self.build / "creations/demos" / rm.DEMO / rm.TARGET
+        paths = (self.build, "Debug", binary, binary.parent / "shaders")
+        args = SimpleNamespace(build="debug", dest=str(dest), label="pre", reverts="r" * 40)
+        with mock.patch.object(rm, "build_paths", return_value=paths), \
+                mock.patch.object(rm, "git", side_effect=lambda *a: self.DIFF
+                                  if a[0] == "diff" else "c" * 40), \
+                mock.patch("builtins.print"):
+            rm.snapshot(args)
+        return dest
+
+    def test_a_snapshot_reopens_with_its_recorded_diff(self):
+        dest = self.snapshot()
+        record = rm.tree_provenance("debug", "pre", dest)
+        written = (dest / "tree.diff").read_bytes()
+        self.assertEqual(written, (self.DIFF + "\n").encode())
+        self.assertEqual(record["tree"]["diff_sha256"], rm.sha256_bytes(written))
+
+    def test_each_mismatch_is_refused(self):
+        demo = Path(rm.DEMO)
+        mutations = {
+            "binary": ("debug", lambda d: (d / "creations/demos" / demo / rm.TARGET)
+                       .write_bytes(b"other")),
+            "diff": ("debug", lambda d: (d / "tree.diff").write_bytes(b"changed\n")),
+            "shader dir": ("debug", lambda d: (d / "creations/demos" / demo / "shaders/new.glsl")
+                           .write_bytes(b"\n")),
+            "build type": ("release", lambda d: None),
+        }
+        for name, (build, mutate) in mutations.items():
+            dest = self.snapshot()
+            mutate(dest)
+            with self.subTest(name=name), self.assertRaises(rm.ProvenanceError):
+                rm.tree_provenance(build, "pre", dest)
+
+    def test_retained_records_pin_their_committed_diffs(self):
+        retained = Path(__file__).resolve().parent / "windows-opengl-mechanism"
+        records = sorted(retained.glob("*/pre-tree/tree.json"))
+        self.assertEqual(len(records), len(rm.BUILDS))
+        for path in records:
+            with self.subTest(record=path.parent.parent.name):
+                tree = json.loads(path.read_text())
+                self.assertEqual(tree["build_type"], rm.BUILDS[path.parent.parent.name][1])
+                self.assertEqual(tree["diff_sha256"], rm.sha256(path.parent / "tree.diff"))
 
 
 class ByteForByteRestoration(unittest.TestCase):

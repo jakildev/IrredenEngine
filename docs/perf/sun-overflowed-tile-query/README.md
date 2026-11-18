@@ -659,7 +659,12 @@ resumed `timing` reads.
 `windows-opengl-mechanism/<build>/` holds the mechanism evidence:
 
 - `pre-tree/`: the pre snapshot's `tree.json` and `tree.diff` (the binary
-  itself is not retained).
+  itself is not retained). `diff_sha256` is the hash of the exact `tree.diff`
+  bytes. The copies of `tree.json` inside the runs' `provenance.json`,
+  `summary.json` and `witness.json` instead carry `4181baea…`, which is the
+  same diff without its final newline; those run records are kept as written.
+  Reopening a pre tree (`--pre-tree`) checks its recorded build type, binary,
+  diff and shader-directory hashes.
 - `witness/` (Debug): `provenance.json`, `witness.json` with every capture's
   command, staged hashes and per-group medians, and one
   `<tree>/<case>/<variant>/` directory per capture holding `witness.csv` and

@@ -791,10 +791,11 @@ def snapshot(args):
         else:
             (dest / relative).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, dest / relative)
-    (dest / "tree.diff").write_text(diff + ("\n" if diff else ""))
+    diff_bytes = (diff + "\n").encode() if diff else b""
+    (dest / "tree.diff").write_bytes(diff_bytes)
     record = {"label": args.label, "head": git("rev-parse", "HEAD"),
               "reverts": args.reverts, "build_type": build_type,
-              "diff_sha256": sha256_bytes(diff.encode()),
+              "diff_sha256": sha256_bytes(diff_bytes),
               "binary_sha256": sha256(binary),
               "shader_dir_sha256": directory_digest(shader_root)}
     (dest / "tree.json").write_text(json.dumps(record, indent=2) + "\n")
@@ -813,8 +814,15 @@ def tree_provenance(build, tree, pre_tree=None):
               "runtime_scripts_sha256": directory_digest(binary.parent / "scripts")}
     if tree == "pre":
         tree_json = json.loads((build_dir / "tree.json").read_text())
-        if tree_json["binary_sha256"] != record["binary_sha256"]:
-            raise ProvenanceError(f"{build_dir} binary differs from its tree.json")
+        # The live shader digest equals the one `snapshot` recorded only while the
+        # runtime sampler is pristine, which this function has already required.
+        observed = {"build_type": build_type, "binary_sha256": record["binary_sha256"],
+                    "diff_sha256": sha256(build_dir / "tree.diff"),
+                    "shader_dir_sha256": record["pristine_shader_dir_sha256"]}
+        for key, value in observed.items():
+            if tree_json.get(key) != value:
+                raise ProvenanceError(f"{build_dir} {key} {value} differs from its "
+                                      f"tree.json {tree_json.get(key)}")
         record["tree"] = tree_json
     return record
 
