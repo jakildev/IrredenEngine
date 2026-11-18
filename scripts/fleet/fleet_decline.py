@@ -11,6 +11,7 @@ DECLINE_TRANSIENT_RE = re.compile(
     re.IGNORECASE)
 DECLINE_HOST_RE = re.compile(
     r"RESULT=NO-DISPLAY|0 display monitors|online displays? 0|no online display|no display|"
+    r"\bawake=0(?!\d)|"
     r"(?:GPU|ir-acquire).{0,80}(?:lock|lease).{0,80}(?:held|unavailable|"
     r"did not become available)", re.IGNORECASE)
 DECLINE_SANDBOX_RE = re.compile(
