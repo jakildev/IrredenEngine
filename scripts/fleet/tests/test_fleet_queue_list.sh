@@ -18,7 +18,7 @@ mkdir -p "$TMP/bin" "$TMP/fleet/state/declined"
 
 apply_fixture() {
     printf '%s\n' '{"generated_at":"2099-01-01T00:00:00Z","repos":{"engine":{"tasks":{"open":[{"id":"#10","issue":"#10","updatedAt":"2026-10-07T12:00:00Z","shadow_merged_pr":{"number":900}},{"id":"#11","issue":"#11","updatedAt":"2026-10-07T12:00:00Z","shadow_merged_pr":{"number":901}},{"id":"#12","issue":"#12","updatedAt":"2026-10-07T12:00:00Z"}]}}}}' > "$TMP/fleet/state/state.json"
-    printf '%s\n' '2026-10-07T12:00:00Z' 'implementation already merged' 'worker' 'shadow_merged_pr=900' > "$TMP/fleet/state/declined/task-engine-10"
+    printf '%s\n' '2026-10-07T12:00:00Z' '[delivered-by #900] implementation already merged' 'worker' 'shadow_merged_pr=900' > "$TMP/fleet/state/declined/task-engine-10"
 }
 
 apply_fixture
