@@ -1,0 +1,16 @@
+"""Run head's render-yaw-crossing-metric.py with a 2560x1440 window over the
+1280x720 game resolution (output scale 2, Metal's capture shape). Needs the
+#4852 offscreen-size overlay in the build. Args pass through to the script."""
+import sys
+import types
+
+SCRIPT = "C:/msys64/tmp/p5138/head/scripts/render-yaw-crossing-metric.py"
+sys.path.insert(0, "C:/msys64/tmp/p5138/head/scripts")
+src = open(SCRIPT, encoding="utf-8").read()
+old = 'f"init_window_width={GAME_SIZE[0]},init_window_height={GAME_SIZE[1]},"'
+assert src.count(old) == 1, "config line moved"
+src = src.replace(old, 'f"init_window_width={2 * GAME_SIZE[0]},init_window_height={2 * GAME_SIZE[1]},"')
+mod = types.ModuleType("crossing2x")
+mod.__file__ = SCRIPT
+exec(compile(src, SCRIPT, "exec"), mod.__dict__)
+raise SystemExit(mod.main(sys.argv[1:]))

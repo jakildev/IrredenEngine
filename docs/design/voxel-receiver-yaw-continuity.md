@@ -175,7 +175,13 @@ per-face terms (below).
 
 ### Not yet measured
 
-- OpenGL: every reading here is Metal.
+- OpenGL cost: every timing here is Metal. The correctness readings are taken
+  on OpenGL in `docs/evidence/receiver-model-gl/README.md`. The polygon and
+  crossing counts match the Metal figures above to the pixel wherever both hosts
+  read the same case. The lone-frame ratios differ by host (1x frames against
+  2x) and pass on both. The crossing reading at 90° and 270°, which Metal has
+  not taken, fails on the continuous route from shadow-edge motion with no
+  lone-frame pixel (#5184).
 - Pipelines that register a fog pass: unchanged by stage 1. Stage 2 (#5123)
   measures them.
 
