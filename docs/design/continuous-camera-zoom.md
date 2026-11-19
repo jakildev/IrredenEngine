@@ -267,6 +267,14 @@ all three values. With the diagnostic unset, the calibration-cube sweeps (13
 continuous, 6 snapped, 7 at yaw 0.4) match a build of the parent commit byte
 for byte. `render-verify.py --all` on the Metal host fails the same checks as
 the parent build: 57 of 323, all already failing there with the same names.
+On the OpenGL host (Windows, NVIDIA, Debug), the same sweep with the
+diagnostic unset passes every gated row: 214 of 214, with 141 rows skipped
+because they have no `windows-debug` reference. Three `IRLightingSdfBlocker`
+rows first read red (`zoom4_origin`, `zoom4_offset_3_5`, `zoom8_origin`,
+max delta 123). The cardinal receiver's
+[coplanar-neighbour edge rule](surface-shadow-sampling.md#cardinal-presentation-receivers)
+moved them, and they were re-blessed: with that rule staged off, all four
+non-unit-zoom shots match the old references byte for byte.
 
 Cost, Metal: whole-frame GPU envelope at `z` 2.2, yaw 0, 600 frames, five
 alternating runs per arm on a shared host. Per-run averages spanned
