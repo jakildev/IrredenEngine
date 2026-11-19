@@ -55,7 +55,8 @@ suppressed by the scout's skip labels, or an absolute `human:wip` /
 `fleet:gated` park. `human:needs-fix`, `human:blocker`, and the in-flight human
 AMEND marker `fleet:human-amending` outrank suppressible parks;
 `fleet:design-unblocked` remains actionable through `fleet:wip`. A failed live
-fetch is also refused, with a distinct reason. The cross-lane backstop still
+fetch is re-read a bounded number of times (every lane's precheck does), then
+refused with a distinct reason, before any POST. The cross-lane backstop still
 refuses reviewing / resolving / foreign amending claims, and its independent
 two-read confirmation with `review-claim` and `resolving-claim` closes the
 observed snapshot race. The scout's `worker_feedback_labels()` enforces the
