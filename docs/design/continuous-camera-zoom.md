@@ -197,7 +197,8 @@ keep nearest.
 ### What was measured
 
 `python3 scripts/render-continuous-zoom-metric.py filter --output <dir>` on
-Metal (Apple silicon, output scale 2, framebuffer 1280x720, unlit, `FULL`),
+Metal (Apple silicon, output scale 2) and on OpenGL (Windows, NVIDIA, output
+scale 1), both at framebuffer 1280x720, unlit, `FULL`,
 `IRShapeDebug --gather-filter-fixture`: three 16x16x2 four-colour checker
 bodies (GRID, DETACHED, DETACHED_REVOXELIZE), an SDF box, two touching
 flat-colour boxes, one voxel and a thin DETACHED bar turned 30 degrees, on
@@ -205,32 +206,40 @@ black. Each owner's palette sits at least 50 off the checker's
 `r + g + b = 380` plane, so a mix across owners is distinguishable from a mix
 inside a body. Sweeps run forward and back across the density step,
 `z` 1.80 to 2.40 in 25 shots (`S` 2 then 3), at yaw 0 and 0.4, plus snapped
-`z` 2 and 4; every arm repeats each pose.
+`z` 2 and 4; every arm repeats each pose. Both backends pass the gate.
 
-| Reading (sum over all six sweeps) | nearest repeat | unrestricted | owner |
-|---|---|---|---|
-| coverage changes (drawn / background flips) | 0 | 0 | 0 |
-| bleed: colour off its nearest owner's palette | 0 | 33,482 | 0 |
-| owner disagreements: colour nearest another owner | 0 | 7,614 | 0 |
-| pixels changed, yaw 0 continuous | 0 | GRID 131,968; SDF 7,742; pair 8,898; voxel 694 | GRID 124,196 |
+| Reading (sum over all six sweeps) | Backend | nearest repeat | unrestricted | owner |
+|---|---|---|---|---|
+| coverage changes (drawn / background flips) | Metal | 0 | 0 | 0 |
+| | OpenGL | 0 | 0 | 0 |
+| bleed: colour off its nearest owner's palette | Metal | 0 | 33,482 | 0 |
+| | OpenGL | 0 | 33,322 | 0 |
+| owner disagreements: colour nearest another owner | Metal | 0 | 7,614 | 0 |
+| | OpenGL | 0 | 7,602 | 0 |
+| pixels changed, yaw 0 continuous | Metal | 0 | GRID 131,968; SDF 7,742; pair 8,898; voxel 694 | GRID 124,196 |
+| | OpenGL | 0 | GRID 132,018; SDF 7,748; pair 8,900; voxel 694 | GRID 124,250 |
 
 Motion-compensated temporal difference of the GRID body interior (mean
 `|shot k - registered shot k+1|`, 8-bit units, registration from owner
 centroids, residual at most 0.5 px at yaw 0):
 
-| Sweep | nearest | nearest repeat | unrestricted | owner |
-|---|---|---|---|---|
-| yaw 0, forward | 10.73 | 10.73 | 5.13 | 5.18 |
-| yaw 0, reverse | 10.84 | 10.84 | 5.45 | 5.50 |
-| yaw 0.4, either direction | 10.61 / 10.69 | same | same | same |
+| Sweep | Backend | nearest | nearest repeat | unrestricted | owner |
+|---|---|---|---|---|---|
+| yaw 0, forward | Metal | 10.73 | 10.73 | 5.13 | 5.18 |
+| | OpenGL | 10.73 | 10.73 | 5.12 | 5.18 |
+| yaw 0, reverse | Metal | 10.84 | 10.84 | 5.45 | 5.50 |
+| | OpenGL | 10.84 | 10.84 | 5.45 | 5.50 |
+| yaw 0.4, forward / reverse | Metal | 10.61 / 10.69 | same | same | same |
+| | OpenGL | 10.60 / 10.68 | same | same | same |
 
 Blurring lowers that difference by itself, so the grader also reports the
 shot-to-shot spread of each body's interior mean colour (the largest
 per-channel standard deviation), which a filter preserving each body's
 area-weighted palette holds fixed. At yaw 0 the GRID body's spread falls from
-0.511 (nearest) to 0.113 (owner) and 0.114 (unrestricted) in both
-directions, against 0.0 repeat noise. In every sweep where the candidate is
-inert, all four arms read the same.
+0.511 (nearest) to 0.113 (owner) and 0.114 (unrestricted) on Metal, and to
+0.110 and 0.111 on OpenGL, in both directions, against 0.0 repeat noise. In
+every sweep where the candidate is inert, all four arms read the same on both
+backends.
 
 What the candidate reaches:
 
@@ -246,19 +255,20 @@ What the candidate reaches:
 - **`DETACHED_REVOXELIZE`**: `LOCAL_TRIANGLES`, not filtered; identical in
   every arm.
 - **`DETACHED` (`SOURCE_FACES`)**: drawn as source faces, never gathered. In
-  `IRShapeDebug`'s pipeline these owners render incompletely and differ
-  between identical runs (about 74,000 differing pixels per 25-shot sweep, lit
-  or unlit), so the grader fences them off with a 16 px margin and reports
-  them apart. They are not a filtering result.
+  `IRShapeDebug`'s pipeline on Metal these owners render incompletely and
+  differ between identical runs (about 74,000 differing pixels per 25-shot
+  sweep, lit or unlit), so the grader fences them off with a 16 px margin and
+  reports them apart. On OpenGL identical runs agree there (0 differing
+  pixels in every sweep and arm). They are not a filtering result.
 
-Picking: `gui-verify.py IRShapeDebug -- --continuous-zoom-gui-test` passes
-5/5 under all three values. With the diagnostic unset, the calibration-cube
-sweeps (13 continuous, 6 snapped, 7 at yaw 0.4) match a build of the parent
-commit byte for byte. `render-verify.py --all` on this host fails the same
-checks as the parent build: 57 of 323, all already failing there with the
-same names.
+Picking and the parent-build comparison were run on Metal only.
+`gui-verify.py IRShapeDebug -- --continuous-zoom-gui-test` passes 5/5 under
+all three values. With the diagnostic unset, the calibration-cube sweeps (13
+continuous, 6 snapped, 7 at yaw 0.4) match a build of the parent commit byte
+for byte. `render-verify.py --all` on the Metal host fails the same checks as
+the parent build: 57 of 323, all already failing there with the same names.
 
-Cost: whole-frame GPU envelope at `z` 2.2, yaw 0, 600 frames, five
+Cost, Metal: whole-frame GPU envelope at `z` 2.2, yaw 0, 600 frames, five
 alternating runs per arm on a shared host. Per-run averages spanned
 1.16-3.42 ms (nearest), 1.20-2.18 ms (owner) and 1.26-3.34 ms
 (unrestricted), with best frames at 0.966, 0.972 and 0.975 ms; ir-run flagged one nearest
@@ -267,8 +277,19 @@ candidate's cost is below the run-to-run variation here; the fixture covers a
 small share of the framebuffer, so this bounds nothing for a full screen. The
 gather stage was not timed on its own, and no number above adds stages.
 
-OpenGL: the GLSL twin is part of the same gather programs, but no GL host
-has run it yet, so there are no OpenGL readings.
+Cost, OpenGL: the same pose and run plan. OpenGL has no whole-frame GPU
+timer (every report reads `Coverage: supported=0`), so the whole-frame
+reading is the steady wall-frame time (the first 150 frames excluded), and
+the gather is timed by its own exclusive GPU stage rows. With stage timing
+off, per-run steady averages spanned 2.38-2.63 ms (nearest), 2.47-2.61 ms
+(owner) and 2.48-2.93 ms (unrestricted), all guarded runs; the arms overlap.
+With stage timing on (`--config-preset configs/perf/sdf-on.lua`), the main
+canvas gather `trixelToFb` read 0.018-0.020 ms per invocation (nearest),
+0.021-0.023 ms (owner) and 0.019-0.022 ms (unrestricted), and the detached
+gather `entityCanvasToFb` 0.021-0.024 ms in every arm. The owner rule costs
+about 3 µs per main-canvas gather on this fixture, the one per-stage reading
+whose ranges separate; it bounds nothing for a full screen either. OpenGL
+evidence: [`results.json` and the timing runs](https://github.com/jakildev/IrredenEngine/tree/70e269908ee7922a15afcade0ce31722baf8ac1a/docs/pr-screenshots/claude/4916-gather-filter-gl).
 
 ### Decision
 
@@ -285,11 +306,16 @@ It still does not justify a default or a preference:
   edges ([evidence](https://github.com/jakildev/IrredenEngine/tree/37a3b3ebbbaeae5712628277460270e57cb0717b/docs/pr-screenshots/claude/gather-filter-diagnostic): the nearest / owner / unrestricted
   crop, `results.json` and the timing runs). Whether that trade suits
   authored pixel art is a product call this measurement cannot make.
-- Cost is unresolved on this host, and OpenGL is unmeasured.
+- Cost is unresolved: below run-to-run variation on Metal, and a few
+  microseconds per gather on OpenGL, both on a fixture that covers a small
+  share of the screen.
+
+The OpenGL readings match Metal's to within 0.5% on every count and 0.01 in
+each temporal mean, so the decision holds on both backends.
 
 A proposal for an opt-in presentation policy must bring: the owner rule
 extended to the per-axis scatter and `LOCAL_TRIANGLES` canvases, or an
-accepted yaw-dependent look; the same `filter` readings on OpenGL; lit scenes,
+accepted yaw-dependent look; lit scenes,
 where AO and per-texel lighting vary within a face; full-screen gather cost
 on a quiet host, Metal and OpenGL; and a sharpness reading beside the
 stability one. Authored LOD variant interpolation is a separate question:
