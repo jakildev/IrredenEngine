@@ -133,18 +133,22 @@ jobs:
         uses: actions/checkout@v4
       - name: Run fleet tool tests
         run: |
-          export DIAG_OUT="$RUNNER_TEMP/diag.log"; : > "$DIAG_OUT"
-          fails=0
-          for i in $(seq 1 25); do
-            for t in test_fleet_claim_cross_lane.sh test_fleet_claim_acquire_race.sh; do
-              if ! out=$(bash scripts/fleet/tests/$t 2>&1); then
-                fails=$((fails+1)); echo "=== iter $i $t FAILED"; echo "$out" | grep -vE '^ +ok: ' | tail -60
-              fi
+          ls -l "$(command -v mkdir)" "$(command -v rmdir)"; mkdir --version | head -1
+          probe() {  # $1 = label, rest = exclusive-create command taking the path last
+            local label="$1"; shift; local both=0 d="$RUNNER_TEMP/probe-lock"
+            for i in $(seq 1 3000); do
+              rm -rf "$d"; a=1; b=1
+              ( "$@" "$d" 2>/dev/null ) & pa=$!
+              ( "$@" "$d" 2>/dev/null ) & pb=$!
+              wait $pa && a=0; wait $pb && b=0
+              (( a == 0 && b == 0 )) && both=$((both+1))
             done
-          done
-          echo "=== total failures: $fails"
-          echo "=== DIAG"; cat "$DIAG_OUT"
-          bash --version | head -1; timeout --version | head -1; uname -a; nproc
+            echo "PROBE $label: both-succeeded $both / 3000"
+          }
+          probe "coreutils mkdir" mkdir
+          probe "python os.mkdir" python3 -c 'import os,sys; os.mkdir(sys.argv[1])'
+          noclobber_create() { ( set -C; : > "$1" ); }
+          probe "bash noclobber" noclobber_create
 
   gate:
     if: always()
