@@ -113,7 +113,12 @@ TEST(CameraSubPixelOffsets, MatchesTheReferenceDecomposition) {
     // take the screen sign. Sampled across sub-iso positions at two zoom
     // levels, three scale factors and both screen signs.
     const std::vector<IRMath::vec2> cameraSamples{
-        {0.1f, 0.2f}, {0.3f, 0.4f}, {0.5f, 0.5f}, {0.7f, 0.9f}, {0.99f, 0.01f}, {0.1f, -0.2f}
+        {0.1f, 0.2f},
+        {0.3f, 0.4f},
+        {0.5f, 0.5f},
+        {0.7f, 0.9f},
+        {0.99f, 0.01f},
+        {0.1f, -0.2f}
     };
     const std::vector<IRMath::vec2> zooms{{1.0f, 1.0f}, {2.0f, 2.0f}};
     const std::vector<IRMath::ivec2> scaleFactors{{1, 1}, {3, 3}, {5, 5}};
