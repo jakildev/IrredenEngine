@@ -1,0 +1,1320 @@
+{
+ "parent": "18a91f694 (master)",
+ "head": "18a91f694 + this change",
+ "build_type": "Debug",
+ "backend": "Metal",
+ "compare": "scripts/render-compare.py --per-pixel-tol 0",
+ "sets": {
+  "cs_nine": {
+   "parent_n": 9,
+   "head_n": 9,
+   "paired": 9,
+   "max_delta": 0,
+   "nonzero": [],
+   "skip_logs": {
+    "parent": 0,
+    "head": 0
+   },
+   "resume_logs": {
+    "parent": 0,
+    "head": 0
+   },
+   "assert_lines": {
+    "parent": 0,
+    "head": 0
+   }
+  },
+  "cs_nine_grid": {
+   "parent_n": 9,
+   "head_n": 9,
+   "paired": 9,
+   "max_delta": 0,
+   "nonzero": [],
+   "skip_logs": {
+    "parent": 0,
+    "head": 5
+   },
+   "resume_logs": {
+    "parent": 0,
+    "head": 4
+   },
+   "assert_lines": {
+    "parent": 0,
+    "head": 0
+   }
+  },
+  "fx_nine": {
+   "parent_n": 9,
+   "head_n": 9,
+   "paired": 9,
+   "max_delta": 0,
+   "nonzero": [],
+   "skip_logs": {
+    "parent": 0,
+    "head": 5
+   },
+   "resume_logs": {
+    "parent": 0,
+    "head": 4
+   },
+   "assert_lines": {
+    "parent": 0,
+    "head": 0
+   }
+  },
+  "fx_sub1": {
+   "parent_n": 2,
+   "head_n": 2,
+   "paired": 2,
+   "max_delta": 0,
+   "nonzero": [],
+   "skip_logs": {
+    "parent": 0,
+    "head": 1
+   },
+   "resume_logs": {
+    "parent": 0,
+    "head": 0
+   },
+   "assert_lines": {
+    "parent": 0,
+    "head": 0
+   }
+  },
+  "fx_sub4": {
+   "parent_n": 2,
+   "head_n": 2,
+   "paired": 2,
+   "max_delta": 0,
+   "nonzero": [],
+   "skip_logs": {
+    "parent": 0,
+    "head": 1
+   },
+   "resume_logs": {
+    "parent": 0,
+    "head": 0
+   },
+   "assert_lines": {
+    "parent": 0,
+    "head": 0
+   }
+  },
+  "sd_shadow": {
+   "parent_n": 28,
+   "head_n": 28,
+   "paired": 28,
+   "max_delta": 0,
+   "nonzero": [],
+   "skip_logs": {
+    "parent": 0,
+    "head": 0
+   },
+   "resume_logs": {
+    "parent": 0,
+    "head": 0
+   },
+   "assert_lines": {
+    "parent": 0,
+    "head": 0
+   }
+  },
+  "sd_table": {
+   "parent_n": 28,
+   "head_n": 28,
+   "paired": 28,
+   "max_delta": 0,
+   "nonzero": [],
+   "skip_logs": {
+    "parent": 0,
+    "head": 0
+   },
+   "resume_logs": {
+    "parent": 0,
+    "head": 0
+   },
+   "assert_lines": {
+    "parent": 0,
+    "head": 0
+   }
+  }
+ },
+ "render_verify_runs": {
+  "fog_demo/ceiling": {
+   "n": [
+    2,
+    2
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/ceiling_hard": {
+   "n": [
+    2,
+    2
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/ceiling_shadow": {
+   "n": [
+    2,
+    2
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/ceiling_treatment": {
+   "n": [
+    2,
+    2
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/channel_probe": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/default": {
+   "n": [
+    3,
+    3
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/depth_slab": {
+   "n": [
+    2,
+    2
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/detached": {
+   "n": [
+    3,
+    3
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/detached_body": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/detached_body_hidden": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/detached_body_no_solid": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/detached_body_soft": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/detached_exempt": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/detached_field_hidden": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/edge": {
+   "n": [
+    4,
+    4
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/edge_sdf_blocker": {
+   "n": [
+    3,
+    3
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/edge_smooth": {
+   "n": [
+    3,
+    3
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/edge_zcost": {
+   "n": [
+    3,
+    3
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/edge_zcost_asym": {
+   "n": [
+    3,
+    3
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/edge_zcost_ceiling": {
+   "n": [
+    3,
+    3
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/edge_zcost_ceiling_paint": {
+   "n": [
+    5,
+    5
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/entity_reveal": {
+   "n": [
+    5,
+    5
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/entity_reveal_soft": {
+   "n": [
+    5,
+    5
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/explored_decay": {
+   "n": [
+    5,
+    5
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/ghost_policy": {
+   "n": [
+    3,
+    3
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/many_sources": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/occlusion": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/occlusion_blocker": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/occlusion_blocker_inert": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/occlusion_column_top": {
+   "n": [
+    2,
+    2
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/occlusion_flat": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/occlusion_high_ground": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/occlusion_high_ground_soft": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/occlusion_high_ground_soft_treated": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/occlusion_two_sources": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/peraxis_overflow": {
+   "n": [
+    1,
+    1
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "fog_demo/world_pan": {
+   "n": [
+    4,
+    4
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "perf_grid/chunk_only": {
+   "n": [
+    7,
+    7
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "perf_grid/cull_on": {
+   "n": [
+    7,
+    7
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "perf_grid/default": {
+   "n": [
+    7,
+    7
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "perf_grid/static_cycle": {
+   "n": [
+    7,
+    7
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  },
+  "perf_grid/static_cycle_dynamic": {
+   "n": [
+    7,
+    7
+   ],
+   "max_delta": 0,
+   "nonzero": [],
+   "unreadable": [],
+   "probe_diff": [],
+   "result": [
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ],
+    [
+     [
+      "RESULT=CLEAN"
+     ],
+     [
+      "Discovered 2 display"
+     ]
+    ]
+   ]
+  }
+ }
+}

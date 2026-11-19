@@ -14,11 +14,9 @@ namespace IRSystem {
 
 // Per-frame reset of a trixel canvas before its first producer writes: color
 // (or the canvas's authored background), entity ids, and the distance buffer
-// back to kTrixelDistanceMaxDistance. The distance reset goes through the
-// device clearTexImage, never Texture2D::clear: on Metal Texture2D::clear does
-// not reliably clear R32I textures, and only clearTexImage mirrors the
-// sentinel into the image-atomic scratch that imageAtomicMin writers compare
-// against. Every producer that owns a canvas's clear (the voxel raster, the
+// back to kTrixelDistanceMaxDistance. The distance reset goes through
+// C_TriangleCanvasTextures::clearDistancesToEmpty, never Texture2D::clear (see
+// there). Every producer that owns a canvas's clear (the voxel raster, the
 // shape raster of a shape-only canvas) resets through this one path.
 inline void clearCanvasAndDistances(
     IREntity::EntityId canvasEntity, IRComponents::C_TriangleCanvasTextures &canvas
@@ -35,9 +33,7 @@ inline void clearCanvasAndDistances(
     // background updated the color canvas: clearCanvasWithBackground may skip a
     // throttled frame or no-op, while producers write per-pixel distances every
     // frame.
-    static constexpr std::int32_t kDistanceClear =
-        static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
-    IRRender::device()->clearTexImage(canvas.getTextureDistances(), 0, &kDistanceClear);
+    canvas.clearDistancesToEmpty();
 }
 
 } // namespace IRSystem

@@ -73,15 +73,7 @@ inline void uploadClippedRect(
         IRRender::PixelDataType::UNSIGNED_BYTE,
         colors
     );
-    canvas.textureTriangleDistances_.second->subImage2D(
-        lo.x,
-        lo.y,
-        w,
-        h,
-        IRRender::PixelDataFormat::RED_INTEGER,
-        IRRender::PixelDataType::INT32,
-        scratch.distances_.data()
-    );
+    canvas.writeDistances(lo, IRMath::ivec2(w, h), scratch.distances_.data());
 }
 
 } // namespace detail

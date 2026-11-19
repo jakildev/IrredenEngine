@@ -70,8 +70,14 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
 
     int encoded = trixelDistances.read(uint2(pixel)).x;
     // Per-axis canvas uses INT_MAX as the empty sentinel; single-canvas uses 65535.
+    // A single-canvas empty texel and (surface variant) a cardinal voxel
+    // surface are left unwritten: lighting returns before sampling either on
+    // the same frame. The invariant and its readers are listed in
+    // system_compute_sun_shadow.hpp.
     if (encoded >= (frameData.perAxisRoute != 0 ? 0x7FFFFFFF : kEmptyDistanceEncoded)) {
-        canvasSunShadow.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
+        if (frameData.perAxisRoute != 0) {
+            canvasSunShadow.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
+        }
         return;
     }
 #if !IR_SHAPE_RECEIVER
@@ -82,7 +88,6 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
 #endif
 #if IR_SKIP_CARDINAL_SURFACE
     if (isCardinalVoxelSurface(trixelEntityIds.read(uint2(pixel)).xy)) {
-        canvasSunShadow.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
         return;
     }
 #endif

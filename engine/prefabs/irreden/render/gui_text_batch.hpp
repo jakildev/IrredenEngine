@@ -481,8 +481,11 @@ inline void dispatchGuiText(std::vector<IRRender::GlyphDrawCommand> &commands) {
     program->use();
     canvas.getTextureColorsForGeometryWrite()
         ->bindAsImage(0, IRRender::TextureAccess::WRITE_ONLY, IRRender::TextureFormat::RGBA8);
-    canvas.getTextureDistances()
-        ->bindAsImage(1, IRRender::TextureAccess::WRITE_ONLY, IRRender::TextureFormat::R32I);
+    canvas.bindDistancesForWrite(
+        1,
+        IRRender::TextureAccess::WRITE_ONLY,
+        IRComponents::CanvasDistanceContent::QUERIED
+    );
     dispatchGlyphCommands(*cmdBuf, commands);
 
     commands.clear();

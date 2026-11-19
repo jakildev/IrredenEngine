@@ -1,0 +1,250 @@
+{
+ "case": "cardinal-zoom4-overlap8-subdiv4",
+ "pairs": [
+  1,
+  2,
+  4,
+  5,
+  6,
+  7
+ ],
+ "base_runs": [
+  {
+   "round": 1,
+   "computeSunShadow_ms": 0.288,
+   "frame_avg_ms": 10.5,
+   "gpu_commandBufferSpans_ms": 6.897,
+   "skip_witness": false,
+   "quiet": "guarded",
+   "result": "CLEAN",
+   "build_type": "Debug",
+   "binary_sha256": "a8bbff504ec008b345a06ac2b0d906b31046dce8e77ca1078ea933df54fd82a1",
+   "shader_sha256": "ab59efd9f287bc6e5f45bcd37bcd507f008878c1dba3805b2e90ee0cff230d0f",
+   "head": "18a91f6943d1c22058d0be0630bc4ccf383f0662"
+  },
+  {
+   "round": 2,
+   "computeSunShadow_ms": 0.325,
+   "frame_avg_ms": 11.7,
+   "gpu_commandBufferSpans_ms": 7.179,
+   "skip_witness": false,
+   "quiet": "guarded",
+   "result": "CLEAN",
+   "build_type": "Debug",
+   "binary_sha256": "a8bbff504ec008b345a06ac2b0d906b31046dce8e77ca1078ea933df54fd82a1",
+   "shader_sha256": "ab59efd9f287bc6e5f45bcd37bcd507f008878c1dba3805b2e90ee0cff230d0f",
+   "head": "18a91f6943d1c22058d0be0630bc4ccf383f0662"
+  },
+  {
+   "round": 3,
+   "computeSunShadow_ms": 0.256,
+   "frame_avg_ms": 9.53,
+   "gpu_commandBufferSpans_ms": 6.828,
+   "skip_witness": false,
+   "quiet": "guarded",
+   "result": "CLEAN",
+   "build_type": "Debug",
+   "binary_sha256": "a8bbff504ec008b345a06ac2b0d906b31046dce8e77ca1078ea933df54fd82a1",
+   "shader_sha256": "ab59efd9f287bc6e5f45bcd37bcd507f008878c1dba3805b2e90ee0cff230d0f",
+   "head": "18a91f6943d1c22058d0be0630bc4ccf383f0662"
+  },
+  {
+   "round": 4,
+   "computeSunShadow_ms": 0.292,
+   "frame_avg_ms": 11.07,
+   "gpu_commandBufferSpans_ms": 7.016,
+   "skip_witness": false,
+   "quiet": "guarded",
+   "result": "CLEAN",
+   "build_type": "Debug",
+   "binary_sha256": "a8bbff504ec008b345a06ac2b0d906b31046dce8e77ca1078ea933df54fd82a1",
+   "shader_sha256": "ab59efd9f287bc6e5f45bcd37bcd507f008878c1dba3805b2e90ee0cff230d0f",
+   "head": "18a91f6943d1c22058d0be0630bc4ccf383f0662"
+  },
+  {
+   "round": 5,
+   "computeSunShadow_ms": 0.308,
+   "frame_avg_ms": 11.04,
+   "gpu_commandBufferSpans_ms": 7.117,
+   "skip_witness": false,
+   "quiet": "guarded",
+   "result": "CLEAN",
+   "build_type": "Debug",
+   "binary_sha256": "a8bbff504ec008b345a06ac2b0d906b31046dce8e77ca1078ea933df54fd82a1",
+   "shader_sha256": "ab59efd9f287bc6e5f45bcd37bcd507f008878c1dba3805b2e90ee0cff230d0f",
+   "head": "18a91f6943d1c22058d0be0630bc4ccf383f0662"
+  },
+  {
+   "round": 6,
+   "computeSunShadow_ms": 0.326,
+   "frame_avg_ms": 11.46,
+   "gpu_commandBufferSpans_ms": 7.097,
+   "skip_witness": false,
+   "quiet": "guarded",
+   "result": "CLEAN",
+   "build_type": "Debug",
+   "binary_sha256": "a8bbff504ec008b345a06ac2b0d906b31046dce8e77ca1078ea933df54fd82a1",
+   "shader_sha256": "ab59efd9f287bc6e5f45bcd37bcd507f008878c1dba3805b2e90ee0cff230d0f",
+   "head": "18a91f6943d1c22058d0be0630bc4ccf383f0662"
+  },
+  {
+   "round": 7,
+   "computeSunShadow_ms": 0.311,
+   "frame_avg_ms": 11.18,
+   "gpu_commandBufferSpans_ms": 7.256,
+   "skip_witness": false,
+   "quiet": "guarded",
+   "result": "CLEAN",
+   "build_type": "Debug",
+   "binary_sha256": "a8bbff504ec008b345a06ac2b0d906b31046dce8e77ca1078ea933df54fd82a1",
+   "shader_sha256": "ab59efd9f287bc6e5f45bcd37bcd507f008878c1dba3805b2e90ee0cff230d0f",
+   "head": "18a91f6943d1c22058d0be0630bc4ccf383f0662"
+  }
+ ],
+ "head_runs": [
+  {
+   "round": 1,
+   "computeSunShadow_ms": 0.0,
+   "frame_avg_ms": 11.48,
+   "gpu_commandBufferSpans_ms": 7.309,
+   "skip_witness": true,
+   "quiet": "guarded",
+   "result": "CLEAN",
+   "build_type": "Debug",
+   "binary_sha256": "e19b0cb46a0db63ce94297008bbe41d73eaf9cc17a8371ca1b5d7e6716dd4780",
+   "shader_sha256": "b649c8c6e39333803763a40d28be27fec5f9b0cfa60031025cb6125bf5352db8",
+   "head": "2ddd4c59da242abbb0b788d93f85fdb1392f1ea6"
+  },
+  {
+   "round": 2,
+   "computeSunShadow_ms": 0.0,
+   "frame_avg_ms": 11.2,
+   "gpu_commandBufferSpans_ms": 7.108,
+   "skip_witness": true,
+   "quiet": "guarded",
+   "result": "CLEAN",
+   "build_type": "Debug",
+   "binary_sha256": "e19b0cb46a0db63ce94297008bbe41d73eaf9cc17a8371ca1b5d7e6716dd4780",
+   "shader_sha256": "b649c8c6e39333803763a40d28be27fec5f9b0cfa60031025cb6125bf5352db8",
+   "head": "2ddd4c59da242abbb0b788d93f85fdb1392f1ea6"
+  },
+  {
+   "round": 3,
+   "computeSunShadow_ms": 0.0,
+   "frame_avg_ms": 10.81,
+   "gpu_commandBufferSpans_ms": 6.943,
+   "skip_witness": true,
+   "quiet": "breach",
+   "result": "CONTAMINATED",
+   "build_type": "Debug",
+   "binary_sha256": "e19b0cb46a0db63ce94297008bbe41d73eaf9cc17a8371ca1b5d7e6716dd4780",
+   "shader_sha256": "b649c8c6e39333803763a40d28be27fec5f9b0cfa60031025cb6125bf5352db8",
+   "head": "2ddd4c59da242abbb0b788d93f85fdb1392f1ea6"
+  },
+  {
+   "round": 4,
+   "computeSunShadow_ms": 0.0,
+   "frame_avg_ms": 10.82,
+   "gpu_commandBufferSpans_ms": 6.976,
+   "skip_witness": true,
+   "quiet": "guarded",
+   "result": "CLEAN",
+   "build_type": "Debug",
+   "binary_sha256": "e19b0cb46a0db63ce94297008bbe41d73eaf9cc17a8371ca1b5d7e6716dd4780",
+   "shader_sha256": "b649c8c6e39333803763a40d28be27fec5f9b0cfa60031025cb6125bf5352db8",
+   "head": "2ddd4c59da242abbb0b788d93f85fdb1392f1ea6"
+  },
+  {
+   "round": 5,
+   "computeSunShadow_ms": 0.0,
+   "frame_avg_ms": 11.63,
+   "gpu_commandBufferSpans_ms": 7.104,
+   "skip_witness": true,
+   "quiet": "guarded",
+   "result": "CLEAN",
+   "build_type": "Debug",
+   "binary_sha256": "e19b0cb46a0db63ce94297008bbe41d73eaf9cc17a8371ca1b5d7e6716dd4780",
+   "shader_sha256": "b649c8c6e39333803763a40d28be27fec5f9b0cfa60031025cb6125bf5352db8",
+   "head": "2ddd4c59da242abbb0b788d93f85fdb1392f1ea6"
+  },
+  {
+   "round": 6,
+   "computeSunShadow_ms": 0.0,
+   "frame_avg_ms": 11.15,
+   "gpu_commandBufferSpans_ms": 7.238,
+   "skip_witness": true,
+   "quiet": "guarded",
+   "result": "CLEAN",
+   "build_type": "Debug",
+   "binary_sha256": "e19b0cb46a0db63ce94297008bbe41d73eaf9cc17a8371ca1b5d7e6716dd4780",
+   "shader_sha256": "b649c8c6e39333803763a40d28be27fec5f9b0cfa60031025cb6125bf5352db8",
+   "head": "2ddd4c59da242abbb0b788d93f85fdb1392f1ea6"
+  },
+  {
+   "round": 7,
+   "computeSunShadow_ms": 0.0,
+   "frame_avg_ms": 10.01,
+   "gpu_commandBufferSpans_ms": 7.047,
+   "skip_witness": true,
+   "quiet": "guarded",
+   "result": "CLEAN",
+   "build_type": "Debug",
+   "binary_sha256": "e19b0cb46a0db63ce94297008bbe41d73eaf9cc17a8371ca1b5d7e6716dd4780",
+   "shader_sha256": "b649c8c6e39333803763a40d28be27fec5f9b0cfa60031025cb6125bf5352db8",
+   "head": "2ddd4c59da242abbb0b788d93f85fdb1392f1ea6"
+  }
+ ],
+ "summary": {
+  "computeSunShadow_ms": {
+   "n_pairs": 6,
+   "parent_mean": 0.30833333333333335,
+   "head_mean": 0.0,
+   "ratio": 0.0,
+   "paired_mean_delta": -0.30833333333333335,
+   "paired_sd": 0.015983324643723755,
+   "one_sided_95_upper": -0.2951851259354491,
+   "one_sided_95_lower": -0.3214815407312176,
+   "upper_pct_of_parent": -95.7357165196051
+  },
+  "frame_avg_ms": {
+   "n_pairs": 6,
+   "parent_mean": 11.158333333333333,
+   "head_mean": 11.048333333333334,
+   "ratio": 0.9901418969380135,
+   "paired_mean_delta": -0.10999999999999972,
+   "paired_sd": 0.7763246743470161,
+   "one_sided_95_upper": 0.5286204406113757,
+   "one_sided_95_lower": -0.7486204406113752,
+   "upper_pct_of_parent": 4.7374498038360775
+  },
+  "gpu_commandBufferSpans_ms": {
+   "n_pairs": 6,
+   "parent_mean": 7.093666666666667,
+   "head_mean": 7.130333333333334,
+   "ratio": 1.0051689300314834,
+   "paired_mean_delta": 0.03666666666666648,
+   "paired_sd": 0.2154294934930376,
+   "one_sided_95_upper": 0.21388334237123396,
+   "one_sided_95_lower": -0.140550009037901,
+   "upper_pct_of_parent": 3.015130995318368
+  }
+ },
+ "grading": {
+  "criterion_1": {
+   "bar_pct": -50.0,
+   "upper_pct": -95.7357165196051,
+   "pass": true
+  },
+  "frame_rows_rule_i": {
+   "ratio_limit": 1.05,
+   "frame_avg_ms": {
+    "ratio": 0.9901418969380135,
+    "pass": true
+   },
+   "gpu_commandBufferSpans_ms": {
+    "ratio": 1.0051689300314834,
+    "pass": true
+   }
+  }
+ }
+}

@@ -362,15 +362,7 @@ inline void uploadImage(
         IRRender::PixelDataType::UNSIGNED_BYTE,
         scratch.colors_.data()
     );
-    canvas.textureTriangleDistances_.second->subImage2D(
-        lo.x,
-        lo.y,
-        size.x,
-        size.y,
-        IRRender::PixelDataFormat::RED_INTEGER,
-        IRRender::PixelDataType::INT32,
-        scratch.distances_.data()
-    );
+    canvas.writeDistances(lo, size, scratch.distances_.data());
 }
 
 // What the sample strip drew: a hash of where the LARGE texels are, and the

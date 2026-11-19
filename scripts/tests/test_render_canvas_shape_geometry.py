@@ -256,17 +256,24 @@ class CanvasShapeGeometryTest(unittest.TestCase):
         render = ROOT / "engine/prefabs/irreden/render"
         textures = HEADER.with_name("component_triangle_canvas_textures.hpp").read_text()
         for name in ("clear()", "clearWithColor(", "clearWithColorData(", "setTrixel(",
-                     "clearDistances()", "clearDistanceTexture()",
-                     "getTextureColorsForGeometryWrite()"):
+                     "clearDistances()", "clearDistanceTexture()", "clearDistancesToEmpty()",
+                     "writeDistances(", "getTextureColorsForGeometryWrite()"):
             match = re.search(r"\n    [^\n;{}]*" + re.escape(name) + r"[^\n;{}]*\{",
                               textures)
             self.assertIsNotNone(match, name)
             start = match.start()
             body = textures[start:textures.index("\n    }", start)]
             self.assertIn("shapeGeometry_.invalidateSamples()", body, name)
+        empty_start = textures.index("void clearDistancesToEmpty()")
+        empty = textures[empty_start:textures.index("\n    }", empty_start)]
+        self.assertLess(empty.index("shapeGeometry_.invalidateSamples()"),
+                        empty.index("clearTexImage"))
         clear = (render / "canvas_clear.hpp").read_text()
-        self.assertLess(clear.index("shapeGeometry_.invalidateSamples()"),
-                        clear.index("clearTexImage" , clear.index("inline void")))
+        reset = clear[clear.index("inline void clearCanvasAndDistances"):]
+        self.assertIn("canvas.clearDistancesToEmpty()", reset)
+        self.assertLess(reset.index("shapeGeometry_.invalidateSamples()"),
+                        reset.index("canvas.clearDistancesToEmpty()"))
+        self.assertNotIn("clearTexImage", reset)
         writers = [
             "systems/system_voxel_to_trixel.hpp", "systems/system_text_to_trixel.hpp",
             "systems/system_render_gpu_particles_to_trixel.hpp",

@@ -48,7 +48,7 @@ template <> struct System<TRIXEL_TO_TRIXEL> {
     // TODO: Add position here and bind camera position to
     // main trixel canvas.
     void relationTick(const C_TriangleCanvasTextures &parentTexture) {
-        parentTexture.bind(0, 1);
+        parentTexture.bindAsCompositeTarget(0, 1);
         frameData_.trixelCanvasOffsetZ1_ = IRMath::trixelOriginOffsetZ1(parentTexture.size_);
     }
 

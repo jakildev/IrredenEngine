@@ -87,8 +87,8 @@ template <> struct System<TEXT_TO_TRIXEL> {
         IRPrefab::GuiText::stampGlyphLayout(drawCommands_, *canvasTextures_);
         canvasTextures_->getTextureColorsForGeometryWrite()
             ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-        canvasTextures_->getTextureDistances()
-            ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
+        canvasTextures_
+            ->bindDistancesForWrite(1, TextureAccess::WRITE_ONLY, CanvasDistanceContent::QUERIED);
         IRPrefab::GuiText::dispatchGlyphCommands(*glyphCmdBuf_, drawCommands_);
     }
 

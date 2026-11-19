@@ -2116,8 +2116,8 @@ TEST_F(CanvasBackingResizeTest, CardinalGrowthClearsBackingAndPreservesAncillary
     canvas->shapeGeometry_.tileCount_ = 1;
     canvas->shapeGeometry_.publishSamples(true, 1);
     const std::int32_t occupied = 17;
-    canvas->textureTriangleDistances_.second
-        ->clear(PixelDataFormat::RED_INTEGER, PixelDataType::INT32, &occupied);
+    const std::vector<int> occupiedDistances(8 * 8, occupied);
+    canvas->writeDistances(IRMath::ivec2(0), IRMath::ivec2(8), occupiedDistances.data());
     for (const auto &mip : canvas->hiZMips_) {
         mip.second->clear(PixelDataFormat::RED_INTEGER, PixelDataType::INT32, &occupied);
     }
