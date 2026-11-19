@@ -13,8 +13,9 @@ namespace IRScript {
 /// root-relative path through `IRUtility::resolveContainedPath` and an absolute
 /// one through this set, which starts empty and which no Lua function adds to:
 /// only C++ grants, and the engine does so for exactly what the user picked in
-/// the native open panel (`IRDialog.open`). Grants are read-only and die with
-/// the owning `LuaScript`. docs/design/native-file-dialog.md.
+/// the native open panel (`IRDialog.open`) or dropped on the window
+/// (`IRInput.droppedFiles`). Grants are read-only and die with the owning
+/// `LuaScript`. docs/design/native-file-dialog.md.
 class PathGrants {
   public:
     /// Grants exactly the regular file @p path names, nothing beside it.

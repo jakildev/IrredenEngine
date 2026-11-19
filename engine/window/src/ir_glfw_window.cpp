@@ -192,6 +192,7 @@ IRGLFWWindow::IRGLFWWindow(
     setCallbackKey(irglfwCallback_key);
     setCallbackMouseButton(irglfwCallback_mouseButton);
     setCallbackScroll(irglfwCallback_scroll);
+    setCallbackDrop(irglfwCallback_drop);
     m_pointerGestureMonitor = platformInstallPointerGestures(*this);
     platformApplyWindowMode(m_window, m_windowMode);
 
@@ -335,6 +336,13 @@ void IRGLFWWindow::addPointerGestureToProcess(const PointerGestureEvent &event) 
         m_scrollsToProcess.push({event.scroll_.x, event.scroll_.y});
 }
 
+void IRGLFWWindow::addFileDropToProcess(std::vector<std::string> paths) {
+    FileDropEvent event;
+    event.paths_ = std::move(paths);
+    getCursorPosition(event.windowPoint_.x, event.windowPoint_.y);
+    m_fileDropsToProcess.push(std::move(event));
+}
+
 void IRGLFWWindow::addMouseButtonPressedToProcess(int button) {
     m_mouseButtonsPressedToProcess.push(button);
 }
@@ -385,6 +393,10 @@ void IRGLFWWindow::setCallbackScroll(GLFWscrollfun scrollCallbackFunction) {
     glfwSetScrollCallback(m_window, scrollCallbackFunction);
 }
 
+void IRGLFWWindow::setCallbackDrop(GLFWdropfun dropCallbackFunction) {
+    glfwSetDropCallback(m_window, dropCallbackFunction);
+}
+
 void IRGLFWWindow::setWindowIcon(const GLFWimage *image) const {
     glfwSetWindowIcon(m_window, 1, image);
 }
@@ -426,6 +438,15 @@ void irglfwCallback_scroll(GLFWwindow *window, double xoffset, double yoffset) {
     IRGLFWWindow *irglfwWindow = static_cast<IRGLFWWindow *>(glfwGetWindowUserPointer(window));
     irglfwWindow->addScrollToProcess(xoffset, yoffset);
     IRE_LOG_INFO("Scroll: xoffset: {}, yoffset: {}", xoffset, yoffset);
+}
+
+void irglfwCallback_drop(GLFWwindow *window, int count, const char **paths) {
+    if (count <= 0) {
+        return;
+    }
+    IRGLFWWindow *irglfwWindow = static_cast<IRGLFWWindow *>(glfwGetWindowUserPointer(window));
+    irglfwWindow->addFileDropToProcess(std::vector<std::string>(paths, paths + count));
+    IRE_LOG_INFO("File drop: {} path(s)", count);
 }
 
 } // namespace IRWindow

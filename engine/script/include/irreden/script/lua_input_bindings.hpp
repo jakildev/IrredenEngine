@@ -16,6 +16,34 @@
 // The short-name IRInput.Key / IRInput.ButtonStatus tables remain available to
 // creation command-binding code after bindLuaCommands(); these additions extend
 // the namespace without displacing the existing entries.
+//
+// File drops (bindFileDrops, called by bindLuaCommands() and bindLuaInput()):
+//
+//   for _, drop in ipairs(IRInput.droppedFiles()) do
+//       -- drop.paths: absolute paths, each one readable; drop.x, drop.y: the
+//       -- cursor at the drop, in the window points IRInput reports elsewhere
+//       for _, path in ipairs(drop.paths) do IRFile.readText(path) end
+//   end
+//
+// `droppedFiles()` returns the drops the window received since the previous
+// frame, in arrival order, and an empty table when there were none. It is a
+// poll, not a queue: every call in a frame returns the same drops, and a drop
+// nobody polled that frame is gone. Poll once per frame from INPUT or RENDER;
+// an UPDATE tick can run zero or several times in one frame.
+//
+// A drop is the user's consent to read what they dropped, so polling grants
+// every returned path to this script's confined readers the way IRDialog.open
+// grants a pick: a dropped file by exactly that path, a dropped folder by
+// everything beneath it, read-only, for the session. A path that no longer
+// resolves is left out, and a drop left with no paths is left out with it.
+//
+// `IRInput.injectFileDrop(paths, x, y)` is the synthetic counterpart, bound
+// only by bindLuaInput(): `paths` a dense array of at least one string, `x` /
+// `y` finite window points. It queues one drop for the next frame's poll and
+// leaves the cursor where it is. An injected drop reaches `droppedFiles()`
+// only while synthetic input is active, where it is granted exactly as a real
+// one is: a script handed the synthetic-input surface stands in for the user.
+// Contract: docs/design/native-file-dialog.md "Dropped files".
 
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
@@ -23,7 +51,10 @@
 #include <irreden/ir_input.hpp>
 #include <irreden/script/lua_script.hpp>
 
+#include <cstddef>
+#include <filesystem>
 #include <stdexcept>
+#include <string>
 
 namespace IRScript::detail {
 
@@ -75,6 +106,95 @@ inline IRInput::PointerGestureEvent pointerGestureFromLua(const sol::table &tabl
         event.directionInverted_ = inverted.as<bool>();
     }
     return event;
+}
+
+inline IRInput::FileDropEvent
+fileDropFromLua(const sol::object &paths, const sol::object &x, const sol::object &y) {
+    if (paths.get_type() != sol::type::table) {
+        throw std::invalid_argument("IRInput.injectFileDrop: paths must be an array of strings");
+    }
+    const sol::table table = paths.as<sol::table>();
+    const std::size_t count = table.size();
+    std::size_t keys = 0;
+    for (const auto &entry : table) {
+        static_cast<void>(entry);
+        ++keys;
+    }
+    if (count == 0 || keys != count) {
+        throw std::invalid_argument(
+            "IRInput.injectFileDrop: paths must be a dense array of at least one string"
+        );
+    }
+    IRInput::FileDropEvent event;
+    event.paths_.reserve(count);
+    for (std::size_t i = 1; i <= count; ++i) {
+        const sol::object path = table.raw_get<sol::object>(i);
+        if (path.get_type() != sol::type::string) {
+            throw std::invalid_argument(
+                "IRInput.injectFileDrop: paths[" + std::to_string(i) + "] must be a string"
+            );
+        }
+        event.paths_.push_back(path.as<std::string>());
+    }
+    const auto coordinate = [](const sol::object &value, const char *name) {
+        if (value.get_type() != sol::type::number || !IRMath::isFinite(value.as<double>())) {
+            throw std::invalid_argument(
+                std::string("IRInput.injectFileDrop: ") + name + " must be a finite number"
+            );
+        }
+        return value.as<double>();
+    };
+    event.windowPoint_ = {coordinate(x, "x"), coordinate(y, "y")};
+    return event;
+}
+
+// Grants one dropped path to the script's confined readers: a file by that
+// path alone, a folder with everything beneath it. False when it resolves to
+// neither.
+inline bool grantDroppedPath(PathGrants &grants, const std::string &path) {
+    const std::filesystem::path dropped{std::u8string{path.begin(), path.end()}};
+    return grants.grantFile(dropped) || grants.grantDirectory(dropped);
+}
+
+// Expose `IRInput.droppedFiles()`. Reading a drop is what grants its paths, so
+// a drop no script polls widens nothing. Idempotent.
+inline void bindFileDrops(LuaScript &script) {
+    sol::state &lua = script.lua();
+    if (!lua["IRInput"].valid()) {
+        lua["IRInput"] = lua.create_table();
+    }
+    if (lua["IRInput"]["droppedFiles"].valid()) {
+        return;
+    }
+    // The script outlives this closure: its sol::state is the first member
+    // LuaScript destroys.
+    LuaScript *owner = &script;
+    lua["IRInput"]["droppedFiles"] = [owner](sol::this_state state) {
+        sol::state_view view{state};
+        sol::table drops = view.create_table();
+        int dropIndex = 1;
+        for (const IRInput::FileDropEvent &event : IRInput::droppedFiles()) {
+            sol::table paths = view.create_table();
+            int pathIndex = 1;
+            for (const std::string &path : event.paths_) {
+                if (grantDroppedPath(owner->pathGrants(), path)) {
+                    paths[pathIndex++] = path;
+                }
+            }
+            if (pathIndex == 1) {
+                continue;
+            }
+            drops[dropIndex++] = view.create_table_with(
+                "paths",
+                paths,
+                "x",
+                event.windowPoint_.x,
+                "y",
+                event.windowPoint_.y
+            );
+        }
+        return drops;
+    };
 }
 
 // Populate `IRInput.KeyMouseButtons` with the full C++ enum names from
@@ -253,9 +373,9 @@ inline void bindButtonStatusesEnum(LuaScript &script) {
 }
 
 // Expose `IRInput.{beginSyntheticInput, isSyntheticInputActive, injectButton,
-// injectMouseMove, injectScroll}` as Lua functions. These forward to the
-// `IRInput::` free functions in `engine/input/include/irreden/ir_input.hpp`.
-// `injectButton` / `injectMouseMove` / `injectScroll` assert if
+// injectMouseMove, injectScroll, injectFileDrop}` as Lua functions. These
+// forward to the `IRInput::` free functions in
+// `engine/input/include/irreden/ir_input.hpp`. The inject calls assert if
 // `beginSyntheticInput` was not called first (mirroring the C++ API contract).
 // Idempotent — the guard checks `IRInput.beginSyntheticInput`.
 inline void bindSyntheticInput(LuaScript &script) {
@@ -287,6 +407,11 @@ inline void bindSyntheticInput(LuaScript &script) {
     lua["IRInput"]["injectScroll"] = [](double xOffset, double yOffset) {
         IRInput::injectScroll(xOffset, yOffset);
     };
+
+    lua["IRInput"]["injectFileDrop"] =
+        [](const sol::object &paths, const sol::object &x, const sol::object &y) {
+            IRInput::injectFileDrop(fileDropFromLua(paths, x, y));
+        };
 
     sol::table kind = lua.create_table();
 #define IR_BIND_GESTURE_KIND(name)                                                                 \

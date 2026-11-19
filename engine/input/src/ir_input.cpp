@@ -86,6 +86,10 @@ std::span<const PointerGestureEvent> pointerGestures() {
     return getInputManager().getPointerGestures();
 }
 
+std::span<const FileDropEvent> droppedFiles() {
+    return getInputManager().getFileDrops();
+}
+
 void beginSyntheticInput() {
     getInputManager().beginSyntheticInput();
 }
@@ -108,6 +112,10 @@ void injectScroll(double xOffset, double yOffset) {
 
 void injectPointerGesture(const PointerGestureEvent &event) {
     getInputManager().injectPointerGesture(event);
+}
+
+void injectFileDrop(FileDropEvent event) {
+    getInputManager().injectFileDrop(std::move(event));
 }
 
 } // namespace IRInput

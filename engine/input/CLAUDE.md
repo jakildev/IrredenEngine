@@ -18,6 +18,11 @@ RENDER) so each stage sees the state relevant to its tick.
   denser than the window, and `IRRender::windowPointsToFramebufferPx` is the
   one conversion to the pixels `IRRender::getViewport()` is in.
 - Per-button press/release frame counters.
+- `droppedFiles()` — the files and folders dragged onto the window since the
+  previous frame, one `FileDropEvent` per drop (absolute paths, cursor in
+  window points). A one-frame poll like `scrollDelta()`; contract and the Lua
+  path grant in [`native-file-dialog.md`](../../docs/design/native-file-dialog.md)
+  §"Dropped files".
 
 ### Synthetic input (headless GUI/mouse verification, #1793)
 
@@ -27,7 +32,7 @@ RENDER) so each stage sees the state relevant to its tick.
   `IRVideo::isAutoCaptureActive()`'s fixed-step flip); inactive path stays
   byte-identical to GLFW-only. `isSyntheticInputActive()` reports the flag.
 - `injectMouseMove(screenPx)` (window points) / `injectButton(button, status)` /
-  `injectScroll(dx, dy)` — feed the same snapshot the GLFW path writes;
+  `injectScroll(dx, dy)` / `injectFileDrop(event)` — feed the same snapshot the GLFW path writes;
   applied at the next frame boundary (one batch per `tick()`). The inject
   calls assert if `beginSyntheticInput()` was not called first. Design:
   [`docs/design/gui-mouse-harness.md`](../../docs/design/gui-mouse-harness.md) §"Phase 1".
@@ -52,14 +57,18 @@ IRInput.isSyntheticInputActive()          -- → bool
 IRInput.injectButton(button, status)      -- integers from the tables above
 IRInput.injectMouseMove(x, y)            -- window points
 IRInput.injectScroll(dx, dy)
+IRInput.injectFileDrop(paths, x, y)       -- array of paths, window points
 
 IRInput.scrollDelta()                     -- → int, signed wheel steps this frame
 IRInput.scrollOffset()                    -- → x, y raw offset sum this frame
+IRInput.droppedFiles()                    -- → { { paths = {...}, x =, y = }, ... } this frame
 ```
 
 `bindLuaInput()` is idempotent and extends the `IRInput` table created by
-`bindLuaCommands()` — call both. Acceptance test:
-`test/script/lua_input_bindings_test.cpp`.
+`bindLuaCommands()` — call both. `droppedFiles` comes with `bindLuaCommands()`
+too and grants the paths it returns; `injectFileDrop` is harness-only.
+Acceptance tests: `test/script/lua_input_bindings_test.cpp`,
+`test/script/lua_file_drop_test.cpp`.
 
 ### Gamepad
 

@@ -129,10 +129,11 @@ grant set, and the confined readers accept an absolute path only when that
 set holds it.** `PathGrants` lives on `LuaScript`:
 
 - **It starts empty and no Lua function adds to it.** Only C++ grants:
-  `IRDialog.open` for exactly the paths the panel returned, and a creation's
-  own C++ through `LuaScript::pathGrants()` when it decides to. A script
-  cannot widen its own reach, and replacing `IRDialog.open` from Lua grants
-  nothing.
+  `IRDialog.open` for exactly the paths the panel returned,
+  `IRInput.droppedFiles` for exactly the paths the user dropped on the window
+  ([Dropped files](#dropped-files)), and a creation's own C++ through
+  `LuaScript::pathGrants()` when it decides to. A script cannot widen its own
+  reach, and replacing either function from Lua grants nothing.
 - **A picked file grants that file only**, not its folder: one image picked
   from `~/Pictures` does not make `~/Pictures` readable. **A picked folder
   grants its whole subtree**, which is what choosing a folder means.
@@ -184,6 +185,104 @@ Rejected alternatives:
 - `engine/script/` owns the grant set and the binding. `LuaScript` holds the
   invoker `IRDialog.open` calls; `World` installs its own, and a bare
   `LuaScript` (a test, a tool) reports `UNSUPPORTED`.
+
+## Dropped files
+
+Dragging files or a folder from the host's file manager onto the engine
+window is the same consent as a pick, with no panel and no blocking call. The
+window records each drop; the creation polls for it.
+
+Code: [`file_drop.hpp`](../../engine/window/include/irreden/window/file_drop.hpp)
+(`FileDropEvent`), `irglfwCallback_drop` and the window's drop queue
+(`ir_glfw_window.hpp`), `InputManager::tick` (delivery), `IRInput::droppedFiles`
+/ `IRInput::injectFileDrop` (`ir_input.hpp`), and `bindFileDrops` in
+[`lua_input_bindings.hpp`](../../engine/script/include/irreden/script/lua_input_bindings.hpp)
+(the Lua poll and the grant).
+
+```cpp
+for (const IRInput::FileDropEvent &drop : IRInput::droppedFiles()) {
+    // drop.paths_ (absolute, UTF-8), drop.windowPoint_
+}
+```
+
+```lua
+-- bound by script.bindLuaCommands(); reading the files also needs bindLuaFiles()
+for _, drop in ipairs(IRInput.droppedFiles()) do
+    for _, path in ipairs(drop.paths) do
+        IRGui.setImagePath(image, path)    -- or IRFile.readText(path), IRCanvas.loadImage(path)
+    end
+    -- drop.x, drop.y: where it landed
+end
+```
+
+- **One drop is one event.** A drag of several items arrives as one event
+  holding every path, in the order the host reported them. Two drops in one
+  frame are two events, in arrival order.
+- **The position is the cursor at the drop**, in the logical window points
+  `IRInput::getMousePosition()` reports (top-left origin, not framebuffer
+  pixels). There are no per-widget drop targets: a creation that cares where
+  the drop landed hit-tests the point itself.
+- **A drop lives for one frame.** The GLFW drop callback queues it on the
+  window, and `InputManager::tick()` moves the queue into the frame's list
+  with the frame's key, button and scroll events. INPUT, UPDATE and RENDER
+  all read the same list, every poll in the frame returns it, and the next
+  `tick()` clears it. A drop nobody polled is gone, exactly as an unread
+  `scrollDelta()` or `pointerGestures()` is. Poll once a frame from INPUT or
+  RENDER; an UPDATE tick can run zero or several times in a frame.
+- **Polling from Lua is what grants.** `IRInput.droppedFiles()` grants each
+  path it returns to the polling script, under decision 3's rules: a dropped
+  file is granted as that file only, a dropped folder with its whole subtree,
+  read-only, for the session. A path that no longer resolves is left out, and
+  a drop left with no paths is left out with it, so every path Lua receives
+  is readable. A drop that reaches the frame list but that no script polls
+  grants nothing, and the C++ accessor grants nothing either: C++ is not
+  confined.
+- **Nothing is refused.** A drop cannot block, so there is no capture-run or
+  window-mode gate. `hidden` and `offscreen` windows are never mapped, so
+  nothing can be dropped on them; a `background` window can take a drop, and
+  one that arrives is a person's. Registering the callback costs those modes
+  nothing. A run under synthetic input ignores the window's drops along with
+  the rest of its input.
+
+### Synthetic drops
+
+`IRInput::injectFileDrop(event)` and Lua
+`IRInput.injectFileDrop(paths, x, y)` queue a drop for the next frame, so a
+GUI test can exercise a creation's drop handling with no drag. Like the other
+inject calls they require `beginSyntheticInput()` (an assert in a debug
+build), and an injected drop is only ever delivered while synthetic input is
+active. The Lua call raises on a `paths` that is not a dense array of at least
+one string, or a non-finite `x` / `y`, before anything is queued. The cursor
+snapshot is not moved.
+
+**An injected drop is granted exactly as a real one is**, because a test has
+to be able to read what it dropped. That makes the synthetic-input surface a
+way to name a path to oneself, so it is kept apart from the poll:
+
+- `IRInput.droppedFiles` is bound by `bindLuaCommands()`, the surface every
+  Lua creation already binds. It can only ever return what the window or an
+  active synthetic session delivered.
+- `IRInput.injectFileDrop` is bound only by `bindLuaInput()`, the harness
+  surface, next to `beginSyntheticInput`. A script that holds that surface
+  can already act as the user in every other respect, and starting a
+  synthetic session cuts the real keyboard and mouse off for the rest of the
+  run. A creation that runs scripts it does not trust does not bind it, and
+  then no Lua function can add a grant.
+
+### What is left out
+
+No hover feedback while a drag is over the window, no drag out of the window,
+no text or URL drops, and no per-widget targets. Drops are not part of the
+GUI-test shot table (`IRVideo::GuiInputEvent`); a test injects them directly.
+
+### Hosts
+
+GLFW owns the host protocol (Cocoa dragging destination, `WM_DROPFILES`,
+XDND) and reports absolute UTF-8 paths. The engine side is identical on every
+host. On macOS the tests read the registered callback back from a real engine
+window and call it the way GLFW does, through to Lua; **a drag performed by
+the OS has not been driven on any host**, and the engine side has not been
+built on Windows or Linux.
 
 ## Platforms
 
@@ -238,9 +337,21 @@ Rejected alternatives:
   Lua (`test/script/lua_file_dialog_bindings_test.cpp`). The image loaders'
   grant cases are in `test/script/lua_widget_image_test.cpp` and
   `test/script/lua_canvas_draw_image_test.cpp`.
+- `fleet-run IrredenEngineTest --gtest_filter='*FileDrop*'` — on a real,
+  never-shown engine window: the drop callback is registered, a drop becomes
+  one queued event that owns its paths, delivery lasts one frame, synthetic
+  input swaps the source, and injecting outside it asserts
+  (`test/input/file_drop_test.cpp`); and the Lua seam: an empty poll, a drop
+  through the callback read back through `IRFile`, file and folder grants,
+  nothing granted without a poll, per-script grants, and the inject call's
+  argument checks and gating (`test/script/lua_file_drop_test.cpp`).
 - `fleet-run --timeout 120 IRLuaWidgetsDemo --file-dialog-fixture auto --window-mode normal`
   — the real panel, by hand: it opens 30 ticks in, and the log prints
   `LUA_WIDGETS FILEDIALOG before` / `closed` with equal `frame=` / `tick=`
   readings, the status, and each picked path read back through `IRFile`.
   Without `--window-mode normal` an unattended launch prints
   `status=REFUSED` and nothing opens.
+- `fleet-run --timeout 120 IRLuaWidgetsDemo --file-dialog-fixture button --window-mode normal`
+  — a real drag, by hand: drop files or a folder on the window and the log
+  prints `LUA_WIDGETS FILEDROP` with the drop point and each path's byte or
+  entry count read back through `IRFile`.

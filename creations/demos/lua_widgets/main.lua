@@ -294,6 +294,7 @@ end
 -- came back, then read each pick through IRFile: a picked file's byte count, a
 -- picked folder's entry count. Equal frame / tick readings across the
 -- before / closed pair show the loop did not iterate while the panel was open.
+-- A drag onto the window prints the same read-back per dropped path.
 local fileDialogMode = IRTest.fileDialogFixture()
 if fileDialogMode ~= "off" then
     local statusNames = {}
@@ -338,7 +339,20 @@ if fileDialogMode ~= "off" then
     IRSystem.appendSystem(IRTime.RENDER, IRSystem.registerSystem({
         name = "LuaWidgetsFileDialogFrames",
         components = { C_FileDialogClock },
-        tick = function() frames = frames + 1 end,
+        tick = function()
+            frames = frames + 1
+            -- A file or folder dragged onto the window reads back like a pick.
+            for _, drop in ipairs(IRInput.droppedFiles()) do
+                for i, path in ipairs(drop.paths) do
+                    local entries = IRFile.list(path)
+                    local text = entries == nil and IRFile.readText(path) or nil
+                    print(string.format("LUA_WIDGETS FILEDROP x=%.0f y=%.0f path[%d]=%s %s",
+                        drop.x, drop.y, i, path,
+                        entries and ("entries=" .. #entries)
+                            or ("bytes=" .. (text and #text or "unreadable"))))
+                end
+            end
+        end,
     }))
     if fileDialogMode == "auto" then
         local ticks, closedAt = 0, nil
