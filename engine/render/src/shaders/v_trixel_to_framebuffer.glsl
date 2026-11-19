@@ -50,6 +50,9 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     ivec2 mouseFramebufferPixel;
     int hoverResolveMode;
     int gatherFilterDiagnostic;
+    vec4 cameraViewRotation;
+    ivec2 presentedPickSize;
+    int presentedPickEnabled;
 };
 
 void main() {
