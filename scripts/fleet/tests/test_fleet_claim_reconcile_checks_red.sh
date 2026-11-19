@@ -95,6 +95,12 @@ elif argv[:2] == ["issue", "edit"] and (opt("--add-label") or opt("--remove-labe
     if opt("--add-label") and os.path.exists(os.path.join(data, "label-missing")):
         print("'%s' not found" % opt("--add-label"), file=sys.stderr)
         sys.exit(1)
+elif argv[:2] == ["issue", "comment"] and opt("--body-file"):
+    body = open(opt("--body-file")).read()
+    comments = load("comments.json", {})
+    comments.setdefault(argv[2], []).append({"body": body})
+    json.dump(comments, open(os.path.join(data, "comments.json"), "w"))
+    print("https://example.invalid/comment")
 elif argv[:1] == ["api"] and argv[1].endswith("/events") and "--paginate" in argv:
     if opt("--jq") != EVENTS_JQ:
         print("gh stub: unmodelled --jq %r" % opt("--jq"), file=sys.stderr)
@@ -104,6 +110,9 @@ elif argv[:1] == ["api"] and argv[1].endswith("/events") and "--paginate" in arg
         if (e.get("label") or {}).get("name") == LABEL:
             print(json.dumps({"event": e["event"], "created_at": e["created_at"],
                               "label": e["label"]}))
+elif argv[:1] == ["api"] and "/comments?per_page=100" in argv[1] and "--slurp" in argv:
+    n = argv[1].split("/issues/")[1].split("/")[0]
+    print(json.dumps([load("comments.json", {}).get(n, [])]))
 elif argv[:2] == ["api", "--paginate"] and "labels=fleet:state-drift" in argv[2]:
     pass  # no open drift tracker
 elif argv[:1] == ["repo"]:
@@ -203,6 +212,7 @@ reconcile() { "$FLEET_CLAIM" reconcile "$@" --repo "${RECONCILE_SLUG:-$SLUG}" 2>
 writes() { grep -cE '^(issue|pr) (edit|comment)|^api .*-X' "$CALLS" || true; }
 added()   { grep -cxF -- "issue edit 5101 --repo $SLUG --add-label fleet:checks-red" "$CALLS" || true; }
 removed() { grep -cxF -- "issue edit 5101 --repo $SLUG --remove-label fleet:checks-red" "$CALLS" || true; }
+commented() { grep -c '^issue comment 5101 ' "$CALLS" || true; }
 unmodelled() { cat "$STUB_DATA/unmodelled.log" 2>/dev/null || true; }
 R12_ADD="[R12 fix ] $SLUG pr#5101: add fleet:checks-red"
 R12_REMOVE="[R12 fix ] $SLUG pr#5101: remove fleet:checks-red"
@@ -315,6 +325,50 @@ out=$(reconcile --apply)
 assert_contains "$out" "$R12_ADD: failed on head 111111111: linux-build"$'\n' "the own failure is reported, the aggregate is not named"
 assert_eq "$(added)" 1 "the own failure is labeled"
 assert_eq "$(writes)" 1 "exactly one write"
+
+echo "=== 4f. an unapproved PR whose failures are all inherited names the tracker once ==="
+arm "" red "$H1"
+live "" "$H1" "$RED_BUILD"
+cat > "$FLEET_ALERTS_DIR/scout-master-ci-engine-tests.yml" <<EOF
+master CI red: engine-tests.yml
+workflow=engine-tests.yml
+run=700
+sha=$H1
+created_at=2026-11-10T12:00:00Z
+url=https://example.invalid/runs/700
+issue=900
+EOF
+out=$(reconcile --apply)
+assert_contains "$out" "report inherited failure: all failed workflows are red on master; tracker #900" "the inherited report names its tracker"
+assert_contains "$out" "R12 reported inherited master failure on $SLUG PR#5101" "the apply arm posts the report"
+assert_eq "$(commented)" 1 "one inherited report is posted"
+body=$(python3 - "$STUB_DATA/comments.json" <<'PY'
+import json, sys
+print(json.load(open(sys.argv[1]))["5101"][0]["body"])
+PY
+)
+assert_contains "$body" "tracked by #900" "the comment names the tracking issue"
+assert_contains "$body" "head=$H1 issues=900" "the comment carries the head-and-tracker dedup marker"
+: > "$CALLS"
+out=$(reconcile --apply)
+assert_absent "$out" "report inherited failure" "the same head and tracker set is deduplicated"
+assert_eq "$(commented)" 0 "the second pass posts no comment"
+
+echo "=== 4g. one own failure beside an inherited one gets no inherited report ==="
+arm "" red "$H1"
+live "" "$H1" "$RED_BUILD,perf-gate:Perf Gate:COMPLETED:FAILURE:$T_FAIL"
+cat > "$FLEET_ALERTS_DIR/scout-master-ci-engine-tests.yml" <<EOF
+master CI red: engine-tests.yml
+workflow=engine-tests.yml
+run=700
+sha=$H1
+created_at=2026-11-10T12:00:00Z
+url=https://example.invalid/runs/700
+issue=900
+EOF
+out=$(reconcile --apply)
+assert_absent "$out" "report inherited failure" "a mixed own and inherited red gets no inherited comment"
+assert_eq "$(commented)" 0 "nothing is posted for a mixed red"
 
 echo "=== 5. unfinished is not failed ==="
 for cached in unread red; do

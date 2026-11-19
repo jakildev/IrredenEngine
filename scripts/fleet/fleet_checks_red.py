@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`fleet:checks-red`: reconcile R12's reading of an approved PR's head.
+"""Reconcile R12's own and inherited failed-check reporting.
 
 Branch protection requires five lint contexts, so GitHub's merge button stays
 enabled while any other check on the head is failing, and `fleet:approved`
@@ -8,7 +8,9 @@ takes it off again. No lane filter, trigger hash, merger skip set or
 auto-merge blocking set reads the label.
 
 The label is wanted when the PR is open and approved and its head has a
-completed, failed check of its own. Not its own: a job GitHub never started
+completed, failed check of its own. Any open PR whose failures are all in
+master-red workflows gets one comment per head and tracker set. Not its own:
+a job GitHub never started
 (the scout's `not_started` reading of the same head), and a workflow red on
 master right now (the scout's master-CI alert file for it). A check still
 running is never a failure. Required and non-required checks count alike.
@@ -40,13 +42,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fleet_github  # noqa: E402
+import fleet_master_ci  # noqa: E402
 from fleet_checks_aggregate import CONTEXT as AGGREGATE_CONTEXT  # noqa: E402
 
 LABEL = "fleet:checks-red"
 APPROVED = "fleet:approved"
 
-# Mirrors of fleet-state-scout's master-CI lane names and its rollup sets.
-MASTER_CI_ALERT_PREFIX = "scout-master-ci-"
+# Mirrors of fleet-state-scout's rollup sets.
+MASTER_CI_ALERT_PREFIX = fleet_master_ci.ALERT_PREFIX
 MASTER_CI_MARKER = "master-ci.last-run"
 MASTER_CI_INTERVAL_DEFAULT = 15 * 60
 # The marker may lag one missed pass and a slow tick before the alerts stop
@@ -102,6 +105,15 @@ def master_red_files():
         return set()
 
 
+def master_red_issues():
+    """Workflow file -> tracker number for readable standing alerts."""
+    return {
+        workflow: payload["issue"]
+        for workflow, payload in fleet_master_ci.read_alerts(alerts_dir()).items()
+        if payload.get("issue")
+    }
+
+
 def master_watch_fresh(state_dir, now=None):
     """Whether this host's master-CI lane completed a pass recently enough
     for its alert files to describe master."""
@@ -151,15 +163,24 @@ def label_names(obj):
     return out
 
 
-def signature(live, master_red, by_name):
+def signature(live, master_red, by_name, issue_by_file=None):
     """What a write depends on; the apply arm writes only while it holds."""
     labels = label_names(live)
+    issue_by_file = issue_by_file or {}
+    failures = failed_checks(live.get("statusCheckRollup"))
+    inherited = []
+    for name, workflow_name, completed_at in failures:
+        workflow = by_name.get(workflow_name) if workflow_name else None
+        issue = issue_by_file.get(workflow)
+        if issue:
+            inherited.append([name, workflow, issue, completed_at])
     return {"head": live.get("headRefOid") or "",
             "open": (live.get("state") or "OPEN") == "OPEN",
             "approved": APPROVED in labels,
             "labeled": LABEL in labels,
             "own": [list(f) for f in own_failures(live.get("statusCheckRollup"),
-                                                  master_red, by_name)]}
+                                                  master_red, by_name)],
+            "inherited": inherited if failures and len(inherited) == len(failures) else []}
 
 
 def wanted(sig, not_started_head):
@@ -182,6 +203,8 @@ def cached_candidate(record, live_labels=None, master_red=frozenset()):
         return "remove"
     if LABEL in labels and master_red:
         return "remove"
+    if red and master_red:
+        return "inherited"
     return None
 
 
@@ -192,11 +215,19 @@ def newest_event_at(events):
                 and (e.get("label") or {}).get("name") == LABEL), default="")
 
 
-def decide(record, live, events_reader, master_red, by_name):
+def inherited_marker(sig):
+    issues = sorted({row[2] for row in sig.get("inherited") or []})
+    return "<!-- fleet-master-ci inherited head=%s issues=%s -->" % (
+        sig.get("head") or "", ",".join(str(issue) for issue in issues)
+    )
+
+
+def decide(record, live, events_reader, comments_reader, master_red, by_name,
+           issue_by_file):
     """(op, reason, sig) for one cached candidate after its live read; op is
     None when nothing is written. `events_reader()` returns the PR's issue
     events, or None when they could not be read."""
-    sig = signature(live, master_red, by_name)
+    sig = signature(live, master_red, by_name, issue_by_file)
     cached_head = record.get("headRefOid") or ""
     not_started_head = cached_head if record.get("not_started") else None
     want = wanted(sig, not_started_head)
@@ -222,6 +253,17 @@ def decide(record, live, events_reader, master_red, by_name):
         else:
             why = "head %s has no failed check of its own" % sig["head"][:9]
         return "remove", why, sig
+    if sig["open"] and sig["inherited"] and not sig["own"]:
+        comments = comments_reader()
+        if comments is None:
+            return None, "its comments could not be read", sig
+        marker = inherited_marker(sig)
+        if any(marker in str(comment.get("body") or "") for comment in comments):
+            return None, "the inherited failure was already reported", sig
+        issues = sorted({row[2] for row in sig["inherited"]})
+        return "comment", "all failed workflows are red on master; tracker%s %s" % (
+            "s" if len(issues) != 1 else "", ", ".join(f"#{issue}" for issue in issues)
+        ), sig
     return None, "", sig
 
 
@@ -268,12 +310,28 @@ def read_events(repo, number):
     return events
 
 
+def read_comments(repo, number):
+    found = _gh_json([
+        "api", f"repos/{repo}/issues/{number}/comments?per_page=100",
+        "--paginate", "--slurp",
+    ])
+    if not isinstance(found, list):
+        return None
+    comments = []
+    for page in found:
+        if not isinstance(page, list) or any(not isinstance(row, dict) for row in page):
+            return None
+        comments.extend(page)
+    return comments
+
+
 def master_context(repo):
-    """(master_red, by_name) for `repo`, or None where no master-CI lane
+    """(master_red, by_name, issue_by_file) for `repo`, or None where no master-CI lane
     watches its master and R12 cannot tell an inherited red from its own."""
     if repo != ENGINE_SLUG:
         return None
-    return master_red_files(), workflow_files_by_name(default_workflows_dir())
+    return (master_red_files(), workflow_files_by_name(default_workflows_dir()),
+            master_red_issues())
 
 
 def confirm(repo, number, sig_json):
@@ -291,8 +349,50 @@ def confirm(repo, number, sig_json):
     return 0 if signature(live, *context) == expected else 1
 
 
+def comment(repo, number, sig_json):
+    """Confirm and post the deduplicated inherited-master failure report."""
+    try:
+        expected = json.loads(sig_json)
+    except ValueError:
+        return 2
+    context = master_context(repo)
+    if context is None:
+        return 1
+    live = live_read(repo, number)
+    if live is None:
+        return 1
+    sig = signature(live, *context)
+    if sig != expected or not sig.get("inherited") or sig.get("own"):
+        return 1
+    comments = read_comments(repo, number)
+    if comments is None:
+        return 1
+    marker = inherited_marker(sig)
+    if any(marker in str(row.get("body") or "") for row in comments):
+        return 0
+    issue_rows = {}
+    for name, workflow, issue, _completed_at in sig["inherited"]:
+        issue_rows.setdefault(issue, []).append((workflow, name))
+    lines = [marker, "", "Every failed workflow on this head is also red on master:", ""]
+    for issue, rows in sorted(issue_rows.items()):
+        names = ", ".join(f"`{name}`" for _workflow, name in rows)
+        workflows = ", ".join(sorted({f"`{workflow}`" for workflow, _name in rows}))
+        lines.append(f"- {workflows}: {names} — tracked by #{issue}")
+    lines += ["", "These failures are inherited and are not this pull request's to fix.", ""]
+    try:
+        fleet_master_ci.post_public_comment(
+            int(number), "\n".join(lines), default_workflows_dir().parent.parent
+        )
+    except fleet_master_ci.MasterCiError:
+        return 1
+    return 0
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 5 and sys.argv[1] == "confirm":
         sys.exit(confirm(sys.argv[2], sys.argv[3], sys.argv[4]))
-    print("usage: fleet_checks_red.py confirm <repo> <pr> <signature-json>", file=sys.stderr)
+    if len(sys.argv) == 5 and sys.argv[1] == "comment":
+        sys.exit(comment(sys.argv[2], sys.argv[3], sys.argv[4]))
+    print("usage: fleet_checks_red.py confirm|comment <repo> <pr> <signature-json>",
+          file=sys.stderr)
     sys.exit(2)

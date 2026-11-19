@@ -51,6 +51,12 @@
       "description": "Queued for fleet pickup (requires human:approved or fleet:agent-approved)"
     },
     {
+      "name": "fleet:master-red",
+      "scope": "issue",
+      "color": "d73a4a",
+      "description": "Open incident for one workflow red on engine master. The scout creates it with fleet:agent-approved and fleet:no-plan, records later red and green transitions, never closes it, and the worker election places it before other open tasks"
+    },
+    {
       "name": "fleet:agent-approved",
       "scope": "issue",
       "color": "0e8a16",

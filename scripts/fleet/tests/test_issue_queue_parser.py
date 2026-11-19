@@ -144,6 +144,15 @@ class FetchTaskQueueDispatch(unittest.TestCase):
         }])
         self.assertEqual(out["open"][0]["model"], "opus")
 
+    def test_master_red_label_surfaces_the_election_discriminator(self):
+        out = self._run([{
+            "number": 100, "title": "red master",
+            "labels": [{"name": "fleet:queued"}, {"name": "fleet:opus"},
+                       {"name": "fleet:master-red"}],
+            "body": "",
+        }])
+        self.assertTrue(out["open"][0]["master_red"])
+
     def test_claim_label_sets_owner_and_in_progress(self):
         out = self._run([{
             "number": 100, "title": "x",

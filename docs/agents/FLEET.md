@@ -111,8 +111,8 @@ filer-authored `## Plan` + `fleet:plan-review` is vetted first ([`TASK-FILING.md
 § Agent-approved follow-up lane`](TASK-FILING.md)); planless →
 `fleet:needs-plan` → an opus+ planner posts the plan and swaps to
 `fleet:plan-review` → the plan reviewer clears it → it queues. There is no human
-approach gate (the human steers with `human:revise-plan`, `fleet:needs-human`,
-and PR review) and no plan-doc PR: plan and code land in one merge.
+approach gate (the human steers with `human:revise-plan`, `fleet:needs-human`, and PR review) and no plan-doc PR: plan and code land in one merge. The
+`fleet:master-red` incident, attribution, and priority contracts are in [`fleet-labels-reference.md`](fleet-labels-reference.md#task--model-labels).
 
 ### Cursor flow (human-in-the-loop)
 

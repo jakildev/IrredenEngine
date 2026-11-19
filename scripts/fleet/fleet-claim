@@ -5074,8 +5074,8 @@ if (isinstance(snapshot, dict) and snapshot.get("repos")
                     "scout recorded blocked_by_unresolvable=%s; task stays blocked"
                     % refs)
 
-# ---- R12: fleet:checks-red on an approved PR whose head failed a check ----
-# Information only (fleet_checks_red.py has the predicate). Candidates come
+# ---- R12: own-failure label and inherited-master report -------------------
+# Information only (fleet_checks_red.py has the predicates). Candidates come
 # from the fresh scout snapshot, each is confirmed by a live read here, and
 # the apply arm re-reads before writing. The master-CI alerts that exclude an
 # inherited red exist only where the scout's master-CI lane runs, so a host
@@ -5091,7 +5091,7 @@ if (isinstance(snapshot, dict) and snapshot.get("repos")
         context = checks_red.master_context(repo)
         if context is None:
             continue
-        master_red, by_name = context
+        master_red, by_name, issue_by_file = context
         records = ((snapshot["repos"].get(slug_to_key.get(repo)) or {}).get("prs") or [])
         listed = {p.get("number"): labelset(p) for p in repo_data[repo]["prs"]}
         for record in records:
@@ -5102,12 +5102,14 @@ if (isinstance(snapshot, dict) and snapshot.get("repos")
             if live is None:
                 continue
             op, why, sig = checks_red.decide(
-                record, live, lambda: checks_red.read_events(repo, n), master_red, by_name)
+                record, live, lambda: checks_red.read_events(repo, n),
+                lambda: checks_red.read_comments(repo, n), master_red, by_name,
+                issue_by_file)
             if op is None:
                 continue
-            verb = "add" if op == "add" else "remove"
+            verb = "report inherited failure" if op == "comment" else op
             add("R12", repo, n, "pr", ["label", "pr"],
-                "%s %s: %s" % (verb, checks_red.LABEL, why),
+                "%s%s: %s" % (verb, " " + checks_red.LABEL if op != "comment" else "", why),
                 "approved=%s, own failed checks=%d" % (sig["approved"], len(sig["own"])),
                 apply={"type": "checks_red", "op": op, "repo": repo, "pr": n,
                        "sig": json.dumps(sig, sort_keys=True)})
@@ -5250,16 +5252,23 @@ PYEOF
                     fi
                     ;;
                 checks_red)
-                    # R12: one label write, only while the live labels, head
-                    # and rollup still read as the classifier saw them. A
-                    # failed add (usually the label missing from the repo:
-                    # `fleet-labels` creates it) is reported, not retried.
+                    # R12 writes only while the live labels, head and rollup
+                    # still read as the classifier saw them. Label failures
+                    # are reported without a local retry; inherited comments
+                    # re-read their dedup marker immediately before posting.
                     local k_repo k_pr k_op k_sig k_flag k_done k_err
                     k_repo=$(reconcile_apply_field "$line" repo)
                     k_pr=$(reconcile_apply_field "$line" pr)
                     k_op=$(reconcile_apply_field "$line" op)
                     k_sig=$(reconcile_apply_field "$line" sig)
-                    if ! python3 "$FLEET_LIB_DIR/fleet_checks_red.py" confirm \
+                    if [[ "$k_op" == "comment" ]]; then
+                        if python3 "$FLEET_LIB_DIR/fleet_checks_red.py" comment \
+                                "$k_repo" "$k_pr" "$k_sig" >/dev/null 2>&1; then
+                            echo "  reconcile --apply: R12 reported inherited master failure on $k_repo PR#$k_pr"
+                        else
+                            echo "  reconcile --apply: R12 could not report inherited master failure on $k_repo PR#$k_pr (the live state moved or the comment failed)"
+                        fi
+                    elif ! python3 "$FLEET_LIB_DIR/fleet_checks_red.py" confirm \
                             "$k_repo" "$k_pr" "$k_sig" >/dev/null 2>&1; then
                         echo "  reconcile --apply: R12 left $k_repo PR#$k_pr alone (its labels, head or checks moved since the read)"
                     else

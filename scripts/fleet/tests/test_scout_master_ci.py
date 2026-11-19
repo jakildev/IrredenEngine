@@ -60,11 +60,15 @@ class _MasterCiCase(_ScoutTickHarness, unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.logs = []
 
-    def tick(self, replies, workflows=None, served=False):
+    def tick(self, replies, workflows=None, served=False, tracker_result=900):
         gh = _FakeGh(replies)
-        self._tick(self.tmp.name, [], degraded=False, spawns=[], logs=self.logs,
-                   served=served, master_ci=(gh, workflows or sorted(
-                       workflow for workflow in replies if workflow != "jobs")))
+        patch_args = ({"side_effect": tracker_result}
+                      if isinstance(tracker_result, list)
+                      else {"return_value": tracker_result})
+        with patch.object(_mod.fleet_master_ci, "upsert_tracker", **patch_args):
+            self._tick(self.tmp.name, [], degraded=False, spawns=[], logs=self.logs,
+                       served=served, master_ci=(gh, workflows or sorted(
+                           workflow for workflow in replies if workflow != "jobs")))
         return gh
 
     def alert_path(self, workflow):
@@ -91,12 +95,14 @@ class TestAlertLifecycle(_MasterCiCase):
         gh = self.tick({"ci.yml": _done(_run_json("failure"))})
         self.assertEqual(
             self.alert_path("ci.yml").read_text(),
-            f"master CI red: ci.yml\nworkflow=ci.yml\nsha={SHA}\n"
-            f"created_at={CREATED}\nurl={URL}\n")
+            f"master CI red: ci.yml\nworkflow=ci.yml\nrun={RUN_ID}\nsha={SHA}\n"
+            f"created_at={CREATED}\nurl={URL}\nissue=900\n")
         self.assertEqual(gh.calls, [[
             "run", "list", "--repo", "jakildev/IrredenEngine", "--branch", "master",
             "--workflow", "ci.yml", "--limit", "1",
-            "--json", "conclusion,databaseId,headSha,createdAt,url"]])
+            "--json", "conclusion,databaseId,headSha,createdAt,url"], [
+            "api", "--paginate", "--slurp",
+            "repos/jakildev/IrredenEngine/actions/runs/7/jobs?per_page=100"]])
 
     def test_red_then_green_clears_the_alert(self):
         self.tick({"ci.yml": _done(_run_json("failure"))})
@@ -212,7 +218,7 @@ class TestFetchMiss(_MasterCiCase):
                         "c.yml": _done(_run_json("failure"))})
         self.assertTrue(self.alert_path("a.yml").exists())
         self.assertFalse(self.alert_path("c.yml").exists())
-        self.assertEqual(len(gh.calls), 2)
+        self.assertEqual(len(gh.calls), 3)
         self.assertFalse(self.marker().exists())
 
 
@@ -234,8 +240,20 @@ class TestDeadlineMarker(_MasterCiCase):
     def test_continues_do_not_skip_the_workflows_after_them(self):
         gh = self.tick({"a.yml": _done("[]"), "b.yml": _done(_run_json("")),
                         "c.yml": _done(_run_json("failure"))})
-        self.assertEqual(len(gh.calls), 3)
+        self.assertEqual(len(gh.calls), 4)
         self.assertTrue(self.alert_path("c.yml").exists())
+        self.assertTrue(self.marker().exists())
+
+    def test_closed_tracker_dedup_preserves_alert_and_continues_the_pass(self):
+        alert = self.alert_path("a.yml")
+        alert.parent.mkdir(exist_ok=True)
+        alert.write_text("standing alert\n")
+        gh = self.tick({"a.yml": _done(_run_json("failure")),
+                        "b.yml": _done(_run_json("failure"))},
+                       tracker_result=[None, 900])
+        self.assertEqual(len(gh.calls), 4)
+        self.assertEqual(alert.read_text(), "standing alert\n")
+        self.assertTrue(self.alert_path("b.yml").exists())
         self.assertTrue(self.marker().exists())
 
     def test_a_tick_inside_the_interval_does_not_call_gh(self):
@@ -248,7 +266,7 @@ class TestDeadlineMarker(_MasterCiCase):
         self.tick({"ci.yml": _done(_run_json("success"))})
         self.age_marker()
         gh = self.tick({"ci.yml": _done(_run_json("failure"))})
-        self.assertEqual(len(gh.calls), 1)
+        self.assertEqual(len(gh.calls), 2)
 
     def test_the_interval_env_var_overrides_the_default(self):
         self.assertEqual(_mod._master_ci_interval_seconds(), 900)
@@ -292,10 +310,11 @@ class TestAlertTransitionSchedulesReconcile(_MasterCiCase):
         pr = {"number": 7, "labels": sorted(labels), "checks": "red",
               "headRefOid": "a" * 40, "baseRefName": "master"}
         spawns = []
-        self._tick(self.tmp.name, [], degraded=False, spawns=spawns, logs=self.logs,
-                   master_ci=(_FakeGh({"ci.yml": _done(_run_json(conclusion))}), ["ci.yml"]),
-                   repos={"engine": {"prs": [pr]}},
-                   projectors={"queue-manager": _mod.project_queue_manager})
+        with patch.object(_mod.fleet_master_ci, "upsert_tracker", return_value=900):
+            self._tick(self.tmp.name, [], degraded=False, spawns=spawns, logs=self.logs,
+                       master_ci=(_FakeGh({"ci.yml": _done(_run_json(conclusion))}), ["ci.yml"]),
+                       repos={"engine": {"prs": [pr]}},
+                       projectors={"queue-manager": _mod.project_queue_manager})
         return sum(1 for argv in spawns if "reconcile" in argv)
 
     def test_raising_and_clearing_an_alert_each_spawn_reconcile_once(self):

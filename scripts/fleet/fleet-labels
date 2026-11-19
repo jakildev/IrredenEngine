@@ -109,6 +109,7 @@ LABELS=(
     "fleet:task|0366d6|Task from the fleet issue queue"
     "fleet:epic|cc317c|Parent issue tracking child issues; epic-steward maintains the Children checklist, closes it out"
     "fleet:queued|c5def5|Queued for fleet pickup (requires human:approved or fleet:agent-approved)"
+    "fleet:master-red|d73a4a|Open incident for a workflow red on engine master; elected ahead of other open tasks"
     "fleet:agent-approved|0e8a16|Agent-filed follow-up; approval-equivalent to human:approved. Stays on as the audit trail"
     "fleet:fable|1d76db|Model-affinity tag (fable class — opt-in for hard work); heavy lane dispatches it on Fable"
     "fleet:opus|1d76db|Model-affinity tag from ingest; step 8a / reconcile R9 move tasks up into it; opus workers pick it"

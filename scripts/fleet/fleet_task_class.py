@@ -648,7 +648,10 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False, declined_on
     # claimable here: it neither counts toward the election nor reaches the
     # dispatcher's claim walk. (A numberless record still counts — the
     # dispatcher simply has nothing to claim for it, target None.)
-    tasks = slice_data.get("tasks_open", []) or []
+    tasks = sorted(
+        slice_data.get("tasks_open", []) or [],
+        key=lambda task: not bool(task.get("master_red")),
+    )
     if pinned_only:
         tasks = [task for task in tasks if _pinned_to_host(task, host)]
     for task in tasks:

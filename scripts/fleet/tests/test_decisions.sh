@@ -108,7 +108,10 @@ cat > "$TMP/engine-issues.json" << 'EOF'
   {"number": 206, "title": "idea: triaged, verdict pending", "url": "u",
    "labels": [{"name": "fleet:triage-recommend"}]},
   {"number": 208, "title": "epic with delivered child", "url": "u",
-   "body": "## Children\n- [ ] #204\n", "labels": [{"name": "fleet:epic"}]}
+   "body": "## Children\n- [ ] #204\n", "labels": [{"name": "fleet:epic"}]},
+  {"number": 209, "title": "master red: fleet-tests.yml", "url": "u",
+   "body": "<!-- fleet-master-ci workflow=fleet-tests.yml -->\n<!-- fleet-master-ci run=700 conclusion=red -->\n",
+   "labels": [{"name": "fleet:master-red"}]}
 ]
 EOF
 
@@ -197,6 +200,9 @@ with open(sys.argv[1], "w", encoding="utf-8") as f:
     json.dump(spec, f)
 PYEOF
 python3 "$TMP/write_api.py" "$TMP/api-default" "$TMP/api-default.json"
+cat > "$TMP/api-default/repos_jakildev_IrredenEngine_issues_209_comments_per_page_100" <<'EOF'
+[{"body":"<!-- fleet-master-ci run=701 conclusion=green -->\n\nMaster is green at commit `abc`."}]
+EOF
 
 # --- gh stub (fails closed) -------------------------------------------------
 
@@ -300,7 +306,13 @@ err=$(cat "$TMP/err.txt")
 assert_eq "$status" "0" "default run exits 0 despite unreachable game repo"
 assert_contains "$err" "skipping jakildev/irreden" "unreachable repo warned on stderr"
 
-assert_contains "$out" "9 decision(s) waiting" "headline counts merge queue + decisions and close-outs"
+assert_contains "$out" "10 decision(s) waiting" "headline counts merge queue, decisions, incidents and close-outs"
+assert_contains "$out" "Master red (1)" "open red-master incidents get their own section"
+assert_contains "$out" "engine issue #209  master red: fleet-tests.yml  [green run 701]" "the incident names its newest lane event"
+master_line=$(grep -n '^## Master red' "$TMP/out.txt" | cut -d: -f1)
+merge_line=$(grep -n '^## Merge queue' "$TMP/out.txt" | head -1 | cut -d: -f1)
+[[ "$master_line" -lt "$merge_line" ]]
+assert_eq "$?" "0" "the master-red section precedes the merge queue"
 assert_contains "$out" "Merge queue: ready (3)" "merge queue counts all three approved PRs as ready"
 assert_absent "$out" "Merge queue: held" "no held section when no approved PR has a hold"
 assert_contains "$out" "(3 ready to merge, 0 held)" "headline gives the ready and held counts"
