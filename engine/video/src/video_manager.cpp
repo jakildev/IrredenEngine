@@ -205,6 +205,9 @@ void VideoManager::shutdown() {
         m_finalizeThread.join();
     }
 
+    if (wasRecording) {
+        drainReadbackRing();
+    }
     if (wasRecording || m_videoRecorder.isRecording()) {
         std::lock_guard<std::mutex> lock(m_recorderMutex);
         m_videoRecorder.stop();
@@ -344,6 +347,9 @@ void VideoManager::toggleCapture() {
 
     if (m_captureEnabled) {
         IRE_LOG_INFO("Stopping capture (audio + video).");
+        drainReadbackRing();
+        // The finalize thread has no GL context, so the ring is freed here.
+        releaseReadbackPbos();
         beginAsyncFinalize();
         m_captureEnabled = false;
         setAudioTakeRecording(false);
@@ -669,7 +675,6 @@ void VideoManager::beginAsyncFinalize() {
             std::lock_guard<std::mutex> lock(m_recorderMutex);
             m_videoRecorder.stop();
         }
-        releaseReadbackPbos();
         m_finalizeInProgress.store(false);
     });
 }
@@ -689,6 +694,25 @@ bool VideoManager::encodeCurrentRawFrame() {
     auto buf = m_videoRecorder.acquireFrameBuffer(m_sourceFrameBytes);
     std::memcpy(buf.data(), m_rawFrameBuffer.data(), m_sourceFrameBytes);
     return m_videoRecorder.submitVideoFrame(std::move(buf));
+}
+
+// Main thread, GL context current, recorder still accepting frames.
+void VideoManager::drainReadbackRing() {
+    int drained = 0;
+    while (IRVideo::readPendingFrame(
+        m_sourceFrameBytes,
+        m_rawFrameBuffer,
+        m_readbackPbos,
+        m_pboWriteIndex,
+        m_pboPrimingFrames
+    )) {
+        if (!encodeCurrentRawFrame()) {
+            IRE_LOG_WARN("Video capture: encode failed while draining the readback ring");
+            break;
+        }
+        ++drained;
+    }
+    IRE_LOG_INFO("Video capture: drained {} pending readback frame(s) at stop", drained);
 }
 
 void VideoManager::initReadbackPbos() {

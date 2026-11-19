@@ -157,8 +157,9 @@ differs by backend:
   or, on the tick the pass turns on, the output of the last tick it drew.
 - **OpenGL.** The copy into a pixel buffer runs in command order, so each
   buffer holds its own render. The recorder maps a buffer two captures after
-  filling it: encoded frame j is the j-th captured render, and the two
-  captures still in the ring when a recording stops are not encoded.
+  filling it: encoded frame j is the j-th captured render. A stop maps the
+  captures still in the ring, oldest first, and encodes them before the
+  recorder stops, so a take of N captures holds N frames.
 
 `IRShapeDebug --recorder-frame-probe --auto-record <N>` is the executor: it
 numbers every render's picture, switches the pass off and on every four

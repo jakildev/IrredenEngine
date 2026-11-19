@@ -33,6 +33,17 @@ CaptureFrameStatus captureFrame(
     int &pboPrimingFrames
 );
 
+// Copies the oldest capture `captureFrame` has read but not yet returned
+// into `rawFrameBuffer`, and returns false once none is left. Called in a
+// loop when a take stops, so the take keeps every capture, in order.
+bool readPendingFrame(
+    std::size_t sourceFrameBytes,
+    std::vector<std::uint8_t> &rawFrameBuffer,
+    std::vector<unsigned int> &readbackPbos,
+    int pboWriteIndex,
+    int &pboPrimingFrames
+);
+
 void initReadback(
     std::size_t sourceFrameBytes,
     std::vector<unsigned int> &readbackPbos,

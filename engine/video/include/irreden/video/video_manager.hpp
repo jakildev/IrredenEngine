@@ -151,6 +151,7 @@ class VideoManager {
     );
     bool captureFrame();
     void initReadbackPbos();
+    void drainReadbackRing();
     void releaseReadbackPbos();
     bool encodeCurrentRawFrame();
     void beginAsyncFinalize();
