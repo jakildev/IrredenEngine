@@ -371,10 +371,11 @@ ir_quiet_park() {
 
 # _ir_quiet_defer_nonbenchmark [--deadline EPOCH] — parks a non-benchmark
 # acquire while its owner's benchmark quiet window is open. Returns 0 after a
-# park, 1 when there was nothing to defer to, and 2 when the park reached
-# EPOCH with the window still open (the park process exits at EPOCH and
-# drops its own parker row). Without a deadline the park is bounded only by
-# the window cap.
+# park, 1 when there was nothing to defer to, 2 when the park reached EPOCH
+# with the window still open (the park process exits at EPOCH and drops its
+# own parker row), and 3 when the parker failed. A failed parker never proves
+# the window closed, so a caller must not acquire on 3. Without a deadline the
+# park is bounded only by the window cap.
 _ir_quiet_defer_nonbenchmark() {
     local park_args=()
     [[ "${1:-}" != "--deadline" ]] || park_args=(--deadline "$2")
@@ -383,8 +384,12 @@ _ir_quiet_defer_nonbenchmark() {
     ir_quiet_status --owner "$IR_QUIET_OWNER" >/dev/null 2>&1 || return 1
     local rc=0
     ir_quiet_park "$IR_QUIET_OWNER" ${park_args[@]+"${park_args[@]}"} || rc=$?
-    (( rc == 3 )) && return 2
-    return 0
+    case "$rc" in
+        0) return 0 ;;
+        3) return 2 ;;
+    esac
+    echo "ir-acquire: quiet-window park for $IR_QUIET_OWNER failed (exit $rc)" >&2
+    return 3
 }
 
 # ---------------------------------------------------------------------------
@@ -693,6 +698,7 @@ ir_acquire_exclusive() {
     while true; do
         defer=0
         _ir_quiet_defer_nonbenchmark --deadline "$deadline" || defer=$?
+        (( defer != 3 )) || return 1
         if (( defer != 2 )) && _ir_try_lock "$lockdir"; then
             _ir_record_held "$lockdir"
             return 0
@@ -741,12 +747,14 @@ ir_acquire_cpu() {
     started="$(date +%s)"
     local gate="$IR_LOCK_ROOT/cpu/walk"
     local got=()
+    local defer
     while true; do
+        defer=0
+        _ir_quiet_defer_nonbenchmark || defer=$?
+        (( defer != 3 )) || return 1
         # Quiet-window deferral is bounded by the window cap, not by the
         # queued acquisition's own timeout.
-        if _ir_quiet_defer_nonbenchmark; then
-            started="$(date +%s)"
-        fi
+        (( defer != 0 )) || started="$(date +%s)"
         if _ir_try_lock "$gate"; then
             _ir_record_held "$gate"
             local i

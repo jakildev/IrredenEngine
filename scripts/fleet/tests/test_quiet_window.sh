@@ -437,6 +437,45 @@ kill "$HOLDER_PID" 2>/dev/null || true
 wait "$HOLDER_PID" 2>/dev/null || true
 HOLDER_PID=""
 
+# A parker that errors (any exit but its deadline status) never proves the
+# window closed, so the waiter fails closed instead of taking the resource.
+# The stubs stand in for an open window whose parker exits <park-rc>; rc 0 is
+# the control that the stubbed path does grant.
+park_probe() {
+    local verb="$1" park_rc="$2" lock_root="$TMP_ROOT/park-fail-$1-$2"
+    IR_LOCK_ROOT="$lock_root" IR_QUIET_OWNER=park-fail IR_QUIET_ACQUIRE_VERB="" \
+        bash -c '
+            set -euo pipefail
+            source "$1"
+            ir_quiet_status() { return 0; }
+            ir_quiet_park() { return "$PARK_RC"; }
+            case "$2" in
+                gpu) ir_acquire_exclusive lock gpu --timeout 2 ;;
+                cpu) ir_acquire_cpu 1 --timeout 2 ;;
+            esac
+            touch "$3"
+        ' _ "$HELPERS" "$verb" "$lock_root.ran" 2>&1
+}
+for verb in gpu cpu; do
+    for park_rc in 2 1 143; do
+        OUT=$(PARK_RC=$park_rc park_probe "$verb" "$park_rc")
+        RC=$?
+        assert_eq "$RC" "1" "$verb waiter fails closed when its parker exits $park_rc"
+        assert_contains "$OUT" "quiet-window park for park-fail failed (exit $park_rc)" \
+            "$verb waiter names the failed parker (exit $park_rc)"
+        assert_absent "$(find "$TMP_ROOT" -maxdepth 1 -type f -print)" \
+            "$TMP_ROOT/park-fail-$verb-$park_rc.ran" \
+            "$verb waiter never runs its command after a parker exit $park_rc"
+        assert_eq "$(find "$TMP_ROOT/park-fail-$verb-$park_rc" -name owner 2>/dev/null | wc -l | tr -d ' ')" \
+            "0" "$verb waiter holds no lock after a parker exit $park_rc"
+    done
+    OUT=$(PARK_RC=0 park_probe "$verb" 0)
+    RC=$?
+    assert_eq "$RC" "0" "$verb waiter grants after a clean park (stub control)"
+    assert_contains "$(find "$TMP_ROOT" -maxdepth 1 -type f -print)" "$TMP_ROOT/park-fail-$verb-0.ran" \
+        "$verb waiter runs its command after a clean park (stub control)"
+done
+
 sleep 30 & holder_a=$!
 sleep 30 & holder_b=$!
 "$IR_ACQUIRE" --quiet-lease requester-a create "$holder_a"
