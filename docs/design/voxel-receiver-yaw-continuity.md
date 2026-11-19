@@ -226,6 +226,8 @@ the sun query on occluded fragments ([cost mechanism](#cost-mechanism)).
   2x) and pass on both. The crossing reading at 90° and 270°, which Metal has
   not taken, fails on the continuous route from shadow-edge motion with no
   lone-frame pixel (#5184).
+- Pipelines that register a fog pass: unchanged by stage 1. Stage 2 (#5123)
+  measured them ([below](#stage-2-measurements-fog-pass-pipelines)).
 
 ### Alternatives measured
 
