@@ -825,6 +825,13 @@ void GLTracer_glUniformBlockBinding(GLuint program, GLuint uniformBlockIndex,
     IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
+void GLTracer_glGetInteger64v(GLenum pname, GLint64 *data) {
+    IRE_GL_LOG_DEBUG("glGetInteger64v({}, {})", E2S(pname), (void *)(data));
+    apiHook.glGetInteger64v(pname, data);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
 void GLTracer_glGetQueryObjectui64v(GLuint id, GLenum pname, GLuint64 *params) {
     IRE_GL_LOG_DEBUG("glGetQueryObjectui64v({}, {}, {})", id, E2S(pname), (void *)(params));
     apiHook.glGetQueryObjectui64v(id, pname, params);
@@ -1943,6 +1950,7 @@ void InjectAPITracer4(GL4API *api) {
     INJECT(glGetAttribLocation);
     INJECT(glGetCompressedTexImage);
     INJECT(glGetCompressedTextureImage);
+    INJECT(glGetInteger64v);
     INJECT(glGetIntegerv);
     INJECT(glGetNamedBufferParameteri64v);
     INJECT(glGetNamedBufferParameteriv);
@@ -2175,6 +2183,7 @@ void GetAPI4(GL4API *api, PFNGETGLPROC GetGLProc) {
     LOAD_GL_FUNC(glGetCompressedTexImage);
     LOAD_GL_FUNC(glGetCompressedTextureImage);
     LOAD_GL_FUNC(glGetError);
+    LOAD_GL_FUNC(glGetInteger64v);
     LOAD_GL_FUNC(glGetIntegerv);
     LOAD_GL_FUNC(glGetNamedBufferParameteri64v);
     LOAD_GL_FUNC(glGetNamedBufferParameteriv);

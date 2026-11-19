@@ -256,10 +256,10 @@ and `profile_matrix.py` label older-format stage rows `(window)`.
 ## Read input-to-present latency
 
 The `--- Input latency ---` section times each rendered frame on one clock from
-the input it used to its end. `End event` names the end: `gpu-complete` (the
-Metal device, the GPU end of the frame's last command buffer) or `not measured`
-(a device that times no frame end, the OpenGL device today), which writes no
-other row. Rows cover the steady frames of the `Steady frame time` line;
+the input it used to its end. `End event` names the end: `gpu-complete` (on
+Metal the GPU end of the frame's last command buffer, on OpenGL the GPU
+timestamp of the frame's own submission fence) or `not measured` (a device that
+times no frame end), which writes no other row. Rows cover the steady frames of the `Steady frame time` line;
 `samples` counts those whose end arrived.
 
 - `input_to_present_ms` runs from the frame's last OS-event poll. Polls happen
@@ -270,7 +270,8 @@ other row. Rows cover the steady frames of the `Steady frame time` line;
   `frame_start_to_submit_ms` from the frame's loop-iteration start to its last
   commit (its CPU time), `submit_to_present_ms` from that commit (its GPU time).
 - `Frames in flight at frame start` is the most submitted frames still
-  unfinished when a frame began; 0 under Metal's blocking present.
+  unfinished when a frame began; 0 under Metal's blocking present, at most
+  the `max_frames_in_flight` world config key (default 1) on OpenGL.
 - The last line bounds the clock mapping: how long after the GPU end the CPU
   saw it, and the error of moving the GPU's host time onto the steady clock.
 

@@ -13,9 +13,18 @@ namespace IRRender::detail {
 // presented submissions ahead of the GPU. Nothing else bounds it once no
 // readback blocks: an unthrottled offscreen or swapInterval-0 GL loop queues
 // frames until the driver stalls for hundreds of milliseconds at once, and
-// every GpuReadbackRing overruns its slots. Two keep the GPU fed while the
-// CPU encodes the next.
-inline constexpr std::size_t kMaxPresentedSubmissionsInFlight = 2;
+// every GpuReadbackRing overruns its slots. One keeps the GPU fed while the
+// CPU builds the next frame; a second queued frame only ages the input the
+// presented frame was built from.
+inline constexpr std::size_t kMaxPresentedSubmissionsInFlight = 1;
+
+// The largest bound the `max_frames_in_flight` measurement setting selects. 0
+// serializes CPU and GPU; anything past this is the unthrottled queue above.
+inline constexpr std::size_t kMaxSelectableSubmissionsInFlight = 2;
+
+struct IgnoreRetiredSubmission {
+    template <typename Fence> void operator()(const Fence &, std::uint64_t) const {}
+};
 
 // Submission-serial bookkeeping for a backend that fences each presented
 // submission with a pollable GPU object (an OpenGL timestamp query). Serial 1
@@ -28,7 +37,9 @@ inline constexpr std::size_t kMaxPresentedSubmissionsInFlight = 2;
 // The backend supplies the fence objects and the two GPU queries:
 // available(fence) answers without blocking, wait(fence) blocks until the
 // fence's submission has finished. A retired fence goes to a free list for
-// reuse instead of back to the driver.
+// reuse instead of back to the driver. Every retiring call takes an optional
+// retired(fence, serial) observer, called oldest first while the fence still
+// holds its submission's result: the next endSubmission() may re-issue it.
 template <typename Fence> class GpuSubmissionFences {
   public:
     std::uint64_t submissionSerial() const {
@@ -64,9 +75,10 @@ template <typename Fence> class GpuSubmissionFences {
     // Retires, oldest first, every fence @p available reports finished, and
     // stops at the first that is not: a later fence never retires ahead of
     // an earlier one.
-    template <typename Available> std::uint64_t pollCompleted(Available available) {
+    template <typename Available, typename Retired = IgnoreRetiredSubmission>
+    std::uint64_t pollCompleted(Available available, Retired retired = {}) {
         while (!m_inFlight.empty() && available(m_inFlight.front().fence_)) {
-            retireOldest();
+            retireOldest(retired);
         }
         return m_completedSerial;
     }
@@ -74,22 +86,21 @@ template <typename Fence> class GpuSubmissionFences {
     // Blocks, through @p wait on the oldest fence, until at most
     // @p maxInFlight submissions remain unfinished. A waited fence retires
     // directly; nothing re-polls it.
-    template <typename Available, typename Wait>
-    void throttle(std::size_t maxInFlight, Available available, Wait wait) {
-        pollCompleted(available);
+    template <typename Available, typename Wait, typename Retired = IgnoreRetiredSubmission>
+    void throttle(std::size_t maxInFlight, Available available, Wait wait, Retired retired = {}) {
+        pollCompleted(available, retired);
         while (m_inFlight.size() > maxInFlight) {
             wait(m_inFlight.front().fence_);
-            retireOldest();
+            retireOldest(retired);
         }
     }
 
     // The backend drained the GPU: every submission so far, including the
     // one being recorded, has finished.
-    void completeAll() {
-        for (const InFlight &entry : m_inFlight) {
-            m_retired.push_back(entry.fence_);
+    template <typename Retired = IgnoreRetiredSubmission> void completeAll(Retired retired = {}) {
+        while (!m_inFlight.empty()) {
+            retireOldest(retired);
         }
-        m_inFlight.clear();
         m_completedSerial = m_submissionSerial;
         ++m_submissionSerial;
     }
@@ -100,7 +111,8 @@ template <typename Fence> class GpuSubmissionFences {
         std::uint64_t serial_;
     };
 
-    void retireOldest() {
+    template <typename Retired> void retireOldest(Retired &retired) {
+        retired(m_inFlight.front().fence_, m_inFlight.front().serial_);
         m_completedSerial = m_inFlight.front().serial_;
         m_retired.push_back(m_inFlight.front().fence_);
         m_inFlight.pop_front();

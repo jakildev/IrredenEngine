@@ -127,6 +127,11 @@ class RenderDevice {
     std::uint32_t framesInFlight() const {
         return m_frameCompletions.inFlight();
     }
+    // How many presented frames may still be executing when present()
+    // returns. A backend whose present() waits for its frame ignores it.
+    virtual void setMaxFramesInFlight(std::uint32_t maxFramesInFlight) {
+        static_cast<void>(maxFramesInFlight);
+    }
     virtual GpuMemoryStats gpuMemoryStats() const {
         return {};
     }
