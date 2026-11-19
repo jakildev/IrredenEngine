@@ -1,0 +1,51 @@
+"""matrix.py <out> [variant,...] [--fog 16|0,16] [--surface 1|1,0] [--placements near,mid]: native 2560x1440
+non-origin placements (resumable). cap.py is the #5186 native-size driver from the prior pool-2 pass."""
+import json, sys, time
+from pathlib import Path
+sys.path.insert(0, r"C:/msys64/tmp/p4852-pool2/poly")
+from cap import capture
+_defs = {}
+exec(Path(r"C:/msys64/tmp/p4852-pool2/docs/pr-screenshots/claude/4813-gl-fog-surface-lighting/drivers/matrix_defs.py.txt").read_text(), _defs)
+PLACEMENTS = [p for p in _defs['PLACEMENTS'] if not p[0].startswith('origin')]
+VARIANTS = _defs['VARIANTS']
+assert len(PLACEMENTS) == 10, PLACEMENTS
+
+
+def take(args, flag, default):
+    if flag not in args:
+        return default
+    i = args.index(flag)
+    value = tuple(args[i + 1].split(','))
+    del args[i:i + 2]
+    return value
+
+
+out = Path(sys.argv[1])
+args = sys.argv[2:]
+fogs = take(args, '--fog', ('16',))
+surfaces = take(args, '--surface', ('1',))
+prefixes = take(args, '--placements', None)
+only = args[0].split(',') if args else None
+for variant, flags in VARIANTS:
+    if only and variant not in only:
+        continue
+    for label, camera, yaw in PLACEMENTS:
+        if prefixes and not label.startswith(prefixes):
+            continue
+        for fog in fogs:
+            for surface in surfaces:
+                folder = out / variant / f'{label}-fog{fog}-surface{surface}'
+                done = folder / 'capture.json'
+                if done.exists():
+                    try:
+                        prior = json.loads(done.read_text())
+                    except ValueError:
+                        prior = {}
+                    if (prior.get('result') not in (None, 'LOCK-FAILED') and prior.get('routes')
+                            and len(prior.get('frames', ())) == 1):
+                        continue
+                t = time.time()
+                rec = capture(folder, yaw, fog, surface, [*camera, *flags])
+                print(f'{variant}/{folder.name} rc={rec["returncode"]} {rec["result"]} {rec["routes"]} '
+                      f'target={rec["screen_target"]} frames={len(rec["frames"])} '
+                      f'glerr={len(rec["gl_error_lines"])} {time.time() - t:.0f}s', flush=True)

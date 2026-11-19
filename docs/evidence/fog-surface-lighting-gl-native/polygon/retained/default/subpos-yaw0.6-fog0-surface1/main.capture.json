@@ -1,0 +1,64 @@
+{
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "IRCanvasStress",
+    "--config-preset",
+    "C:/msys64/tmp/p4813n/out/default/subpos-yaw0.6-fog0-surface1/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-grid",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--zoom",
+    "4",
+    "--subdivisions",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--probe-overlapping-source",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--yaw",
+    "0.6",
+    "--fog-reveal",
+    "0",
+    "--camera-iso",
+    "0.1",
+    "-0.2"
+  ],
+  "env": {
+    "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "lock_failed_retries": 0,
+  "routes": [
+    "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "probes": [
+    "[ClientLog] [info] LIGHTING-PROBE sun=(0,0,-1) ambient=0.3 shadows=true ao=false"
+  ],
+  "screen_target": [
+    "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frames": [
+    "screenshot_000001.png"
+  ],
+  "sha256": [
+    "ae5e7088314211425874fe699ddce00e379079abb2ee8c159f94230e878c400b"
+  ]
+}
