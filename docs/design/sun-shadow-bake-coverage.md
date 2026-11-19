@@ -20,6 +20,11 @@ narrow the bake mask because an occluded voxel can still cast. Detached and
 revoxelized canvas domains keep their all-visible mask because their destination
 slots do not share the world pool's chunk bounds.
 
+The feeder direction is projected in the same frame as those chunk bounds:
+cardinal raster yaw, continuous visual yaw, or the spatial-view basis. Widening
+view-frame bounds with an unrotated world-space direction can cull a caster on
+the sunward side even though its shadow throw reaches the visible viewport.
+
 ## The defect
 
 At a near-overhead sun, a cast shadow on the floor breaks into a **point
