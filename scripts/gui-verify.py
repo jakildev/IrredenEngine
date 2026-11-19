@@ -86,8 +86,8 @@ def main() -> None:
     # An --auto-screenshot GUI-test run must self-terminate. The fleet-run
     # watchdog reports a process still alive at --timeout as exit 0 ("healthy"
     # for generic smoke), which would mask a hung GUI test as a zero-assertion
-    # success — report_gui_asserts surfaces the ALIVE-TIMEOUT marker as `hung`,
-    # which this harness treats as a failure.
+    # success — report_gui_asserts surfaces an ALIVE-TIMEOUT or TERM-IGNORED
+    # verdict as `hung`, which this harness treats as a failure.
     assertions, hung, failures, missing_shots = verify_common.report_gui_asserts(
         output, "[gui-verify] ", timeout=args.timeout)
     layout_failed = (

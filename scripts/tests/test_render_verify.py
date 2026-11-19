@@ -28,9 +28,12 @@ import importlib.machinery
 import importlib.util
 import io
 import json
+import os
 import shutil
+import signal
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -834,9 +837,10 @@ class RunResultToken(unittest.TestCase):
 class HostClosedRetry(unittest.TestCase):
     """A capture pass that ir-run reports HOST-CLOSED is re-run exactly once.
 
-    ``subprocess.run`` is stubbed for the ``fleet-run`` call only (render-compare
-    still runs for real): each scripted attempt writes its screenshots into the
-    demo's shots dir and returns the ``RESULT=`` line ir-run would print.
+    ``_run_pass_process`` is stubbed for the ``fleet-run`` launch only
+    (render-compare still runs for real): each scripted attempt writes its
+    screenshots into the demo's shots dir and returns the ``RESULT=`` line
+    ir-run would print.
     """
 
     HOST_CLOSED_OUT = ("ir-run: RESULT=HOST-CLOSED exe=IRFake exit=127 "
@@ -844,6 +848,7 @@ class HostClosedRetry(unittest.TestCase):
     CRASH_OUT = "ir-run: RESULT=CRASH exe=IRFake exit=139 signal=SIGSEGV\n"
     CLEAN_OUT = "ir-run: RESULT=CLEAN exe=IRFake exit=0\n"
     TIMEOUT_OUT = "ir-run: RESULT=ALIVE-TIMEOUT exe=IRFake exit=0\n"
+    TERM_IGNORED_OUT = "ir-run: RESULT=TERM-IGNORED exe=IRFake exit=1\n"
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -870,25 +875,22 @@ class HostClosedRetry(unittest.TestCase):
     def _run(self, attempts, update_references=False):
         """Run ``_verify_one`` with each fleet-run call taking the next
         ``(rc, output, colour)`` of ``attempts``; returns (tally, stdout, stderr)."""
-        real_run = _rv.subprocess.run
         script = list(attempts)
 
-        def fake_run(cmd, *a, **kw):
-            if "fleet-run" not in " ".join(cmd):
-                return real_run(cmd, *a, **kw)
+        def fake_pass(cmd, **_kw):
             self.calls.append(cmd)
             rc, output, colour = script.pop(0)
             if colour is not None:
                 n = len(_rv.verify_common.collect_full_frames(self.shots_dir))
                 _write(self.shots_dir / f"screenshot_{n:06d}.png", 16, 16,
                        lambda x, y: colour)
-            return _rv.subprocess.CompletedProcess(cmd, rc, output, "")
+            return rc, output, False
 
         args = _rv.argparse.Namespace(
             no_build=True, warmup=None, timeout=60, demo_arg=[],
             update_references=update_references, force=True)
         out, err = io.StringIO(), io.StringIO()
-        with patch.object(_rv.subprocess, "run", side_effect=fake_run), \
+        with patch.object(_rv, "_run_pass_process", side_effect=fake_pass), \
                 patch.object(_rv.verify_common, "find_exe", return_value=self.exe), \
                 redirect_stdout(out), redirect_stderr(err):
             tally = _rv._verify_one(
@@ -942,13 +944,26 @@ class HostClosedRetry(unittest.TestCase):
         self.assertEqual(len(self.calls), 1)
         self.assertIn("crashed at shutdown (fleet-run exit=127)", err)
 
-    def test_zero_exit_watchdog_fails_even_when_every_image_matches(self):
+    def test_zero_exit_watchdog_is_a_timeout_row_even_when_every_image_matches(self):
         self._manifest()
         tally, out, err = self._run([(0, self.TIMEOUT_OUT, BLACK)])
         self.assertEqual(len(self.calls), 1)
-        self.assertEqual((tally["rc"], tally["checked"]), (1, 1))
+        self.assertEqual((tally["rc"], tally["checked"], tally["timed_out"]), (1, 0, 1))
+        self.assertFalse(tally["recordable"])
+        self.assertEqual([(r["label"], r["kind"]) for r in tally["rows"]],
+                         [("default", "timeout")])
+        self.assertRegex(
+            out, r"default\s+TIMEOUT\s+pass timed out: ir-run watchdog at --timeout 60s")
         self.assertNotIn("checks PASS", out)
         self.assertIn("RESULT=ALIVE-TIMEOUT", err)
+        self.assertIn("TIMED OUT: default", err)
+
+    def test_term_ignored_is_a_timeout_row(self):
+        self._manifest()
+        tally, out, _ = self._run([(1, self.TERM_IGNORED_OUT, BLACK)])
+        self.assertEqual((tally["rc"], tally["timed_out"]), (1, 1))
+        self.assertFalse(tally["recordable"])
+        self.assertRegex(out, r"default\s+TIMEOUT\s+.*RESULT=TERM-IGNORED")
 
     def test_zero_exit_without_completion_token_fails(self):
         self._manifest()
@@ -966,10 +981,12 @@ class HostClosedRetry(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "expected 1 screenshots.*got 0"):
             self._run([(0, self.CLEAN_OUT, None)])
 
-    def test_watchdog_without_images_fails(self):
+    def test_watchdog_without_images_is_a_timeout_row_not_an_abort(self):
+        # A timed-out pass is never compared, so a short capture cannot raise
+        # the shot-count SystemExit that would read as ERROR in a sweep.
         self._manifest()
-        with self.assertRaisesRegex(SystemExit, "expected 1 screenshots.*got 0"):
-            self._run([(0, self.TIMEOUT_OUT, None)])
+        tally, _, _ = self._run([(0, self.TIMEOUT_OUT, None)])
+        self.assertEqual((tally["rc"], tally["checked"], tally["timed_out"]), (1, 0, 1))
 
     def _extra_manifest(self):
         _write(self.refs / "b.png", 16, 16, lambda x, y: BLACK)
@@ -995,11 +1012,15 @@ class HostClosedRetry(unittest.TestCase):
         self.assertEqual(len(self.calls), 3)
         self.assertEqual(tally["rc"], 0)
 
-    def test_extra_pass_watchdog_fails_with_complete_images(self):
+    def test_extra_pass_watchdog_is_a_named_timeout_row(self):
         self._extra_manifest()
         tally, out, _ = self._run([(0, self.CLEAN_OUT, BLACK),
                                   (0, self.TIMEOUT_OUT, BLACK)])
-        self.assertEqual((tally["rc"], tally["checked"]), (1, 2))
+        self.assertEqual((tally["rc"], tally["checked"], tally["timed_out"]), (1, 1, 1))
+        self.assertFalse(tally["recordable"])
+        self.assertIn(("compare", "timeout"),
+                      [(r["label"], r["kind"]) for r in tally["rows"]])
+        self.assertRegex(out, r"compare\s+TIMEOUT")
         self.assertNotIn("checks PASS", out)
 
     def test_update_references_blesses_only_the_retry(self):
@@ -1030,6 +1051,144 @@ class HostClosedRetry(unittest.TestCase):
         self.assertEqual(tally["rc"], 1)
         self.assertEqual((self.refs / "a.png").read_bytes(), before)
         self.assertIn("references not updated", err)
+
+
+# Extra pass whose launch never exits: ignores TERM, and leaves a grandchild
+# holding the output pipe. Each records its pid so the test can check both
+# are gone.
+_HANG_PASS = """
+import os, signal, subprocess, sys, time
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+child = subprocess.Popen(["sleep", "300"])
+open(sys.argv[1], "w").write(f"{os.getpid()} {child.pid}")
+print("demo log line", flush=True)
+while True:
+    time.sleep(1)
+"""
+# Default pass: copies one matching frame into the shots dir, says it is
+# queued on the lock, then completes cleanly.
+_CLEAN_PASS = """
+import shutil, sys
+shutil.copy(sys.argv[1], sys.argv[2])
+print("ir-run: queued on the gpu lock for 1s; the 60s run clock has not started", flush=True)
+print("ir-run: RESULT=CLEAN exe=IRFake exit=0", flush=True)
+"""
+
+
+class PassBackstopBound(unittest.TestCase):
+    """The backstop stays past ir-run's own worst case: --timeout, the lock
+    queue, and three kill-grace stages, read from the same variables."""
+
+    def test_defaults_cover_the_queue_and_three_kill_graces(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("IR_QUEUE_TIMEOUT", None)
+            os.environ.pop("IR_RUN_KILL_GRACE", None)
+            self.assertGreater(_rv._pass_backstop_seconds(60), 60 + 600 + 3 * 5)
+
+    def test_overrides_move_the_bound(self):
+        with patch.dict(os.environ, {"IR_QUEUE_TIMEOUT": "30", "IR_RUN_KILL_GRACE": "2"}):
+            self.assertGreater(_rv._pass_backstop_seconds(10), 10 + 30 + 3 * 2)
+            self.assertLess(_rv._pass_backstop_seconds(10), 60 + 600)
+
+    def test_malformed_values_fall_back_to_ir_runs_defaults(self):
+        with patch.dict(os.environ, {"IR_QUEUE_TIMEOUT": "soon", "IR_RUN_KILL_GRACE": "-1"}):
+            self.assertGreater(_rv._pass_backstop_seconds(60), 60 + 600 + 3 * 5)
+
+
+@unittest.skipIf(os.name == "nt", "process-group backstop is POSIX; Windows uses taskkill /T")
+class PassBackstop(unittest.TestCase):
+    """A pass whose launch never terminates is stopped by the harness's own
+    backstop: real processes, not a mocked return."""
+
+    BACKSTOP = 2
+    BOUND = 20
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        root = Path(self._tmp.name)
+        self.worktree = root
+        self.demo_dir = root / "creations" / "demos" / "fake"
+        self.refs = self.demo_dir / "test" / "references" / "linux-debug"
+        self.refs.mkdir(parents=True)
+        _write(self.refs / "a.png", 16, 16, lambda x, y: BLACK)
+        _write(self.refs / "b.png", 16, 16, lambda x, y: BLACK)
+        self.frame = root / "frame.png"
+        _write(self.frame, 16, 16, lambda x, y: BLACK)
+        self.exe = root / "build" / "fake" / "IRFake"
+        self.exe.parent.mkdir(parents=True)
+        self.exe.touch()
+        self.shots_dir = self.exe.parent / "save_files" / "screenshots"
+        self.pids = root / "hang.pids"
+        (self.demo_dir / "test" / "references" / "manifest.json").write_text(json.dumps({
+            "target": "IRFake", "shots": ["a"],
+            "extra_runs": [{"name": "glitch_standard_off",
+                            "demo_args": ["--glitch-test", "standard-off"],
+                            "shots": ["b"]}]}))
+
+    def tearDown(self):
+        for pid in self._recorded_pids():
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+        self._tmp.cleanup()
+
+    def _recorded_pids(self):
+        if not self.pids.exists():
+            return []
+        return [int(p) for p in self.pids.read_text().split()]
+
+    def _launch_argv(self, cmd):
+        if "--glitch-test" in cmd:
+            return [sys.executable, "-c", _HANG_PASS, str(self.pids)]
+        return [sys.executable, "-c", _CLEAN_PASS, str(self.frame),
+                str(self.shots_dir / "screenshot_000000.png")]
+
+    def _alive(self, pid):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        return True
+
+    def test_hanging_extra_pass_is_a_named_timeout_row_and_its_tree_is_gone(self):
+        args = _rv.argparse.Namespace(
+            no_build=True, warmup=None, timeout=60, demo_arg=[],
+            update_references=False, force=True)
+        out, err = io.StringIO(), io.StringIO()
+        start = time.monotonic()
+        with patch.object(_rv.verify_common, "platform_launch_argv",
+                          side_effect=self._launch_argv), \
+                patch.object(_rv, "_pass_backstop_seconds", return_value=self.BACKSTOP), \
+                patch.dict(os.environ, {"IR_RUN_KILL_GRACE": "1"}), \
+                patch.object(_rv.verify_common, "find_exe", return_value=self.exe), \
+                patch.object(_rv.verify_common, "display_preflight", return_value=None), \
+                redirect_stdout(out), redirect_stderr(err):
+            tally = _rv._verify_one(
+                args=args, worktree=self.worktree, build_dir=self.worktree / "build",
+                backend="linux-debug", target="IRFake", demo_dir=self.demo_dir)
+        elapsed = time.monotonic() - start
+
+        self.assertLess(elapsed, self.BOUND)
+        rows = {r["label"]: r for r in tally["rows"]}
+        self.assertEqual(rows["glitch_standard_off"]["kind"], "timeout")
+        self.assertIn("render-verify backstop", rows["glitch_standard_off"]["reason"])
+        self.assertNotEqual(tally["rc"], 0)
+        self.assertFalse(tally["recordable"])
+        self.assertEqual((tally["checked"], tally["timed_out"]), (1, 1))
+        self.assertIn("outlived its 2s backstop", err.getvalue())
+        self.assertIn("(default) ir-run: queued on the gpu lock", out.getvalue(),
+                      "a lock wait is visible while the pass runs")
+        self.assertNotIn("demo log line", out.getvalue(),
+                         "the demo's own log stays captured")
+
+        pids = self._recorded_pids()
+        self.assertEqual(len(pids), 2, "the hanging pass recorded itself and its child")
+        deadline = time.monotonic() + 5
+        while any(self._alive(p) for p in pids) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertEqual([p for p in pids if self._alive(p)], [],
+                         "the pass's whole process tree is gone, grandchild included")
 
 
 class ExtraPassSkipPredicate(unittest.TestCase):
@@ -1116,6 +1275,16 @@ class SweepSummary(unittest.TestCase):
         self.assertIn("total: 39 checks across 2 demos, 0 FAIL", out)
         self.assertEqual(err, "")
 
+    def test_timed_out_pass_is_named_and_counted_not_an_error(self):
+        timed = self._row("IRShapeDebug", "shape_debug", 1, 23)
+        timed["timed_out"] = 1
+        out, err = self._summary([timed, self._row("IRFogDemo", "fog_demo", 0, 15)])
+        self.assertRegex(out, r"IRShapeDebug .* TIMEOUT \(1 pass\(es\) timed out\)")
+        self.assertIn("total: 38 checks across 2 demos, 0 FAIL, 0 skipped, "
+                      "1 pass(es) TIMEOUT", out)
+        self.assertIn("had a capture pass time out: IRShapeDebug", err)
+        self.assertNotIn("produced NO checks", err)
+
     def test_out_of_scope_row_is_its_own_verdict(self):
         oos = self._row("IRLauncher", "launcher", 0, 0)
         oos["out_of_scope"] = "windows-debug"
@@ -1189,20 +1358,16 @@ class SweepScope(unittest.TestCase):
         return refs
 
     def _main(self, backend, *argv):
-        real_run = _rv.subprocess.run
-
-        def fake_run(cmd, *a, **kw):
+        def fake_pass(cmd, **_kw):
             joined = " ".join(cmd)
-            if "fleet-run" not in joined:
-                return real_run(cmd, *a, **kw)
             target = next(t for t in self.exes if f" {t} " in joined)
             self.run_targets.append(target)
             shots = self.exes[target].parent / "save_files" / "screenshots"
             _write(shots / "screenshot_000000.png", 16, 16, lambda x, y: BLACK)
-            return _rv.subprocess.CompletedProcess(cmd, 0, self.CLEAN_OUT, "")
+            return 0, self.CLEAN_OUT, False
 
         out, err = io.StringIO(), io.StringIO()
-        with patch.object(_rv.subprocess, "run", side_effect=fake_run), \
+        with patch.object(_rv, "_run_pass_process", side_effect=fake_pass), \
                 patch.object(_rv.verify_common, "detect_worktree_root",
                              return_value=self.worktree), \
                 patch.object(_rv.verify_common, "detect_backend", return_value=backend), \

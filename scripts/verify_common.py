@@ -85,8 +85,10 @@ FULL_FRAME_RE = re.compile(r"screenshot_\d+\.png")
 
 # The one-line verdict ir-run prints for every self-terminating run
 # (``engine/tools/bin/ir-run`` ``ir_report_result``): CLEAN, CRASH,
-# ALIVE-TIMEOUT, LOCK-FAILED, HOST-CLOSED, or NO-DISPLAY. HOST-CLOSED shares CRASH's
-# non-zero exit status, so only this token tells them apart.
+# ALIVE-TIMEOUT, TERM-IGNORED, LOCK-FAILED, HOST-CLOSED, or NO-DISPLAY.
+# HOST-CLOSED shares CRASH's non-zero exit status, so only this token tells
+# them apart. ALIVE-TIMEOUT and TERM-IGNORED are both watchdog stops: the run
+# never reached its end, and TERM-IGNORED also ignored the watchdog's TERM.
 RUN_RESULT_RE = re.compile(r"ir-run: RESULT=([A-Z][A-Z-]*)")
 
 # Windows' hang handling closed a Not Responding window: host interference,
@@ -94,6 +96,9 @@ RUN_RESULT_RE = re.compile(r"ir-run: RESULT=([A-Z][A-Z-]*)")
 # §"Clean-exit policy").
 HOST_CLOSED = "HOST-CLOSED"
 NO_DISPLAY = "NO-DISPLAY"
+ALIVE_TIMEOUT = "ALIVE-TIMEOUT"
+TERM_IGNORED = "TERM-IGNORED"
+WATCHDOG_STOPS = (ALIVE_TIMEOUT, TERM_IGNORED)
 EXIT_ENV_FAIL = 69
 
 
@@ -313,7 +318,7 @@ def report_gui_asserts(output: str, prefix: str = "",
     keeps its own policy for the empty-assertion case. ``timeout``, when passed,
     is the caller's ``--timeout`` value in seconds, echoed into the hung message
     for diagnosis."""
-    hung = "RESULT=ALIVE-TIMEOUT" in output
+    hung = any(f"RESULT={stop}" in output for stop in WATCHDOG_STOPS)
     if hung:
         at = f" at --timeout {timeout}s" if timeout is not None else ""
         print(f"{prefix}run hung: watchdog killed it{at} before the shot table completed")

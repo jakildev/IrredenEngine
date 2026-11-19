@@ -53,6 +53,9 @@ run_case CRASH CrashStub CrashStub
 make_stub TimeoutStub 'sleep 10'
 run_case ALIVE-TIMEOUT TimeoutStub --timeout 1 TimeoutStub
 
+make_stub TermIgnoredStub 'trap "" TERM; while true; do sleep 1; done'
+IR_RUN_KILL_GRACE=1 run_case TERM-IGNORED TermIgnoredStub --timeout 1 TermIgnoredStub
+
 result_env="$tmp/env.json"
 IR_RUN_RESULT_FILE="$result_env" "$ROOT/engine/tools/bin/ir-run" \
     --build-dir "$build" CleanStub >/dev/null

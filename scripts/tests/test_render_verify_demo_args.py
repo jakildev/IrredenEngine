@@ -15,7 +15,7 @@ manifest, because a flag that lives only on the CLI gates nothing under
     inherit the top-level list;
   * a malformed key is rejected loudly rather than silently ignored.
 
-No build, no demo launch: ``fleet-run`` is stubbed at ``subprocess.run`` so the
+No build, no demo launch: ``fleet-run`` is stubbed at ``_run_pass_process`` so the
 real ``_run_capture`` composes the command, and ``evaluate_shots`` is stubbed
 so no comparator runs. Import the dashed-name subject via importlib, matching
 test_render_verify.py.
@@ -57,16 +57,13 @@ SHOTS = ["fit_grid", "zoom1_origin"]
 FIXTURE = ["--mode", "voxel_set", "--no-overlay"]
 
 
-class _FakeProc:
-    returncode = 0
-    stdout = "ir-run: RESULT=CLEAN exe=IRPerfGrid exit=0\n"
-    stderr = ""
+CLEAN_OUT = "ir-run: RESULT=CLEAN exe=IRPerfGrid exit=0\n"
 
 
 def _drive(manifest: dict, demo_arg: list[str]) -> list[list[str]]:
     """Run ``_verify_one`` against ``manifest``; return every fleet-run argv.
 
-    The stub stands in for ``subprocess.run``: it records the argv and writes
+    The stub stands in for ``_run_pass_process``: it records the argv and writes
     the screenshot files the harness then collects, exactly as the demo would.
     """
     commands: list[list[str]] = []
@@ -89,12 +86,12 @@ def _drive(manifest: dict, demo_arg: list[str]) -> list[list[str]]:
             shots_dir.mkdir(parents=True, exist_ok=True)
             for i in range(1, len(SHOTS) + 1):
                 (shots_dir / f"screenshot_{i:06d}.png").touch()
-            return _FakeProc()
+            return 0, CLEAN_OUT, False
 
         args = argparse.Namespace(
             warmup=None, timeout=60, update_references=False, force=False,
             no_build=True, demo_arg=demo_arg)
-        with patch.object(_rv.subprocess, "run", side_effect=fake_run), \
+        with patch.object(_rv, "_run_pass_process", side_effect=fake_run), \
                 patch.object(_rv.verify_common, "find_exe", return_value=exe), \
                 patch.object(_rv, "evaluate_shots", return_value=[]), \
                 redirect_stdout(io.StringIO()):
