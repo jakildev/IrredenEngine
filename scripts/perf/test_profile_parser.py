@@ -145,6 +145,7 @@ WITNESSED_REPORT = (
     "Per-axis overflow: maxEntries=630842 maxDropped=7 cap=1048576 samples=8\n"
     "Voxel record upload bytes: first=12000000 laterMean=0.0 laterMax=0 frames=8\n"
     "Voxel mask upload bytes: first=125000 laterMean=4.5 laterMax=36 frames=8\n"
+    "Per-axis store: maxDropped=11\n"
     "\n"
     "--- Static residents ---\n"
     "Population: static=990000 settling=0 settled=990000\n"
@@ -191,6 +192,7 @@ class RunWitnessParserTest(unittest.TestCase):
              witness.overflow_cap, witness.overflow_samples),
             (630842, 7, 1048576, 8),
         )
+        self.assertEqual(witness.store_max_dropped, 11)
         self.assertEqual((report.frame.p99, report.steady_frame.p99), (102.0, 21.0))
         self.assertEqual(witness.explicit_pivot_samples, 8)
         record, mask = witness.voxel_uploads["record"], witness.voxel_uploads["mask"]

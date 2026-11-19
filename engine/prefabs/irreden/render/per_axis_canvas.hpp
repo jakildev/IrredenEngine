@@ -20,6 +20,7 @@
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/voxel/components/component_voxel_pool.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -31,6 +32,8 @@ namespace IRPrefab::PerAxisCanvas {
 // texture density (see IRMath::perAxisTrixelCanvasWorstCaseSize). ≈1 px is the
 // configured balance between seam-free coverage and texture size.
 inline constexpr float kMinOnScreenTrixelSizePx = 1.0f;
+inline constexpr float kHeightHeadroomQuantum = 64.0f;
+inline constexpr float kMaxHeightHeadroom = 256.0f;
 
 // Consecutive cardinal frames a parked per-axis set stays resident before it is
 // freed: about two seconds at 60 fps. A turn that pauses on a cardinal, or a
@@ -56,11 +59,55 @@ inline std::uint32_t readOverflowInstanceCount(const IRComponents::C_PerAxisTrix
 }
 
 // Texel size of each per-axis face store for the current main canvas.
-inline IRMath::ivec2 storeSize() {
-    return IRMath::perAxisTrixelCanvasWorstCaseSize(
-        IRMath::ivec2(IRRender::getMainCanvasSizeTrixels()),
-        kMinOnScreenTrixelSizePx
+inline IRMath::ivec2 storeSizeForContentHeight(
+    IRMath::ivec2 cardinalExtent, float heightHeadroom = IRMath::kPerAxisStoreHeightHeadroom
+) {
+    const IRMath::ivec2 baseline =
+        IRMath::perAxisTrixelCanvasWorstCaseSize(cardinalExtent, kMinOnScreenTrixelSizePx);
+    IRMath::ivec2 grown = IRMath::perAxisTrixelCanvasWorstCaseSize(
+        cardinalExtent,
+        kMinOnScreenTrixelSizePx,
+        heightHeadroom
     );
+    // Matching the baseline parity keeps the centred face lattice on the same
+    // framebuffer pixels when retained headroom grows the allocation.
+    grown.x += (grown.x ^ baseline.x) & 1;
+    grown.y += (grown.y ^ baseline.y) & 1;
+    return grown;
+}
+
+inline IRMath::ivec2 storeSize(float heightHeadroom = IRMath::kPerAxisStoreHeightHeadroom) {
+    return storeSizeForContentHeight(
+        IRMath::ivec2(IRRender::getMainCanvasSizeTrixels()),
+        heightHeadroom
+    );
+}
+
+inline IRMath::ivec2 liveStoreSizeOrDefault() {
+    const IREntity::EntityId mainCanvas = IRRender::getCanvas("main");
+    if (mainCanvas == IREntity::kNullEntity) {
+        return storeSize();
+    }
+    auto perAxis =
+        IREntity::getComponentOptional<IRComponents::C_PerAxisTrixelCanvases>(mainCanvas);
+    return perAxis.has_value() && (*perAxis.value()).isAllocated() ? (*perAxis.value()).size_
+                                                                   : storeSize();
+}
+
+inline float contentHeightHeadroom(IRComponents::C_VoxelPool &pool, float referenceHeight) {
+    pool.prepareChunkWorldBounds();
+    pool.refreshOldestChunkWorldBounds(static_cast<std::size_t>(pool.getChunkCount()));
+    float required = IRMath::kPerAxisStoreHeightHeadroom;
+    for (int chunk = 0; chunk < pool.getChunkCount(); ++chunk) {
+        const auto &bounds = pool.chunkWorldBounds(static_cast<std::size_t>(chunk));
+        if (bounds.empty()) {
+            continue;
+        }
+        required = IRMath::max(required, IRMath::abs(bounds.worldMin_.z - referenceHeight));
+        required = IRMath::max(required, IRMath::abs(bounds.worldMax_.z - referenceHeight));
+    }
+    const float rounded = IRMath::ceil(required / kHeightHeadroomQuantum) * kHeightHeadroomQuantum;
+    return IRMath::clamp(rounded, IRMath::kPerAxisStoreHeightHeadroom, kMaxHeightHeadroom);
 }
 
 // The frame a store of @p size is keyed in this frame
@@ -325,6 +372,7 @@ inline void syncAllocationToCameraYaw() {
     // Face storage covers the logical viewport; the resolve uses the density-scaled backing.
     IRMath::ivec2 size{0, 0};
     IRMath::ivec2 mainSize{0, 0};
+    float heightHeadroom = IRMath::kPerAxisStoreHeightHeadroom;
     if (rotating) {
         auto cardinal =
             IREntity::getComponentOptional<IRComponents::C_TriangleCanvasTextures>(mainCanvas);
@@ -332,7 +380,17 @@ inline void syncAllocationToCameraYaw() {
             return;
         }
         mainSize = (*cardinal.value()).size_;
-        size = storeSize();
+        auto pool = IREntity::getComponentOptional<IRComponents::C_VoxelPool>(mainCanvas);
+        if (pool.has_value()) {
+            heightHeadroom =
+                contentHeightHeadroom(*pool.value(), IRRender::getViewReferenceHeight());
+        }
+        if (axes.isAllocated()) {
+            heightHeadroom = IRMath::max(heightHeadroom, axes.heightHeadroom_);
+        } else if (axes.hasParked()) {
+            heightHeadroom = IRMath::max(heightHeadroom, axes.parked_.heightHeadroom_);
+        }
+        size = storeSize(heightHeadroom);
     }
     if (!rotating && !axes.isAllocated() && axes.hasParked()) {
         ++axes.parkedFrames_;
@@ -361,21 +419,21 @@ inline void syncAllocationToCameraYaw() {
         return;
     case LifecycleStep::REPLACE_LIVE:
         timed(witness.perAxisRelease_, [&] { axes.release(); });
-        timed(witness.perAxisAllocate_, [&] { axes.allocate(size, mainSize); });
+        timed(witness.perAxisAllocate_, [&] { axes.allocate(size, mainSize, heightHeadroom); });
         return;
     case LifecycleStep::UNPARK_RESIZE_RESOLVE:
         timed(witness.perAxisUnpark_, [&] { axes.unpark(); });
         timed(witness.perAxisAllocate_, [&] { axes.resizeResolveDepth(mainSize); });
         return;
     case LifecycleStep::ALLOCATE:
-        timed(witness.perAxisAllocate_, [&] { axes.allocate(size, mainSize); });
+        timed(witness.perAxisAllocate_, [&] { axes.allocate(size, mainSize, heightHeadroom); });
         return;
     case LifecycleStep::UNPARK:
         timed(witness.perAxisUnpark_, [&] { axes.unpark(); });
         return;
     case LifecycleStep::REPLACE_PARKED:
         timed(witness.perAxisRelease_, [&] { axes.releaseParked(); });
-        timed(witness.perAxisAllocate_, [&] { axes.allocate(size, mainSize); });
+        timed(witness.perAxisAllocate_, [&] { axes.allocate(size, mainSize, heightHeadroom); });
         return;
     case LifecycleStep::PARK:
         timed(witness.perAxisPark_, [&] { axes.park(); });

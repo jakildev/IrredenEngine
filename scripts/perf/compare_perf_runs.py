@@ -111,6 +111,7 @@ WITNESS_UPLOAD_RE = re.compile(
     r"^Voxel (record|mask) upload bytes: first=(\d+) laterMean=([\d.]+) laterMax=(\d+) "
     r"frames=(\d+)$"
 )
+WITNESS_STORE_RE = re.compile(r"^Per-axis store: maxDropped=(\d+)$")
 
 STATIC_POPULATION_RE = re.compile(r"^Population: static=(\d+) settling=(\d+) settled=(\d+)$")
 STATIC_TRANSITIONS_RE = re.compile(
@@ -269,6 +270,7 @@ class RunWitness:
     overflow_max_dropped: Optional[int] = None
     overflow_cap: Optional[int] = None
     overflow_samples: Optional[int] = None
+    store_max_dropped: Optional[int] = None
     # Per-frame bytes uploaded to the voxel record / active-mask buffers, keyed
     # "record" and "mask"; a stream is absent where its line is.
     voxel_uploads: dict[str, "VoxelUploads"] = field(default_factory=dict)
@@ -709,6 +711,10 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
                 witness.voxel_uploads[m.group(1)] = VoxelUploads(
                     int(m.group(2)), float(m.group(3)), int(m.group(4)), int(m.group(5))
                 )
+                continue
+            m = WITNESS_STORE_RE.match(s)
+            if m:
+                witness.store_max_dropped = int(m.group(1))
         elif section == "frame_times":
             report.frame_times_ms.extend(float(value) for value in s.split())
         elif section == "frame_update_ticks":

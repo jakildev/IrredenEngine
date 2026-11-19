@@ -88,10 +88,10 @@ int main() {
     auto append=[&](ivec3 p,int depth,uint color,bool cut=false) {
 #ifdef METAL_ADAPTER
         FrameDataVoxelToTrixel frame{overflowScratchLayout};
-        overflowAppendTap(base,p,depth,color,cut,17u,frame,scatterFrame,scatterGlobals,
+        overflowAppendTap(base,p,depth,color,cut,17u,true,frame,scatterFrame,scatterGlobals,
                           texture2d<int, access::read>{},distances,perAxisWinnerIds,canvasSize);
 #else
-        overflowAppendTap(base,p,depth,color,cut,17u);
+        overflowAppendTap(base,p,depth,color,cut,17u,true);
 #endif
     };
     append(face,100,0x11111111u); // settled cardinal winner
@@ -113,7 +113,8 @@ int main() {
     if(perAxisWinnerIds[301]!=2 || perAxisWinnerIds[305]!=1 ||
        perAxisWinnerIds[328]!=0) return 4;
     append({1000,0,0},104,0x55555555u); // off-canvas cardinal key
-    if(perAxisWinnerIds[301]!=2 || perAxisWinnerIds[305]!=1) return 5;
+    if(perAxisWinnerIds[301]!=2 || perAxisWinnerIds[305]!=1 ||
+       perAxisWinnerIds[308]!=1) return 5;
     perAxisWinnerIds[301]=0;
     append(face,-32768,0x87654321u,false);
     append(face,-32768,0x87654321u,true);
@@ -155,11 +156,14 @@ int main() {
 
 
 def adapter(source, metal):
+    counter = functions(source, "countPerAxisStoreDrop")
     function = functions(source, "overflowAppendTap")
     if metal:
         for token, replacement in (("int2", "ivec2"), ("int3", "ivec3"),
                                    ("atomic_int", "int"), ("atomic_uint", "uint")):
+            counter = re.sub(r"\b" + token + r"\b", replacement, counter)
             function = re.sub(r"\b" + token + r"\b", replacement, function)
+        counter = re.sub(r"\b(?:constant|device)\s+", "", counter)
         function = re.sub(r"\b(?:constant|device)\s+", "", function)
     folder = ROOT / "engine/render/src/shaders" / ("metal" if metal else "")
     common = (folder / ("ir_iso_common.metal" if metal else "ir_iso_common.glsl")).read_text()
@@ -172,7 +176,7 @@ def adapter(source, metal):
         "packOverflowVoxelAO", "overflowVoxelIndex", "overflowAO"))
     key = re.sub(r"\bint2\b", "ivec2", key)
     return (HOST + constants + key + "\n" + ("#define METAL_ADAPTER\n" if metal else "")
-            + function + CHECKS)
+            + counter + "\n" + function + CHECKS)
 
 
 def run_host(source):

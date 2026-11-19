@@ -19,6 +19,20 @@ using IRPrefab::PerAxisCanvas::kParkedCardinalFrames;
 using IRPrefab::PerAxisCanvas::LifecycleState;
 using IRPrefab::PerAxisCanvas::LifecycleStep;
 using IRPrefab::PerAxisCanvas::lifecycleStep;
+using IRPrefab::PerAxisCanvas::storeSizeForContentHeight;
+
+TEST(PerAxisCanvasLifecycle, GrownStorePreservesBaselineLatticeParity) {
+    const IRMath::ivec2 extent{642, 722};
+    const IRMath::ivec2 baseline = storeSizeForContentHeight(extent);
+
+    for (const float headroom : {128.0f, 192.0f, 256.0f}) {
+        const IRMath::ivec2 grown = storeSizeForContentHeight(extent, headroom);
+        EXPECT_EQ(grown.x & 1, baseline.x & 1) << "headroom=" << headroom;
+        EXPECT_EQ(grown.y & 1, baseline.y & 1) << "headroom=" << headroom;
+        EXPECT_GE(grown.x, IRMath::perAxisTrixelCanvasWorstCaseSize(extent, 1.0f, headroom).x);
+        EXPECT_GE(grown.y, IRMath::perAxisTrixelCanvasWorstCaseSize(extent, 1.0f, headroom).y);
+    }
+}
 
 TEST(PerAxisCanvasLifecycle, ScratchRegionsAreAdjacentAlignedAndDisjoint) {
     using Store = IRComponents::PerAxisCanvasStore;
@@ -195,6 +209,17 @@ TEST(PerAxisCanvasLifecycle, RotationResumingOnAParkedSetUnparksWhateverItWaited
 }
 
 TEST(PerAxisCanvasLifecycle, ParkedSetSizedForAnotherCanvasIsReplaced) {
+    EXPECT_EQ(
+        lifecycleStep({.rotating_ = true, .parked_ = true, .parkedFits_ = false}),
+        LifecycleStep::REPLACE_PARKED
+    );
+}
+
+TEST(PerAxisCanvasLifecycle, HeadroomGrowthReplacesLiveAndParkedStores) {
+    EXPECT_EQ(
+        lifecycleStep({.rotating_ = true, .live_ = true, .liveFits_ = false}),
+        LifecycleStep::REPLACE_LIVE
+    );
     EXPECT_EQ(
         lifecycleStep({.rotating_ = true, .parked_ = true, .parkedFits_ = false}),
         LifecycleStep::REPLACE_PARKED

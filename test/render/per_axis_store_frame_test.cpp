@@ -117,6 +117,50 @@ TEST(PerAxisStoreFrame, WindowHoldsEveryOnScreenPointAtEveryYawPanAndAspect) {
     }
 }
 
+TEST(PerAxisStoreFrame, ContentSizedHeadroomHoldsTallScenesThatFixedHeadroomDrops) {
+    constexpr float kHeights[] = {128.0f, 192.0f, 256.0f};
+    bool fixedStoreOvershot[3] = {false, false, false};
+    for (const ivec2 canvas : kCanvases) {
+        for (const vec2 camera : kCameras) {
+            for (const float referenceHeight : kReferenceHeights) {
+                for (int degrees = 1; degrees < 360; degrees += 4) {
+                    const float visualYaw = IRMath::kPi * static_cast<float>(degrees) / 180.0f;
+                    for (int heightIndex = 0; heightIndex < 3; ++heightIndex) {
+                        const float height = kHeights[heightIndex];
+                        const int grownOvershoot = worstOvershoot(
+                            canvas,
+                            IRMath::perAxisTrixelCanvasWorstCaseSize(canvas, 1.0f, height),
+                            camera,
+                            visualYaw,
+                            referenceHeight,
+                            {-height, height},
+                            IRMath::perAxisStoreAnchor,
+                            storeCardinal
+                        );
+                        EXPECT_LE(grownOvershoot, 0)
+                            << "height=" << height << " canvas=(" << canvas.x << "," << canvas.y
+                            << ") yaw=" << degrees;
+                        fixedStoreOvershot[heightIndex] |=
+                            worstOvershoot(
+                                canvas,
+                                IRMath::perAxisTrixelCanvasWorstCaseSize(canvas),
+                                camera,
+                                visualYaw,
+                                referenceHeight,
+                                {-height, height},
+                                IRMath::perAxisStoreAnchor,
+                                storeCardinal
+                            ) > 0;
+                    }
+                }
+            }
+        }
+    }
+    for (int heightIndex = 0; heightIndex < 3; ++heightIndex) {
+        EXPECT_TRUE(fixedStoreOvershot[heightIndex]) << "height=" << kHeights[heightIndex];
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Negative control — what the anchor and the cardinal key frame are for. A
 // window anchored on the camera and keyed in the yaw-0 frame is centered on

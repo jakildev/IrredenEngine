@@ -703,6 +703,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // count already warned about, so the "overflow cap hit" line fires once
     // per distinct count rather than every rotating frame.
     std::uint32_t lastOverflowDropWarned_ = 0;
+    std::uint32_t lastStoreDropWarned_ = 0;
     // measurement: IR_OVERFLOW_COUNT_LOG surfaces the per-frame overflow
     // entry count (ctrl instanceCount) each time it changes — the per-pose counts
     // the far-quadrant sweep records. Off by default (no per-frame log spam); read
@@ -1020,6 +1021,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 renderRunWitness().recordOverflow(
                     sample[1],
                     sample[C_PerAxisTrixelCanvases::kOverflowCtrlDroppedWord],
+                    sample[C_PerAxisTrixelCanvases::kOverflowCtrlStoreDroppedWord],
                     static_cast<std::uint32_t>(axes.overflowCap_)
                 );
                 renderRunWitness().recordOverflowRejection(
@@ -1038,6 +1040,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             return;
         }
         axes.settledOverflowCount_ = ctrl[1];
+        axes.settledStoreDropCount_ = ctrl[C_PerAxisTrixelCanvases::kOverflowCtrlStoreDroppedWord];
         const std::uint32_t dropped = ctrl[C_PerAxisTrixelCanvases::kOverflowCtrlDroppedWord];
         if (dropped > 0 && dropped != lastOverflowDropWarned_) {
             IRE_LOG_WARN(
@@ -1048,6 +1051,17 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 axes.overflowCap_
             );
             lastOverflowDropWarned_ = dropped;
+        }
+        const std::uint32_t storeDropped = axes.settledStoreDropCount_;
+        if (storeDropped > 0 && storeDropped != lastStoreDropWarned_) {
+            IRE_LOG_WARN(
+                "Per-axis face store dropped {} out-of-range writes last rotating frame "
+                "(headroom {} cells, cap {}); rotating coverage is incomplete.",
+                storeDropped,
+                axes.heightHeadroom_,
+                IRPrefab::PerAxisCanvas::kMaxHeightHeadroom
+            );
+            lastStoreDropWarned_ = storeDropped;
         }
         // per-pose overflow entry count for the far-quadrant cost sweep.
         // ctrl[1] is the indirect-draw instanceCount = live overflow entries.

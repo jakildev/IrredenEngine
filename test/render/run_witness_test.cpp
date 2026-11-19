@@ -89,12 +89,13 @@ TEST(RenderRunWitness, CountsTheFramesRenderedWithAnExplicitPivot) {
 
 TEST(RenderRunWitness, OverflowKeepsTheWorstFrameNotTheLast) {
     RenderRunWitness witness;
-    witness.recordOverflow(100u, 0u, 1024u);
-    witness.recordOverflow(1024u, 77u, 1024u);
-    witness.recordOverflow(50u, 0u, 1024u);
+    witness.recordOverflow(100u, 0u, 2u, 1024u);
+    witness.recordOverflow(1024u, 77u, 9u, 1024u);
+    witness.recordOverflow(50u, 0u, 3u, 1024u);
     EXPECT_EQ(witness.overflowSamples_, 3u);
     EXPECT_EQ(witness.maxOverflowEntries_, 1024u);
     EXPECT_EQ(witness.maxOverflowDropped_, 77u);
+    EXPECT_EQ(witness.maxStoreDropped_, 9u);
     EXPECT_EQ(witness.overflowCap_, 1024u);
 }
 
@@ -129,7 +130,7 @@ TEST(RenderRunWitness, ResetForgetsThePreviousRun) {
     RenderRunWitness witness;
     witness.recordPose(1.0f, 2.0f, true);
     witness.recordPose(2.0f, 32.0f, true);
-    witness.recordOverflow(9u, 9u, 9u);
+    witness.recordOverflow(9u, 9u, 9u, 9u);
     witness.perAxisAllocate_.record(1.5);
     witness.perAxisRelease_.record(1.5);
     witness.reset();
