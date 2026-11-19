@@ -5,9 +5,11 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
@@ -200,6 +202,18 @@ class WatchRun(unittest.TestCase):
         self.assertIn("--state", gh.calls[-1])
         self.assertIn("closed", gh.calls[-1])
 
+    def test_configured_preset_matches_scout_control_path(self):
+        preset = "linux-debug"
+        record = self.result()
+        record["preset"] = preset
+        with environment(FLEET_RENDER_WATCH_PRESET=preset), \
+             self.patched(RecordingGh(), self.sweep(record)):
+            self.assertEqual(watch.run_watch(COMMIT), 0)
+            control = scout._render_watch_record_path(COMMIT)
+        self.assertEqual(control,
+                         self.state / "render-verify-controls" / preset / f"{COMMIT}.json")
+        self.assertTrue(control.is_file())
+
     def test_unreadable_lookup_writes_no_tracker_or_control(self):
         gh = RecordingGh(lookup_rc=1)
         with self.patched(gh, self.sweep()):
@@ -246,6 +260,35 @@ class WatchRun(unittest.TestCase):
                 self.assertFalse(self.control().exists())
                 status = json.loads(self.status().read_text())
                 self.assertEqual(status["outcome"], "failed")
+
+    def test_timeout_kills_sweep_grandchild(self):
+        pid_path = self.root / "grandchild.pid"
+        sweep = self.root / "sweep.py"
+        sweep.write_text(
+            "import pathlib, subprocess, sys, time\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+            "pathlib.Path(sys.argv[1]).write_text(str(child.pid))\n"
+            "time.sleep(60)\n",
+            encoding="utf-8",
+        )
+        command = " ".join((
+            shlex.quote(sys.executable),
+            shlex.quote(str(sweep)),
+            shlex.quote(str(pid_path)),
+        ))
+        with environment(FLEET_RENDER_WATCH_SWEEP_COMMAND=command,
+                         FLEET_RENDER_WATCH_TIMEOUT_SECS="1"):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                watch._run_sweep(self.worktree, self.root / "result.json")
+        pid = int(pid_path.read_text())
+        for _attempt in range(20):
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.1)
+        else:
+            self.fail("sweep grandchild survived timeout cleanup")
 
 
 if __name__ == "__main__":
