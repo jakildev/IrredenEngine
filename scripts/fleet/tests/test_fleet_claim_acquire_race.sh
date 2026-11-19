@@ -37,11 +37,21 @@ source "$CLAIM_RACE_LIB"
 
 lock_state() {
     race_lock "${CLAIM_STATE}.lock"
+    printf '%s LOCK   pid=%s ppid=%s cl=%s args=%s %s\n' "$(date +%s.%N)" "$$" "$PPID" "${CLAIMANT:-}" "${GH_ARG1:-}" "${GH_ARG2:-}" >> "${CLAIM_STATE}.locklog"
 }
 
 unlock_state() {
-    rmdir "${CLAIM_STATE}.lock"
+    printf '%s UNLOCK pid=%s ppid=%s cl=%s args=%s %s\n' "$(date +%s.%N)" "$$" "$PPID" "${CLAIMANT:-}" "${GH_ARG1:-}" "${GH_ARG2:-}" >> "${CLAIM_STATE}.locklog"
+    if ! rmdir "${CLAIM_STATE}.lock"; then
+        {
+        echo "DIAG rmdir failed pid=$$ cl=${CLAIMANT:-} args=$GH_ARG1 $GH_ARG2"
+        tail -40 "${CLAIM_STATE}.locklog" | sed 's/^/DIAG locklog: /'
+        ps -eo pid,ppid,pgid,etimes,args | grep -E 'gh|fleet-claim|timeout|python|bash' | grep -v grep | sed 's/^/DIAG ps: /'
+        } >> "${DIAG_OUT:-/dev/stderr}" 2>&1
+        return 1
+    fi
 }
+GH_ARG1="${1:-}" GH_ARG2="${2:-}"
 
 emit_flat() {
     local first=1 label
