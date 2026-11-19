@@ -289,6 +289,12 @@ fixture with the fog pass registered and the whole graded receiver revealed,
 The fog-free arm reads 32 / 24 / 16 / 16 and PASS on the head, as it did
 after stage 1.
 
+The default rows and the fog-free arm reproduce on OpenGL (NVIDIA, Windows,
+`docs/evidence/fog-reveal-crossing-gl/README.md`). At 2560×1440 the parent
+reads 0 / 968 / 968 / 0, FAIL, `fallback`. The head reads 32 / 24 / 16 / 16,
+PASS, `compose`, and the same without the flag. At the script's own 1280×720
+window every count is a quarter of that, with the same verdicts.
+
 ### Receiver correctness
 
 The receiver-polygon capture set
@@ -422,12 +428,13 @@ the slowest arm on it (11.52 ms against 11.05 ms for the head).
 
 ### Not yet measured
 
-- OpenGL. Every stage 2 reading is Metal. The crossing reading on the
-  fog-pass arm is owed on an OpenGL host; the fog-composing GLSL programs were
-  compiled, linked and graded there before the default moved
-  (`docs/evidence/fog-surface-lighting-gl-native/README.md`). The
-  `depth_greater` declaration and the early-depth vertex output have not been
-  compiled by a GL driver.
+- OpenGL beyond the crossing reading. The crossing reading is the only
+  stage 2 measurement taken on OpenGL. Its runs compiled and linked the
+  `depth_greater` declaration and the early-depth vertex output on the NVIDIA
+  driver, but the engine does not log driver warnings. Receiver correctness,
+  exactness and cost have not been measured there. The fog-composing GLSL
+  programs were graded on OpenGL before the default moved
+  (`docs/evidence/fog-surface-lighting-gl-native/README.md`).
 - `IRLightingCombined` through `light-verify` on macOS, which has no baseline
   for it.
 

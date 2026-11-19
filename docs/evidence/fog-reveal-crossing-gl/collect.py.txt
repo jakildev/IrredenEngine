@@ -1,0 +1,102 @@
+"""Re-grade every kept #5209 capture offline and write results.json.
+
+    python3 collect.py <evidence-dir>
+
+Each arm directory under OUT is re-read with the head tree's
+`render-yaw-crossing-metric.py grade`, and the result must equal the one the
+capture printed. Per frame it records the SHA-256, the PNG IHDR size, the
+SURFACE-ROUTE line, the offscreen target line and the ir-run verdict. The 1x
+fog-reveal frames of both arms are copied into the evidence directory.
+"""
+import hashlib
+import json
+import re
+import shutil
+import struct
+import subprocess
+import sys
+from pathlib import Path
+
+WT = Path("C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-2")
+SCRIPT = WT / "scripts/render-yaw-crossing-metric.py"
+OUT = Path("C:/msys64/tmp/p5209/out")
+ARMS = ["head-fog-1x", "parent-fog-1x", "head-nofog-1x",
+        "head-fog-2x", "parent-fog-2x", "head-nofog-2x"]
+KEEP = {"head-fog-1x": "head", "parent-fog-1x": "parent"}
+SHAS = {"head": "7ed1e271f", "parent": "6afc51320"}
+OFFSETS = ("-2", "-1", "+0", "+1", "+2")
+
+
+def ihdr(path: Path) -> list[int]:
+    data = path.read_bytes()[:24]
+    assert data[:8] == b"\x89PNG\r\n\x1a\n" and data[12:16] == b"IHDR", path
+    return list(struct.unpack(">II", data[16:24]))
+
+
+def first(pattern: str, text: str) -> str | None:
+    match = re.findall(pattern, text, re.M)
+    return match[-1].strip() if match else None
+
+
+def printed_result(arm: str) -> dict:
+    for line in (OUT / f"{arm}.txt").read_text(encoding="utf-8").splitlines():
+        if line.startswith("{"):
+            return json.loads(line)
+    raise SystemExit(f"{arm}: no printed result")
+
+
+def main() -> None:
+    evidence = Path(sys.argv[1])
+    results = {"script": "scripts/render-yaw-crossing-metric.py at 7ed1e271f "
+                         "(byte-identical in the head tree)", "arms": {}}
+    for arm in ARMS:
+        directory = OUT / arm
+        if not (OUT / f"{arm}.txt").is_file():
+            print(f"{arm}: not captured, skipped")
+            continue
+        regrade = subprocess.run([sys.executable, str(SCRIPT), "grade", str(directory)],
+                                 capture_output=True, text=True, cwd=str(WT))
+        graded = json.loads(regrade.stdout.splitlines()[0])
+        printed = printed_result(arm)
+        assert graded == printed, f"{arm}: offline grade differs from the capture's"
+        frames = {}
+        for offset in OFFSETS:
+            png = directory / f"yaw_{offset}.png"
+            log = (directory / f"yaw_{offset}" / "run.log").read_text(
+                encoding="utf-8", errors="replace")
+            frames[offset] = {
+                "sha256": hashlib.sha256(png.read_bytes()).hexdigest(),
+                "ihdr": ihdr(png),
+                "yaw_arg": first(r"--yaw=(\S+)", log),
+                "surface_route": first(r"(SURFACE-ROUTE .*)$", log),
+                "offscreen_target": first(r"(OpenGL offscreen screen target attached .*)$", log),
+                "ir_run": first(r"(ir-run: RESULT=.*)$", log),
+            }
+            assert frames[offset]["ir_run"].startswith("ir-run: RESULT=CLEAN"), (arm, offset)
+        arm_name, flag, scale = arm.split("-")
+        results["arms"][arm] = {
+            "sha": SHAS[arm_name],
+            "fog_reveal": 16 if flag == "fog" else None,
+            "window": "2560x1440" if scale == "2x" else "1280x720",
+            "exit": regrade.returncode,
+            "verdict": "RESULT=PASS" if graded["pass"] else "RESULT=FAIL",
+            "grade": graded,
+            "frames": frames,
+        }
+        if arm in KEEP:
+            kept = evidence / f"frames-{KEEP[arm]}"
+            kept.mkdir(parents=True, exist_ok=True)
+            for offset in OFFSETS:
+                shutil.copyfile(directory / f"yaw_{offset}.png", kept / f"yaw_{offset}.png")
+        pairs = graded["pairs"]
+        print(f"{arm}: {results['arms'][arm]['verdict']} exit {regrade.returncode} pairs "
+              + " / ".join(str(pairs[k]["differing_px"]) for k in
+                           ("rotated_before", "cardinal_before", "cardinal_after",
+                            "rotated_after"))
+              + f" scale {graded['output_scale']} routes {graded.get('fog_routes')}")
+    (evidence / "results.json").write_text(json.dumps(results, indent=1) + "\n",
+                                           encoding="utf-8", newline="\n")
+
+
+if __name__ == "__main__":
+    main()

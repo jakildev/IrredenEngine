@@ -1,0 +1,66 @@
+"""One #5209 crossing reading: run pool-2's render-yaw-crossing-metric.py
+(byte-identical to 7ed1e271f's) against one arm's build.
+
+    python3 run.py <head|parent> <fog|nofog> <1|2>
+
+scale 2 swaps the script's 1280x720 window for 2560x1440 over the same
+1280x720 game resolution (Metal's capture shape); scale 1 is the script as
+written. No IR_PERAXIS_* variable is passed, and any inherited one is dropped.
+"""
+import os
+import subprocess
+import sys
+import types
+from pathlib import Path
+
+WT = "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-2"
+SCRIPT = WT + "/scripts/render-yaw-crossing-metric.py"
+BUILDS = {"head": WT + "/build", "parent": "C:/msys64/tmp/p5209/parent/build"}
+OUT = Path("C:/msys64/tmp/p5209/out")
+
+arm, fog, scale = sys.argv[1], sys.argv[2], int(sys.argv[3])
+name = f"{arm}-{fog}-{scale}x"
+output = OUT / name
+# --timeout is both the exe watchdog and (plus 60 s) the subprocess bound, so it
+# must outlast a gpu-lock wait behind another pane's captures.
+argv = ["capture", "--output", str(output), "--timeout", "1800"]
+if fog == "fog":
+    argv += ["--fog-reveal", "16"]
+
+for key in [k for k in os.environ if k.startswith("IR_PERAXIS_")]:
+    del os.environ[key]
+os.environ["IRREDEN_BUILD_DIR"] = BUILDS[arm]
+os.environ["IR_QUEUE_TIMEOUT"] = "1700"
+
+sys.path.insert(0, WT + "/scripts")
+src = open(SCRIPT, encoding="utf-8").read()
+if scale == 2:
+    old = 'f"init_window_width={GAME_SIZE[0]},init_window_height={GAME_SIZE[1]},"'
+    assert src.count(old) == 1, "config line moved"
+    src = src.replace(
+        old, 'f"init_window_width={2 * GAME_SIZE[0]},init_window_height={2 * GAME_SIZE[1]},"')
+mod = types.ModuleType("crossing")
+mod.__file__ = SCRIPT
+exec(compile(src, SCRIPT, "exec"), mod.__dict__)
+OUT.mkdir(parents=True, exist_ok=True)
+
+
+class Tee:
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, text):
+        for stream in self.streams:
+            stream.write(text)
+            stream.flush()
+
+    def flush(self):
+        for stream in self.streams:
+            stream.flush()
+
+
+sys.stdout = Tee(sys.__stdout__, open(OUT / f"{name}.txt", "w", encoding="utf-8"))
+print(f"== {name}: build {BUILDS[arm]}", flush=True)
+rc = mod.main(argv)
+print(f"== {name}: exit {rc}", flush=True)
+raise SystemExit(rc)
