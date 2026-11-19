@@ -1,0 +1,332 @@
+{
+  "query_terms": {
+    "post/far-128-filler-first-frozen": {
+      "-158.0,385.0 2048.0x1024.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.07270399999999999,
+        "source_invocations": 98566,
+        "source_owned": 98566,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 1.613636363636368
+      },
+      "642.0,529.0 128.0x64.0 d-672": {
+        "canvases": 128,
+        "query_term_ms": -0.027648000000000117,
+        "source_invocations": 106,
+        "source_owned": 106,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": -0.613636363636368
+      },
+      "642.0,385.0 256.0x128.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.0,
+        "source_invocations": 1200,
+        "source_owned": 1200,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.0
+      }
+    },
+    "post/far-128-filler-first": {
+      "642.0,529.0 128.0x64.0 d-672": {
+        "canvases": 128,
+        "query_term_ms": 2.423808000000007,
+        "source_invocations": 106,
+        "source_owned": 106,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.9669117647058825
+      },
+      "-158.0,385.0 2048.0x1024.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.07680000000000009,
+        "source_invocations": 98566,
+        "source_owned": 98566,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.030637254901960738
+      },
+      "642.0,385.0 256.0x128.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.006143999999999997,
+        "source_invocations": 1200,
+        "source_owned": 1200,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.002450980392156855
+      }
+    },
+    "post/far-128-filler-last-frozen": {
+      "642.0,529.0 128.0x64.0 d-672": {
+        "canvases": 128,
+        "query_term_ms": 3.1232000000000055,
+        "source_invocations": 106,
+        "source_owned": 106,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.9803921568627452
+      },
+      "-158.0,385.0 2048.0x1024.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.05632000000000004,
+        "source_invocations": 98566,
+        "source_owned": 98566,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.017679202828672434
+      },
+      "642.0,385.0 256.0x128.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.006144000000000004,
+        "source_invocations": 1200,
+        "source_owned": 1200,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.0019286403085824473
+      }
+    },
+    "post/far-128-filler-last": {
+      "642.0,529.0 128.0x64.0 d-672": {
+        "canvases": 128,
+        "query_term_ms": 2.7535360000000075,
+        "source_invocations": 106,
+        "source_owned": 106,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.9069139966273189
+      },
+      "-158.0,385.0 2048.0x1024.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.26214400000000004,
+        "source_invocations": 98566,
+        "source_owned": 98566,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.0863406408094433
+      },
+      "642.0,385.0 256.0x128.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.020479999999999998,
+        "source_invocations": 1200,
+        "source_owned": 1200,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.006745362563237756
+      }
+    },
+    "post/far-128": {
+      "642.0,529.0 128.0x64.0 d-672": {
+        "canvases": 128,
+        "query_term_ms": 3.622912000000002,
+        "source_invocations": 106,
+        "source_owned": 106,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.9985887665819927
+      },
+      "642.0,385.0 256.0x128.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.0051200000000000065,
+        "source_invocations": 1200,
+        "source_owned": 1200,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.0014112334180073395
+      }
+    },
+    "pre/far-128-filler-first-frozen": {
+      "642.0,529.0 128.0x64.0 d-672": {
+        "canvases": 128,
+        "query_term_ms": 0.05734399999999962,
+        "source_invocations": 13568,
+        "source_owned": 106,
+        "source_invocations_per_owned": 128.0,
+        "cross_canvas_share": 1.0,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.44444444444444253
+      },
+      "-158.0,385.0 2048.0x1024.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.07168000000000008,
+        "source_invocations": 98566,
+        "source_owned": 98566,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.5555555555555575
+      },
+      "642.0,385.0 256.0x128.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.0,
+        "source_invocations": 1200,
+        "source_owned": 1200,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.0
+      }
+    },
+    "pre/far-128-filler-first": {
+      "642.0,529.0 128.0x64.0 d-672": {
+        "canvases": 128,
+        "query_term_ms": 47.92217599999999,
+        "source_invocations": 13568,
+        "source_owned": 106,
+        "source_invocations_per_owned": 128.0,
+        "cross_canvas_share": 1.0,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.9979528734406653
+      },
+      "-158.0,385.0 2048.0x1024.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.09318400000000004,
+        "source_invocations": 98566,
+        "source_owned": 98566,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.001940505384369337
+      },
+      "642.0,385.0 256.0x128.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.0051199999999999996,
+        "source_invocations": 1200,
+        "source_owned": 1200,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.00010662117496534813
+      }
+    },
+    "pre/far-128-filler-last-frozen": {
+      "642.0,529.0 128.0x64.0 d-672": {
+        "canvases": 128,
+        "query_term_ms": 48.08704000000004,
+        "source_invocations": 13568,
+        "source_owned": 106,
+        "source_invocations_per_owned": 128.0,
+        "cross_canvas_share": 1.0,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.9988301605870467
+      },
+      "-158.0,385.0 2048.0x1024.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.049151999999999973,
+        "source_invocations": 98566,
+        "source_owned": 98566,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.001020950760395617
+      },
+      "642.0,385.0 256.0x128.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.007168000000000001,
+        "source_invocations": 1200,
+        "source_owned": 1200,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.00014888865255769426
+      }
+    },
+    "pre/far-128-filler-last": {
+      "642.0,529.0 128.0x64.0 d-672": {
+        "canvases": 128,
+        "query_term_ms": 48.356351999999994,
+        "source_invocations": 13568,
+        "source_owned": 106,
+        "source_invocations_per_owned": 128.0,
+        "cross_canvas_share": 1.0,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.998076679207
+      },
+      "-158.0,385.0 2048.0x1024.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.08499199999999996,
+        "source_invocations": 98566,
+        "source_owned": 98566,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.001754237646362598
+      },
+      "642.0,385.0 256.0x128.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.008191999999999998,
+        "source_invocations": 1200,
+        "source_owned": 1200,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.0001690831466373589
+      }
+    },
+    "pre/far-128": {
+      "642.0,529.0 128.0x64.0 d-672": {
+        "canvases": 128,
+        "query_term_ms": 58.80627199999997,
+        "source_invocations": 13568,
+        "source_owned": 106,
+        "source_invocations_per_owned": 128.0,
+        "cross_canvas_share": 1.0,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.9998955322631194
+      },
+      "642.0,385.0 256.0x128.0 d-96": {
+        "canvases": 1,
+        "query_term_ms": 0.006143999999999997,
+        "source_invocations": 1200,
+        "source_owned": 1200,
+        "source_invocations_per_owned": 1.0,
+        "cross_canvas_share": null,
+        "early_tests_invocations_per_owned": null,
+        "early_tests_source_gpu_ms": null,
+        "query_term_share": 0.00010446773688059337
+      }
+    }
+  }
+}

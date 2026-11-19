@@ -1,0 +1,2 @@
+# witness.json records each witness.csv sha256 over the bytes the engine wrote.
+**/witness.csv -text

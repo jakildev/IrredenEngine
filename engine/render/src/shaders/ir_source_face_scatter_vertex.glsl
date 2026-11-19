@@ -54,6 +54,12 @@ void main() {
         return;
     }
     const SourceVoxelFace face = sourceFaces[sourceOrder[128u + uint(gl_InstanceID) * kFaceSortRecordWords + 1u]];
+    // The alpha cutout is per face and lives here so neither fragment stage discards:
+    // the early route forces early fragment tests, which a discard would turn into depth holes.
+    if (face.color.a < 0.1) {
+        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        return;
+    }
     const int faceId = int(face.centerAndFace.w);
     const int axis = faceId >> 1;
     vec3 eu, ev;

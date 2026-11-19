@@ -19,6 +19,11 @@ with its evidence in `windows-opengl-mechanism/`. **The query term is the
 exact query running in hidden fragments of the 127 caster canvases behind the
 first one.**
 
+The shipped lever is in
+[§ Shipped lever: per-face alpha cull and forced early tests](#shipped-lever-per-face-alpha-cull-and-forced-early-tests),
+with its evidence in `windows-opengl-early-tests/`. **It cuts the Windows GL
+`far-128` composite by 95% in Debug and Release.**
+
 **Result.** On this host the exact query is a real execution cost, not a
 timer artifact:
 
@@ -588,6 +593,129 @@ it is consistent with #4936 drawing each face once.
   canvases' own lit faces querying the hierarchy. The caster group carries all
   of it: +58.0 of the +58.0 ms summed query term on master `far-128`.
 
+## Shipped lever: per-face alpha cull and forced early tests
+
+The source-face shaders now stop GL from shading fragments that the depth
+test rejects, on both backends:
+
+- **The alpha cutout is per face, in the vertex stage.** A face whose
+  `color.a` is below 0.1 sends every vertex to the clipped position the route
+  check already uses. The compare and the value are the ones the fragment
+  stage used to `discard` on (`faceColor` is `flat`), so the same faces cut
+  out. Neither fragment stage discards any more.
+- **The early route forces early fragment tests.** GLSL has
+  `layout(early_fragment_tests) in;` and Metal has `[[early_fragment_tests]]`
+  on `f_source_face_scatter_early`. That stage writes no depth, discards
+  nothing and has no side effects, so early and late tests give the same
+  result, and ties still go to the first face drawn under `LESS`. The
+  fallback (fragment-depth) route is unchanged apart from the cull.
+
+**Result.**
+
+- **Hidden shading is gone.** The 128 coincident caster canvases shade 106
+  invocations for their 106 owned samples (1.00×) in every case. On master
+  they shade 13,568 (128.0×). The shadowbox and the filler body stay at 1.00.
+- **The composite falls by 95%.** `far-128` goes from 63.2 to 3.3 ms in
+  Debug and from 63.9 to 3.2 ms in Release. The one-sided 95% upper bound of
+  the change is −93.9% and −94.4%, against the ≤ −50% gate. The steady frame
+  falls by 59–61 ms.
+- **The query is still on.** The query term left is +2.6 ms (Debug) and
+  +2.9 ms (Release), the same order as the early-tests control's +2.2–2.5 ms
+  and Metal's +3.3 ms.
+
+### Setup
+
+| | |
+|---|---|
+| Source | `f8c280aa1` (`source_revision` in every `provenance.json`): master `00b5da049` plus this change |
+| Controller | `run_matrix.py` `2fce7a499757…` ran every witness, arm and capture |
+| Binaries | the same binary in both trees, since the change is shader-only: Debug `320005d17eed…`, Release `a5b14aa2c7eb…` |
+| Pre trees | `f8c280aa1` with the three shader files checked out from master, built in the same tree and copied out by `run_matrix.py snapshot`. `tree.json` and `tree.diff` are under `windows-opengl-early-tests/<build>/pre-tree/`; the diff is exactly this change's shader edits, reversed |
+| Host | Windows 10 19045, NVIDIA GeForce RTX 3060 Ti, driver 32.0.15.8180 |
+| Fixture | the timing fixture and five cases above, unchanged |
+
+### Witness (Debug, frames 60–64, medians)
+
+Caster group = the 128 coincident caster canvases. Query term = the group's
+summed per-draw GPU time, production minus `queryHierarchy = false`
+(indicative only, as in § The draw witness).
+
+| Case | Caster invocations / owned, pre | Caster invocations / owned, post | Caster query term, pre | Caster query term, post | Shadowbox, pre / post | Filler body, pre / post |
+|---|---:|---:|---:|---:|---:|---:|
+| `far-128` | 13,568 / 106 = 128.0 | 106 / 106 = 1.00 | +58.8 ms | +3.6 ms | 1.00 / 1.00 | — |
+| `far-128-filler-last` | 128.0 | 1.00 | +48.4 ms | +2.8 ms | 1.00 / 1.00 | 1.00 / 1.00 |
+| `far-128-filler-first` | 128.0 | 1.00 | +47.9 ms | +2.4 ms | 1.00 / 1.00 | 1.00 / 1.00 |
+| `far-128-filler-last-frozen` | 128.0 | 1.00 | +48.1 ms | +3.1 ms | 1.00 / 1.00 | 1.00 / 1.00 |
+| `far-128-filler-first-frozen` | 128.0 | 1.00 | +0.06 ms | −0.03 ms | 1.00 / 1.00 | 1.00 / 1.00 |
+
+Under forced early tests the hidden casters read zero invocations, the same
+reading as the early-tests control in § The draw witness. In the frozen
+filler-first case the receiver tiles lost records, so the casters take the
+sampled fallback and carry no query term in either tree. `far-128` has no
+filler body.
+
+Full per-group tables: `windows-opengl-early-tests/debug/witness/summary.md`.
+
+### Pre vs post timing
+
+`run_matrix.py ab-timing` on `far-128`, five interleaved pairs of both trees
+in both variants, every arm one quiet-window-guarded CLEAN `repeat_profile.py`
+run. "Change" is post minus pre over the pre mean, with the one-sided 95%
+upper bound's share in brackets.
+
+| Build | Pre ms (min–max) | Post ms (min–max) | Post − pre (95% lower / upper) | Change (upper) | Query term, pre | Query term, post |
+|---|---:|---:|---:|---:|---:|---:|
+| Debug | 63.213 (62.35–63.75) | 3.339 (3.27–3.43) | −59.87 (−60.40 / −59.35) | −94.7% (−93.9%) | +62.59 | +2.64 |
+| Release | 63.865 (63.27–64.19) | 3.218 (2.86–3.37) | −60.65 (−61.00 / −60.29) | −95.0% (−94.4%) | +63.58 | +2.87 |
+
+**The cut gate is met in both builds.** The steady frame falls from 100.7 to
+41.3 ms (Debug) and from 101.6 to 40.4 ms (Release). With the branch
+compiled out, the post composite is 0.07–0.08 ms above the pre one in both
+builds (Debug 0.698 against 0.620 ms, one-sided 95% lower bound +0.000;
+Release 0.352 against 0.285 ms, lower bound +0.054). That residual is not
+attributed here; it is about 1/800 of the saving.
+
+Full tables: `windows-opengl-early-tests/<build>/ab-timing/summary.md`.
+
+### Pixel witness
+
+`run_matrix.py diagnose --build debug --pre-tree <pre>/debug` on the shipped
+tree: the 25 captures of § Positive fire and pixel witness, plus one
+production capture per case from the pre tree. All 30 are CLEAN
+(`windows-opengl-early-tests/debug/diagnostic/diagnostic.json`).
+
+| Case | Route | Entered px | Hit px | Production vs oracle, receiver crop | Shipped vs pre tree: receiver crop / stack crop / frame |
+|---|---|---:|---:|---:|---:|
+| `far-128` | exact hierarchy | 371 | 234 | 0 | 0 / 0 / 0 |
+| `far-128-filler-last` | exact hierarchy | 371 | 234 | 0 | 0 / 0 / 0 |
+| `far-128-filler-first` | exact hierarchy | 371 | 234 | 0 | 0 / 0 / 0 |
+| `far-128-filler-last-frozen` | exact hierarchy | 371 | 234 | 0 | 0 / 0 / 0 |
+| `far-128-filler-first-frozen` | sampled fallback | 0 | 0 | 0 | 0 / 0 / 0 |
+
+`production_matches_oracle` and `production_matches_pre_tree` are true in
+all five cases. The exact query still fires on the four exact-path cases
+with the same entered and hit counts as before the change. The shipped
+production frame equals master's at exact RGB over the whole frame,
+including the caster stack, which no longer z-fights between runs
+(§ Pixel witness on the measured tree).
+
+`render-verify --target IRCanvasStress` on the shipped Debug tree: all 31
+compared rows pass. The 28 `cylinder_receiver` and
+`cylinder_receiver_pitched` rows are skipped because no windows-debug
+reference exists yet. There is no failure to grade against master.
+
+### Metal
+
+The Metal twin changes the same way, so the two stay line-for-line twins.
+Its guard runs on a macOS host: `run_matrix.py ab-timing --build debug
+--cases far-128` (at least five pairs) must keep the post mean of the
+composite window and of `commandBufferSpans` within 1.023× of the pre mean,
+the top of the measured spread over its mean (9.54 / 9.325 ms).
+`summary.md` prints that verdict (`metal_guard` in `summary.json`). Metal
+reports the composite as a window-only row, which the controller now reads
+on Metal only (`entityCanvasToFb_row: window-only` in each `arm.json`); an
+OpenGL report without a sampled row is still refused.
+
 ## Replay
 
 From a checkout at the recorded source revision, with this directory present
@@ -626,6 +754,28 @@ python3 docs/perf/sun-overflowed-tile-query/run_matrix.py ab-timing --build <bui
 ```
 
 `ab-timing` and `witness` resume the same way `timing` does.
+
+The shipped-lever evidence replays from its measured commit the same way,
+with master's copies of the three source-face shader files as the pre tree:
+
+```bash
+S=engine/render/src/shaders
+git checkout origin/master -- $S/ir_source_face_scatter_vertex.glsl $S/ir_source_face_scatter_fragment.glsl $S/metal/ir_source_face_scatter_body.metal
+fleet-build --target IRCanvasStress && fleet-build --release --target IRCanvasStress
+python3 docs/perf/sun-overflowed-tile-query/run_matrix.py snapshot --build debug --dest <pre>/debug --label pre --reverts f8c280aa1
+python3 docs/perf/sun-overflowed-tile-query/run_matrix.py snapshot --build release --dest <pre>/release --label pre --reverts f8c280aa1
+git checkout HEAD -- engine
+fleet-build --target IRCanvasStress && fleet-build --release --target IRCanvasStress
+OUT=docs/perf/sun-overflowed-tile-query/windows-opengl-early-tests
+python3 docs/perf/sun-overflowed-tile-query/run_matrix.py witness --build debug --output $OUT --pre-tree <pre>/debug --variants production ablation
+python3 docs/perf/sun-overflowed-tile-query/run_matrix.py ab-timing --build debug --output $OUT --pre-tree <pre>/debug --cases far-128
+python3 docs/perf/sun-overflowed-tile-query/run_matrix.py ab-timing --build release --output $OUT --pre-tree <pre>/release --cases far-128
+python3 docs/perf/sun-overflowed-tile-query/run_matrix.py diagnose --build debug --output $OUT --pre-tree <pre>/debug
+```
+
+The `early-tests` control refuses to stage once the fragment body already
+forces early tests, so on the shipped tree it is requested on a pre tree
+only.
 
 `timing` resumes after an interruption. The controller exits after an arm
 finds no quiet window in eight attempts, so on a busy host rerun it until it
@@ -688,3 +838,17 @@ re-ran only the stopped one, which then passed on its first attempt. Every
 retained arm records `quiet_attempts_discarded: 0`. The macOS session had no
 stops. Both of its builds completed on their first controller launch, and the
 same log compression and index-CSV drop were applied to `macos-metal/`.
+
+`windows-opengl-early-tests/<build>/` holds the shipped-lever evidence,
+laid out as `windows-opengl-mechanism/` is: `pre-tree/`, `witness/` (Debug),
+`ab-timing/`, and `debug/diagnostic/` with `debug/provenance.json`. Each
+diagnostic case also holds a `pre-production/` capture taken from the pre
+tree; `diagnostic.json` records its exact-RGB comparison against the
+closing production capture (`production_matches_pre_tree` in each verdict).
+Every log there is gzip-compressed (round trip checked), and the
+branch-forcing variants' index CSVs are dropped, as above. One witness
+launch (post `far-128` production) was not CLEAN on its first attempt; the
+controller stopped, and a relaunch re-ran that capture and the rest. One
+Release arm found no quiet window in eight attempts while other fleet panes
+were active; a relaunch re-validated the finished arms and re-ran only that
+one.

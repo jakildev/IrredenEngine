@@ -1,0 +1,131 @@
+{
+  "arm": {
+    "case": "far-128",
+    "pair": 3,
+    "tree": "pre",
+    "variant": "production"
+  },
+  "expected": {
+    "build_type": "Release",
+    "binary_sha256": "a5b14aa2c7ebe0f5dcb5dc7d0f75ac31d01721c5605a866c229ec1863fd5649c",
+    "shader_dir_sha256": "be8bb10aaad40d5e6e3541d0ca3d42b9ce220dd9f3cfb5ea523f3d7be42fa2f3",
+    "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+    "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+    "source_revision": "f8c280aa1dc55f24aeb88cc57cb2ce61eaa837ab",
+    "fixture_args": [
+      "--only",
+      "shadowbox,floor",
+      "--probe-source-box",
+      "--probe-floor-mode",
+      "grid",
+      "--probe-floor-span",
+      "40",
+      "--sun-direction",
+      "0",
+      "0",
+      "-1",
+      "--no-spin",
+      "--no-auto-rotate",
+      "--pivot-origin",
+      "--no-ao",
+      "--yaw",
+      "0",
+      "--zoom",
+      "1",
+      "--auto-profile",
+      "--profile-frames",
+      "360",
+      "--window-mode",
+      "offscreen",
+      "--subdivisions",
+      "1",
+      "--probe-overlapping-source",
+      "--probe-overlapping-source-count",
+      "128",
+      "--probe-overlapping-source-offset",
+      "0",
+      "0",
+      "-60"
+    ]
+  },
+  "metrics": {
+    "entityCanvasToFb": 64.189,
+    "entityCanvasToFb_samples": 358,
+    "entityCanvasToFb_row": "sampled",
+    "frame_avg": 102.99,
+    "steady_frame_avg": 101.85,
+    "gpu_frame": {},
+    "gpu_stages": {
+      "canvasClear": {
+        "avg_ms": 0.009,
+        "samples": 1158
+      },
+      "voxelCompact": {
+        "avg_ms": 0.012,
+        "samples": 1156
+      },
+      "voxelStage1": {
+        "avg_ms": 0.024,
+        "samples": 1157
+      },
+      "voxelCardinalElect": {
+        "avg_ms": 0.023,
+        "samples": 359
+      },
+      "voxelStage2": {
+        "avg_ms": 0.015,
+        "samples": 1157
+      },
+      "voxelSunFaces": {
+        "avg_ms": 0.059,
+        "samples": 1157
+      },
+      "buildLightOcclusionGrid": {
+        "avg_ms": 0.001,
+        "samples": 359
+      },
+      "computeVoxelAO": {
+        "avg_ms": 0.029,
+        "samples": 561
+      },
+      "bakeSunShadowMap": {
+        "avg_ms": 0.094,
+        "samples": 358
+      },
+      "computeSunShadow": {
+        "avg_ms": 0.001,
+        "samples": 358
+      },
+      "computeLightVolume": {
+        "avg_ms": 0.033,
+        "samples": 358
+      },
+      "lightingToTrixel": {
+        "avg_ms": 0.033,
+        "samples": 585
+      },
+      "trixelToFb": {
+        "avg_ms": 0.023,
+        "samples": 358
+      },
+      "cardinalSurfaceFb": {
+        "avg_ms": 0.132,
+        "samples": 358
+      },
+      "entityCanvasToFb": {
+        "avg_ms": 64.189,
+        "samples": 358
+      },
+      "resolvePerAxisScreenDepth": {
+        "avg_ms": 0.001,
+        "samples": 358
+      },
+      "fbToScreen": {
+        "avg_ms": 0.018,
+        "samples": 358
+      }
+    }
+  },
+  "quiet_attempts_discarded": 0,
+  "restored_shader_dir_sha256": "be8bb10aaad40d5e6e3541d0ca3d42b9ce220dd9f3cfb5ea523f3d7be42fa2f3"
+}
