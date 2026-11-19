@@ -532,14 +532,7 @@ def yaw_pose_mismatch(target: str, demo_args: list[str], witness: RunWitness) ->
         return "the report witnessed no camera yaw"
     frames = requested_frames(demo_args)
     step = requested_yaw_step(demo_args)
-    # The terminal auto-profile frame can trigger report generation before its
-    # camera witness is appended. A fixed-pose run remains fully witnessed
-    # when the report contains the preceding requested-1 timed frames. Sweeps
-    # still require the exact count because it determines their travelled arc.
-    allowed_samples = {frames} if frames is not None else set()
-    if frames is not None and step == 0.0 and frames > 1:
-        allowed_samples.add(frames - 1)
-    if frames is not None and witness.pose_samples not in allowed_samples:
+    if frames is not None and witness.pose_samples != frames:
         return (
             f"the report witnessed {witness.pose_samples} frames; "
             f"--auto-profile asked for {frames}"
