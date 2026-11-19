@@ -79,18 +79,25 @@ race_await() {
     done
 }
 
-# race_lock <lock-dir>
-#   mkdir mutex. Holders never wait while holding it, so the wait ends
-#   unsuccessfully only when the schedule is abandoned (a holder killed
-#   mid-section).
+# race_lock <lock-file> / race_unlock <lock-file>
+#   Exclusive-create mutex: bash's noclobber redirection opens the file
+#   O_CREAT|O_EXCL, so exactly one racer creates it. Not `mkdir`: the uutils
+#   coreutils mkdir (Ubuntu 26.04's /usr/bin/mkdir) reports success to both
+#   sides of a concurrent create. Holders never wait while holding it, so the
+#   wait ends unsuccessfully only when the schedule is abandoned (a holder
+#   killed mid-section).
 race_lock() {
-    until mkdir "$1" 2>/dev/null; do
+    until ( set -C; : > "$1" ) 2>/dev/null; do
         if race_abandoned; then
             echo "race: lock $1 aborted: $RACE_ABANDONED" >&2
             return 1
         fi
         sleep 0.005
     done
+}
+
+race_unlock() {
+    rm "$1"
 }
 
 # --- suite side --------------------------------------------------------------
