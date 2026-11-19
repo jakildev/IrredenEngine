@@ -1,0 +1,71 @@
+"""shift_probe.py <out>: grade the sub-pixel placements' GL frames under whole-pixel (dx, dy) shifts.
+
+A shifted grade that reaches 0/0/0 says the frame is the analytic one displaced by
+(dx, dy) whole pixels, not a mis-shaded shadow edge.
+"""
+import glob, json, sys
+from pathlib import Path
+WT = Path(r"C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-2")
+sys.path.insert(0, r"C:/msys64/tmp/p4852-pool2/pylib")
+sys.path.insert(0, str(WT / "scripts"))
+import render_receiver_shadow_polygon as oracle
+from PIL import Image
+
+
+class Shifted:
+    """Image whose content is moved by (dx, dy): pixel (x, y) reads source (x - dx, y - dy)."""
+
+    def __init__(self, image, dx, dy):
+        self.image, self.dx, self.dy, self.size = image, dx, dy, image.size
+
+    def convert(self, mode):
+        source, dx, dy = self.image.convert(mode).load(), self.dx, self.dy
+
+        class Pixels:
+            def __getitem__(self, key):
+                return source[key[0] - dx, key[1] - dy]
+
+        class Loaded:
+            def load(self):
+                return Pixels()
+        return Loaded()
+
+
+def failing(image, yaw, camera):
+    pixels = image.convert('RGBA').load()
+    polygons = oracle.fixture_polygons(yaw, camera)
+    shadow = oracle.receiver_shadow_color()
+    out = set()
+    for x, y, margin in oracle.receiver_samples(polygons):
+        color = pixels[x, y][:3]
+        if margin > oracle.EDGE_TOLERANCE and color != shadow:
+            out.add((x, y, 'missing'))
+        elif margin < -oracle.EDGE_TOLERANCE and color == shadow:
+            out.add((x, y, 'excess'))
+    return out
+
+
+out = Path(sys.argv[1])
+report = {}
+sets = {}
+for label, camera in (('subpos', (0.1, -0.2)), ('subneg', (-0.1, 0.2))):
+    for fog in ('0', '16'):
+        name = f'{label}-yaw0.6-fog{fog}-surface1'
+        image = Image.open(sorted(glob.glob(str(out / 'default' / name / 'screenshot_*.png')))[-1])
+        sets[name] = failing(image, 0.6, camera)
+        shifts = {}
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                c = oracle.check_image(Shifted(image, dx, dy), 0.6, camera)['counts']
+                shifts[f'{dx},{dy}'] = [c['missing'], c['excess'], c['unknown']]
+        report[name] = {'camera_iso': list(camera),
+                        'camera_shift_pixels': list(oracle.camera_screen_offset(camera)),
+                        'failing_samples': len(sets[name]), 'shift_m_e_u': shifts}
+for label in ('subpos', 'subneg'):
+    report[f'{label}: fog0 failing set == fog16 failing set'] = (
+        sets[f'{label}-yaw0.6-fog0-surface1'] == sets[f'{label}-yaw0.6-fog16-surface1'])
+moved = {(x - 3, y + 3, kind) for x, y, kind in sets['subpos-yaw0.6-fog0-surface1']}
+report['subneg failing set == subpos failing set translated by (-3, +3)'] = (
+    moved == sets['subneg-yaw0.6-fog0-surface1'])
+(out / 'shift_probe.json').write_text(json.dumps(report, indent=1) + '\n', newline='\n')
+print(json.dumps(report, indent=1))

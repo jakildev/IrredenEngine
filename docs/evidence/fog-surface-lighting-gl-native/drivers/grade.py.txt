@@ -1,0 +1,116 @@
+"""grade.py <out>: native 2560x1440 polygon grade of the 10 non-origin placements.
+
+Runs scripts/render_receiver_shadow_polygon.py unchanged; a frame that is not
+2560x1440 is an error, so no row is upscaled. Each row is compared with the
+Metal results.json row of the same variant/placement/fog/opt-in, and audited:
+one frame whose hash matches the capture record, a SURFACE-ROUTE line,
+RESULT=CLEAN, a 2560x1440 offscreen target, and no GL error lines.
+"""
+import glob, hashlib, json, struct, sys
+from pathlib import Path
+WT = Path(r"C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-2")
+sys.path.insert(0, r"C:/msys64/tmp/p4852-pool2/pylib")
+sys.path.insert(0, str(WT / "scripts"))
+import render_receiver_shadow_polygon as oracle
+from PIL import Image
+
+EV = Path(r"C:/msys64/tmp/p4852-pool2/docs/pr-screenshots/claude")
+METAL_DEFAULT = json.loads((EV / "4757-fog-surface-receiving/polygon/results.json").read_text())
+METAL_VARIANT = json.loads((EV / "4757-receiver-shadow-ambient-local-light/results.json").read_text())
+NATIVE_TARGET = 'OpenGL offscreen screen target attached (2560x1440)'
+out = Path(sys.argv[1])
+
+
+def arg(command, flag, n):
+    if flag not in command:
+        return None
+    i = command.index(flag)
+    return [float(v) for v in command[i + 1:i + 1 + n]]
+
+
+def frame_path(folder):
+    return Path(sorted(glob.glob(str(folder / 'screenshot_*.png')))[-1])
+
+
+def frame(folder):
+    path = frame_path(folder)
+    with open(path, 'rb') as f:
+        w, h = struct.unpack('>II', f.read(24)[16:24])
+    if (w, h) != (2560, 1440):
+        raise ValueError(f'{path} is {w}x{h}, not the native 2560x1440')
+    return Image.open(path)
+
+
+def metal_row(variant, name):
+    if variant == 'default':
+        place, rest = name.split('-yaw', 1)
+        return METAL_DEFAULT.get(f'{place}/yaw{rest}')
+    return METAL_VARIANT.get(f'{variant}/{name}')
+
+
+def audit(folder, cap):
+    problems = []
+    if len(cap['frames']) != 1:
+        problems.append(f'{len(cap["frames"])} frames')
+    elif hashlib.sha256(frame_path(folder).read_bytes()).hexdigest() != cap['sha256'][0]:
+        problems.append('frame hash differs from the capture record')
+    if not cap['routes']:
+        problems.append('no SURFACE-ROUTE line')
+    if cap['result'] != 'CLEAN':
+        problems.append(f'RESULT={cap["result"]}')
+    if not any(NATIVE_TARGET in line for line in cap['screen_target']):
+        problems.append('no native 2560x1440 offscreen target')
+    if cap['gl_error_lines']:
+        problems.append(f'{len(cap["gl_error_lines"])} GL error lines')
+    return problems
+
+
+results = {}
+for vdir in sorted(p for p in out.iterdir() if p.is_dir()):
+    variant = vdir.name
+    for folder in sorted(vdir.iterdir()):
+        if not (folder / 'capture.json').exists():
+            continue
+        cap = json.loads((folder / 'capture.json').read_text())
+        row = {'command': cap['command'], 'env': cap['env'], 'returncode': cap['returncode'],
+               'result': cap['result'], 'routes': cap['routes'], 'screen_target': cap['screen_target'],
+               'gl_error_lines': cap['gl_error_lines'], 'frame_sha256': cap['sha256'],
+               'audit_problems': audit(folder, cap)}
+        if variant in ('local-lit', 'local-dark'):
+            row['role'] = 'local-light reference'
+            results[f'{variant}/{folder.name}'] = row
+            continue
+        command = cap['command']
+        yaw = arg(command, '--yaw', 1)[0]
+        camera = arg(command, '--camera-iso', 2) or [0.0, 0.0]
+        ambient = (arg(command, '--sun-ambient', 1) or [oracle.DEFAULT_AMBIENT])[0]
+        references = None
+        try:
+            if variant == 'local':
+                refs = tuple(out / f'local-{k}' / folder.name for k in ('lit', 'dark'))
+                if not all((r / 'capture.json').exists() for r in refs):
+                    raise ValueError('local-light references missing')
+                references = tuple(frame(r) for r in refs)
+            graded = oracle.check_image(frame(folder), yaw, camera, ambient=ambient,
+                                        references=references)
+            row.update(graded=True, upscaled_2x=False, passed=graded['passed'],
+                       coverage_valid=graded['coverage_valid'], counts=graded['counts'])
+        except (ValueError, IndexError) as error:
+            row.update(graded=False, passed=False, error=str(error))
+        metal = metal_row(variant, folder.name)
+        if metal is not None:
+            row['metal'] = {'passed': metal.get('passed'), 'counts': metal.get('counts')}
+            row['matches_metal_counts'] = row.get('counts') == metal.get('counts')
+            mc, gc = metal.get('counts') or {}, row.get('counts') or {}
+            row['matches_metal_mue'] = all(mc.get(k) == gc.get(k) for k in ('missing', 'excess', 'unknown'))
+        row.update(yaw=yaw, camera_iso=camera)
+        results[f'{variant}/{folder.name}'] = row
+(out / 'results.json').write_text(json.dumps(results, indent=1) + '\n', newline='\n')
+
+for key, row in results.items():
+    c = row.get('counts', {})
+    mc = row.get('metal', {}).get('counts') or {}
+    print(f'{key:52} {str(row["result"]):6} audit={row["audit_problems"] or "ok"} '
+          f'm/e/u={c.get("missing")}/{c.get("excess")}/{c.get("unknown")} '
+          f'metal={mc.get("missing")}/{mc.get("excess")}/{mc.get("unknown")} '
+          f'counts_equal={row.get("matches_metal_counts")} {row["routes"]} {row.get("error", "")}')

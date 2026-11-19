@@ -1,0 +1,1 @@
+config={window_mode="offscreen",profiling_enabled=false,gpu_stage_timing=false,init_window_width=2560,init_window_height=1440,game_resolution_width=1280,game_resolution_height=720,screenshot_output_dir="C:/msys64/tmp/p4813n/out/default/near-yaw0.002-fog16-surface1"}

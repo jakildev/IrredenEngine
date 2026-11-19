@@ -1,0 +1,6 @@
+code 00b5da049208ad7f7eacce26d9b5361fe92a58e2 (origin/master; includes #5186, the #4852 offscreen-size fix)
+host Windows 10 Pro 19045, NVIDIA GeForce RTX 3060 Ti, driver 581.80, MSYS2 mingw64 gcc, windows-debug
+3e6d2e34659f2526bfbd8fb65571ebe87811a565fb197efbea7dac7d0767c587  build/creations/demos/canvas_stress/IRCanvasStress.exe
+feefaf65c0f8f6a2fc11ab0da112954ff5c97a2f1c62320f9a38e5621d3eff71  build/IrredenEngineTest.exe
+oracle scripts/render_receiver_shadow_polygon.py at 00b5da049, unchanged; Metal rows from docs/pr-screenshots/claude/4757-fog-surface-receiving/polygon/results.json and docs/pr-screenshots/claude/4757-receiver-shadow-ambient-local-light/results.json (media branch)
+png reader: drivers/pil_image_shim.py.txt, the stdlib PIL shim of 4813-gl-fog-surface-lighting pointed at pool-2's scripts/render-compare.py (Pillow is not installed on this host)
