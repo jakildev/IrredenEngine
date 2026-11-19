@@ -6,10 +6,10 @@ camera yaws ``cardinal + k * step`` for k = -2..2. The compared region is the
 receiver's top face, projected from its authored corners and inset 1.5 game
 pixels, where all five yaws overlap. A pixel is compared between two frames
 when both show that face, lit or shadowed; it counts when exactly one of the
-two shows it shadowed. The cardinal frame passes when
-its difference to each neighbour is no larger than the larger difference
-between two rotated frames one step apart, so the reading normalizes for the
-shadow's own motion and needs no reference image.
+two shows it shadowed. The cardinal frame passes when its receiver class
+agrees with its neighbours wherever those neighbours agree. This distinguishes
+a one-frame model switch from ordinary shadow-edge motion without a reference
+image.
 
     python3 scripts/render-yaw-crossing-metric.py capture --output <dir>
     python3 scripts/render-yaw-crossing-metric.py grade <dir>
@@ -180,6 +180,14 @@ def mask_difference(first: bytes, second: bytes) -> dict:
     return {"common_px": common, "differing_px": differing}
 
 
+def lone_cardinal_pixels(before: bytes, cardinal: bytes, after: bytes) -> int:
+    if len(before) != len(cardinal) or len(cardinal) != len(after):
+        raise ValueError("frames differ in size")
+    return sum(a == c and a != b
+               for a, b, c in zip(before, cardinal, after)
+               if a and b and c)
+
+
 def grade(frames: dict[int, Path], yaws: list[float] | None,
           min_shadow_px: int | None = None, min_receiver_px: int | None = None) -> dict:
     """Grades the five ``frames`` over the receiver top common to ``yaws`` (one
@@ -218,6 +226,7 @@ def grade(frames: dict[int, Path], yaws: list[float] | None,
                   pairs["rotated_after"]["differing_px"])
     cardinal = max(pairs["cardinal_before"]["differing_px"],
                    pairs["cardinal_after"]["differing_px"])
+    lone_cardinal = lone_cardinal_pixels(classes[-1], classes[0], classes[1])
     coverage = (min(shadow_px.values()) >= min_shadow_px and
                 min(pair["common_px"] for pair in pairs.values()) >= min_receiver_px)
     return {
@@ -231,8 +240,9 @@ def grade(frames: dict[int, Path], yaws: list[float] | None,
         "pairs": pairs,
         "rotated_differing_px": rotated,
         "cardinal_differing_px": cardinal,
+        "lone_cardinal_px": lone_cardinal,
         "coverage_valid": coverage,
-        "pass": coverage and cardinal <= rotated,
+        "pass": coverage and lone_cardinal == 0,
     }
 
 

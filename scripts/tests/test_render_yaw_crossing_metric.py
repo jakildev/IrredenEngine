@@ -1,4 +1,4 @@
-"""Yaw crossing metric: receiver masks, the rotated-pair bound, and CLI gates."""
+"""Yaw crossing metric: receiver masks, cardinal-only pixels, and CLI gates."""
 
 import importlib.machinery
 import importlib.util
@@ -96,6 +96,16 @@ class YawCrossingMetricTest(unittest.TestCase):
         self.assertEqual(verdict, ["RESULT=PASS"])
         self.assertEqual(result["cardinal_differing_px"], HEIGHT)
         self.assertEqual(result["rotated_differing_px"], HEIGHT)
+        self.assertEqual(result["lone_cardinal_px"], 0)
+
+    def test_largest_step_at_the_cardinal_passes(self):
+        self.write_edges([20, 21, 22, 25, 26])
+        code, result, verdict = self.run_cli(*LIMITS)
+        self.assertEqual(code, 0, result)
+        self.assertEqual(verdict, ["RESULT=PASS"])
+        self.assertGreater(result["cardinal_differing_px"],
+                           result["rotated_differing_px"])
+        self.assertEqual(result["lone_cardinal_px"], 0)
 
     def test_cardinal_frame_on_another_model_fails(self):
         self.write_edges([20, 20, 26, 20, 20])
@@ -104,14 +114,16 @@ class YawCrossingMetricTest(unittest.TestCase):
         self.assertEqual(verdict, ["RESULT=FAIL"])
         self.assertEqual(result["rotated_differing_px"], 0)
         self.assertEqual(result["cardinal_differing_px"], 6 * HEIGHT)
+        self.assertEqual(result["lone_cardinal_px"], 6 * HEIGHT)
         self.assertTrue(result["coverage_valid"])
 
-    def test_one_sided_jump_fails(self):
+    def test_one_sided_jump_is_outside_the_cardinal_only_gate(self):
         self.write_edges([20, 20, 20, 25, 25])
         code, result, _ = self.run_cli(*LIMITS)
-        self.assertEqual(code, 1, result)
+        self.assertEqual(code, 0, result)
         self.assertEqual(result["pairs"]["cardinal_before"]["differing_px"], 0)
         self.assertEqual(result["pairs"]["cardinal_after"]["differing_px"], 5 * HEIGHT)
+        self.assertEqual(result["lone_cardinal_px"], 0)
 
     def test_pixels_off_the_receiver_in_either_frame_are_not_compared(self):
         for offset in metric.OFFSETS:
@@ -120,6 +132,7 @@ class YawCrossingMetricTest(unittest.TestCase):
         code, result, _ = self.run_cli(*LIMITS)
         self.assertEqual(code, 0, result)
         self.assertEqual(result["cardinal_differing_px"], 0)
+        self.assertEqual(result["lone_cardinal_px"], 0)
         self.assertEqual(result["pairs"]["cardinal_before"]["common_px"],
                          (WIDTH - 6) * HEIGHT)
 
