@@ -367,6 +367,50 @@ assert_contains "$OUT" "RESULT=LOCK-FAILED exe=short-run" \
     "LOCK-FAILED verdict, not a watchdog verdict"
 assert_absent "$OUT" "ALIVE-TIMEOUT" "lock failure is not reported as ALIVE-TIMEOUT"
 
+echo "a quiet-window park counts against the lock wait's bound:"
+sleep 30 &
+LEASE_PID=$!
+"$IR_ACQUIRE" --quiet-lease irrun-waiter create "$LEASE_PID"
+hold_gpu_lock 15
+"$IR_ACQUIRE" benchmark -- true >/dev/null 2>&1 &
+BENCH_PID=$!
+for _attempt in $(seq 1 100); do
+    [[ "$("$IR_ACQUIRE" --quiet-status 2>&1)" == waiting* ]] && break
+    sleep 0.05
+done
+WAIT_START=$SECONDS
+OUT="$(IR_QUIET_OWNER=irrun-waiter IR_QUEUE_TIMEOUT=3 "$IR_RUN" --build-dir "$FAKE_BUILD" \
+    --timeout 30 short-run --auto-screenshot 1 2>&1)"
+RC=$?
+WAIT_ELAPSED=$(( SECONDS - WAIT_START ))
+kill "$BENCH_PID" 2>/dev/null; wait "$BENCH_PID" 2>/dev/null
+release_holder
+"$IR_ACQUIRE" --quiet-lease irrun-waiter drop
+kill "$LEASE_PID" 2>/dev/null; wait "$LEASE_PID" 2>/dev/null
+assert_eq "$RC" "1" "parked run that outlives its bound exits 1"
+assert_contains "$OUT" "RESULT=LOCK-FAILED exe=short-run" "parked run reports LOCK-FAILED"
+assert_contains "$OUT" "queued on the gpu lock" "parked run reports it is queued"
+assert_absent "$(grep 'queued on the' <<<"$OUT" | grep -v 'queue bound IR_QUEUE_TIMEOUT=3s)')" \
+    "queue bound" "every queued line prints the enforced 3s bound"
+assert_eq "$(( WAIT_ELAPSED <= 3 + 5 ))" "1" \
+    "parked run ends within its bound (${WAIT_ELAPSED}s <= 8s)"
+
+echo "the printed and enforced bounds both come from host.toml:"
+HOST_TOML="$FAKE_BUILD/host.toml"
+printf '[concurrency]\nqueue_timeout_seconds = 2\n' > "$HOST_TOML"
+hold_gpu_lock 8
+WAIT_START=$SECONDS
+OUT="$(env -u IR_QUEUE_TIMEOUT IR_HOST_TOML="$HOST_TOML" "$IR_RUN" --build-dir "$FAKE_BUILD" \
+    --timeout 30 short-run --auto-screenshot 1 2>&1)"
+RC=$?
+WAIT_ELAPSED=$(( SECONDS - WAIT_START ))
+release_holder
+assert_eq "$RC" "1" "host.toml-bounded run exits 1"
+assert_contains "$OUT" "(queue bound IR_QUEUE_TIMEOUT=2s)" "queued line prints the host.toml bound"
+assert_contains "$OUT" "timeout waiting for lock lock (gpu, 2s)" "ir-acquire enforces the host.toml bound"
+assert_eq "$(( WAIT_ELAPSED <= 2 + 5 ))" "1" \
+    "host.toml-bounded run ends within its bound (${WAIT_ELAPSED}s <= 7s)"
+
 echo "verb-less run and the host's gpu-lock default:"
 case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*)

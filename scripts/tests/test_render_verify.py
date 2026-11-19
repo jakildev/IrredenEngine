@@ -849,6 +849,8 @@ class HostClosedRetry(unittest.TestCase):
     CLEAN_OUT = "ir-run: RESULT=CLEAN exe=IRFake exit=0\n"
     TIMEOUT_OUT = "ir-run: RESULT=ALIVE-TIMEOUT exe=IRFake exit=0\n"
     TERM_IGNORED_OUT = "ir-run: RESULT=TERM-IGNORED exe=IRFake exit=1\n"
+    LOCK_FAILED_OUT = ("ir-acquire: timeout waiting for lock lock (gpu, 3s)\n"
+                       "ir-run: RESULT=LOCK-FAILED exe=IRFake exit=1\n")
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -988,6 +990,30 @@ class HostClosedRetry(unittest.TestCase):
         tally, _, _ = self._run([(0, self.TIMEOUT_OUT, None)])
         self.assertEqual((tally["rc"], tally["checked"], tally["timed_out"]), (1, 0, 1))
 
+    def test_lock_failure_is_a_lock_failed_row_not_a_crash(self):
+        self._manifest()
+        with patch.dict(os.environ, {"IR_QUEUE_TIMEOUT": "3"}):
+            tally, out, err = self._run([(1, self.LOCK_FAILED_OUT, None)])
+        self.assertEqual(len(self.calls), 1, "a lock failure is not retried")
+        self.assertEqual((tally["rc"], tally["checked"], tally["lock_failed"],
+                          tally["timed_out"]), (1, 0, 1, 0))
+        self.assertFalse(tally["recordable"])
+        self.assertEqual([(r["label"], r["kind"]) for r in tally["rows"]],
+                         [("default", "lock-failed")])
+        self.assertRegex(out, r"default\s+LOCK-FAILED\s+gpu lock not granted within "
+                              r"the 3s queue bound")
+        self.assertIn("LOCK-FAILED: default", err)
+        self.assertNotIn("crashed at shutdown", err)
+        self.assertNotIn("TIMED OUT", err)
+
+    def test_extra_pass_lock_failure_is_a_named_row(self):
+        self._extra_manifest()
+        tally, out, _ = self._run([(0, self.CLEAN_OUT, BLACK),
+                                   (1, self.LOCK_FAILED_OUT, None)])
+        self.assertEqual((tally["rc"], tally["checked"], tally["lock_failed"]), (1, 1, 1))
+        self.assertFalse(tally["recordable"])
+        self.assertRegex(out, r"compare\s+LOCK-FAILED")
+
     def _extra_manifest(self):
         _write(self.refs / "b.png", 16, 16, lambda x, y: BLACK)
         self._manifest(extra_runs=[{"name": "compare", "demo_args": ["--only", "compare"],
@@ -1093,6 +1119,129 @@ class PassBackstopBound(unittest.TestCase):
     def test_malformed_values_fall_back_to_ir_runs_defaults(self):
         with patch.dict(os.environ, {"IR_QUEUE_TIMEOUT": "soon", "IR_RUN_KILL_GRACE": "-1"}):
             self.assertGreater(_rv._pass_backstop_seconds(60), 60 + 600 + 3 * 5)
+
+
+class QueueBoundResolution(unittest.TestCase):
+    """The sweep resolves the queue bound once through ir-acquire's own
+    resolver, derives the backstop from it, and hands it to every pass."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.host_toml = Path(self._tmp.name) / "host.toml"
+        self.host_toml.write_text("[concurrency]\nqueue_timeout_seconds = 7\n")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_host_toml_bound_feeds_the_backstop_and_the_pass_environment(self):
+        with patch.dict(os.environ, {"IR_HOST_TOML": str(self.host_toml),
+                                     "IR_RUN_KILL_GRACE": "1"}):
+            os.environ.pop("IR_QUEUE_TIMEOUT", None)
+            self.assertEqual(_rv._export_queue_bound(), 7)
+            self.assertEqual(os.environ["IR_QUEUE_TIMEOUT"], "7")
+            self.assertEqual(_rv._pass_backstop_seconds(10),
+                             10 + 7 + 3 * 1 + _rv.PASS_BACKSTOP_SLACK)
+            with redirect_stdout(io.StringIO()):
+                _, output, fired = _rv._run_pass_process(
+                    [sys.executable, "-c",
+                     "import os; print('pass bound', os.environ['IR_QUEUE_TIMEOUT'])"],
+                    cwd=Path(self._tmp.name), backstop=30, pass_label="default")
+        self.assertFalse(fired)
+        self.assertIn("pass bound 7", output)
+
+    def test_env_bound_wins_over_host_toml(self):
+        with patch.dict(os.environ, {"IR_HOST_TOML": str(self.host_toml),
+                                     "IR_QUEUE_TIMEOUT": "4"}):
+            self.assertEqual(_rv._export_queue_bound(), 4)
+
+    def test_unresolvable_bound_falls_back_with_a_warning(self):
+        err = io.StringIO()
+        with patch.dict(os.environ, {"IR_QUEUE_TIMEOUT": "5"}), \
+                patch.object(_rv, "IR_ACQUIRE", Path(self._tmp.name) / "missing"), \
+                redirect_stderr(err):
+            self.assertEqual(_rv._export_queue_bound(), 5)
+        self.assertIn("could not resolve the queue bound", err.getvalue())
+
+
+@unittest.skipIf(os.name == "nt", "process-group check is POSIX")
+class LockFailedThroughRealIrRun(unittest.TestCase):
+    """Real ir-run and ir-acquire against a held gpu lock: a small queue
+    bound ends the pass as LOCK-FAILED long before the derived backstop, and
+    the pass leaves no process behind."""
+
+    BOUND = 2
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.build = self.root / "build"
+        self.build.mkdir()
+        exe = self.build / "IRFake"
+        exe.write_text("#!/usr/bin/env bash\nexit 0\n")
+        exe.chmod(0o755)
+        self.env = patch.dict(os.environ, {
+            "IR_LOCK_ROOT": str(self.root / "locks"),
+            "IR_QUEUE_TIMEOUT": str(self.BOUND), "IR_RUN_KILL_GRACE": "1"})
+        self.env.start()
+        acquire = _SCRIPTS.parent / "engine" / "tools" / "bin" / "ir-acquire"
+        self.holder = _rv.subprocess.Popen(
+            ["bash", str(acquire), "--timeout", "5", "gpu", "--", "sleep", "60"],
+            start_new_session=True, stdout=_rv.subprocess.DEVNULL,
+            stderr=_rv.subprocess.DEVNULL)
+        owner = self.root / "locks" / "gpu" / "lock" / "owner"
+        deadline = time.monotonic() + 10
+        while not owner.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(owner.exists(), "test setup: the holder took the gpu lock")
+
+    def tearDown(self):
+        try:
+            os.killpg(self.holder.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        self.holder.wait(timeout=10)
+        self.env.stop()
+        self._tmp.cleanup()
+
+    def test_lock_failure_arrives_before_the_backstop_and_leaves_no_tree(self):
+        ir_run = _SCRIPTS.parent / "engine" / "tools" / "bin" / "ir-run"
+        launched = []
+        real_popen = _rv.subprocess.Popen
+
+        def launch_argv(cmd):
+            return ["bash", str(ir_run), "--build-dir", str(self.build), *cmd[1:]]
+
+        def recording_popen(*args, **kwargs):
+            proc = real_popen(*args, **kwargs)
+            launched.append(proc)
+            return proc
+
+        out, err = io.StringIO(), io.StringIO()
+        start = time.monotonic()
+        with patch.object(_rv.verify_common, "platform_launch_argv", side_effect=launch_argv), \
+                patch.object(_rv.subprocess, "Popen", side_effect=recording_popen), \
+                redirect_stdout(out), redirect_stderr(err):
+            outcome = _rv._run_capture(
+                worktree=self.root, target="IRFake", shots_dir=self.root / "shots",
+                warmup=1, timeout=30, demo_args=[], pass_label="default")
+        elapsed = time.monotonic() - start
+
+        self.assertIsNotNone(outcome)
+        self.assertEqual(outcome[2], _rv.verify_common.LOCK_FAILED, err.getvalue())
+        self.assertLess(elapsed, self.BOUND + 10)
+        self.assertLess(elapsed, _rv._pass_backstop_seconds(30))
+        self.assertNotIn("backstop", err.getvalue())
+        self.assertIn(f"(queue bound IR_QUEUE_TIMEOUT={self.BOUND}s)", out.getvalue())
+        self.assertEqual(len(launched), 1)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(launched[0].pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.1)
+        with self.assertRaises(ProcessLookupError, msg="the pass's process group is gone"):
+            os.killpg(launched[0].pid, 0)
 
 
 @unittest.skipIf(os.name == "nt", "process-group backstop is POSIX; Windows uses taskkill /T")
@@ -1283,6 +1432,18 @@ class SweepSummary(unittest.TestCase):
         self.assertIn("total: 38 checks across 2 demos, 0 FAIL, 0 skipped, "
                       "1 pass(es) TIMEOUT", out)
         self.assertIn("had a capture pass time out: IRShapeDebug", err)
+        self.assertNotIn("produced NO checks", err)
+
+    def test_lock_failed_pass_is_named_and_counted_not_an_error(self):
+        locked = self._row("IRShapeDebug", "shape_debug", 1, 0)
+        locked["lock_failed"] = 1
+        with patch.dict(os.environ, {"IR_QUEUE_TIMEOUT": "600"}):
+            out, err = self._summary([locked, self._row("IRFogDemo", "fog_demo", 0, 15)])
+        self.assertRegex(out, r"IRShapeDebug .* LOCK-FAILED \(1 pass\(es\) never got "
+                              r"the gpu lock\)")
+        self.assertIn("total: 15 checks across 2 demos, 0 FAIL, 0 skipped, "
+                      "1 pass(es) LOCK-FAILED", out)
+        self.assertIn("within the 600s queue bound (RESULT=LOCK-FAILED): IRShapeDebug", err)
         self.assertNotIn("produced NO checks", err)
 
     def test_out_of_scope_row_is_its_own_verdict(self):

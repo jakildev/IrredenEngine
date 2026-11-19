@@ -99,6 +99,9 @@ NO_DISPLAY = "NO-DISPLAY"
 ALIVE_TIMEOUT = "ALIVE-TIMEOUT"
 TERM_IGNORED = "TERM-IGNORED"
 WATCHDOG_STOPS = (ALIVE_TIMEOUT, TERM_IGNORED)
+# ir-acquire never granted the run its lock inside the queue bound: the exe
+# never ran, so the pass has no verdict.
+LOCK_FAILED = "LOCK-FAILED"
 EXIT_ENV_FAIL = 69
 
 

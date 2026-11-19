@@ -30,6 +30,7 @@ ir_inherited_lock_covers() {
     [[ "$#" == 1 ]] || return 2
     return 1
 }
+ir_queue_timeout() { echo 600; }
 EOF
 cat > "$TOOLS/bin/ir-acquire" <<'EOF'
 #!/usr/bin/env bash

@@ -127,6 +127,11 @@ the measurement is contaminated. `ir-run` reports these as
 `RESULT=HOST-NOT-QUIET` / `RESULT=CONTAMINATED` and prints
 `QUIET=guarded|unguarded|breach|refused` for every benchmark run.
 
+A queued `gpu` / `perf` acquisition that parks behind a window is charged for
+the park: it still ends at its queue bound (`ir-acquire: timeout waiting for
+lock …`, `RESULT=LOCK-FAILED` under `ir-run`). A queued `cpu` acquisition
+(`ir-build`) is not; its bound restarts once the window closes.
+
 The `[quiet]` values in `concurrency.toml` are stamped on each request so all
 readers sharing the lock root agree. `ir-acquire --quiet-disable [reason]`
 writes the host-wide switch and makes subsequent runs explicitly unguarded;

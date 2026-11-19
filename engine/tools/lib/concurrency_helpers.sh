@@ -369,15 +369,22 @@ ir_quiet_park() {
     python3 "$IR_QUIET_HELPER" park "$tag" ${runtime[@]+"${runtime[@]}"} "$@"
 }
 
+# _ir_quiet_defer_nonbenchmark [--deadline EPOCH] — parks a non-benchmark
+# acquire while its owner's benchmark quiet window is open. Returns 0 after a
+# park, 1 when there was nothing to defer to, and 2 when the park reached
+# EPOCH with the window still open (the park process exits at EPOCH and
+# drops its own parker row). Without a deadline the park is bounded only by
+# the window cap.
 _ir_quiet_defer_nonbenchmark() {
-    [[ -n "${IR_QUIET_OWNER:-}" ]] || return 0
-    [[ "${IR_QUIET_ACQUIRE_VERB:-}" != "benchmark" ]] || return 0
-    if ir_quiet_status --owner "$IR_QUIET_OWNER" >/dev/null 2>&1; then
-        ir_quiet_park "$IR_QUIET_OWNER"
-        # Quiet-window deferral is bounded by the window cap, not by the
-        # queued acquisition's own timeout.
-        started="$(date +%s)"
-    fi
+    local park_args=()
+    [[ "${1:-}" != "--deadline" ]] || park_args=(--deadline "$2")
+    [[ -n "${IR_QUIET_OWNER:-}" ]] || return 1
+    [[ "${IR_QUIET_ACQUIRE_VERB:-}" != "benchmark" ]] || return 1
+    ir_quiet_status --owner "$IR_QUIET_OWNER" >/dev/null 2>&1 || return 1
+    local rc=0
+    ir_quiet_park "$IR_QUIET_OWNER" ${park_args[@]+"${park_args[@]}"} || rc=$?
+    (( rc == 3 )) && return 2
+    return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -679,21 +686,21 @@ ir_acquire_exclusive() {
         shift
     done
     local lockdir="$IR_LOCK_ROOT/$subdir/$name"
-    local started
-    started="$(date +%s)"
+    # The queue bound is a deadline from the first attempt: time parked behind
+    # a benchmark quiet window counts against it, unlike ir_acquire_cpu's.
+    local deadline defer
+    deadline=$(( $(date +%s) + timeout ))
     while true; do
-        _ir_quiet_defer_nonbenchmark
-        if _ir_try_lock "$lockdir"; then
+        defer=0
+        _ir_quiet_defer_nonbenchmark --deadline "$deadline" || defer=$?
+        if (( defer != 2 )) && _ir_try_lock "$lockdir"; then
             _ir_record_held "$lockdir"
             return 0
         fi
         if $nonblock; then
             return 1
         fi
-        local now elapsed
-        now="$(date +%s)"
-        elapsed=$(( now - started ))
-        if (( elapsed >= timeout )); then
+        if (( defer == 2 || $(date +%s) >= deadline )); then
             echo "ir-acquire: timeout waiting for lock $name ($subdir, ${timeout}s)" >&2
             return 1
         fi
@@ -735,7 +742,11 @@ ir_acquire_cpu() {
     local gate="$IR_LOCK_ROOT/cpu/walk"
     local got=()
     while true; do
-        _ir_quiet_defer_nonbenchmark
+        # Quiet-window deferral is bounded by the window cap, not by the
+        # queued acquisition's own timeout.
+        if _ir_quiet_defer_nonbenchmark; then
+            started="$(date +%s)"
+        fi
         if _ir_try_lock "$gate"; then
             _ir_record_held "$gate"
             local i
