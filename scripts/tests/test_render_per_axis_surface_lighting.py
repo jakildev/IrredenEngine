@@ -447,7 +447,18 @@ struct RenderCommandEncoder {
     void setFragmentTexture(Texture* texture,unsigned slot){textures[slot]=texture;}
 };
 }
-struct MetalBufferBinding {MTL::Buffer* buffer_=nullptr;unsigned offset_=0;};
+struct MetalBufferBinding {
+    MTL::Buffer* buffer_=nullptr;unsigned offset_=0;
+    bool operator!=(const MetalBufferBinding& other) const {
+        return buffer_!=other.buffer_||offset_!=other.offset_;
+    }
+};
+struct MetalRenderPassBindings {
+    static constexpr std::uint32_t kSlots=32;
+    std::array<MetalBufferBinding,kSlots> vertexBuffers_{},fragmentBuffers_{};
+    std::array<MTL::Texture*,kSlots> textures_{};
+} renderPassBindings;
+MetalRenderPassBindings& metalRenderPassBindings(){return renderPassBindings;}
 struct Runtime {
     std::array<MTL::Texture*,32> textures_{},imageTextures_{};
     std::array<MetalBufferBinding,32> uniforms{},storage{};
@@ -502,7 +513,7 @@ BINDING_CASES = r"""
 int main(int argc,char** argv){
     const char* mutation=argc>1?argv[1]:"";
     for(bool backend:{false,true})for(int frame:{0,100,200}){
-        metal=backend;runtime={};
+        metal=backend;runtime={};renderPassBindings={};
         Buffer lighting{{frame+27}},params{{frame+107}},lights{{frame+204}};
         Texture palette{{frame+303}},volume{{frame+405}},ids{{frame+507}},stale{{999}};
         runtime.textures_.fill(&stale.value);runtime.imageTextures_.fill(&stale.value);
@@ -513,7 +524,7 @@ int main(int argc,char** argv){
         else if(std::strcmp(mutation,"reverse-order")==0)binding.reverseOrder();
         else binding.bindSurfaceLightingResources();
         MTL::RenderCommandEncoder encoder;
-        if(metal)bindRenderResources(&encoder);
+        if(metal)bindRenderResources(&encoder,nullptr);
         MTL::Buffer* frameBuffer=metal?encoder.buffers[27]:runtime.uniforms[27].buffer_;
         MTL::Buffer* volumeParams=metal?encoder.buffers[7]:runtime.uniforms[7].buffer_;
         MTL::Buffer* lightSources=metal?encoder.buffers[4]:runtime.storage[4].buffer_;
