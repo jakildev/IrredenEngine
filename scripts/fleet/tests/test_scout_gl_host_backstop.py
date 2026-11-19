@@ -374,12 +374,12 @@ class TestBackendSymmetric(unittest.TestCase):
 # --- an explicit macOS pin outranks the cited-path inference ---------------
 
 # A macOS Host line, and a context bullet citing the GL
-# backend's render-implementation file to say what that backend already does.
+# backend fixture path to say what that backend already does.
 # Read as `needs_host: mac` + `needs_gl_host: true`, no host could claim it.
 ISSUE_5000_BODY = (
     "**Area:** engine/render\n**Host:** macos\n\n## Context\n\n"
     "- The OpenGL backend already clears it in "
-    "`engine/render/src/opengl/opengl_render_impl.cpp`; Metal does not.\n"
+    "`engine/render/src/opengl/opengl_render_impl_fixture.cpp`; Metal does not.\n"
 )
 
 
@@ -393,7 +393,7 @@ class TestMacPinOutranksCitedPath(unittest.TestCase):
 
     def test_a_prose_mac_pin_outranks_it_too(self):
         body = ("This must run on a macOS host. Compare "
-                "engine/render/src/opengl/opengl_render_impl.cpp.")
+                "engine/render/src/opengl/opengl_render_impl_fixture.cpp.")
         self.assertEqual(required_host(body), "mac")
         self.assertFalse(requires_gl_host(body))
 

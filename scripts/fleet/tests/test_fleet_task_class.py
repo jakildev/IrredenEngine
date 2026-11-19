@@ -570,10 +570,10 @@ class RequiredHostGate(HostSeamCase):
 
     def test_mac_pin_outranks_a_cited_opengl_path(self):
         # A macOS Host line plus a context bullet citing the GL
-        # backend's source file. The record the scout builds from that body
+        # backend fixture path. The record the scout builds from that body
         # is mac work, not a contradiction no host can claim.
         body = ("**Host:** macos\n\n- The OpenGL backend already does this in "
-                "`engine/render/src/opengl/opengl_render_impl.cpp`.\n")
+                "`engine/render/src/opengl/opengl_render_impl_fixture.cpp`.\n")
         record = _task("#5000", "opus",
                        needs_gl_host=_scout_mod._body_requires_gl_host(body),
                        needs_host=_scout_mod._body_required_host(body))
