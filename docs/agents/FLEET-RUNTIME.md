@@ -41,8 +41,12 @@ labels moved, a `Blocked by:` is live again, the verdict already stands):
 fleet-claim [--repo game] decline $FLEET_DISPATCH_KIND $FLEET_DISPATCH_NUMBER <basename> --reason "<why>"
 ```
 
-then exit through shutdown; a claim left standing with no record counts
-as abandoned ([`FLEET.md § How a launch ends`](FLEET.md)).
+No marker is the default for host, tool, quota, timing, or "can't tell"
+conditions; it expires after 30 minutes. Add `--objection` only when the item
+itself is wrong for this lane as it stands; add `--delivered-by <PR>` on an
+issue kind only when that named merged PR already shipped it. Marked declines
+hold seven days. Then exit through shutdown; a claim left standing with no
+record counts as abandoned ([`FLEET.md § How a launch ends`](FLEET.md)).
 
 The completion verdict is `finished` when the target shows progress (or a
 task/stack has an open PR), `noop` when a released claim left only claim-label

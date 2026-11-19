@@ -56,10 +56,12 @@ set --
 FLEET_CLAIM_LIB=1 source "$FLEET_CLAIM"
 
 STUB_COMMENT_FAIL=0
+STUB_PR_STATE=MERGED
 gh() {
     printf '%s\n' "$*" >> "$GH_LOG"
     case "$*" in
         *"/comments -f body="*) (( STUB_COMMENT_FAIL )) && return 1; return 0 ;;
+        "pr view "*) printf '%s\n' "$STUB_PR_STATE"; return 0 ;;
     esac
     return 0
 }
@@ -81,6 +83,11 @@ reset_state
 assert_eq "$(decline bogus 42 pool-3 --reason x)" "2" "unknown kind exits 2"
 assert_eq "$(decline task abc pool-3 --reason x)" "2" "non-numeric target exits 2"
 assert_eq "$(decline task 42 pool-3)" "2" "missing --reason exits 2"
+assert_eq "$(decline task 42 pool-3 --reason)" "2" "missing --reason value exits 2"
+assert_eq "$(decline task 42 pool-3 --reason x --delivered-by)" "2" \
+    "missing --delivered-by value exits 2"
+assert_eq "$(decline task 42 pool-3 --reason x --delivered-by=)" "2" \
+    "empty --delivered-by= exits 2"
 assert_eq "$(decline task 42 pool-3 --bogus)" "2" "unknown flag exits 2"
 assert_eq "$(cat "$GH_LOG" "$REL_LOG")" "" "a refused decline posts nothing and releases nothing"
 
@@ -103,6 +110,51 @@ verdict=$(python3 "$SCRIPT_DIR/fleet_completion.py" assess --claim-label fleet:c
     --host-agent mac-pool-3 --since 0 --issue-json "$TMPROOT/labels.json" \
     --comments-json "$TMPROOT/comments.json" | cut -f1 | tr -d '\r' || true)
 assert_eq "$verdict" "declined" "fleet_completion.py reads the posted comment as a decline"
+
+echo "T3b: explicit markers are posted and reserved from raw reasons"
+reset_state
+assert_eq "$(decline task 42 pool-3 --reason "item contract is wrong" --objection)" "0" \
+    "objection decline exits 0"
+assert_contains "$(cat "$GH_LOG")" "[objection] item contract is wrong" \
+    "objection marker follows the agent"
+assert_eq "$(cat "$REL_LOG")" "release 42" "objection releases the task claim"
+
+reset_state
+assert_eq "$(decline task 42 pool-3 --reason "already shipped" --delivered-by 77)" "0" \
+    "delivered decline exits 0"
+assert_contains "$(cat "$GH_LOG")" "pr view 77 --repo jakildev/IrredenEngine --json state --jq .state" \
+    "delivered PR state is verified"
+assert_contains "$(cat "$GH_LOG")" "[delivered-by #77] already shipped" \
+    "delivered marker names the verified PR"
+assert_eq "$(cat "$REL_LOG")" "release 42" "delivered decline releases the task claim"
+
+reset_state
+assert_eq "$(decline task 42 pool-3 --reason "already shipped" --objection --delivered-by 77)" "0" \
+    "combined flags are accepted"
+assert_contains "$(cat "$GH_LOG")" "[delivered-by #77] already shipped" \
+    "delivered marker wins when both flags are passed"
+assert_absent "$(cat "$GH_LOG")" "[objection]" "combined flags emit one marker"
+
+for reserved in "[objection] synthetic" "[delivered-by #77] synthetic"; do
+    reset_state
+    assert_eq "$(decline task 42 pool-3 --reason "$reserved")" "2" \
+        "raw reason cannot synthesize marker: $reserved"
+    assert_eq "$(cat "$GH_LOG" "$REL_LOG")" "" "reserved prefix posts and releases nothing"
+done
+
+echo "T3c: delivered marker refuses PR targets and unmerged evidence"
+reset_state
+assert_eq "$(decline feedback 42 pool-3 --reason "already shipped" --delivered-by 77)" "2" \
+    "PR target kind rejects --delivered-by"
+assert_eq "$(cat "$GH_LOG" "$REL_LOG")" "" "wrong target kind changes nothing"
+reset_state
+STUB_PR_STATE=OPEN
+assert_eq "$(decline task 42 pool-3 --reason "already shipped" --delivered-by 77)" "2" \
+    "unmerged PR is refused"
+STUB_PR_STATE=MERGED
+assert_contains "$(cat "$GH_LOG")" "pr view 77" "unmerged evidence was queried"
+assert_absent "$(cat "$GH_LOG")" "/comments" "unmerged evidence posts no comment"
+assert_eq "$(cat "$REL_LOG")" "" "unmerged evidence keeps the claim held"
 
 echo "T4: the game namespace posts to the game repo"
 reset_state

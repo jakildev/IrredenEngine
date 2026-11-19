@@ -3107,7 +3107,8 @@ cmd_planning_claim() {
 }
 cmd_planning_release() { _cmd_pr_label_release "fleet:planning-" "planning-release" "${1:-}" "${2:-unknown}" "issue"; }
 
-# decline <kind> <N> [<agent>] --reason "<why>" — the honest exit for a
+# decline <kind> <N> [<agent>] --reason "<why>" [--objection | --delivered-by <PR>]
+# — the honest exit for a
 # dispatch target the iteration cannot work. Posts the `declined: <role>/
 # <class> @<host>-<agent> <reason>` record FIRST (the dispatcher's completion
 # contract, fleet_completion.py, reads it and remembers the item off that
@@ -3126,11 +3127,28 @@ cmd_decline() {
         agent="$1"
         shift
     fi
-    local reason=""
+    local reason="" objection=0 delivered_by="" delivered_by_set=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --reason)   reason="${2:-}"; shift 2 ;;
+            --reason)
+                [[ $# -ge 2 ]] || {
+                    echo "fleet-claim decline: --reason requires a value" >&2
+                    return 2
+                }
+                reason="$2"; shift 2
+                ;;
             --reason=*) reason="${1#--reason=}"; shift ;;
+            --objection) objection=1; shift ;;
+            --delivered-by)
+                [[ $# -ge 2 ]] || {
+                    echo "fleet-claim decline: --delivered-by requires a PR number" >&2
+                    return 2
+                }
+                delivered_by="$2"; delivered_by_set=1; shift 2
+                ;;
+            --delivered-by=*)
+                delivered_by="${1#--delivered-by=}"; delivered_by_set=1; shift
+                ;;
             *) echo "fleet-claim decline: unknown flag '$1'" >&2; return 2 ;;
         esac
     done
@@ -3141,18 +3159,50 @@ cmd_decline() {
     # Empty for a claimless kind (`merge`): the comment is the whole record.
     local sub="${FLEET_TARGET_RELEASE[$kind]}"
     if [[ ! "$num" =~ ^[0-9]+$ ]]; then
-        echo "usage: fleet-claim [--repo <ns>] decline <kind> <number> [<agent>] --reason \"<why>\"" >&2
+        echo "usage: fleet-claim [--repo <ns>] decline <kind> <number> [<agent>] --reason \"<why>\" [--objection | --delivered-by <PR>]" >&2
         return 2
     fi
     if [[ -z "$reason" ]]; then
         echo "fleet-claim decline: --reason is required — the comment IS the record" >&2
         return 2
     fi
-    local repo host who comment public_text_error public_text_rc=0
+    if [[ "$reason" =~ ^\[(objection|delivered-by\ \#[0-9]+)\]([[:space:]]|$) ]]; then
+        echo "fleet-claim decline: --reason starts with a reserved marker token; use the matching flag" >&2
+        return 2
+    fi
+    if (( delivered_by_set )) && [[ ! "$delivered_by" =~ ^[0-9]+$ ]]; then
+        echo "fleet-claim decline: --delivered-by requires a PR number" >&2
+        return 2
+    fi
+    case "$kind" in
+        task|stack|plan) ;;
+        *)
+            if (( delivered_by_set )); then
+                echo "fleet-claim decline: --delivered-by applies only to issue target kinds (task, stack, plan)" >&2
+                return 2
+            fi
+            ;;
+    esac
+    local repo host who comment marker="" public_text_error public_text_rc=0
     repo=$(repo_from_ns)
+    if (( delivered_by_set )); then
+        local delivered_state=""
+        delivered_state=$(gh pr view "$delivered_by" --repo "$repo" \
+            --json state --jq .state 2>/dev/null) || {
+                echo "fleet-claim decline: could not verify delivered PR #$delivered_by; the claim remains held" >&2
+                return 2
+            }
+        if [[ "$delivered_state" != "MERGED" ]]; then
+            echo "fleet-claim decline: delivered PR #$delivered_by is not merged; the claim remains held" >&2
+            return 2
+        fi
+        marker="[delivered-by #$delivered_by] "
+    elif (( objection )); then
+        marker="[objection] "
+    fi
     host=$(derive_host)
     who="${FLEET_ROLE:-unknown}/${FLEET_ROLE_MODEL:-unknown}"
-    comment="declined: ${who} @${host}-${agent} ${reason}"
+    comment="declined: ${who} @${host}-${agent} ${marker}${reason}"
     public_text_error=$(printf '%s\n' "$comment" | \
         python3 "$FLEET_LIB_DIR/fleet_public_text.py" --target-repo "$repo" \
             --text-file - --git-root "$FLEET_ENGINE_ROOT" 2>&1 | tr -d '\r') || public_text_rc=$?
@@ -6649,7 +6699,7 @@ case "${1:-}" in
         ;;
     decline)
         if [[ -z "${2:-}" || -z "${3:-}" ]]; then
-            echo "usage: fleet-claim [--repo <ns>] decline <kind> <number> [<agent>] --reason \"<why>\"" >&2
+            echo "usage: fleet-claim [--repo <ns>] decline <kind> <number> [<agent>] --reason \"<why>\" [--objection | --delivered-by <PR>]" >&2
             exit 2
         fi
         shift
@@ -6943,14 +6993,17 @@ commands:
                                 line:
                                 <url><TAB><headRefName><TAB><author><TAB><number>.
                                 Empty stdout means no eligible blocker.
-  decline <kind> <number> [agent] --reason "<why>"
+  decline <kind> <number> [agent] --reason "<why>" [--objection | --delivered-by <PR>]
                                 the honest exit for a dispatch target
                                 (FLEET_DISPATCH_TARGET) the iteration
                                 cannot work: posts the `declined:`
                                 record on the target, then releases the
                                 lane's claim via FLEET_TARGET_RELEASE
                                 (fleet-common.sh). Agent defaults to the
-                                cwd basename.
+                                cwd basename. No marker is temporary;
+                                --objection holds a lane objection seven
+                                days; --delivered-by names a merged PR that
+                                already shipped an issue target.
   release <issue-number> [--wip-ok]
                                 release a claim (FS lock + worktree
                                 reservation + --stackable-on .meta

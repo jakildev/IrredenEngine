@@ -87,8 +87,8 @@ When a target-bound pane exits, `scripts/fleet/fleet_completion.py` reads the ta
 claim with only claim-label churn; **declined** for a `declined: <role>/<class>
 @<host>-<agent> <reason>` comment; **abandoned** for a standing claim with no
 record; or **unknown** when the timeline is unreadable. `fleet-claim decline` writes the record and releases.
-Declines are role-scoped: substantive ones last seven days; transient/host ones last 30 minutes; sandbox refusals bar
-only their recorded runtime. Noop, declined, and abandoned exits count as empty for
+Declines are role-scoped: unmarked ones last 30 minutes (`sandbox` bars only its recorded runtime); `--objection` and
+issue-only `--delivered-by <PR>` last seven days. Noop, declined, and abandoned exits count as empty for
 backoff; marker-vouched mutation claims release on the first abandonment.
 Other kinds keep the claim once only when the pane can resume: a
 reservation, or a same-role, same-target sidecar, which pins the pane to that one

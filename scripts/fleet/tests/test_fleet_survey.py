@@ -207,7 +207,8 @@ class FleetSurveyFixture(unittest.TestCase):
         (state_dir / "declined").mkdir(parents=True)
         cls.state_dir = state_dir
         cls.decline_file = state_dir / "declined" / "task-engine-101"
-        cls.decline_text = ("2026-10-07T04:40:00Z\nimplementation already merged\nworker\n"
+        cls.decline_text = ("2026-10-07T04:40:00Z\n"
+                            "[delivered-by #900] implementation already merged\nworker\n"
                             "shadow_merged_pr=900\n")
 
     @classmethod

@@ -3061,14 +3061,27 @@ plan_repo_slug() {  # $1 = engine|game -> the gh --repo slug
 # Park a target at the dispatch cap: fleet:needs-human plus a comment, on
 # the issue or the PR (both live on the issues endpoint). $1 = target, $2 =
 # the count.
+last_decline_reason() {
+    local file detail=""
+    file="$STATE_DIR/declined/$(fleet_target_key "$1")"
+    [[ -f "$file" ]] || return 1
+    detail=$(sed -n '2p' "$file")
+    detail="${detail#declined this iteration: }"
+    [[ -n "$detail" ]] || return 1
+    printf '%.240s' "$detail"
+}
+
 park_target() {
     fleet_parse_target "$1" || return 0
-    local slug
+    local slug last_reason="" reason_sentence=""
     slug=$(plan_repo_slug "$FLEET_TARGET_REPO")
+    if last_reason=$(last_decline_reason "$1"); then
+        reason_sentence=" Last decline: ${last_reason}."
+    fi
     if gh api "repos/$slug/issues/$FLEET_TARGET_NUM/labels" --method POST \
             -f 'labels[]=fleet:needs-human' >/dev/null 2>&1; then
         gh api "repos/$slug/issues/$FLEET_TARGET_NUM/comments" \
-            -f "body=Dispatch circuit breaker: $2 dispatches of \`$1\` on this host without it completing — parking for human routing with \`fleet:needs-human\`. Close it, fix what every iteration walked away from (the \`declined:\` comments above say why), revise the direction, or remove \`fleet:needs-human\` to resume." >/dev/null 2>&1 || true
+            -f "body=Dispatch circuit breaker: $2 dispatches of \`$1\` on this host without it completing — parking for human routing with \`fleet:needs-human\`.${reason_sentence} Close it, fix what every iteration walked away from, revise the direction, or remove \`fleet:needs-human\` to resume." >/dev/null 2>&1 || true
         log "dispatch circuit breaker: parked $1 after $2 dispatches (added fleet:needs-human)"
         target_dispatch_clear "$1"
     else

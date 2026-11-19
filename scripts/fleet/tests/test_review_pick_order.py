@@ -6,9 +6,9 @@ rules pinned here:
 - Order: a PR carrying a priority label (`human:blocker`, `fleet:blocker`,
   `human:re-review`) comes first, then engine before game, then oldest
   first by number, whatever order the slice arrived in.
-- Decline memory: a decline whose reason was the host's own failure (HTTP
-  401 after a token expired, a 5xx, a rate-limit refusal) expires after
-  DECLINE_TRANSIENT_TTL_SECONDS; a judgement decline keeps its full TTL.
+- Decline memory: an unmarked decline expires after
+  DECLINE_TRANSIENT_TTL_SECONDS; an objection-marked judgement keeps its full
+  TTL.
   Two opus rechecks once sat 19 hours behind a "HTTP 401 Bad credentials"
   decline, offered to nobody until something else touched the PR.
 """
@@ -72,10 +72,10 @@ class TransientDeclineExpiry(unittest.TestCase):
 
     def test_judgement_decline_keeps_the_full_ttl(self):
         pr = _pr(4007)
-        self._with_decline("fresh sonnet approval already posted; escalation standing",
+        self._with_decline("[objection] fresh sonnet approval already posted; escalation standing",
                            ftc.DECLINE_TRANSIENT_TTL_SECONDS + 60)
         self.assertEqual(ftc.pick_role({"flagged_prs": [pr]}, "opus-reviewer"), [])
-        self._with_decline("fresh sonnet approval already posted; escalation standing",
+        self._with_decline("[objection] fresh sonnet approval already posted; escalation standing",
                            ftc.DECLINE_TTL_SECONDS + 60)
         self.assertEqual(ftc.pick_role({"flagged_prs": [pr]}, "opus-reviewer"),
                          ["review:engine:4007"])

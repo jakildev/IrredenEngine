@@ -383,27 +383,36 @@ assert_contains "$out" "outcome=yes, target=review:engine:42, verdict=finished" 
 [[ ! -f "$COUNTS_DIR/review-engine-42" ]] \
     && ok "progress clears the dispatch counter" || bad "progress left the dispatch counter"
 
-echo "T8c: five noops reach the target cap and three noops reach the empty-exit cap"
-rm -f "$NOOP_STREAK"
-timeline '[{"event":"labeled","created_at":"2026-09-06T17:01:00Z","label":{"name":"fleet:reviewing-windows-pool-4"}},{"event":"unlabeled","created_at":"2026-09-06T17:02:00Z","label":{"name":"fleet:reviewing-windows-pool-4"}}]'
-for n in 1 2 3 4 5; do
-    printf '%s' "$n" > "$COUNTS_DIR/review-engine-42"
-    record 1 review:engine:42
-    complete >/dev/null
-    if [[ "$n" == 3 ]]; then
-        assert_eq "$(cat "$NOOP_STREAK")" "3" "three noops reach the lane's empty-exit cap"
-    fi
-done
-assert_eq "$(cat "$COUNTS_DIR/review-engine-42")" "5" "five noops leave the target counter at five"
-: > "$GH_LOG"
-assert_eq "$(FLEET_TARGET_DISPATCH_CAP=5 "$DISPATCHER" --claim-target review:engine:42 pool-3)" \
-    "dispatch cap reached; parked" "the sixth election parks through the existing breaker"
-assert_contains "$(cat "$GH_LOG")" "labels --method POST -f labels[]=fleet:needs-human" \
-    "the breaker parks the target"
-[[ ! -f "$COUNTS_DIR/review-engine-42" ]] \
-    && ok "parking clears the target counter" || bad "parking left the target counter"
+echo "T8c: five temporary declines park task, feedback, and review targets with the last reason"
 timeline '[{"event":"commented","created_at":"2026-09-06T18:00:00Z"}]'
-rm -f "$NOOP_STREAK"
+for target_kind in task feedback review; do
+    target="$target_kind:engine:42"
+    counter="$COUNTS_DIR/${target//:/-}"
+    memory="$FLEET_STATE_DIR/declined/${target//:/-}"
+    rm -f "$NOOP_STREAK" "$counter" "$memory"
+    for n in 1 2 3 4 5; do
+        printf '%s' "$n" > "$counter"
+        comments "[{\"created_at\":\"2026-09-06T17:26:19Z\",\"body\":\"declined: worker/opus @mac-pool-3 last $target_kind decline\"}]"
+        record 1 "$target"
+        complete >/dev/null
+        assert_contains "$(sed -n 2p "$memory")" "last $target_kind decline" \
+            "$target_kind completion $n writes decline memory"
+    done
+    assert_eq "$(cat "$counter")" "5" "five $target_kind declines leave the target counter at five"
+    assert_contains "$(sed -n 2p "$memory")" "last $target_kind decline" \
+        "$target_kind memory carries the last reason"
+    : > "$GH_LOG"
+    assert_eq "$(FLEET_TARGET_DISPATCH_CAP=5 "$DISPATCHER" --claim-target "$target" pool-3)" \
+        "dispatch cap reached; parked" "the sixth $target_kind election parks"
+    assert_contains "$(cat "$GH_LOG")" "labels --method POST -f labels[]=fleet:needs-human" \
+        "$target_kind breaker adds fleet:needs-human"
+    assert_contains "$(cat "$GH_LOG")" "Last decline: last $target_kind decline." \
+        "$target_kind breaker quotes the last decline reason"
+    [[ ! -f "$counter" ]] \
+        && ok "$target_kind parking clears the target counter" \
+        || bad "$target_kind parking left the target counter"
+done
+comments '[]'
 
 echo "T9: abandoned folds through the abandonment counter"
 rm -f "$FLEET_STATE_DIR/abandoned/task-engine-42"

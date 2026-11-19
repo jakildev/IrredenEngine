@@ -183,8 +183,8 @@ did not touch; or `RESULT=NO-DISPLAY` (exit 69) reports that the run logged
 and never reached the auto-screenshot exit.
 Post the log excerpt and the host, leave the smoke label on, do **not**
 drop `fleet:approved`, release, and exit; a dispatched pane declines
-(`fleet-claim decline`) with that reading so a recurrence becomes a host
-issue, not a PR issue. This is the stance `role-worker.md` step 1c.g
+(`fleet-claim decline`) with no marker because ENV-FAIL is temporary, so a
+recurrence becomes a host issue, not a PR issue. This is the stance `role-worker.md` step 1c.g
 already takes for game builds; it applies to both repos.
 
 **Verdict** — success (build and run exited zero, no crash) is the
