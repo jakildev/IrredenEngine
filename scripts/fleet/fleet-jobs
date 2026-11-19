@@ -31,6 +31,9 @@ Profiles are fixed; there is no executable, path, or shell-string form.
                  the target after a second --
 A pane runs one display verifier (render-verify, light-verify, gui-verify)
 at a time, and that job's log opens with the displays its session can reach.
+On macOS the supervisor then wakes the display and holds it awake until the
+job has drained; a display it cannot make ready fails the job with exit 69
+before the verifier starts (start exits 69 too), naming the unmet condition.
 
 wait streams the job log and exits with the child's exit code; a job that is
 still running when --timeout elapses exits 124, a lost job exits 1, and a
@@ -60,6 +63,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import fleet_display_session  # noqa: E402
 from fleet_codex_doctor import classify_display, display_counts  # noqa: E402
 
 PROFILES = ("build", "fleet-tests", "render-verify", "light-verify", "gui-verify")
@@ -103,6 +107,10 @@ DISPLAY_PROBE_TIMEOUT = 10.0
 CANCEL_GRACE = 10.0
 POLL = 0.2
 IS_WINDOWS = os.name == "nt"
+EXIT_ENV_FAIL = fleet_display_session.EXIT_ENV_FAIL
+# Processes the supervisor starts for a job (the display hold) and ends once
+# the job has drained; never members of the job.
+SUPERVISOR_HELPERS = set()
 
 
 class UsageError(Exception):
@@ -707,7 +715,7 @@ def job_members(pgid, marks):
     me, entry, uid, found = os.getpid(), cookie.encode(), os.getuid(), []
     subtree = set(_subtree(table, me)) if sys.platform.startswith("linux") else set()
     for pid, (_, group, owner) in table.items():
-        if pid in (pgid, me):
+        if pid in (pgid, me) or pid in SUPERVISOR_HELPERS:
             continue
         # Identity first: the kill re-checks it, so a pid recycled after the
         # environment or descriptor read is never signalled.
@@ -946,7 +954,7 @@ def supervise():
     if not IS_WINDOWS:
         signal.signal(signal.SIGHUP, signal.SIG_IGN)
     log_path = job_dir / "job.log"
-    with open(log_path, "ab", buffering=0) as log:
+    with open(log_path, "ab", buffering=0) as log, contextlib.ExitStack() as held:
         marks = job_marks(spec["id"], log_path)
         # Unanchored, a descendant that detaches from every other mark could
         # outlive the terminal status, so the job never runs.
@@ -955,12 +963,28 @@ def supervise():
                         exit_code=127, finished_at=now_iso())
             write_atomic(job_dir / "meta.json", meta)
             return 127
+        name, _, value = marks[0].partition("=")
+        env = {**os.environ, name: value}
         if meta["profile"] in DISPLAY_PROFILES:
             log.write(f"[fleet-jobs] display: {display_discovery()}\n".encode())
-        name, _, value = marks[0].partition("=")
+            # Held from before the verifier's own preflight until the job's
+            # whole tree has drained (the ExitStack closes after the drain).
+            hold = fleet_display_session.hold_display(os.getpid())
+            held.callback(hold.release)
+            for line in hold.lines:
+                log.write(f"[fleet-jobs] {line}\n".encode())
+            if hold.blocks_launch:
+                log.write(f"[fleet-jobs] ENV-FAIL: {hold.failure}\n".encode())
+                meta.update(status="failed", reason=hold.failure, exit_code=EXIT_ENV_FAIL,
+                            finished_at=now_iso())
+                write_atomic(job_dir / "meta.json", meta)
+                return 0
+            if hold.holder_pid is not None:
+                SUPERVISOR_HELPERS.add(hold.holder_pid)
+                env[fleet_display_session.HOLDER_ENV] = str(hold.holder_pid)
         try:
             child, job = launch(argv, cwd=cwd, stdin=subprocess.DEVNULL, stdout=log,
-                                stderr=subprocess.STDOUT, env={**os.environ, name: value})
+                                stderr=subprocess.STDOUT, env=env)
         except OSError as exc:
             meta.update(status="failed", reason=f"launch failed: {exc}", exit_code=127,
                         finished_at=now_iso())
@@ -1147,7 +1171,8 @@ def cmd_start(rest, cwd):
     # Only a launched child gets started_at; a terminal record without it is
     # the supervisor refusing to run the job (anchor or launch failure).
     if "started_at" not in meta:
-        die(f"{job_id} not started: {meta.get('reason') or meta['status']}", 1)
+        die(f"{job_id} not started: {meta.get('reason') or meta['status']}",
+            EXIT_ENV_FAIL if meta.get("exit_code") == EXIT_ENV_FAIL else 1)
     print(f"started {job_id} ({meta['status']})")
     print(f"log: {job_dir / 'job.log'}")
     print(f"next: fleet-jobs wait {job_id}")

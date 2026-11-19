@@ -1204,6 +1204,51 @@ cd ~/src/IrredenEngine/build/creations/demos/shape_debug
   cleanest host you have for profiling work right now. Treat timing
   numbers from the Mac as the reference.
 
+#### Display-backed runs on an unattended Mac
+
+The engine finds a monitor only when CoreGraphics reports an online,
+awake display and AppKit reports an Aqua `NSScreen`. A display-backed
+run (a capture, `render-verify`, `light-verify`, `gui-verify`) therefore
+needs, from the host:
+
+- **A logged-in GUI (Aqua) session**, with `fleet-up` started from a
+  terminal in it — not over `ssh` or from a LaunchDaemon.
+- **A connected, open display**: the lid open, or an external display
+  connected and on.
+- **The system kept awake** while the fleet runs (on a laptop:
+  System Settings → Battery → Options → "Prevent automatic sleeping on
+  power adapter when the display is off", or `sudo pmset -c sleep 0`).
+  `displaysleep` can stay at any value; the tools wake the display.
+
+What the tools do on macOS: `ir-run` before a capture verb
+(`--auto-screenshot`, `--auto-record`, `--auto-profile`), each verifier
+before its first demo, and the `fleet-jobs` supervisor before a display
+profile's verifier, run `scripts/fleet/fleet_display_session.py`. It
+starts `/usr/bin/caffeinate -d -u -w <owner-pid>`, which declares user
+activity (waking a sleeping display) and holds
+`PreventUserIdleDisplaySleep` until the owning process exits, then
+polls the display for up to 15 s. An outer owner passes its hold to the
+runs it starts (`FLEET_DISPLAY_HOLDER`), so a `fleet-jobs` verifier and
+its `fleet-run` calls share one hold, released once the job has drained.
+`pmset -g assertions` shows it as a `caffeinate` entry while a run is
+live.
+
+When the display does not become ready, the run stops before the engine
+launches — `ir-run: RESULT=NO-DISPLAY … exit=69`, a verifier
+`ENV-FAIL:`, or a `fleet-jobs start` exiting 69 — naming exactly one
+condition the tools cannot change:
+
+| Condition | Typical cause (not detected) |
+|---|---|
+| no online CoreGraphics display | lid closed with no external display, display unplugged, signed out |
+| the online display stayed asleep | a display that refuses the wake |
+| an awake CoreGraphics display but no Aqua `NSScreen` | the run's session has no window-server connection (ssh, LaunchDaemon, another console user) |
+
+A display probe that cannot run is reported and the launch proceeds;
+an engine that still logs `Discovered 0 display monitors` is stopped by
+`ir-run`'s runtime check as `RESULT=NO-DISPLAY`, exit 69, and the fleet
+records either as a host decline, not a task failure.
+
 ### Cross-platform parity workflow
 
 This is the main reason to have both fleets running. After a render
