@@ -97,6 +97,8 @@ Changes without a visual effect need no captures.
 
 ## GPU resource contracts
 
+- Metal's submitted and recording resource lifetimes, late join, and input pacing are defined in [Metal frame overlap](../../docs/design/metal-frame-overlap.md).
+
 - `RenderDevice::gpuMemoryStats()` is an observational, backend-dependent
   surface. Metal's `processAllocatedBytes_` is the current allocation owned by
   this process. OpenGL's optional NVX values are device-wide dedicated capacity

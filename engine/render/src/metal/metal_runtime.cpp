@@ -68,12 +68,13 @@ struct MetalRuntimeState {
     std::unordered_map<MTL::Texture *, MTL::Buffer *> imageAtomicScratchBuffers_;
     MTL::Buffer *currentImageAtomicScratch_ = nullptr;
 
-    // Retired buffer backings that may still be referenced by an in-flight
-    // command encoder. Released after the next present/waitUntilCompleted
-    // boundary.
-    std::vector<MTL::Buffer *> pendingReleaseBuffers_;
-
-    std::vector<MetalStagingChunk> stagingChunks_;
+    struct SubmissionResources {
+        std::vector<MTL::Buffer *> pendingReleaseBuffers_;
+        std::vector<MetalStagingChunk> stagingChunks_;
+        std::unordered_set<MTL::Buffer *> encodedBuffers_;
+    };
+    SubmissionResources recording_;
+    SubmissionResources submitted_;
     std::size_t stagingBufferAllocationCount_ = 0;
     BufferWriteStats bufferWriteStats_;
     DeviceErrorStats deviceErrorStats_;
@@ -82,12 +83,6 @@ struct MetalRuntimeState {
     bool failNextAllocationArmed_ = false;
     bool failNextRenderPipeline_ = false;
     std::unordered_set<std::int64_t> loggedCommandBufferErrorCodes_;
-
-    // Buffers that have been encoded into a command encoder since the
-    // previous wait point. subData() writes an unencoded buffer in place and
-    // orders a write to an encoded one on the GPU timeline. Cleared inside
-    // releaseDeferredMetalBuffers() right after the GPU drains.
-    std::unordered_set<MTL::Buffer *> encodedBuffers_;
 };
 
 // Intentionally leaked so the runtime state outlives all other statics.
@@ -177,7 +172,10 @@ void shutdownMetalRuntime() {
         g_runtime().depthTestWriteState_ = nullptr;
     }
     releaseDeferredMetalBuffers();
-    for (auto &chunk : g_runtime().stagingChunks_) {
+    for (auto &chunk : g_runtime().recording_.stagingChunks_) {
+        chunk.buffer_->release();
+    }
+    for (auto &chunk : g_runtime().submitted_.stagingChunks_) {
         chunk.buffer_->release();
     }
     g_runtime() = MetalRuntimeState{};
@@ -531,34 +529,19 @@ void deferReleaseMetalBuffer(MTL::Buffer *buffer) {
     if (buffer == nullptr) {
         return;
     }
-    g_runtime().pendingReleaseBuffers_.push_back(buffer);
+    g_runtime().recording_.pendingReleaseBuffers_.push_back(buffer);
 }
 
-void releaseDeferredMetalBuffers() {
-    auto &pending = g_runtime().pendingReleaseBuffers_;
-    for (MTL::Buffer *buffer : pending) {
-        if (buffer != nullptr) {
-            buffer->release();
-        }
+namespace {
+void recycleSubmission(MetalRuntimeState::SubmissionResources &resources) {
+    for (auto *buffer : resources.pendingReleaseBuffers_) {
+        buffer->release();
     }
-    pending.clear();
-    // The wait drained every encoder that could still be reading any
-    // currently-live buffer, so the next subData() on any of them is
-    // safe to land in place. The cleared pendingReleaseBuffers_ vector
-    // also means any stale pointer entries here would dangle — clearing
-    // the set keeps both invariants tight.
-    g_runtime().encodedBuffers_.clear();
-
-    // Every caller reaches this reset only after waitUntilCompleted(). If the
-    // renderer permits multiple command buffers in flight, staging ownership
-    // must become per-in-flight-command-buffer before this reset remains safe.
-    auto &chunks = g_runtime().stagingChunks_;
+    resources.pendingReleaseBuffers_.clear();
+    resources.encodedBuffers_.clear();
+    auto &chunks = resources.stagingChunks_;
     for (auto chunk = chunks.begin(); chunk != chunks.end();) {
-        if (chunk->cursor_ == 0) {
-            ++chunk->idleDrainCount_;
-        } else {
-            chunk->idleDrainCount_ = 0;
-        }
+        chunk->idleDrainCount_ = chunk->cursor_ == 0 ? chunk->idleDrainCount_ + 1 : 0;
         chunk->cursor_ = 0;
         if (chunk->idleDrainCount_ >= kMetalStagingIdleDrainLimit) {
             chunk->buffer_->release();
@@ -568,9 +551,24 @@ void releaseDeferredMetalBuffers() {
         }
     }
 }
+} // namespace
+
+void completeMetalSubmission() {
+    recycleSubmission(g_runtime().submitted_);
+}
+
+void submitMetalResources() {
+    std::swap(g_runtime().recording_, g_runtime().submitted_);
+}
+
+void releaseDeferredMetalBuffers() {
+    recycleSubmission(g_runtime().submitted_);
+    recycleSubmission(g_runtime().recording_);
+}
 
 std::size_t deferredMetalBufferReleaseCount() {
-    return g_runtime().pendingReleaseBuffers_.size();
+    return g_runtime().recording_.pendingReleaseBuffers_.size() +
+           g_runtime().submitted_.pendingReleaseBuffers_.size();
 }
 
 MetalStagingBufferSlice reserveMetalStaging(std::size_t byteCount) {
@@ -578,7 +576,7 @@ MetalStagingBufferSlice reserveMetalStaging(std::size_t byteCount) {
 
     auto &runtime = g_runtime();
     const bool oversized = byteCount > kMetalStagingChunkSize;
-    for (auto &chunk : runtime.stagingChunks_) {
+    for (auto &chunk : runtime.recording_.stagingChunks_) {
         if ((chunk.capacity_ > kMetalStagingChunkSize) != oversized) {
             continue;
         }
@@ -597,7 +595,7 @@ MetalStagingBufferSlice reserveMetalStaging(std::size_t byteCount) {
         capacity, MTL::ResourceStorageModeShared, "staging arena buffer"
     );
     ++runtime.stagingBufferAllocationCount_;
-    runtime.stagingChunks_.push_back({buffer, capacity, byteCount, 0});
+    runtime.recording_.stagingChunks_.push_back({buffer, capacity, byteCount, 0});
     return {buffer, 0, capacity};
 }
 
@@ -620,15 +618,15 @@ void markMetalBufferEncoded(MTL::Buffer *buffer) {
     if (buffer == nullptr) {
         return;
     }
-    g_runtime().encodedBuffers_.insert(buffer);
+    g_runtime().recording_.encodedBuffers_.insert(buffer);
 }
 
 bool wasMetalBufferEncoded(MTL::Buffer *buffer) {
     if (buffer == nullptr) {
         return false;
     }
-    const auto &set = g_runtime().encodedBuffers_;
-    return set.find(buffer) != set.end();
+    const auto &set = g_runtime().recording_.encodedBuffers_;
+    return set.contains(buffer) || g_runtime().submitted_.encodedBuffers_.contains(buffer);
 }
 
 void replaceMetalBufferInBindings(MTL::Buffer *oldBuffer, MTL::Buffer *newBuffer) {
@@ -665,7 +663,8 @@ void untrackMetalBuffer(MTL::Buffer *buffer) {
     // Also drop it from the encoded-since-last-wait set: a future buffer
     // allocated at the same address would otherwise false-positive
     // wasMetalBufferEncoded and stage its first subData for no reason.
-    g_runtime().encodedBuffers_.erase(buffer);
+    g_runtime().recording_.encodedBuffers_.erase(buffer);
+    g_runtime().submitted_.encodedBuffers_.erase(buffer);
 }
 
 MTL::Buffer *ensureImageAtomicScratchBuffer(MTL::Texture *texture) {

@@ -1,0 +1,74 @@
+[
+  {
+    "yaw_degrees": 0,
+    "exit_code": 0,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "yaw_degrees": 45,
+    "exit_code": 0,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "yaw_degrees": 90,
+    "exit_code": 0,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "yaw_degrees": 135,
+    "exit_code": 0,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "yaw_degrees": 180,
+    "exit_code": 0,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "yaw_degrees": 225,
+    "exit_code": 0,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "yaw_degrees": 270,
+    "exit_code": 0,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "yaw_degrees": 315,
+    "exit_code": 0,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "yaw_degrees": 360,
+    "exit_code": 0,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  }
+]

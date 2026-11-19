@@ -22,6 +22,7 @@ struct PresentedPickRecord {
     HoveredEntityIdLayout layout_{};
     std::uint64_t frameId_ = 0;
     IRMath::ivec2 cursorPixel_{};
+    double cursorSampleSeconds_ = 0.0;
 };
 
 class PresentedPickHistory {

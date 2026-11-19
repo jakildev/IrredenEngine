@@ -32,6 +32,9 @@ constexpr NS::UInteger kTimestampAttachmentIndex = 0;
 // buffers exist, so a stage grows its own buffer instead of taking one per
 // encoder. The largest stage at the million rotated control creates 72 encoders.
 constexpr NS::UInteger kTimestampEncoderPairCapacity = 128;
+constexpr double kCpuOverlapFraction = 0.3;
+constexpr double kMaxCpuLeadSeconds = 0.00015;
+constexpr double kPacingSpinSeconds = 0.002;
 
 // Host time in seconds: the timebase of a command buffer's GPUStartTime and
 // GPUEndTime. steady_clock's epoch on macOS is not guaranteed to be the same.
@@ -330,6 +333,11 @@ MTL::CounterSet *findTimestampCounterSet(MTL::Device *device) {
 class MetalRenderDevice final : public RenderDevice {
   public:
     void init(MTL::Device *device, CA::MetalLayer *layer) {
+        m_overlap = false;
+        m_timingStarted = false;
+        m_cpuSeconds = 0.0;
+        m_submitToEndSeconds = 0.0;
+        m_cpuStartSeconds = 0.0;
         initializeMetalRuntime(device, layer);
         bindMetalDefaultRenderTarget();
         m_timestampCounterSet = findTimestampCounterSet(device);
@@ -344,6 +352,7 @@ class MetalRenderDevice final : public RenderDevice {
     }
 
     void shutdown() {
+        finish();
         releaseOffscreenTarget();
         for (auto &pair : m_timestamps) {
             releaseTimestampPair(pair);
@@ -417,6 +426,9 @@ class MetalRenderDevice final : public RenderDevice {
     }
 
     void setGpuFrameTimingEnabled(bool enabled) override {
+        collectSubmittedFrame(true);
+        m_midFrameDrains = 0;
+        m_timingStarted = false;
         m_gpuFrameTiming.reset(enabled, true);
         m_frameCompletions.reset(enabled, FrameEndEvent::GPU_COMPLETE);
     }
@@ -431,10 +443,13 @@ class MetalRenderDevice final : public RenderDevice {
             .supported_ = true,
             .bufferWrites_ = metalBufferWriteStats(),
             .errors_ = metalDeviceErrorStats(),
+            .midFrameDrains_ = m_midFrameDrains
         };
     }
 
-    void recordCompletedFrameBuffer(MTL::CommandBuffer *commandBuffer) {
+    void recordCompletedFrameBuffer(
+        MTL::CommandBuffer *commandBuffer, std::uint64_t frameNumber
+    ) {
         const MTL::CommandBufferStatus status = commandBuffer->status();
         m_gpuFrameTiming.addCompletedBuffer(
             commandBuffer->GPUStartTime(),
@@ -451,69 +466,87 @@ class MetalRenderDevice final : public RenderDevice {
                 ? error->localizedDescription()->utf8String()
                 : "<no Metal error description>";
         recordMetalCommandBufferCompletion(
-            status, errorCode, description, m_frameNumber
+            status, errorCode, description, frameNumber
         );
+    }
+
+    void prepareCpuFrame(bool overlap) override {
+        m_overlap = overlap;
+        if (!overlap) {
+            collectSubmittedFrame(true);
+        } else if (m_submittedFrame != nullptr && m_submitToEndSeconds > m_cpuSeconds &&
+                   m_cpuSeconds > 0.0) {
+            const double cpuLead =
+                std::min(kCpuOverlapFraction * m_cpuSeconds, kMaxCpuLeadSeconds);
+            const double deadline = m_submitSeconds + m_submitToEndSeconds - cpuLead;
+            const double delay = deadline - steadyClockSeconds();
+            // Coalesced sleeps can overshoot a sub-millisecond CPU frame.
+            // Bound the active wait to the final part of the pacing interval.
+            if (delay > kPacingSpinSeconds) {
+                std::this_thread::sleep_for(
+                    std::chrono::duration<double>(delay - kPacingSpinSeconds)
+                );
+            }
+            while (steadyClockSeconds() < deadline) {
+            }
+        }
+        collectSubmittedFrame(false);
+        m_cpuStartSeconds = steadyClockSeconds();
+        if (overlap && metalCommandBuffer() == nullptr) {
+            setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
+        }
     }
 
     void beginFrame() override {
         ++m_frameNumber;
-        m_gpuFrameTiming.beginFrame();
-        if (isOffscreen()) {
-            // No swapchain: the frame renders into the engine-owned target
-            // and present() never has a drawable to show.
-            setMetalDrawable(nullptr);
+        collectSubmittedFrame(false);
+        // Keep the recording buffer even without a drawable: updates and
+        // readback copies still need ordering against the executing frame.
+        if (metalCommandBuffer() == nullptr) {
             setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
-            return;
         }
         auto *layer = metalLayer();
-        if (layer == nullptr) {
-            setMetalDrawable(nullptr);
-            setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
-            return;
-        }
-        auto *drawable = layer->nextDrawable();
-        if (drawable == nullptr) {
+        auto *drawable = !isOffscreen() && layer != nullptr ? layer->nextDrawable() : nullptr;
+        if (!isOffscreen() && layer != nullptr && drawable == nullptr) {
             recordMetalSkippedFrame();
-            setMetalDrawable(nullptr);
-            setMetalCommandBuffer(nullptr);
-            return;
         }
         setMetalDrawable(drawable);
-        setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
     }
 
     void present() override {
         auto *commandBuffer = metalCommandBuffer();
+        const double cpuSeconds = steadyClockSeconds() - m_cpuStartSeconds;
+        if (m_cpuStartSeconds > 0.0) {
+            m_cpuSeconds = m_cpuSeconds == 0.0 ? cpuSeconds : 0.9 * m_cpuSeconds + 0.1 * cpuSeconds;
+        }
+        collectSubmittedFrame(true);
+        beginFrameTiming();
         if (commandBuffer == nullptr) {
-            ++m_submissionSerial;
             m_gpuFrameTiming.endFrame();
+            m_timingStarted = false;
             return;
         }
         if (auto *drawable = metalDrawable(); drawable != nullptr) {
             commandBuffer->presentDrawable(drawable);
         }
         m_frameCompletions.submitted(steadyClockSeconds);
+        m_submitSeconds = steadyClockSeconds();
+        commandBuffer->retain();
+        m_submittedFrame = commandBuffer;
+        m_submittedFrameNumber = m_frameNumber;
+        m_submittedSerial = m_submissionSerial++;
+        submitMetalResources();
         commandBuffer->commit();
-        commandBuffer->waitUntilCompleted();
-        reportFrameEnd(m_frameCompletions, commandBuffer);
-        ++m_submissionSerial;
-        recordCompletedFrameBuffer(commandBuffer);
-        for (auto &pair : m_timestamps) {
-            if (pair.completionBuffer_ != nullptr) {
-                const auto status = pair.completionBuffer_->status();
-                if (status == MTL::CommandBufferStatusCompleted ||
-                    status == MTL::CommandBufferStatusError) {
-                    pair.completionStatus_ = status;
-                    releaseTimestampCompletion(pair);
-                }
-            }
-        }
-        // Now that the GPU has finished consuming any encoders that
-        // captured orphaned buffers, it is safe to release them.
-        releaseDeferredMetalBuffers();
-        m_gpuFrameTiming.endFrame();
         setMetalDrawable(nullptr);
         setMetalCommandBuffer(nullptr);
+        // A CPU-bound frame keeps the serialized cadence: otherwise more frames
+        // reuse the preceding fixed update's input poll and input latency rises.
+        const bool cpuBound = m_submitToEndSeconds > 0.0 && m_cpuSeconds >= m_submitToEndSeconds;
+        if (!m_overlap || cpuBound) {
+            collectSubmittedFrame(true);
+        } else {
+            setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
+        }
         paceOffscreenFrame();
     }
 
@@ -1156,19 +1189,17 @@ class MetalRenderDevice final : public RenderDevice {
     }
 
     void finish() override {
-        // Block until prior GPU work completes, then start a fresh command
-        // buffer for subsequent encoders. Mirrors OpenGL glFinish(). The
-        // fresh-buffer step is required because Metal encoders cannot
-        // record into a committed buffer; without it, the next dispatch
-        // or draw silently no-ops.
+        collectSubmittedFrame(true);
         auto *commandBuffer = metalCommandBuffer();
         if (commandBuffer == nullptr) {
             return;
         }
+        ++m_midFrameDrains;
+        beginFrameTiming();
         commandBuffer->commit();
         commandBuffer->waitUntilCompleted();
-        ++m_submissionSerial;
-        recordCompletedFrameBuffer(commandBuffer);
+        m_completedSerial = m_submissionSerial++;
+        recordCompletedFrameBuffer(commandBuffer, m_frameNumber);
         releaseDeferredMetalBuffers();
         setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
     }
@@ -1177,10 +1208,9 @@ class MetalRenderDevice final : public RenderDevice {
         return m_submissionSerial;
     }
 
-    // Every commit waits for its command buffer (present() and finish()),
-    // so all work before the one now recording has completed.
     std::uint64_t completedSubmissionSerial() override {
-        return m_submissionSerial - 1;
+        collectSubmittedFrame(false);
+        return m_completedSerial;
     }
 
     GpuTimestampHandle createTimestampPair() override {
@@ -1239,18 +1269,8 @@ class MetalRenderDevice final : public RenderDevice {
     }
 
     int recommendedTimestampPairsInFlight() const override {
-        // Today's Metal pipeline blocks at `present()` (one frame of GPU work
-        // in flight, then `waitUntilCompleted`), so a single `MTL::CounterSampleBuffer`
-        // per tagged stage is sufficient: by the top of frame N+1 the GPU has
-        // already finished frame N's samples and `resolveCounterRange` returns
-        // valid data without stalling. Bumping past 1 is wasted on this
-        // pipeline and risks exhausting the device's limited sample-buffer
-        // quota (Apple Silicon devices observed at ~stages × 2 = ~40-pair
-        // ceiling, 2026-05-21). Once `present()` is made async (separate task),
-        // raise this to 2-3 so frame N-2 readback survives the deeper
-        // GPU latency without dropping per-frame samples. The per-pair
-        // graceful-fallback in `createTimestampPair` keeps already-tagged
-        // stages timing-functional even when a future bump exceeds quota.
+        // A pending slot is skipped by the timing observer, never overwritten.
+        // Keeping one pair per stage stays within the device counter-buffer limit.
         return 1;
     }
 
@@ -1368,6 +1388,41 @@ class MetalRenderDevice final : public RenderDevice {
     }
 
   private:
+    void beginFrameTiming() {
+        if (!m_timingStarted) {
+            m_gpuFrameTiming.beginFrame();
+            m_timingStarted = true;
+        }
+    }
+
+    void collectSubmittedFrame(bool wait) {
+        if (m_submittedFrame == nullptr) {
+            return;
+        }
+        if (wait) {
+            m_submittedFrame->waitUntilCompleted();
+        }
+        const auto status = m_submittedFrame->status();
+        if (status != MTL::CommandBufferStatusCompleted && status != MTL::CommandBufferStatusError) {
+            return;
+        }
+        reportFrameEnd(m_frameCompletions, m_submittedFrame);
+        recordCompletedFrameBuffer(m_submittedFrame, m_submittedFrameNumber);
+        const double submitToEndSeconds = m_submittedFrame->GPUEndTime() - hostTimeSeconds() +
+                                          steadyClockSeconds() - m_submitSeconds;
+        if (status == MTL::CommandBufferStatusCompleted && submitToEndSeconds > 0.0) {
+            m_submitToEndSeconds = m_submitToEndSeconds == 0.0
+                ? submitToEndSeconds
+                : 0.9 * m_submitToEndSeconds + 0.1 * submitToEndSeconds;
+        }
+        m_completedSerial = m_submittedSerial;
+        completeMetalSubmission();
+        m_gpuFrameTiming.endFrame();
+        m_timingStarted = false;
+        m_submittedFrame->release();
+        m_submittedFrame = nullptr;
+    }
+
     static void releaseTimestampCompletion(MetalTimestampPair &pair) {
         if (pair.completionBuffer_ != nullptr) {
             pair.completionBuffer_->release();
@@ -1423,9 +1478,20 @@ class MetalRenderDevice final : public RenderDevice {
     // Persists across draws, encoders, and frames until the matching
     // disable, like GL_BLEND; starts off to match the GL default.
     bool m_blendingEnabled = false;
-    // The command buffer now recording; a commit-and-wait advances it.
+    // The serial assigned to the recording command buffer when it is committed.
     std::uint64_t m_submissionSerial = 1;
     std::uint64_t m_frameNumber = 0;
+    std::uint64_t m_submittedFrameNumber = 0;
+    std::uint64_t m_completedSerial = 0;
+    std::uint64_t m_submittedSerial = 0;
+    std::uint64_t m_midFrameDrains = 0;
+    MTL::CommandBuffer *m_submittedFrame = nullptr;
+    bool m_overlap = false;
+    bool m_timingStarted = false;
+    double m_submitSeconds = 0.0;
+    double m_cpuStartSeconds = 0.0;
+    double m_cpuSeconds = 0.0;
+    double m_submitToEndSeconds = 0.0;
     GpuTimestampHandle m_nextTimestampHandle = 1;
     std::vector<MetalTimestampPair> m_timestamps;
     MTL::CounterSet *m_timestampCounterSet = nullptr;

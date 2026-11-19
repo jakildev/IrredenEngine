@@ -93,6 +93,9 @@ class MetalBufferImpl final : public BufferImpl {
             return;
         }
 
+        // Retire completed readers before deciding whether this upload needs
+        // a copy. The GPU can finish while the CPU prepares the upload.
+        device()->completedSubmissionSerial();
         // No queued encoder can observe this allocation yet.
         if (!wasMetalBufferEncoded(m_buffer)) {
             writeRanges(m_buffer, ranges);
@@ -140,6 +143,9 @@ class MetalBufferImpl final : public BufferImpl {
     }
 
     void *mapRange(std::ptrdiff_t offset, std::size_t, std::uint32_t) override {
+        if (wasMetalBufferEncoded(m_buffer)) {
+            device()->finish();
+        }
         return static_cast<std::uint8_t *>(m_buffer->contents()) + offset;
     }
 

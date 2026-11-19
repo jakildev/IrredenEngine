@@ -331,6 +331,7 @@ add_executable(IrredenEngineTest
   world/component_migration_test.cpp
   world/voxel_set_serialize_test.cpp
   world/world_config_missing_table_test.cpp
+  world/world_config_metal_overlap_test.cpp
   world/world_config_audio_monitor_test.cpp
   world/world_config_gui_pixelated_test.cpp
   world/world_config_window_mode_test.cpp

@@ -126,7 +126,9 @@ class RenderManager {
     void publishMouseTrixelPick(Buffer *hoverBuffer);
     MouseTrixelPick mouseTrixelPick();
     std::uint64_t newestCompletedMouseTrixelPickFrameId();
-    void resetMouseTrixelPickStats();
+    void resetMouseTrixelPickStats(bool enabled);
+    void recordPickInputPoll(double seconds);
+    const std::vector<float> &pickAgeAtDispatchMs() const;
     std::uint64_t staleMouseTrixelPickInputTicks() const;
 
     void setSunDirection(vec3 dir);
@@ -232,6 +234,7 @@ class RenderManager {
     bool defaultPivotOwnsDepth() const;
     bool m_hoveredTrixelVisible = true;
     struct PresentedPickProducer {
+        double cursorSampleSeconds_ = 0.0;
         std::uint64_t frameId_ = 0;
         ivec2 cursorPixel_{};
     };
@@ -242,6 +245,11 @@ class RenderManager {
     std::uint64_t m_lastStalePickInputTick = 0;
     std::uint64_t m_stalePickInputTicks = 0;
     bool m_presentedPickPreviousCompletedFault = false;
+    double m_pickInputPollSeconds = 0.0;
+    double m_cursorSampleSeconds = 0.0;
+    std::uint64_t m_lastPickAgeInputTick = 0;
+    bool m_recordPickAge = false;
+    std::vector<float> m_pickAgeMs;
     void drainCompletedMouseTrixelPicks();
     int m_voxelRenderSubdivisions = 1;
     // Unit vector pointing from surfaces toward the sun. Default is a

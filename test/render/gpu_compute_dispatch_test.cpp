@@ -2989,6 +2989,187 @@ std::vector<std::uint32_t> readWords(const IRRender::Buffer &buffer, std::size_t
     return words;
 }
 
+using MetalFrameOverlapTest = MetalGpuComputeDispatchTest;
+
+TEST_F(MetalFrameOverlapTest, ExecutingFrameKeepsOldBufferBytesAndStagingSlices) {
+    using namespace IRRender;
+    device_->setGpuFrameTimingEnabled(true);
+    device_->prepareCpuFrame(true);
+    const std::array<std::uint32_t, 4> oldBytes{11, 22, 33, 44};
+    const std::array<std::uint32_t, 4> newBytes{55, 66, 77, 88};
+    Buffer source(oldBytes.data(), sizeof(oldBytes), BUFFER_STORAGE_DYNAMIC);
+    Buffer snapshot(nullptr, sizeof(oldBytes), BUFFER_STORAGE_DYNAMIC);
+    auto *gate = metalDevice()->newSharedEvent();
+    ASSERT_NE(gate, nullptr);
+    metalCommandBuffer()->encodeWait(gate, 1);
+    device_->copyBufferSubData(&source, 0, &snapshot, 0, sizeof(oldBytes));
+    const auto staging = stageMetalUpload(oldBytes.data(), sizeof(oldBytes));
+    const auto serial = device_->submissionSerial();
+    device_->setPresentingFrame(1);
+    device_->present();
+    EXPECT_LT(device_->completedSubmissionSerial(), serial);
+    EXPECT_EQ(device_->framesInFlight(), 1u);
+    source.subData(0, sizeof(newBytes), newBytes.data());
+    const auto nextStaging = stageMetalUpload(newBytes.data(), sizeof(newBytes));
+    EXPECT_NE(staging.buffer_, nextStaging.buffer_);
+    EXPECT_EQ(std::memcmp(staging.contents(), oldBytes.data(), sizeof(oldBytes)), 0);
+    gate->setSignaledValue(1);
+    device_->finish();
+    gate->release();
+    EXPECT_EQ(readWords(snapshot, 4), std::vector<std::uint32_t>(oldBytes.begin(), oldBytes.end()));
+    EXPECT_EQ(readWords(source, 4), std::vector<std::uint32_t>(newBytes.begin(), newBytes.end()));
+    EXPECT_GE(device_->completedSubmissionSerial(), serial);
+    EXPECT_EQ(device_->framesInFlight(), 0u);
+    device_->setGpuFrameTimingEnabled(false);
+}
+
+TEST_F(MetalFrameOverlapTest, TextureUploadCannotChangeAnExecutingFramesSnapshot) {
+    using namespace IRRender;
+    Texture2D texture{TextureKind::TEXTURE_2D, 64, 1, TextureFormat::RGBA8};
+    const std::array<std::uint32_t, 64> oldBytes{};
+    std::array<std::uint32_t, 64> newBytes;
+    newBytes.fill(0xFFFFFFFFu);
+    texture.subImage2D(
+        0,
+        0,
+        64,
+        1,
+        PixelDataFormat::RGBA,
+        PixelDataType::UNSIGNED_BYTE,
+        oldBytes.data()
+    );
+    device_->finish();
+    device_->prepareCpuFrame(true);
+    Buffer snapshot(nullptr, sizeof(oldBytes), BUFFER_STORAGE_DYNAMIC);
+    auto *gate = metalDevice()->newSharedEvent();
+    ASSERT_NE(gate, nullptr);
+    metalCommandBuffer()->encodeWait(gate, 1);
+    snapshotClearTexture(texture, snapshot, 4);
+    device_->present();
+    texture.subImage2D(
+        0,
+        0,
+        64,
+        1,
+        PixelDataFormat::RGBA,
+        PixelDataType::UNSIGNED_BYTE,
+        newBytes.data()
+    );
+    gate->setSignaledValue(1);
+    device_->finish();
+    gate->release();
+    EXPECT_EQ(readWords(snapshot, 64), std::vector<std::uint32_t>(64, 0u));
+    std::array<std::uint32_t, 64> after{};
+    texture.getSubImage2D(
+        0,
+        0,
+        64,
+        1,
+        PixelDataFormat::RGBA,
+        PixelDataType::UNSIGNED_BYTE,
+        after.data()
+    );
+    EXPECT_EQ(after, newBytes);
+}
+
+TEST_F(MetalFrameOverlapTest, VolumeUploadCannotChangeAnExecutingFramesSnapshot) {
+    using namespace IRRender;
+    Texture3D texture{TextureKind::TEXTURE_3D, 64, 1, 2, TextureFormat::RGBA8};
+    const std::vector<std::uint32_t> oldBytes(128, 7u);
+    const std::vector<std::uint32_t> newBytes(128, 19u);
+    texture
+        .subImage3D(64, 1, 2, PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, oldBytes.data());
+    device_->finish();
+    device_->prepareCpuFrame(true);
+    texture.bind(0);
+    auto *native = boundMetalTexture(0);
+    Buffer snapshot(nullptr, 512, BUFFER_STORAGE_DYNAMIC);
+    auto *gate = metalDevice()->newSharedEvent();
+    ASSERT_NE(gate, nullptr);
+    metalCommandBuffer()->encodeWait(gate, 1);
+    auto *blit = metalCommandBuffer()->blitCommandEncoder();
+    blit->copyFromTexture(
+        native,
+        0,
+        0,
+        MTL::Origin::Make(0, 0, 0),
+        MTL::Size::Make(64, 1, 2),
+        static_cast<MTL::Buffer *>(snapshot.getNativeBuffer()),
+        0,
+        256,
+        256
+    );
+    blit->endEncoding();
+    device_->present();
+    texture
+        .subImage3D(64, 1, 2, PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, newBytes.data());
+    gate->setSignaledValue(1);
+    device_->finish();
+    gate->release();
+    EXPECT_EQ(readWords(snapshot, 128), oldBytes);
+    std::vector<std::uint32_t> after(128);
+    native->getBytes(after.data(), 256, 256, MTL::Region::Make3D(0, 0, 0, 64, 1, 2), 0, 0);
+    EXPECT_EQ(after, newBytes);
+}
+
+TEST_F(MetalFrameOverlapTest, SubmittedCommandsRetainDestroyedResources) {
+    using namespace IRRender;
+    device_->prepareCpuFrame(true);
+    const std::array<std::uint32_t, 4> bytes{11, 22, 33, 44};
+    auto source = std::make_unique<Buffer>(bytes.data(), sizeof(bytes), BUFFER_STORAGE_DYNAMIC);
+    Buffer snapshot(nullptr, sizeof(bytes), BUFFER_STORAGE_DYNAMIC);
+    auto texture =
+        std::make_unique<Texture2D>(TextureKind::TEXTURE_2D, 64, 1, TextureFormat::RGBA8);
+    const std::array<std::uint32_t, 64> pixels{};
+    texture->subImage2D(
+        0,
+        0,
+        64,
+        1,
+        PixelDataFormat::RGBA,
+        PixelDataType::UNSIGNED_BYTE,
+        pixels.data()
+    );
+    Buffer textureSnapshot(nullptr, sizeof(pixels), BUFFER_STORAGE_DYNAMIC);
+    auto *gate = metalDevice()->newSharedEvent();
+    ASSERT_NE(gate, nullptr);
+    metalCommandBuffer()->encodeWait(gate, 1);
+    EXPECT_TRUE(metalCommandBuffer()->retainedReferences());
+    device_->copyBufferSubData(source.get(), 0, &snapshot, 0, sizeof(bytes));
+    snapshotClearTexture(*texture, textureSnapshot, 4);
+    device_->present();
+    source.reset();
+    texture.reset();
+    gate->setSignaledValue(1);
+    device_->finish();
+    gate->release();
+    EXPECT_EQ(readWords(snapshot, 4), std::vector<std::uint32_t>(bytes.begin(), bytes.end()));
+    EXPECT_EQ(readWords(textureSnapshot, 64), std::vector<std::uint32_t>(64, 0u));
+}
+
+TEST_F(MetalFrameOverlapTest, MissingDrawableKeepsCopiesOrderedAndQueueBounded) {
+    using namespace IRRender;
+    device_->setGpuFrameTimingEnabled(true);
+    const std::array<std::uint32_t, 4> bytes{11, 22, 33, 44};
+    Buffer source(bytes.data(), sizeof(bytes), BUFFER_STORAGE_DYNAMIC);
+    Buffer snapshot(nullptr, sizeof(bytes), BUFFER_STORAGE_DYNAMIC);
+    for (int frame = 0; frame < 6; ++frame) {
+        device_->prepareCpuFrame(true);
+        device_->beginFrame();
+        EXPECT_EQ(metalDrawable(), nullptr);
+        EXPECT_NE(metalCommandBuffer(), nullptr);
+        device_->copyBufferSubData(&source, 0, &snapshot, 0, sizeof(bytes));
+        device_->setPresentingFrame(frame + 1);
+        device_->present();
+        EXPECT_LE(device_->framesInFlight(), 1u);
+    }
+    device_->finish();
+    EXPECT_EQ(readWords(snapshot, 4), std::vector<std::uint32_t>(bytes.begin(), bytes.end()));
+    EXPECT_EQ(device_->framesInFlight(), 0u);
+    EXPECT_EQ(device_->gpuFrameTimingStats().validFrames_, 6u);
+    device_->setGpuFrameTimingEnabled(false);
+}
+
 TEST_F(MetalBufferPatchTest, EncodersBeforeTheWriteReadOldBytesAndAfterReadNew) {
     using namespace IRRender;
     constexpr std::size_t kWords = 8;

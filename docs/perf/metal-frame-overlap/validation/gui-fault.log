@@ -1,0 +1,857 @@
+[fleet-jobs] display: 1 online CoreGraphics display(s), awake=1, NSScreen=1
++ fleet-build --target IRShapeDebug
+[  0%] Built target luajit_build
+[  4%] Built target enkiTS
+[  9%] Built target rtaudio
+[  9%] Built target rtmidi
+[ 18%] Built target easy_profiler
+[ 18%] Built target fmt
+[ 18%] Built target IRShapeDebugAssets
+[ 18%] Built target glm
+[ 31%] Built target meshoptimizer
+[ 40%] Built target glfw
+[ 45%] Built target spdlog
+[ 50%] Built target IrredenEngineMath
+[ 50%] Built target IrredenEngineProfile
+[ 50%] Built target IrredenEngineUtility
+[ 50%] Built target IrredenEngineJob
+[ 50%] Built target IrredenEngineTime
+[ 54%] Built target IrredenEngineAsset
+[ 59%] Built target IrredenEngineEntity
+[ 63%] Built target IrredenEngineCatalog
+[ 68%] Built target IrredenEngineSystem
+[ 72%] Built target IrredenEngineAudio
+[ 77%] Built target IrredenEngineWindow
+[ 77%] Built target IrredenEngineInput
+[ 90%] Built target IrredenEngineRendering
+[ 95%] Built target IrredenEngineVideo
+[ 95%] Built target IrredenEngineCommand
+[100%] Built target IrredenEngineWorld
+[100%] Built target IrredenEngineScripting
+[100%] Built target IrredenEngine
+[100%] Built target IRShapeDebug
++ fleet-run --timeout 120 IRShapeDebug --auto-screenshot 10 --gui-test --config-preset configs/presented-pick-previous.lua
+ir-run: running debug tree <worktree>/build
+ir-run: <engine-root>/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --gui-test --config-preset configs/presented-pick-previous.lua (timeout: 120s) (window mode: offscreen)
+[2026-11-17 18:24:56.268] [ClientLog] [info] Registering lua type LuaEntity
+[2026-11-17 18:24:56.269] [EngineLog] [info] Lua script loaded successfully: <worktree>/build/creations/demos/shape_debug/scripts/config.lua
+[2026-11-17 18:24:56.269] [ClientLog] [info] Registering lua type LuaEntity
+[2026-11-17 18:24:56.269] [EngineLog] [info] Lua script loaded successfully: configs/presented-pick-previous.lua
+[2026-11-17 18:24:56.270] [ClientLog] [info] Registering lua type LuaEntity
+[2026-11-17 18:24:56.270] [EngineLog] [info] Lua script loaded successfully: <worktree>/build/creations/demos/shape_debug/scripts/config.lua
+[2026-11-17 18:24:56.270] [ClientLog] [info] Registering lua type LuaEntity
+[2026-11-17 18:24:56.270] [EngineLog] [info] Lua script loaded successfully: configs/presented-pick-previous.lua
+[2026-11-17 18:24:56.270] [EngineLog] [info] Config preset overlay: configs/presented-pick-previous.lua
+[2026-11-17 18:24:56.270] [EngineLog] [info] --window-mode / IR_WINDOW_MODE override: window_mode = offscreen
+[2026-11-17 18:24:56.298] [EngineLog] [info] Window mode 'offscreen': activation policy set to accessory (no Dock icon).
+[2026-11-17 18:24:56.298] [EngineLog] [info] Discovered 1 display monitors
+[2026-11-17 18:24:56.298] [EngineLog] [info] Monitor 0: 'Built-in Retina Display' @ (0, 0), mode=1800x1169 120Hz
+[2026-11-17 18:24:56.344] [EngineLog] [info] Created IRGLFWWindow (window mode: offscreen).
+[2026-11-17 18:24:56.344] [ClientLog] [info] Registering lua type LuaEntity
+[2026-11-17 18:24:56.400] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-11-17 18:24:56.400] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-11-17 18:24:56.400] [EngineLog] [info] Created SystemManager
+[2026-11-17 18:24:56.400] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-17 18:24:56.400] [EngineLog] [info] JobManager: started with 10 worker threads
+[2026-11-17 18:24:56.401] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-11-17 18:24:56.401] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-11-17 18:24:56.401] [EngineLog] [info] Regestered component type=N12IRComponents16C_KeyMouseButtonE, sizeof=4 with id=258
+[2026-11-17 18:24:56.401] [EngineLog] [info] Regestered component type=N12IRComponents11C_KeyStatusE, sizeof=12 with id=259
+[2026-11-17 18:24:56.401] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-11-17 18:24:56.401] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-11-17 18:24:56.401] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-11-17 18:24:56.401] [EngineLog] [info] Created archetype node with components: [ 256 257 258 259 ], id=4
+[2026-11-17 18:24:56.401] [EngineLog] [info] Joystick 0 not present
+[2026-11-17 18:24:56.401] [EngineLog] [info] Joystick 1 not present
+[2026-11-17 18:24:56.401] [EngineLog] [info] Joystick 2 not present
+[2026-11-17 18:24:56.401] [EngineLog] [info] Joystick 3 not present
+[2026-11-17 18:24:56.401] [EngineLog] [info] Joystick 4 not present
+[2026-11-17 18:24:56.401] [EngineLog] [info] Joystick 5 not present
+[2026-11-17 18:24:56.401] [EngineLog] [info] Joystick 6 not present
+[2026-11-17 18:24:56.401] [EngineLog] [info] Joystick 7 not present
+[2026-11-17 18:24:56.401] [EngineLog] [info] Joystick 8 not present
+[2026-11-17 18:24:56.401] [EngineLog] [info] Joystick 9 not present
+[2026-11-17 18:24:56.401] [EngineLog] [info] Joystick 10 not present
+[2026-11-17 18:24:56.401] [EngineLog] [info] Joystick 11 not present
+[2026-11-17 18:24:56.402] [EngineLog] [info] Joystick 12 not present
+[2026-11-17 18:24:56.402] [EngineLog] [info] Joystick 13 not present
+[2026-11-17 18:24:56.402] [EngineLog] [info] Joystick 14 not present
+[2026-11-17 18:24:56.402] [EngineLog] [info] Joystick 15 not present
+[2026-11-17 18:24:56.402] [EngineLog] [info] Created InputManager
+[2026-11-17 18:24:56.402] [EngineLog] [info] Created CommandManager
+[2026-11-17 18:24:56.402] [EngineLog] [info] Creating an resource id pool. idCapacity=1048575
+[2026-11-17 18:24:56.402] [EngineLog] [info] Registered resource type N8IRRender11ShaderStageE with ID=0
+[2026-11-17 18:24:56.402] [EngineLog] [info] Registered resource type N8IRRender9Texture2DE with ID=1
+[2026-11-17 18:24:56.402] [EngineLog] [info] Registered resource type N8IRRender9Texture3DE with ID=2
+[2026-11-17 18:24:56.402] [EngineLog] [info] Registered resource type N8IRRender11FramebufferE with ID=3
+[2026-11-17 18:24:56.402] [EngineLog] [info] Registered resource type N8IRRender14ShaderPipelineE with ID=4
+[2026-11-17 18:24:56.402] [EngineLog] [info] Registered resource type N8IRRender6BufferE with ID=5
+[2026-11-17 18:24:56.402] [EngineLog] [info] Registered resource type N8IRRender12VertexLayoutE with ID=6
+[2026-11-17 18:24:56.402] [EngineLog] [info] Created RenderingResourceManager
+[2026-11-17 18:24:56.403] [EngineLog] [info] Initializing Metal render implementation.
+[2026-11-17 18:24:56.404] [EngineLog] [info] Created ResourceId=0, type=3
+[2026-11-17 18:24:56.404] [EngineLog] [info] Regestered component type=N12IRComponents6C_NameE, sizeof=24 with id=385
+[2026-11-17 18:24:56.404] [EngineLog] [info] Regestered component type=N12IRComponents25C_TrixelCanvasFramebufferE, sizeof=16 with id=386
+[2026-11-17 18:24:56.404] [EngineLog] [info] Regestered component type=N12IRComponents30C_FrameDataTrixelToFramebufferE, sizeof=288 with id=387
+[2026-11-17 18:24:56.404] [EngineLog] [info] Regestered component type=N12IRComponents11C_ZoomLevelE, sizeof=8 with id=388
+[2026-11-17 18:24:56.404] [EngineLog] [info] Created archetype node with components: [ 256 257 385 ], id=5
+[2026-11-17 18:24:56.404] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 ], id=6
+[2026-11-17 18:24:56.404] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 387 ], id=7
+[2026-11-17 18:24:56.404] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 387 388 ], id=8
+[2026-11-17 18:24:56.404] [EngineLog] [info] Regestered component type=N12IRComponents23C_VoxelPoolTeardownHookE, sizeof=4 with id=389
+[2026-11-17 18:24:56.404] [EngineLog] [info] Created archetype node with components: [ 389 ], id=9
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created ResourceId=1, type=1
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created ResourceId=2, type=1
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created ResourceId=3, type=1
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created ResourceId=4, type=1
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created ResourceId=5, type=1
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created ResourceId=6, type=1
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created ResourceId=7, type=1
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created ResourceId=8, type=1
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created ResourceId=9, type=1
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created ResourceId=10, type=1
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created ResourceId=11, type=1
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created ResourceId=12, type=1
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created ResourceId=13, type=1
+[2026-11-17 18:24:56.405] [EngineLog] [info] Regestered component type=N12IRComponents11C_VoxelPoolE, sizeof=656 with id=392
+[2026-11-17 18:24:56.405] [EngineLog] [info] Regestered component type=N12IRComponents15C_SizeTrianglesE, sizeof=8 with id=393
+[2026-11-17 18:24:56.405] [EngineLog] [info] Regestered component type=N12IRComponents24C_TriangleCanvasTexturesE, sizeof=504 with id=394
+[2026-11-17 18:24:56.405] [EngineLog] [info] Regestered component type=N12IRComponents21C_CanvasLocalRotationE, sizeof=44 with id=395
+[2026-11-17 18:24:56.405] [EngineLog] [info] Regestered component type=N12IRComponents23C_PerAxisTrixelCanvasesE, sizeof=1576 with id=396
+[2026-11-17 18:24:56.405] [EngineLog] [info] Regestered component type=N12IRComponents26C_DetachedRevoxelizeBufferE, sizeof=96 with id=397
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 ], id=10
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 ], id=11
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 ], id=12
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 ], id=13
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 ], id=14
+[2026-11-17 18:24:56.405] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 ], id=15
+[2026-11-17 18:24:56.406] [EngineLog] [info] Regestered relation type=1 id=398 related to entity=384
+[2026-11-17 18:24:56.406] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 ], id=16
+[2026-11-17 18:24:56.406] [EngineLog] [info] Created voxel pool canvas 391 with framebuffer parent 384, size 642,722
+[2026-11-17 18:24:56.406] [EngineLog] [info] Created ResourceId=14, type=1
+[2026-11-17 18:24:56.406] [EngineLog] [info] Created ResourceId=15, type=1
+[2026-11-17 18:24:56.406] [EngineLog] [info] Created ResourceId=16, type=1
+[2026-11-17 18:24:56.406] [EngineLog] [info] Created ResourceId=17, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=18, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=19, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=20, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=21, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=22, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=23, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=24, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=25, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=26, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 ], id=17
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 ], id=18
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 ], id=19
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created trixel canvas 399 with framebuffer parent 384, size 642,722
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=27, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=28, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=29, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=30, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=31, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=32, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=33, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=34, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=35, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=36, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=37, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=38, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created ResourceId=39, type=1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created trixel canvas 400 with framebuffer parent 384, size 642,722
+[2026-11-17 18:24:56.407] [EngineLog] [info] Regestered component type=N12IRComponents8C_CameraE, sizeof=2 with id=402
+[2026-11-17 18:24:56.407] [EngineLog] [info] Regestered component type=N12IRComponents15C_Position2DIsoE, sizeof=8 with id=403
+[2026-11-17 18:24:56.407] [EngineLog] [info] Regestered component type=N12IRComponents15C_Velocity2DIsoE, sizeof=8 with id=404
+[2026-11-17 18:24:56.407] [EngineLog] [info] Regestered component type=N12IRComponents22C_CameraZoomFrameStateE, sizeof=64 with id=405
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created archetype node with components: [ 256 257 388 ], id=20
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 ], id=21
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 ], id=22
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 404 ], id=23
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 404 405 ], id=24
+[2026-11-17 18:24:56.407] [EngineLog] [info] Fit mode: 1
+[2026-11-17 18:24:56.407] [EngineLog] [info] Voxel pool: edge=64 (262144 voxels)
+[2026-11-17 18:24:56.407] [EngineLog] [info] Metal offscreen screen target attached (2560x1440, paced at 120 Hz).
+[2026-11-17 18:24:56.407] [EngineLog] [info] Regestered component type=N12IRComponents12C_PersistentE, sizeof=1 with id=406
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 404 405 406 ], id=25
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 387 388 406 ], id=26
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 ], id=27
+[2026-11-17 18:24:56.407] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 406 ], id=28
+[2026-11-17 18:24:56.407] [EngineLog] [info] Regestered component type=N12IRComponents11C_GuiCanvasE, sizeof=1 with id=407
+[2026-11-17 18:24:56.408] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 406 407 ], id=29
+[2026-11-17 18:24:56.408] [EngineLog] [info] Regestered component type=N12IRComponents28C_TrixelCanvasRenderBehaviorE, sizeof=24 with id=408
+[2026-11-17 18:24:56.408] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 406 407 408 ], id=30
+[2026-11-17 18:24:56.408] [EngineLog] [info] Created ResourceId=40, type=5
+[2026-11-17 18:24:56.408] [EngineLog] [info] Created ResourceId=41, type=5
+[2026-11-17 18:24:56.408] [EngineLog] [info] Created ResourceId=42, type=6
+[2026-11-17 18:24:56.408] [EngineLog] [info]  Resource 42 named QuadVAO
+[2026-11-17 18:24:56.408] [EngineLog] [info] Created ResourceId=43, type=5
+[2026-11-17 18:24:56.408] [EngineLog] [info] Created ResourceId=44, type=6
+[2026-11-17 18:24:56.408] [EngineLog] [info]  Resource 44 named QuadVAOArrays
+[2026-11-17 18:24:56.408] [EngineLog] [info] Created renderer.
+[2026-11-17 18:24:56.427] [EngineLog] [info] Number of devices found: 2
+[2026-11-17 18:24:56.427] [EngineLog] [info] Device: Apple Inc.: MacBook Pro Speakers
+[2026-11-17 18:24:56.427] [EngineLog] [info] Output channels: 2
+[2026-11-17 18:24:56.427] [EngineLog] [info] This is default output device
+[2026-11-17 18:24:56.427] [EngineLog] [info] Native formats: 16
+[2026-11-17 18:24:56.427] [EngineLog] [info] Sample rates: [44100, 48000, 88200, 96000]
+[2026-11-17 18:24:56.427] [EngineLog] [info] Preferred sample rate: 48000
+[2026-11-17 18:24:56.427] [EngineLog] [info] Device: Apple Inc.: MacBook Pro Microphone
+[2026-11-17 18:24:56.427] [EngineLog] [info] Input channels: 1
+[2026-11-17 18:24:56.427] [EngineLog] [info] This is default input device
+[2026-11-17 18:24:56.427] [EngineLog] [info] Native formats: 16
+[2026-11-17 18:24:56.427] [EngineLog] [info] Sample rates: [44100, 48000, 88200, 96000]
+[2026-11-17 18:24:56.427] [EngineLog] [info] Preferred sample rate: 48000
+[2026-11-17 18:24:56.997] [EngineLog] [info] Created MidiIn
+[2026-11-17 18:24:56.998] [EngineLog] [info] Created MidiOut
+[2026-11-17 18:24:57.035] [EngineLog] [info] AudioPlayback: file playback engine up (5 buses)
+[2026-11-17 18:24:57.035] [EngineLog] [info] Created AudioManager
+[2026-11-17 18:24:57.035] [EngineLog] [info] TimeManager initalized
+[2026-11-17 18:24:57.035] [EngineLog] [info] Created VideoRecorder instance.
+[2026-11-17 18:24:57.035] [EngineLog] [info] Regestered component type=N12IRComponents18C_GuiCanvasDisplayE, sizeof=1 with id=409
+[2026-11-17 18:24:57.035] [EngineLog] [info] Created archetype node with components: [ 409 ], id=31
+[2026-11-17 18:24:57.039] [EngineLog] [info] Loaded image width=1024, height=1053, channels=4
+[2026-11-17 18:24:57.039] [EngineLog] [info] Freeing image data
+[2026-11-17 18:24:57.039] [EngineLog] [info] Metal device: Apple M4 Max
+[2026-11-17 18:24:57.040] [EngineLog] [info] Regestered component type=N12IRComponents21C_EntityEventHandlersE, sizeof=104 with id=411
+[2026-11-17 18:24:57.040] [EngineLog] [info] Created archetype node with components: [ 411 ], id=32
+[2026-11-17 18:24:57.040] [EngineLog] [info] Initalized game world
+[2026-11-17 18:24:57.040] [ClientLog] [info] Starting creation: shape_debug
+[2026-11-17 18:24:57.040] [EngineLog] [info] Regestered component type=N12IRComponents16C_ActiveLodLevelE, sizeof=4 with id=413
+[2026-11-17 18:24:57.040] [EngineLog] [info] Regestered component type=N12IRComponents13C_VoxelSetNewE, sizeof=200 with id=414
+[2026-11-17 18:24:57.040] [EngineLog] [info] Regestered component type=N12IRComponents9C_SettledE, sizeof=1 with id=415
+[2026-11-17 18:24:57.040] [EngineLog] [info] Regestered component type=N12IRComponents14C_RotationModeE, sizeof=1 with id=416
+[2026-11-17 18:24:57.041] [EngineLog] [info] Regestered component type=N12IRComponents13C_HitBox2DGuiE, sizeof=20 with id=417
+[2026-11-17 18:24:57.041] [EngineLog] [info] Regestered component type=N12IRComponents13C_GuiPositionE, sizeof=8 with id=418
+[2026-11-17 18:24:57.041] [EngineLog] [info] Regestered component type=N12IRComponents20C_WidgetFocusRequestE, sizeof=8 with id=419
+[2026-11-17 18:24:57.041] [EngineLog] [info] Created archetype node with components: [ 419 ], id=33
+[2026-11-17 18:24:57.041] [EngineLog] [info] Regestered component type=N12IRComponents13C_WidgetThemeE, sizeof=164 with id=421
+[2026-11-17 18:24:57.041] [EngineLog] [info] Created archetype node with components: [ 421 ], id=34
+[2026-11-17 18:24:57.041] [EngineLog] [info] Regestered component type=N12IRComponents18C_WidgetInputFrameE, sizeof=56 with id=423
+[2026-11-17 18:24:57.041] [EngineLog] [info] Created archetype node with components: [ 423 ], id=35
+[2026-11-17 18:24:57.041] [EngineLog] [info] Regestered component type=N12IRComponents22C_WidgetHotkeyRegistryE, sizeof=40 with id=425
+[2026-11-17 18:24:57.041] [EngineLog] [info] Created archetype node with components: [ 425 ], id=36
+[2026-11-17 18:24:57.041] [EngineLog] [info] Regestered component type=N12IRComponents8C_WidgetE, sizeof=20 with id=427
+[2026-11-17 18:24:57.041] [EngineLog] [info] Regestered component type=N12IRComponents13C_WidgetStateE, sizeof=40 with id=428
+[2026-11-17 18:24:57.041] [EngineLog] [info] Regestered component type=N12IRComponents16C_WidgetCheckboxE, sizeof=32 with id=429
+[2026-11-17 18:24:57.041] [EngineLog] [info] Regestered component type=N12IRComponents16C_WidgetDropdownE, sizeof=80 with id=430
+[2026-11-17 18:24:57.041] [EngineLog] [info] Regestered component type=N12IRComponents14C_WidgetSliderE, sizeof=64 with id=431
+[2026-11-17 18:24:57.041] [EngineLog] [info] Regestered component type=N12IRComponents19C_SettingsMenuStateE, sizeof=1 with id=432
+[2026-11-17 18:24:57.041] [EngineLog] [info] Created archetype node with components: [ 432 ], id=37
+[2026-11-17 18:24:57.041] [EngineLog] [info] Regestered component type=N12IRComponents18C_SettingsRegistryE, sizeof=24 with id=434
+[2026-11-17 18:24:57.041] [EngineLog] [info] Created archetype node with components: [ 434 ], id=38
+[2026-11-17 18:24:57.047] [EngineLog] [info] Created ResourceId=45, type=4
+[2026-11-17 18:24:57.047] [EngineLog] [info]  Resource 45 named UpdateVoxelPositionsProgram
+[2026-11-17 18:24:57.047] [EngineLog] [info] Created ResourceId=46, type=5
+[2026-11-17 18:24:57.047] [EngineLog] [info]  Resource 46 named LocalVoxelPositionBuffer
+[2026-11-17 18:24:57.047] [EngineLog] [info] Created ResourceId=47, type=5
+[2026-11-17 18:24:57.047] [EngineLog] [info]  Resource 47 named EntityTransformBuffer
+[2026-11-17 18:24:57.047] [EngineLog] [info] Created ResourceId=48, type=5
+[2026-11-17 18:24:57.047] [EngineLog] [info]  Resource 48 named UpdateParamsBuffer
+[2026-11-17 18:24:57.047] [EngineLog] [info] Regestered component type=N12IRComponents7C_JointE, sizeof=1 with id=436
+[2026-11-17 18:24:57.047] [EngineLog] [info] Created ResourceId=49, type=5
+[2026-11-17 18:24:57.047] [EngineLog] [info]  Resource 49 named LightOcclusionGridBuffer
+[2026-11-17 18:24:57.047] [EngineLog] [info] Regestered component type=N12IRComponents14C_CanvasCameraE, sizeof=32 with id=437
+[2026-11-17 18:24:57.050] [EngineLog] [info] Created ResourceId=50, type=4
+[2026-11-17 18:24:57.050] [EngineLog] [info]  Resource 50 named VoxelCompactProgram
+[2026-11-17 18:24:57.051] [EngineLog] [info] Created ResourceId=51, type=4
+[2026-11-17 18:24:57.051] [EngineLog] [info]  Resource 51 named VoxelCompactCeilingProgram
+[2026-11-17 18:24:57.052] [EngineLog] [info] Created ResourceId=52, type=4
+[2026-11-17 18:24:57.052] [EngineLog] [info]  Resource 52 named SingleVoxelProgram1
+[2026-11-17 18:24:57.053] [EngineLog] [info] Created ResourceId=53, type=4
+[2026-11-17 18:24:57.053] [EngineLog] [info]  Resource 53 named SingleVoxelProgram1Feeder
+[2026-11-17 18:24:57.055] [EngineLog] [info] Created ResourceId=54, type=4
+[2026-11-17 18:24:57.055] [EngineLog] [info]  Resource 54 named SingleVoxel2
+[2026-11-17 18:24:57.056] [EngineLog] [info] Created ResourceId=55, type=4
+[2026-11-17 18:24:57.056] [EngineLog] [info]  Resource 55 named SingleVoxelWinnerResolve
+[2026-11-17 18:24:57.058] [EngineLog] [info] Created ResourceId=56, type=4
+[2026-11-17 18:24:57.058] [EngineLog] [info]  Resource 56 named SingleVoxel2Winner
+[2026-11-17 18:24:57.058] [EngineLog] [info] Created ResourceId=57, type=4
+[2026-11-17 18:24:57.058] [EngineLog] [info]  Resource 57 named ChunkOcclusionProgram
+[2026-11-17 18:24:57.058] [EngineLog] [info] Created ResourceId=58, type=4
+[2026-11-17 18:24:57.058] [EngineLog] [info]  Resource 58 named PerAxisCellCompactProgram
+[2026-11-17 18:24:57.059] [EngineLog] [info] Created ResourceId=59, type=4
+[2026-11-17 18:24:57.059] [EngineLog] [info]  Resource 59 named PerAxisCellFinalizeProgram
+[2026-11-17 18:24:57.059] [EngineLog] [info] Created ResourceId=60, type=4
+[2026-11-17 18:24:57.059] [EngineLog] [info]  Resource 60 named PerAxisCellClearProgram
+[2026-11-17 18:24:57.061] [EngineLog] [info] Created ResourceId=61, type=4
+[2026-11-17 18:24:57.061] [EngineLog] [info]  Resource 61 named SingleVoxelOverflowAppend
+[2026-11-17 18:24:57.061] [EngineLog] [info] Created ResourceId=62, type=4
+[2026-11-17 18:24:57.061] [EngineLog] [info]  Resource 62 named PerAxisOccluderReduceProgram
+[2026-11-17 18:24:57.062] [EngineLog] [info] Created ResourceId=63, type=4
+[2026-11-17 18:24:57.062] [EngineLog] [info]  Resource 63 named PerAxisOverflowSortProgram
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=64, type=4
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 64 named RevoxelizeDetachedProgram
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=65, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 65 named RevoxelizeDetachedParamsBuffer
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=66, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 66 named SingleVoxelFrameData
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=67, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 67 named PerAxisWinnerPlaceholder
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=68, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 68 named OverflowSortArgs
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=69, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 69 named OverflowSortArgsCopy
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=70, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 70 named VoxelPositionBuffer
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=71, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 71 named VoxelColorBuffer
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=72, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 72 named VoxelActiveMaskBuffer
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=73, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 73 named VoxelEntityIdBuffer
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=74, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 74 named ChunkVisibilityBuffer
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=75, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 75 named SunFaceChunkVisibilityBuffer
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=76, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 76 named CompactedVoxelIndices
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=77, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 77 named IndirectDispatchParams
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=78, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 78 named IndirectDispatchArgs
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=79, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 79 named PerAxisIndirectDispatchArgs
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=80, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 80 named PerAxisCompactedVoxelIndices
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=81, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 81 named PerAxisIndirectDispatchParams
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=82, type=1
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 82 named FogCullVisiblePlaceholder
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=83, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 83 named FogCullObservers
+[2026-11-17 18:24:57.063] [EngineLog] [info] Created ResourceId=84, type=5
+[2026-11-17 18:24:57.063] [EngineLog] [info]  Resource 84 named ChunkOcclusionQueryBuffer
+[2026-11-17 18:24:57.066] [EngineLog] [info] Created ResourceId=85, type=4
+[2026-11-17 18:24:57.066] [EngineLog] [info]  Resource 85 named ShapesToTrixelDepthProgram
+[2026-11-17 18:24:57.068] [EngineLog] [info] Created ResourceId=86, type=4
+[2026-11-17 18:24:57.068] [EngineLog] [info]  Resource 86 named ShapesToTrixelPublishProgram
+[2026-11-17 18:24:57.069] [EngineLog] [info] Created ResourceId=87, type=4
+[2026-11-17 18:24:57.069] [EngineLog] [info]  Resource 87 named ShapesToTrixelCasterProgram
+[2026-11-17 18:24:57.071] [EngineLog] [info] Created ResourceId=88, type=4
+[2026-11-17 18:24:57.071] [EngineLog] [info]  Resource 88 named ShapesToTrixelOwnerProgram
+[2026-11-17 18:24:57.071] [EngineLog] [info] Created ResourceId=89, type=5
+[2026-11-17 18:24:57.071] [EngineLog] [info]  Resource 89 named ShapesFrameDataBuffer
+[2026-11-17 18:24:57.071] [EngineLog] [info] Created ResourceId=90, type=5
+[2026-11-17 18:24:57.071] [EngineLog] [info]  Resource 90 named JointTransformBuffer
+[2026-11-17 18:24:57.071] [EngineLog] [info] Created ResourceId=91, type=5
+[2026-11-17 18:24:57.071] [EngineLog] [info]  Resource 91 named AnimationParamsBuffer
+[2026-11-17 18:24:57.071] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=438
+[2026-11-17 18:24:57.072] [EngineLog] [info] Created ResourceId=92, type=4
+[2026-11-17 18:24:57.072] [EngineLog] [info]  Resource 92 named ComputeVoxelAOProgram
+[2026-11-17 18:24:57.073] [EngineLog] [info] Created ResourceId=93, type=4
+[2026-11-17 18:24:57.073] [EngineLog] [info]  Resource 93 named ComputeVoxelAOShapesProgram
+[2026-11-17 18:24:57.074] [EngineLog] [info] Created ResourceId=94, type=4
+[2026-11-17 18:24:57.074] [EngineLog] [info]  Resource 94 named ComputeVoxelAOSmoothYawProgram
+[2026-11-17 18:24:57.076] [EngineLog] [info] Created ResourceId=95, type=4
+[2026-11-17 18:24:57.076] [EngineLog] [info]  Resource 95 named ComputeVoxelAOShapesSmoothYawProgram
+[2026-11-17 18:24:57.076] [EngineLog] [info] Regestered component type=N12IRComponents17C_CanvasAOTextureE, sizeof=16 with id=439
+[2026-11-17 18:24:57.076] [EngineLog] [info] Created ResourceId=96, type=4
+[2026-11-17 18:24:57.076] [EngineLog] [info]  Resource 96 named BuildDistanceHiZProgram
+[2026-11-17 18:24:57.077] [EngineLog] [info] Created ResourceId=97, type=4
+[2026-11-17 18:24:57.077] [EngineLog] [info]  Resource 97 named ResolvePerAxisScreenDepthProgram
+[2026-11-17 18:24:57.077] [EngineLog] [info] Created ResourceId=98, type=4
+[2026-11-17 18:24:57.077] [EngineLog] [info]  Resource 98 named ResolvePerAxisBlitProgram
+[2026-11-17 18:24:57.078] [EngineLog] [info] Created ResourceId=99, type=4
+[2026-11-17 18:24:57.078] [EngineLog] [info]  Resource 99 named ClearSunShadowMapProgram
+[2026-11-17 18:24:57.080] [EngineLog] [info] Created ResourceId=100, type=4
+[2026-11-17 18:24:57.080] [EngineLog] [info]  Resource 100 named BakeSunShadowMapProgram
+[2026-11-17 18:24:57.081] [EngineLog] [info] Created ResourceId=101, type=4
+[2026-11-17 18:24:57.081] [EngineLog] [info]  Resource 101 named ResolveWorldPlacedDepthProgram
+[2026-11-17 18:24:57.081] [EngineLog] [info] Created ResourceId=102, type=4
+[2026-11-17 18:24:57.081] [EngineLog] [info]  Resource 102 named WorldPlacedDepthBlitProgram
+[2026-11-17 18:24:57.081] [EngineLog] [info] Created ResourceId=103, type=5
+[2026-11-17 18:24:57.081] [EngineLog] [info]  Resource 103 named SunShadowDepthMap
+[2026-11-17 18:24:57.081] [EngineLog] [info] Regestered component type=N12IRComponents17C_CanvasSunShadowE, sizeof=16 with id=440
+[2026-11-17 18:24:57.081] [EngineLog] [info] Created ResourceId=104, type=5
+[2026-11-17 18:24:57.081] [EngineLog] [info]  Resource 104 named AnalyticCasterFrameBuffer
+[2026-11-17 18:24:57.084] [EngineLog] [info] Created ResourceId=105, type=4
+[2026-11-17 18:24:57.084] [EngineLog] [info]  Resource 105 named BoxSunShadowProgram
+[2026-11-17 18:24:57.085] [EngineLog] [info] Created ResourceId=106, type=4
+[2026-11-17 18:24:57.085] [EngineLog] [info]  Resource 106 named SunHierarchyProgram
+[2026-11-17 18:24:57.085] [EngineLog] [info] Created ResourceId=107, type=5
+[2026-11-17 18:24:57.085] [EngineLog] [info]  Resource 107 named SunHierarchyFrameBuffer00
+[2026-11-17 18:24:57.085] [EngineLog] [info] Created ResourceId=108, type=5
+[2026-11-17 18:24:57.085] [EngineLog] [info]  Resource 108 named SunHierarchyFrameBuffer01
+[2026-11-17 18:24:57.085] [EngineLog] [info] Created ResourceId=109, type=5
+[2026-11-17 18:24:57.085] [EngineLog] [info]  Resource 109 named SunHierarchyFrameBuffer02
+[2026-11-17 18:24:57.085] [EngineLog] [info] Created ResourceId=110, type=5
+[2026-11-17 18:24:57.085] [EngineLog] [info]  Resource 110 named SunHierarchyFrameBuffer10
+[2026-11-17 18:24:57.085] [EngineLog] [info] Created ResourceId=111, type=5
+[2026-11-17 18:24:57.085] [EngineLog] [info]  Resource 111 named SunHierarchyFrameBuffer11
+[2026-11-17 18:24:57.085] [EngineLog] [info] Created ResourceId=112, type=5
+[2026-11-17 18:24:57.085] [EngineLog] [info]  Resource 112 named SunHierarchyFrameBuffer12
+[2026-11-17 18:24:57.085] [EngineLog] [info] Created ResourceId=113, type=5
+[2026-11-17 18:24:57.085] [EngineLog] [info]  Resource 113 named SunHierarchyOrderFrameBuffer1
+[2026-11-17 18:24:57.085] [EngineLog] [info] Created ResourceId=114, type=5
+[2026-11-17 18:24:57.085] [EngineLog] [info]  Resource 114 named SunHierarchyOrderFrameBuffer2
+[2026-11-17 18:24:57.085] [EngineLog] [info] Created ResourceId=115, type=5
+[2026-11-17 18:24:57.085] [EngineLog] [info]  Resource 115 named SunHierarchyOrderFrameBuffer3
+[2026-11-17 18:24:57.087] [EngineLog] [info] Created ResourceId=116, type=4
+[2026-11-17 18:24:57.087] [EngineLog] [info]  Resource 116 named VoxelSunFacesProgram
+[2026-11-17 18:24:57.087] [EngineLog] [info] Created ResourceId=117, type=5
+[2026-11-17 18:24:57.087] [EngineLog] [info]  Resource 117 named VoxelSunFaceFrameBuffer
+[2026-11-17 18:24:57.087] [EngineLog] [info] Created ResourceId=118, type=5
+[2026-11-17 18:24:57.087] [EngineLog] [info]  Resource 118 named VoxelSunFaceAdmissionScratch
+[2026-11-17 18:24:57.087] [EngineLog] [info] Created ResourceId=119, type=5
+[2026-11-17 18:24:57.087] [EngineLog] [info]  Resource 119 named DetachedShadowFrameBuffer
+[2026-11-17 18:24:57.087] [EngineLog] [info] Created ResourceId=120, type=5
+[2026-11-17 18:24:57.087] [EngineLog] [info]  Resource 120 named SunShadowFogObservers
+[2026-11-17 18:24:57.090] [EngineLog] [info] Created ResourceId=121, type=4
+[2026-11-17 18:24:57.090] [EngineLog] [info]  Resource 121 named ComputeSunShadowProgram
+[2026-11-17 18:24:57.092] [EngineLog] [info] Created ResourceId=122, type=4
+[2026-11-17 18:24:57.092] [EngineLog] [info]  Resource 122 named ComputeSunShadowShapesProgram
+[2026-11-17 18:24:57.095] [EngineLog] [info] Created ResourceId=123, type=4
+[2026-11-17 18:24:57.095] [EngineLog] [info]  Resource 123 named ComputeSunShadowSurfaceProgram
+[2026-11-17 18:24:57.097] [EngineLog] [info] Created ResourceId=124, type=4
+[2026-11-17 18:24:57.097] [EngineLog] [info]  Resource 124 named ComputeSunShadowShapesSurfaceProgram
+[2026-11-17 18:24:57.097] [EngineLog] [info] Created ResourceId=125, type=5
+[2026-11-17 18:24:57.097] [EngineLog] [info]  Resource 125 named ComputeSunShadowFrameData
+[2026-11-17 18:24:57.097] [EngineLog] [info] Created ResourceId=126, type=5
+[2026-11-17 18:24:57.097] [EngineLog] [info]  Resource 126 named ShapeReceiverFrameData
+[2026-11-17 18:24:57.097] [EngineLog] [info] Created ResourceId=127, type=5
+[2026-11-17 18:24:57.097] [EngineLog] [info]  Resource 127 named ShapeReceiverFallback
+[2026-11-17 18:24:57.097] [EngineLog] [info] Created ResourceId=128, type=4
+[2026-11-17 18:24:57.097] [EngineLog] [info]  Resource 128 named ClearLightVolumeProgram
+[2026-11-17 18:24:57.098] [EngineLog] [info] Created ResourceId=129, type=4
+[2026-11-17 18:24:57.098] [EngineLog] [info]  Resource 129 named SeedLightVolumeProgram
+[2026-11-17 18:24:57.098] [EngineLog] [info] Created ResourceId=130, type=4
+[2026-11-17 18:24:57.098] [EngineLog] [info]  Resource 130 named PropagateLightVolumeProgram
+[2026-11-17 18:24:57.098] [EngineLog] [info] Created ResourceId=131, type=5
+[2026-11-17 18:24:57.098] [EngineLog] [info]  Resource 131 named LightSourceBuffer
+[2026-11-17 18:24:57.098] [EngineLog] [info] Created ResourceId=132, type=5
+[2026-11-17 18:24:57.098] [EngineLog] [info]  Resource 132 named LightVolumeParamsBuffer
+[2026-11-17 18:24:57.098] [EngineLog] [info] Regestered component type=N12IRComponents19C_CanvasLightVolumeE, sizeof=80 with id=441
+[2026-11-17 18:24:57.101] [EngineLog] [info] Created ResourceId=133, type=4
+[2026-11-17 18:24:57.101] [EngineLog] [info]  Resource 133 named LightingToTrixelProgram
+[2026-11-17 18:24:57.104] [EngineLog] [info] Created ResourceId=134, type=4
+[2026-11-17 18:24:57.104] [EngineLog] [info]  Resource 134 named LightingToTrixelShapesProgram
+[2026-11-17 18:24:57.106] [EngineLog] [info] Created ResourceId=135, type=4
+[2026-11-17 18:24:57.106] [EngineLog] [info]  Resource 135 named LightOverflowFacesProgram
+[2026-11-17 18:24:57.106] [EngineLog] [info] Created ResourceId=136, type=5
+[2026-11-17 18:24:57.106] [EngineLog] [info]  Resource 136 named LightingToTrixelFrameData
+[2026-11-17 18:24:57.106] [EngineLog] [info] Created ResourceId=137, type=1
+[2026-11-17 18:24:57.106] [EngineLog] [info]  Resource 137 named PaletteLUT_Nearest
+[2026-11-17 18:24:57.106] [EngineLog] [info] Created ResourceId=138, type=1
+[2026-11-17 18:24:57.106] [EngineLog] [info]  Resource 138 named PaletteLUT_Linear
+[2026-11-17 18:24:57.106] [EngineLog] [info] Regestered component type=N12IRComponents24C_PerAxisSurfaceLightingE, sizeof=2 with id=442
+[2026-11-17 18:24:57.106] [EngineLog] [info] Created archetype node with components: [ 442 ], id=39
+[2026-11-17 18:24:57.106] [EngineLog] [info] Created ResourceId=139, type=5
+[2026-11-17 18:24:57.106] [EngineLog] [info]  Resource 139 named FogSurfaceObservers
+[2026-11-17 18:24:57.107] [EngineLog] [info] Created ResourceId=140, type=4
+[2026-11-17 18:24:57.107] [EngineLog] [info]  Resource 140 named TextToTrixelProgram
+[2026-11-17 18:24:57.107] [EngineLog] [info] Created ResourceId=141, type=5
+[2026-11-17 18:24:57.107] [EngineLog] [info]  Resource 141 named FontDataBuffer
+[2026-11-17 18:24:57.107] [EngineLog] [info] Created ResourceId=142, type=5
+[2026-11-17 18:24:57.107] [EngineLog] [info]  Resource 142 named GlyphDrawCommandBuffer
+[2026-11-17 18:24:57.107] [EngineLog] [info] Regestered component type=N12IRComponents13C_TextSegmentE, sizeof=24 with id=444
+[2026-11-17 18:24:57.107] [EngineLog] [info] Regestered component type=N12IRComponents12C_GuiElementE, sizeof=1 with id=445
+[2026-11-17 18:24:57.107] [EngineLog] [info] Regestered component type=N12IRComponents11C_TextStyleE, sizeof=56 with id=446
+[2026-11-17 18:24:57.107] [EngineLog] [info] Regestered component type=N12IRComponents14C_PerfHudStateE, sizeof=8 with id=447
+[2026-11-17 18:24:57.107] [EngineLog] [info] Created archetype node with components: [ 447 ], id=40
+[2026-11-17 18:24:57.107] [EngineLog] [info] Regestered component type=N12IRComponents18C_HelpOverlayStateE, sizeof=1 with id=449
+[2026-11-17 18:24:57.107] [EngineLog] [info] Created archetype node with components: [ 449 ], id=41
+[2026-11-17 18:24:57.107] [EngineLog] [info] Regestered component type=N12IRComponents13C_WidgetPanelE, sizeof=32 with id=451
+[2026-11-17 18:24:57.107] [EngineLog] [info] Regestered component type=N12IRComponents13C_WidgetLabelE, sizeof=32 with id=452
+[2026-11-17 18:24:57.107] [EngineLog] [info] Regestered component type=N12IRComponents14C_WidgetButtonE, sizeof=32 with id=453
+[2026-11-17 18:24:57.114] [EngineLog] [info] Created ResourceId=143, type=4
+[2026-11-17 18:24:57.114] [EngineLog] [info]  Resource 143 named CanvasCardinalLightingProgram
+[2026-11-17 18:24:57.117] [EngineLog] [info] Created ResourceId=144, type=4
+[2026-11-17 18:24:57.117] [EngineLog] [info]  Resource 144 named CanvasShapeLightingProgram
+[2026-11-17 18:24:57.117] [EngineLog] [info] Created ResourceId=145, type=4
+[2026-11-17 18:24:57.117] [EngineLog] [info]  Resource 145 named CanvasToFramebufferProgram
+[2026-11-17 18:24:57.120] [EngineLog] [info] Created ResourceId=146, type=4
+[2026-11-17 18:24:57.120] [EngineLog] [info]  Resource 146 named CanvasSurfaceShadowProbeProgram
+[2026-11-17 18:24:57.121] [EngineLog] [info] Created ResourceId=147, type=4
+[2026-11-17 18:24:57.121] [EngineLog] [info]  Resource 147 named PerAxisScatterProgram
+[2026-11-17 18:24:57.123] [EngineLog] [info] Created ResourceId=148, type=4
+[2026-11-17 18:24:57.123] [EngineLog] [info]  Resource 148 named PerAxisSurfaceShadowProbeProgram
+[2026-11-17 18:24:57.126] [EngineLog] [info] Created ResourceId=149, type=4
+[2026-11-17 18:24:57.126] [EngineLog] [info]  Resource 149 named PerAxisSurfaceLightingProgram
+[2026-11-17 18:24:57.128] [EngineLog] [info] Created ResourceId=150, type=4
+[2026-11-17 18:24:57.128] [EngineLog] [info]  Resource 150 named PerAxisVisibleLightingProgram
+[2026-11-17 18:24:57.128] [EngineLog] [info] Created ResourceId=151, type=5
+[2026-11-17 18:24:57.128] [EngineLog] [info]  Resource 151 named TrixelToFramebufferFrameData
+[2026-11-17 18:24:57.128] [EngineLog] [info] Created ResourceId=152, type=5
+[2026-11-17 18:24:57.128] [EngineLog] [info]  Resource 152 named HoveredEntityIdBuffer
+[2026-11-17 18:24:57.128] [EngineLog] [info] Created ResourceId=153, type=5
+[2026-11-17 18:24:57.128] [EngineLog] [info]  Resource 153 named HoveredEntityIdReset
+[2026-11-17 18:24:57.128] [EngineLog] [info] Regestered component type=N12IRComponents16C_DetachedCanvasE, sizeof=1 with id=454
+[2026-11-17 18:24:57.128] [EngineLog] [info] Created ResourceId=154, type=4
+[2026-11-17 18:24:57.128] [EngineLog] [info]  Resource 154 named DebugOverlayProgram
+[2026-11-17 18:24:57.128] [EngineLog] [info] Created ResourceId=155, type=5
+[2026-11-17 18:24:57.128] [EngineLog] [info]  Resource 155 named DebugOverlayUBO
+[2026-11-17 18:24:57.128] [EngineLog] [info] Created ResourceId=156, type=5
+[2026-11-17 18:24:57.128] [EngineLog] [info]  Resource 156 named DebugOverlayVB
+[2026-11-17 18:24:57.128] [EngineLog] [info] Created ResourceId=157, type=6
+[2026-11-17 18:24:57.128] [EngineLog] [info]  Resource 157 named DebugOverlayVAO
+[2026-11-17 18:24:57.128] [EngineLog] [info] Created ResourceId=158, type=4
+[2026-11-17 18:24:57.128] [EngineLog] [info]  Resource 158 named FramebufferToScreenProgram
+[2026-11-17 18:24:57.129] [EngineLog] [info] Created ResourceId=159, type=5
+[2026-11-17 18:24:57.129] [EngineLog] [info]  Resource 159 named FramebufferToScreenFrameData
+[2026-11-17 18:24:57.129] [EngineLog] [info] Created ResourceId=160, type=4
+[2026-11-17 18:24:57.129] [EngineLog] [info]  Resource 160 named SpritesToScreenProgram
+[2026-11-17 18:24:57.129] [EngineLog] [info] Created ResourceId=161, type=5
+[2026-11-17 18:24:57.129] [EngineLog] [info]  Resource 161 named SpritesToScreenFrameData
+[2026-11-17 18:24:57.129] [EngineLog] [info] Created ResourceId=162, type=5
+[2026-11-17 18:24:57.129] [EngineLog] [info]  Resource 162 named SpritesToScreenInstances
+[2026-11-17 18:24:57.129] [EngineLog] [info] Regestered component type=N12IRComponents8C_SpriteE, sizeof=44 with id=455
+[2026-11-17 18:24:57.130] [EngineLog] [info] Created ResourceId=163, type=4
+[2026-11-17 18:24:57.130] [EngineLog] [info]  Resource 163 named GuiCanvasToScreenProgram
+[2026-11-17 18:24:57.130] [EngineLog] [info] Created ResourceId=164, type=5
+[2026-11-17 18:24:57.130] [EngineLog] [info]  Resource 164 named GuiCanvasToScreenFrameData
+[2026-11-17 18:24:57.130] [EngineLog] [warning] tagGpuStage: unknown stage name "guiToScreen" — stage will not be timed. Check gpuStageRegistry() for the registered name.
+[2026-11-17 18:24:57.130] [EngineLog] [info] InputManager: synthetic input active (GLFW input suppressed)
+[2026-11-17 18:24:57.130] [EngineLog] [info] Regestered component type=N7IRVideo12_GLOBAL__N_115C_GuiTestAnchorE, sizeof=1 with id=456
+[2026-11-17 18:24:57.130] [ClientLog] [info] --- Box 7 ---
+[2026-11-17 18:24:57.130] [EngineLog] [info] Created archetype node with components: [ 256 257 414 ], id=42
+[2026-11-17 18:24:57.130] [ClientLog] [info] VoxelPool shape entity=457 canvas=391 total=343 active=343
+[2026-11-17 18:24:57.130] [EngineLog] [info] Created archetype node with components: [ 256 257 438 ], id=43
+[2026-11-17 18:24:57.130] [ClientLog] [info] SDF shape entity=458 canvas=391 type=0 params=(7,7,7,0)
+[2026-11-17 18:24:57.130] [ClientLog] [info] --- Sphere r4 ---
+[2026-11-17 18:24:57.130] [ClientLog] [info] VoxelPool shape entity=459 canvas=391 total=1331 active=389
+[2026-11-17 18:24:57.130] [ClientLog] [info] SDF shape entity=460 canvas=391 type=1 params=(4,4,4,0)
+[2026-11-17 18:24:57.130] [ClientLog] [info] --- Cylinder ---
+[2026-11-17 18:24:57.130] [ClientLog] [info] VoxelPool shape entity=461 canvas=391 total=729 active=317
+[2026-11-17 18:24:57.130] [ClientLog] [info] SDF shape entity=462 canvas=391 type=2 params=(3,3,7,0)
+[2026-11-17 18:24:57.130] [ClientLog] [info] --- Ellipsoid ---
+[2026-11-17 18:24:57.130] [ClientLog] [info] VoxelPool shape entity=463 canvas=391 total=693 active=171
+[2026-11-17 18:24:57.130] [ClientLog] [info] SDF shape entity=464 canvas=391 type=3 params=(8,6,4,0)
+[2026-11-17 18:24:57.130] [ClientLog] [info] --- Cone ---
+[2026-11-17 18:24:57.130] [ClientLog] [info] VoxelPool shape entity=465 canvas=391 total=1089 active=233
+[2026-11-17 18:24:57.130] [ClientLog] [info] SDF shape entity=466 canvas=391 type=8 params=(4,4,8,0)
+[2026-11-17 18:24:57.130] [ClientLog] [info] --- Torus ---
+[2026-11-17 18:24:57.130] [ClientLog] [info] VoxelPool shape entity=467 canvas=391 total=1575 active=504
+[2026-11-17 18:24:57.130] [ClientLog] [info] SDF shape entity=468 canvas=391 type=9 params=(4,2,0,0)
+[2026-11-17 18:24:57.130] [ClientLog] [info] --- Wedge ---
+[2026-11-17 18:24:57.130] [ClientLog] [info] VoxelPool shape entity=469 canvas=391 total=729 active=621
+[2026-11-17 18:24:57.130] [ClientLog] [info] SDF shape entity=470 canvas=391 type=5 params=(7,7,7,0)
+[2026-11-17 18:24:57.130] [ClientLog] [info] --- CurvedPanel ---
+[2026-11-17 18:24:57.130] [ClientLog] [info] VoxelPool shape entity=471 canvas=391 total=1331 active=261
+[2026-11-17 18:24:57.130] [ClientLog] [info] SDF shape entity=472 canvas=391 type=4 params=(8,8,2,0.5)
+[2026-11-17 18:24:57.130] [ClientLog] [info] --- LOD variant: coarse cube (zoom 1-3) ---
+[2026-11-17 18:24:57.130] [ClientLog] [info] --- LOD variant: mid cone (zoom 4-15) ---
+[2026-11-17 18:24:57.130] [ClientLog] [info] --- LOD variant: fine sphere (zoom >=16) ---
+[2026-11-17 18:24:57.130] [ClientLog] [info] --- LOD control: constant cylinder (all zooms) ---
+[2026-11-17 18:24:57.130] [ClientLog] [info] SDF shape entity=477 canvas=391 type=0 params=(7,7,7,0)
+[2026-11-17 18:24:57.130] [ClientLog] [info] SDF shape entity=479 canvas=391 type=2 params=(3,3,7,0)
+[2026-11-17 18:24:57.130] [ClientLog] [info] SDF shape entity=481 canvas=391 type=3 params=(8,6,4,0)
+[2026-11-17 18:24:57.130] [ClientLog] [info] SDF shape entity=483 canvas=391 type=8 params=(4,4,8,0)
+[2026-11-17 18:24:57.130] [ClientLog] [info] --- Floor ---
+[2026-11-17 18:24:57.130] [ClientLog] [info] SDF shape entity=485 canvas=391 type=0 params=(144,36,2,0)
+[2026-11-17 18:24:57.131] [EngineLog] [info] Regestered component type=N12IRComponents14C_LightBlockerE, sizeof=8 with id=486
+[2026-11-17 18:24:57.131] [EngineLog] [info] Created archetype node with components: [ 256 257 438 486 ], id=44
+[2026-11-17 18:24:57.131] [ClientLog] [info] --- hover-parity fixture: entity 487 at (-40,-40,0); stacked entity 488 at (-48,-48,0), neighbour 489 one row above ---
+[2026-11-17 18:24:57.131] [ClientLog] [info] Active canvas entity: 391
+[2026-11-17 18:24:57.131] [EngineLog] [info] Created ResourceId=165, type=1
+[2026-11-17 18:24:57.131] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 439 ], id=45
+[2026-11-17 18:24:57.131] [EngineLog] [info] Created ResourceId=166, type=1
+[2026-11-17 18:24:57.131] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 439 440 ], id=46
+[2026-11-17 18:24:57.131] [EngineLog] [info] Created ResourceId=167, type=2
+[2026-11-17 18:24:57.131] [EngineLog] [info] Created ResourceId=168, type=2
+[2026-11-17 18:24:57.131] [EngineLog] [info] Created ResourceId=169, type=2
+[2026-11-17 18:24:57.131] [EngineLog] [info] Created ResourceId=170, type=2
+[2026-11-17 18:24:57.131] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 439 440 441 ], id=47
+[2026-11-17 18:24:57.131] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 408 ], id=48
+[2026-11-17 18:24:57.131] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 408 439 ], id=49
+[2026-11-17 18:24:57.131] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 408 439 440 ], id=50
+[2026-11-17 18:24:57.131] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 408 439 440 441 ], id=51
+[2026-11-17 18:24:57.131] [EngineLog] [info] Regestered component type=N12IRComponents13C_LightSourceE, sizeof=36 with id=491
+[2026-11-17 18:24:57.131] [EngineLog] [info] Created archetype node with components: [ 256 257 491 ], id=52
+[2026-11-17 18:24:57.132] [EngineLog] [info] Regestered component type=N12IRComponents14C_WidgetHotkeyE, sizeof=32 with id=492
+[2026-11-17 18:24:57.132] [EngineLog] [info] Regestered component type=N12IRComponents15C_GuiHoverStateE, sizeof=8 with id=493
+[2026-11-17 18:24:57.132] [EngineLog] [info] Regestered component type=N12IRComponents13C_MouseScrollE, sizeof=16 with id=494
+[2026-11-17 18:24:57.132] [EngineLog] [info] Created archetype node with components: [ 413 ], id=53
+[2026-11-17 18:24:57.132] [EngineLog] [info] Regestered component type=N12IRComponents17C_LodTierOverrideE, sizeof=4 with id=496
+[2026-11-17 18:24:57.132] [EngineLog] [info] Regestered component type=N12IRComponents16C_ResolvedFieldsE, sizeof=72 with id=497
+[2026-11-17 18:24:57.132] [EngineLog] [info] Regestered component type=N12IRComponents11C_ModifiersE, sizeof=72 with id=498
+[2026-11-17 18:24:57.133] [EngineLog] [info] Regestered component type=N12IRComponents10C_SkeletonE, sizeof=48 with id=499
+[2026-11-17 18:24:57.133] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1320 with id=500
+[2026-11-17 18:24:57.134] [EngineLog] [info] Regestered component type=N12IRComponents26C_TriangleCanvasBackgroundE, sizeof=240 with id=501
+[2026-11-17 18:24:57.138] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=1, effective_subdivisions=1
+[2026-11-17 18:24:57.138] [EngineLog] [info] Created ResourceId=171, type=5
+[2026-11-17 18:24:57.138] [EngineLog] [info]  Resource 171 named VoxelSunFacePassFrames0
+[2026-11-17 18:24:57.138] [EngineLog] [info] Created ResourceId=172, type=5
+[2026-11-17 18:24:57.138] [EngineLog] [info] Regestered component type=N12IRComponents14C_EntityCanvasE, sizeof=32 with id=502
+[2026-11-17 18:24:57.138] [EngineLog] [info] Created ResourceId=173, type=5
+[2026-11-17 18:24:57.138] [EngineLog] [info] Created ResourceId=174, type=5
+[2026-11-17 18:24:57.138] [EngineLog] [info] Created ResourceId=175, type=5
+[2026-11-17 18:24:57.138] [EngineLog] [info] Created ResourceId=176, type=1
+[2026-11-17 18:24:57.143] [ClientLog] [info] SURFACE-ROUTE cardinal=1 perAxis=0 fog=none fogComposed=0
+[2026-11-17 18:24:57.144] [EngineLog] [info] Created ResourceId=177, type=5
+[2026-11-17 18:24:57.144] [EngineLog] [info] Regestered component type=N12IRComponents19C_ScreenSpaceMarkerE, sizeof=20 with id=503
+[2026-11-17 18:24:57.145] [EngineLog] [info] Created ResourceId=178, type=5
+[2026-11-17 18:24:57.171] [EngineLog] [info] Created ResourceId=179, type=5
+[2026-11-17 18:24:57.183] [EngineLog] [info] Created ResourceId=180, type=5
+[2026-11-17 18:24:57.195] [EngineLog] [info] Created ResourceId=181, type=5
+[2026-11-17 18:24:57.206] [EngineLog] [info] Created ResourceId=182, type=5
+[2026-11-17 18:24:57.216] [EngineLog] [info] Created ResourceId=183, type=5
+[2026-11-17 18:24:57.226] [EngineLog] [info] Created ResourceId=184, type=5
+[2026-11-17 18:24:57.253] [ClientLog] [info] GuiTest 1/26: hover_parity_above_diagonal (zoom=16, cam=(-0,-80), yaw=0, inputs=1)
+[2026-11-17 18:24:57.261] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=16, effective_subdivisions=16
+[2026-11-17 18:24:57.270] [EngineLog] [info] Voxel render mode=0, base_subdivisions=1, zoom=16, effective_subdivisions=1
+[2026-11-17 18:24:57.523] [ClientLog] [info] GUI-ASSERT shot=0 label=hover_parity_above_diagonal kind=HOVERED_ENTITY_ID target=487 name=hover_id_above_diagonal_is_raw_texel result=PASS actual=hovered=487
+[2026-11-17 18:24:57.523] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=0 label=hover_parity_above_diagonal assertions=1
+[2026-11-17 18:24:57.523] [ClientLog] [info] CaptureCamera: label=hover_parity_above_diagonal yaw=0 zoom=(16,16) effectiveIso=(0,-80) subdivisions=1 gameResolution=(1280,720)
+[2026-11-17 18:24:57.660] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000051.png
+[2026-11-17 18:24:57.669] [ClientLog] [info] GuiTest 2/26: hover_parity_below_diagonal (zoom=16, cam=(-0,-80), yaw=0, inputs=1)
+[2026-11-17 18:24:57.945] [ClientLog] [info] GUI-ASSERT shot=1 label=hover_parity_below_diagonal kind=HOVERED_ENTITY_ID target=487 name=hover_id_below_diagonal_is_voxel result=PASS actual=hovered=487
+[2026-11-17 18:24:57.945] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=1 label=hover_parity_below_diagonal assertions=1
+[2026-11-17 18:24:57.945] [ClientLog] [info] CaptureCamera: label=hover_parity_below_diagonal yaw=0 zoom=(16,16) effectiveIso=(0,-80) subdivisions=1 gameResolution=(1280,720)
+[2026-11-17 18:24:58.080] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000052.png
+[2026-11-17 18:24:58.090] [ClientLog] [info] GuiTest 3/26: hover_parity_row_above_occupied (zoom=16, cam=(-0,-96), yaw=0, inputs=1)
+[2026-11-17 18:24:58.366] [ClientLog] [info] GUI-ASSERT shot=2 label=hover_parity_row_above_occupied kind=HOVERED_ENTITY_ID target=488 name=hover_id_row_above_occupied_is_stable result=PASS actual=hovered=488,488,488
+[2026-11-17 18:24:58.366] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=2 label=hover_parity_row_above_occupied assertions=1
+[2026-11-17 18:24:58.366] [ClientLog] [info] CaptureCamera: label=hover_parity_row_above_occupied yaw=0 zoom=(16,16) effectiveIso=(0,-96) subdivisions=1 gameResolution=(1280,720)
+[2026-11-17 18:24:58.499] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000053.png
+[2026-11-17 18:24:58.509] [ClientLog] [info] GuiTest 4/26: presented_pick_current_30_frames (zoom=16, cam=(-0,-80), yaw=0, inputs=0)
+[2026-11-17 18:24:58.525] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=16, effective_subdivisions=16
+[2026-11-17 18:24:58.768] [ClientLog] [info] GUI-ASSERT shot=3 label=presented_pick_current_30_frames kind=PICK_FRAME_CURRENT target=0 name=newest_completed_pick_frame result=FAIL actual=current=0/30
+[2026-11-17 18:24:58.768] [ClientLog] [info] GUI-ASSERT shot=3 label=presented_pick_current_30_frames kind=PICK_STALE_CLEAR target=0 name=settled_cursor_is_current result=PASS actual=current=30/30
+[2026-11-17 18:24:58.768] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=3 label=presented_pick_current_30_frames assertions=2
+[2026-11-17 18:24:58.768] [ClientLog] [info] CaptureCamera: label=presented_pick_current_30_frames yaw=0 zoom=(16,16) effectiveIso=(0,-80) subdivisions=16 gameResolution=(1280,720)
+[2026-11-17 18:24:58.899] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000054.png
+[2026-11-17 18:24:58.909] [ClientLog] [info] GuiTest 5/26: presented_pick_stale_same_batch (zoom=16, cam=(-0,-80), yaw=0, inputs=3)
+[2026-11-17 18:24:59.192] [ClientLog] [info] GUI-ASSERT shot=4 label=presented_pick_stale_same_batch kind=PICK_STALE_SEEN target=0 name=same_batch_move_press_is_stale result=PASS actual=stale
+[2026-11-17 18:24:59.192] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=4 label=presented_pick_stale_same_batch assertions=1
+[2026-11-17 18:24:59.192] [ClientLog] [info] CaptureCamera: label=presented_pick_stale_same_batch yaw=0 zoom=(16,16) effectiveIso=(0,-80) subdivisions=16 gameResolution=(1280,720)
+[2026-11-17 18:24:59.322] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000055.png
+[2026-11-17 18:24:59.332] [ClientLog] [info] GuiTest 6/26: drag_pan_tracks_cursor (zoom=16, cam=(-0,-80), yaw=0, inputs=4)
+[2026-11-17 18:24:59.642] [ClientLog] [info] GUI-ASSERT shot=5 label=drag_pan_tracks_cursor kind=HOVERED_ENTITY_ID target=487 name=hover_id_follows_drag_pan result=PASS actual=hovered=487,487
+[2026-11-17 18:24:59.642] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=5 label=drag_pan_tracks_cursor assertions=1
+[2026-11-17 18:24:59.642] [ClientLog] [info] CaptureCamera: label=drag_pan_tracks_cursor yaw=0 zoom=(16,16) effectiveIso=(5,-74) subdivisions=16 gameResolution=(1280,720)
+[2026-11-17 18:24:59.774] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000056.png
+[2026-11-17 18:24:59.784] [ClientLog] [info] GuiTest 7/26: presented_pick_destroyed_entity (zoom=16, cam=(-0,-80), yaw=0, inputs=1)
+[2026-11-17 18:25:00.058] [ClientLog] [info] GUI-ASSERT shot=6 label=presented_pick_destroyed_entity kind=PICK_ENTITY_EMPTY target=0 name=destroyed_entity_is_filtered result=PASS actual=entity=0
+[2026-11-17 18:25:00.058] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=6 label=presented_pick_destroyed_entity assertions=1
+[2026-11-17 18:25:00.058] [ClientLog] [info] CaptureCamera: label=presented_pick_destroyed_entity yaw=0 zoom=(16,16) effectiveIso=(0,-80) subdivisions=16 gameResolution=(1280,720)
+[2026-11-17 18:25:00.181] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000057.png
+[2026-11-17 18:25:00.191] [ClientLog] [info] GuiTest 8/26: help_overlay_open (zoom=4, cam=(0,0), yaw=0, inputs=2)
+[2026-11-17 18:25:00.198] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-11-17 18:25:00.199] [EngineLog] [info] Created ResourceId=185, type=5
+[2026-11-17 18:25:00.476] [ClientLog] [info] GUI-ASSERT shot=7 label=help_overlay_open kind=PREDICATE target=0 name=overlay_visible result=PASS actual=visible
+[2026-11-17 18:25:00.476] [ClientLog] [info] GUI-ASSERT shot=7 label=help_overlay_open kind=PREDICATE target=0 name=glyphs_batched result=PASS actual=872
+[2026-11-17 18:25:00.476] [ClientLog] [info] GUI-ASSERT shot=7 label=help_overlay_open kind=PREDICATE target=0 name=camera_entry_described result=PASS actual=found
+[2026-11-17 18:25:00.476] [ClientLog] [info] GUI-ASSERT shot=7 label=help_overlay_open kind=PREDICATE target=0 name=overlay_bounds_inside_canvas result=PASS actual=panel=4,6+608x233 canvas=642x722
+[2026-11-17 18:25:00.476] [ClientLog] [info] GUI-ASSERT shot=7 label=help_overlay_open kind=PREDICATE target=0 name=first_command_row_on_frame result=PASS actual=text_px=8436 band=44,78+1688x23 target=2560x1440
+[2026-11-17 18:25:00.476] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=7 label=help_overlay_open assertions=5
+[2026-11-17 18:25:00.476] [ClientLog] [info] CaptureCamera: label=help_overlay_open yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:00.592] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000058.png
+[2026-11-17 18:25:00.602] [ClientLog] [info] GuiTest 9/26: help_overlay_closed (zoom=4, cam=(0,0), yaw=0, inputs=2)
+[2026-11-17 18:25:00.878] [ClientLog] [info] GUI-ASSERT shot=8 label=help_overlay_closed kind=PREDICATE target=0 name=overlay_hidden result=PASS actual=hidden
+[2026-11-17 18:25:00.878] [ClientLog] [info] GUI-ASSERT shot=8 label=help_overlay_closed kind=PREDICATE target=0 name=no_glyphs_batched result=PASS actual=0
+[2026-11-17 18:25:00.878] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=8 label=help_overlay_closed assertions=2
+[2026-11-17 18:25:00.878] [ClientLog] [info] CaptureCamera: label=help_overlay_closed yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:01.001] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000059.png
+[2026-11-17 18:25:01.011] [ClientLog] [info] GuiTest 10/26: perf_hud_open (zoom=4, cam=(0,0), yaw=0, inputs=2)
+[2026-11-17 18:25:01.287] [ClientLog] [info] GUI-ASSERT shot=9 label=perf_hud_open kind=PREDICATE target=0 name=perf_hud_visible result=PASS actual=visible
+[2026-11-17 18:25:01.287] [ClientLog] [info] GUI-ASSERT shot=9 label=perf_hud_open kind=PREDICATE target=0 name=perf_hud_glyphs_batched result=PASS actual=28
+[2026-11-17 18:25:01.287] [ClientLog] [info] GUI-ASSERT shot=9 label=perf_hud_open kind=PREDICATE target=0 name=perf_hud_lines_formatted result=PASS actual=FPS 91 MIN 8 MS 8.2 DROP 3
+[2026-11-17 18:25:01.287] [ClientLog] [info] GUI-ASSERT shot=9 label=perf_hud_open kind=PREDICATE target=0 name=perf_hud_bounds_inside_canvas result=PASS actual=panel=497,661+140x53 canvas=642x722
+[2026-11-17 18:25:01.287] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=9 label=perf_hud_open assertions=4
+[2026-11-17 18:25:01.287] [ClientLog] [info] CaptureCamera: label=perf_hud_open yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:01.410] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000060.png
+[2026-11-17 18:25:01.419] [ClientLog] [info] GuiTest 11/26: perf_hud_closed (zoom=4, cam=(0,0), yaw=0, inputs=2)
+[2026-11-17 18:25:01.695] [ClientLog] [info] GUI-ASSERT shot=10 label=perf_hud_closed kind=PREDICATE target=0 name=perf_hud_hidden result=PASS actual=hidden
+[2026-11-17 18:25:01.695] [ClientLog] [info] GUI-ASSERT shot=10 label=perf_hud_closed kind=PREDICATE target=0 name=perf_hud_no_glyphs_batched result=PASS actual=0
+[2026-11-17 18:25:01.695] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=10 label=perf_hud_closed assertions=2
+[2026-11-17 18:25:01.695] [ClientLog] [info] CaptureCamera: label=perf_hud_closed yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:01.823] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000061.png
+[2026-11-17 18:25:01.833] [ClientLog] [info] GuiTest 12/26: settings_menu_open (zoom=4, cam=(0,0), yaw=0, inputs=2)
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 418 ], id=54
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 418 427 ], id=55
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 418 427 428 ], id=56
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 418 427 428 445 ], id=57
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 418 427 428 445 451 ], id=58
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 418 427 445 ], id=59
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 418 427 445 452 ], id=60
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 417 ], id=61
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 417 418 ], id=62
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 417 418 427 ], id=63
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 417 418 427 428 ], id=64
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 417 418 427 428 430 ], id=65
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 417 418 427 428 430 445 ], id=66
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 417 418 427 428 429 ], id=67
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 417 418 427 428 429 445 ], id=68
+[2026-11-17 18:25:01.858] [EngineLog] [info] Regestered component type=N12IRComponents10C_SimClockE, sizeof=16 with id=511
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 511 ], id=69
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 417 418 427 428 445 ], id=70
+[2026-11-17 18:25:01.858] [EngineLog] [info] Created archetype node with components: [ 256 257 417 418 427 428 445 453 ], id=71
+[2026-11-17 18:25:02.109] [ClientLog] [info] GUI-ASSERT shot=11 label=settings_menu_open kind=PREDICATE target=0 name=menu_open result=PASS actual=open
+[2026-11-17 18:25:02.109] [ClientLog] [info] GUI-ASSERT shot=11 label=settings_menu_open kind=PREDICATE target=0 name=rows_spawned result=PASS actual=5
+[2026-11-17 18:25:02.109] [ClientLog] [info] GUI-ASSERT shot=11 label=settings_menu_open kind=PREDICATE target=0 name=settings_rows_inside_panel result=PASS actual=stacked=0 panel=131,233+380x256 row0-control=303,271+196x24 row1-control=303,301+196x24 row2-control=143,331+356x24 row3-control=143,361+356x24 row4-control=143,391+356x24 row0-label=143,277+110x11 row1-label=143,307+102x11
+[2026-11-17 18:25:02.109] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=11 label=settings_menu_open assertions=3
+[2026-11-17 18:25:02.109] [ClientLog] [info] CaptureCamera: label=settings_menu_open yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:02.237] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000062.png
+[2026-11-17 18:25:02.246] [ClientLog] [info] GuiTest 13/26: settings_menu_hover_idle (zoom=4, cam=(0,0), yaw=0, inputs=1)
+[2026-11-17 18:25:02.540] [ClientLog] [info] GUI-ASSERT shot=12 label=settings_menu_hover_idle kind=PREDICATE target=0 name=row_pixel_idle_sampled result=PASS actual=rgb=(40,44,56) px=600,804
+[2026-11-17 18:25:02.540] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=12 label=settings_menu_hover_idle assertions=1
+[2026-11-17 18:25:02.540] [ClientLog] [info] CaptureCamera: label=settings_menu_hover_idle yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:02.673] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000063.png
+[2026-11-17 18:25:02.683] [ClientLog] [info] GuiTest 14/26: settings_menu_hover_row (zoom=4, cam=(0,0), yaw=0, inputs=1)
+[2026-11-17 18:25:02.975] [ClientLog] [info] GUI-ASSERT shot=13 label=settings_menu_hover_row kind=PREDICATE target=0 name=row_pixel_repaints_under_cursor result=PASS actual=rgb=(60,68,88) idle=(40,44,56) px=600,804
+[2026-11-17 18:25:02.975] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=13 label=settings_menu_hover_row assertions=1
+[2026-11-17 18:25:02.975] [ClientLog] [info] CaptureCamera: label=settings_menu_hover_row yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:03.106] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000064.png
+[2026-11-17 18:25:03.116] [ClientLog] [info] GuiTest 15/26: settings_menu_pause_on (zoom=4, cam=(0,0), yaw=0, inputs=3)
+[2026-11-17 18:25:03.402] [ClientLog] [info] GUI-ASSERT shot=14 label=settings_menu_pause_on kind=PREDICATE target=0 name=checkbox_checked result=PASS actual=checked
+[2026-11-17 18:25:03.402] [ClientLog] [info] GUI-ASSERT shot=14 label=settings_menu_pause_on kind=PREDICATE target=0 name=sim_paused result=PASS actual=paused
+[2026-11-17 18:25:03.402] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=14 label=settings_menu_pause_on assertions=2
+[2026-11-17 18:25:03.402] [ClientLog] [info] CaptureCamera: label=settings_menu_pause_on yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:03.534] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000065.png
+[2026-11-17 18:25:03.543] [ClientLog] [info] GuiTest 16/26: settings_menu_pause_off (zoom=4, cam=(0,0), yaw=0, inputs=3)
+[2026-11-17 18:25:03.828] [ClientLog] [info] GUI-ASSERT shot=15 label=settings_menu_pause_off kind=PREDICATE target=0 name=checkbox_unchecked result=PASS actual=unchecked
+[2026-11-17 18:25:03.828] [ClientLog] [info] GUI-ASSERT shot=15 label=settings_menu_pause_off kind=PREDICATE target=0 name=sim_running result=PASS actual=running
+[2026-11-17 18:25:03.828] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=15 label=settings_menu_pause_off assertions=2
+[2026-11-17 18:25:03.828] [ClientLog] [info] CaptureCamera: label=settings_menu_pause_off yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:03.960] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000066.png
+[2026-11-17 18:25:03.969] [ClientLog] [info] GuiTest 17/26: settings_menu_checkerboard_on (zoom=4, cam=(0,0), yaw=0, inputs=3)
+[2026-11-17 18:25:04.254] [ClientLog] [info] GUI-ASSERT shot=16 label=settings_menu_checkerboard_on kind=PREDICATE target=0 name=pause_still_off result=PASS actual=unchecked
+[2026-11-17 18:25:04.254] [ClientLog] [info] GUI-ASSERT shot=16 label=settings_menu_checkerboard_on kind=PREDICATE target=0 name=shapes_checkerboard_flagged result=PASS actual=21/21 flagged
+[2026-11-17 18:25:04.254] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=16 label=settings_menu_checkerboard_on assertions=2
+[2026-11-17 18:25:04.254] [ClientLog] [info] CaptureCamera: label=settings_menu_checkerboard_on yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:04.384] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000067.png
+[2026-11-17 18:25:04.393] [ClientLog] [info] GuiTest 18/26: settings_menu_pivot_before (zoom=4, cam=(16,16), yaw=0.7853982, inputs=0)
+[2026-11-17 18:25:04.401] [EngineLog] [info] Created ResourceId=186, type=1
+[2026-11-17 18:25:04.401] [EngineLog] [info] Created ResourceId=187, type=1
+[2026-11-17 18:25:04.401] [EngineLog] [info] Created ResourceId=188, type=1
+[2026-11-17 18:25:04.401] [EngineLog] [info] Created ResourceId=189, type=1
+[2026-11-17 18:25:04.401] [EngineLog] [info] Created ResourceId=190, type=1
+[2026-11-17 18:25:04.401] [EngineLog] [info] Created ResourceId=191, type=1
+[2026-11-17 18:25:04.401] [EngineLog] [info] Created ResourceId=192, type=1
+[2026-11-17 18:25:04.401] [EngineLog] [info] Created ResourceId=193, type=1
+[2026-11-17 18:25:04.401] [EngineLog] [info] Created ResourceId=194, type=1
+[2026-11-17 18:25:04.401] [EngineLog] [info] Created ResourceId=195, type=1
+[2026-11-17 18:25:04.401] [EngineLog] [info] Created ResourceId=196, type=1
+[2026-11-17 18:25:04.401] [EngineLog] [info] Created ResourceId=197, type=1
+[2026-11-17 18:25:04.401] [EngineLog] [info] Created ResourceId=198, type=1
+[2026-11-17 18:25:04.401] [EngineLog] [info] Created ResourceId=199, type=1
+[2026-11-17 18:25:04.401] [EngineLog] [info] Created ResourceId=200, type=1
+[2026-11-17 18:25:04.401] [EngineLog] [info] Created ResourceId=201, type=1
+[2026-11-17 18:25:04.403] [EngineLog] [info] Created ResourceId=202, type=5
+[2026-11-17 18:25:04.403] [EngineLog] [info] Created ResourceId=203, type=5
+[2026-11-17 18:25:04.403] [EngineLog] [info] Created ResourceId=204, type=5
+[2026-11-17 18:25:04.403] [EngineLog] [info] Created ResourceId=205, type=5
+[2026-11-17 18:25:04.403] [EngineLog] [info] Created ResourceId=206, type=5
+[2026-11-17 18:25:04.403] [EngineLog] [info] Created ResourceId=207, type=5
+[2026-11-17 18:25:04.403] [EngineLog] [info] Created ResourceId=208, type=5
+[2026-11-17 18:25:04.403] [EngineLog] [info] Created ResourceId=209, type=5
+[2026-11-17 18:25:04.403] [EngineLog] [info] Created ResourceId=210, type=1
+[2026-11-17 18:25:04.403] [EngineLog] [info] Per-axis overflow rejection on the first rotating frame: off (disabled)
+[2026-11-17 18:25:04.442] [EngineLog] [info] Created ResourceId=211, type=5
+[2026-11-17 18:25:04.443] [EngineLog] [info] Created ResourceId=212, type=5
+[2026-11-17 18:25:04.444] [ClientLog] [info] SURFACE-ROUTE cardinal=0 perAxis=1 fog=none fogComposed=0
+[2026-11-17 18:25:04.446] [EngineLog] [info] Created ResourceId=213, type=4
+[2026-11-17 18:25:04.446] [EngineLog] [info]  Resource 213 named PerAxisHoverResolve
+[2026-11-17 18:25:04.704] [ClientLog] [info] GUI-ASSERT shot=17 label=settings_menu_pivot_before kind=PREDICATE target=0 name=pivot_default result=PASS actual=pivot=1
+[2026-11-17 18:25:04.704] [ClientLog] [info] GUI-ASSERT shot=17 label=settings_menu_pivot_before kind=PREDICATE target=0 name=pivot_dropdown_collapsed result=PASS actual=collapsed
+[2026-11-17 18:25:04.704] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=17 label=settings_menu_pivot_before assertions=2
+[2026-11-17 18:25:04.704] [ClientLog] [info] CaptureCamera: label=settings_menu_pivot_before yaw=0.78539824 zoom=(4,4) effectiveIso=(15.084943,3.1241922) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:04.836] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000068.png
+[2026-11-17 18:25:04.847] [ClientLog] [info] GuiTest 19/26: settings_menu_pivot_expand (zoom=4, cam=(16,16), yaw=0.7853982, inputs=3)
+[2026-11-17 18:25:05.063] [EngineLog] [info] Created ResourceId=214, type=5
+[2026-11-17 18:25:05.131] [ClientLog] [info] GUI-ASSERT shot=18 label=settings_menu_pivot_expand kind=PREDICATE target=0 name=pivot_dropdown_expanded result=PASS actual=expanded
+[2026-11-17 18:25:05.132] [ClientLog] [info] GUI-ASSERT shot=18 label=settings_menu_pivot_expand kind=PREDICATE target=0 name=pivot_unchanged_by_expand result=PASS actual=pivot=1
+[2026-11-17 18:25:05.132] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=18 label=settings_menu_pivot_expand assertions=2
+[2026-11-17 18:25:05.132] [ClientLog] [info] CaptureCamera: label=settings_menu_pivot_expand yaw=0.78539824 zoom=(4,4) effectiveIso=(15.084943,3.1241922) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:05.255] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000069.png
+[2026-11-17 18:25:05.266] [ClientLog] [info] GuiTest 20/26: settings_menu_pivot_origin (zoom=4, cam=(16,16), yaw=0.7853982, inputs=3)
+[2026-11-17 18:25:05.554] [ClientLog] [info] GUI-ASSERT shot=19 label=settings_menu_pivot_origin kind=PREDICATE target=0 name=pivot_dropdown_origin result=PASS actual=index=0
+[2026-11-17 18:25:05.554] [ClientLog] [info] GUI-ASSERT shot=19 label=settings_menu_pivot_origin kind=PREDICATE target=0 name=pivot_mode_origin result=PASS actual=pivot=0
+[2026-11-17 18:25:05.554] [ClientLog] [info] GUI-ASSERT shot=19 label=settings_menu_pivot_origin kind=PREDICATE target=0 name=pivot_dropdown_collapsed result=PASS actual=collapsed
+[2026-11-17 18:25:05.554] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=19 label=settings_menu_pivot_origin assertions=3
+[2026-11-17 18:25:05.554] [ClientLog] [info] CaptureCamera: label=settings_menu_pivot_origin yaw=0.78539824 zoom=(4,4) effectiveIso=(16,16) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:05.683] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000070.png
+[2026-11-17 18:25:05.694] [ClientLog] [info] GuiTest 21/26: settings_menu_overlay_before (zoom=4, cam=(0,0), yaw=0, inputs=0)
+[2026-11-17 18:25:05.703] [ClientLog] [info] SURFACE-ROUTE cardinal=1 perAxis=0 fog=none fogComposed=0
+[2026-11-17 18:25:05.954] [ClientLog] [info] GUI-ASSERT shot=20 label=settings_menu_overlay_before kind=PREDICATE target=0 name=overlay_default result=PASS actual=overlay=0
+[2026-11-17 18:25:05.954] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=20 label=settings_menu_overlay_before assertions=1
+[2026-11-17 18:25:05.954] [ClientLog] [info] CaptureCamera: label=settings_menu_overlay_before yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:06.083] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000071.png
+[2026-11-17 18:25:06.093] [ClientLog] [info] GuiTest 22/26: settings_menu_overlay_expand (zoom=4, cam=(0,0), yaw=0, inputs=3)
+[2026-11-17 18:25:06.377] [ClientLog] [info] GUI-ASSERT shot=21 label=settings_menu_overlay_expand kind=PREDICATE target=0 name=overlay_dropdown_expanded result=PASS actual=expanded
+[2026-11-17 18:25:06.377] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=21 label=settings_menu_overlay_expand assertions=1
+[2026-11-17 18:25:06.377] [ClientLog] [info] CaptureCamera: label=settings_menu_overlay_expand yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:06.506] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000072.png
+[2026-11-17 18:25:06.516] [ClientLog] [info] GuiTest 23/26: settings_menu_overlay_ao (zoom=4, cam=(0,0), yaw=0, inputs=3)
+[2026-11-17 18:25:06.549] [ClientLog] [info] SURFACE-ROUTE cardinal=0 perAxis=0 fog=none fogComposed=0
+[2026-11-17 18:25:06.801] [ClientLog] [info] GUI-ASSERT shot=22 label=settings_menu_overlay_ao kind=PREDICATE target=0 name=overlay_dropdown_ao result=PASS actual=index=1
+[2026-11-17 18:25:06.801] [ClientLog] [info] GUI-ASSERT shot=22 label=settings_menu_overlay_ao kind=PREDICATE target=0 name=overlay_mode_ao result=PASS actual=overlay=1
+[2026-11-17 18:25:06.801] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=22 label=settings_menu_overlay_ao assertions=2
+[2026-11-17 18:25:06.801] [ClientLog] [info] CaptureCamera: label=settings_menu_overlay_ao yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:06.930] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000073.png
+[2026-11-17 18:25:06.939] [ClientLog] [info] GuiTest 24/26: settings_menu_closed (zoom=4, cam=(0,0), yaw=0, inputs=2)
+[2026-11-17 18:25:07.215] [ClientLog] [info] GUI-ASSERT shot=23 label=settings_menu_closed kind=PREDICATE target=0 name=menu_closed result=PASS actual=closed
+[2026-11-17 18:25:07.215] [ClientLog] [info] GUI-ASSERT shot=23 label=settings_menu_closed kind=PREDICATE target=0 name=rows_destroyed result=PASS actual=0
+[2026-11-17 18:25:07.215] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=23 label=settings_menu_closed assertions=2
+[2026-11-17 18:25:07.215] [ClientLog] [info] CaptureCamera: label=settings_menu_closed yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:07.337] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000074.png
+[2026-11-17 18:25:07.346] [ClientLog] [info] GuiTest 25/26: settings_menu_reopened (zoom=4, cam=(0,0), yaw=0, inputs=2)
+[2026-11-17 18:25:07.623] [ClientLog] [info] GUI-ASSERT shot=24 label=settings_menu_reopened kind=PREDICATE target=0 name=menu_reopened result=PASS actual=open
+[2026-11-17 18:25:07.623] [ClientLog] [info] GUI-ASSERT shot=24 label=settings_menu_reopened kind=PREDICATE target=0 name=rows_respawned result=PASS actual=5
+[2026-11-17 18:25:07.623] [ClientLog] [info] GUI-ASSERT shot=24 label=settings_menu_reopened kind=PREDICATE target=0 name=pivot_reseeded_from_getter result=PASS actual=index=0
+[2026-11-17 18:25:07.623] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=24 label=settings_menu_reopened assertions=3
+[2026-11-17 18:25:07.623] [ClientLog] [info] CaptureCamera: label=settings_menu_reopened yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-11-17 18:25:07.746] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000075.png
+[2026-11-17 18:25:07.755] [ClientLog] [info] GuiTest 26/26: settings_menu_quit (zoom=4, cam=(0,0), yaw=0, inputs=3)
+[2026-11-17 18:25:07.788] [ClientLog] [info] GUI-ASSERT shot=25 label=settings_menu_quit kind=PREDICATE target=0 name=quit_requested_close result=PASS actual=close-requested
+[2026-11-17 18:25:07.788] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=25 label=settings_menu_quit assertions=1
+[2026-11-17 18:25:07.797] [EngineLog] [info] Clean shutdown complete.
+ir-run: IRShapeDebug exited cleanly after 12s
+ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+
+shot   label                          kind           name                       result   actual
+----------------------------------------------------------------------------------------------------------------------
+0      hover_parity_above_diagonal    HOVERED_ENTITY_ID hover_id_above_diagonal_is_raw_texel PASS     hovered=487
+1      hover_parity_below_diagonal    HOVERED_ENTITY_ID hover_id_below_diagonal_is_voxel PASS     hovered=487
+2      hover_parity_row_above_occupied HOVERED_ENTITY_ID hover_id_row_above_occupied_is_stable PASS     hovered=488,488,488
+3      presented_pick_current_30_frames PICK_FRAME_CURRENT newest_completed_pick_frame FAIL     current=0/30
+3      presented_pick_current_30_frames PICK_STALE_CLEAR settled_cursor_is_current  PASS     current=30/30
+4      presented_pick_stale_same_batch PICK_STALE_SEEN same_batch_move_press_is_stale PASS     stale
+5      drag_pan_tracks_cursor         HOVERED_ENTITY_ID hover_id_follows_drag_pan  PASS     hovered=487,487
+6      presented_pick_destroyed_entity PICK_ENTITY_EMPTY destroyed_entity_is_filtered PASS     entity=0
+7      help_overlay_open              PREDICATE      overlay_visible            PASS     visible
+7      help_overlay_open              PREDICATE      glyphs_batched             PASS     872
+7      help_overlay_open              PREDICATE      camera_entry_described     PASS     found
+7      help_overlay_open              PREDICATE      overlay_bounds_inside_canvas PASS     panel=4,6+608x233 canvas=642x722
+7      help_overlay_open              PREDICATE      first_command_row_on_frame PASS     text_px=8436 band=44,78+1688x23 target=2560x1440
+8      help_overlay_closed            PREDICATE      overlay_hidden             PASS     hidden
+8      help_overlay_closed            PREDICATE      no_glyphs_batched          PASS     0
+9      perf_hud_open                  PREDICATE      perf_hud_visible           PASS     visible
+9      perf_hud_open                  PREDICATE      perf_hud_glyphs_batched    PASS     28
+9      perf_hud_open                  PREDICATE      perf_hud_lines_formatted   PASS     FPS 91 MIN 8 MS 8.2 DROP 3
+9      perf_hud_open                  PREDICATE      perf_hud_bounds_inside_canvas PASS     panel=497,661+140x53 canvas=642x722
+10     perf_hud_closed                PREDICATE      perf_hud_hidden            PASS     hidden
+10     perf_hud_closed                PREDICATE      perf_hud_no_glyphs_batched PASS     0
+11     settings_menu_open             PREDICATE      menu_open                  PASS     open
+11     settings_menu_open             PREDICATE      rows_spawned               PASS     5
+11     settings_menu_open             PREDICATE      settings_rows_inside_panel PASS     stacked=0 panel=131,233+380x256 row0-control=303,271+196x24 row1-control=303,301+196x24 row2-control=143,331+356x24 row3-control=143,361+356x24 row4-control=143,391+356x24 row0-label=143,277+110x11 row1-label=143,307+102x11
+12     settings_menu_hover_idle       PREDICATE      row_pixel_idle_sampled     PASS     rgb=(40,44,56) px=600,804
+13     settings_menu_hover_row        PREDICATE      row_pixel_repaints_under_cursor PASS     rgb=(60,68,88) idle=(40,44,56) px=600,804
+14     settings_menu_pause_on         PREDICATE      checkbox_checked           PASS     checked
+14     settings_menu_pause_on         PREDICATE      sim_paused                 PASS     paused
+15     settings_menu_pause_off        PREDICATE      checkbox_unchecked         PASS     unchecked
+15     settings_menu_pause_off        PREDICATE      sim_running                PASS     running
+16     settings_menu_checkerboard_on  PREDICATE      pause_still_off            PASS     unchecked
+16     settings_menu_checkerboard_on  PREDICATE      shapes_checkerboard_flagged PASS     21/21 flagged
+17     settings_menu_pivot_before     PREDICATE      pivot_default              PASS     pivot=1
+17     settings_menu_pivot_before     PREDICATE      pivot_dropdown_collapsed   PASS     collapsed
+18     settings_menu_pivot_expand     PREDICATE      pivot_dropdown_expanded    PASS     expanded
+18     settings_menu_pivot_expand     PREDICATE      pivot_unchanged_by_expand  PASS     pivot=1
+19     settings_menu_pivot_origin     PREDICATE      pivot_dropdown_origin      PASS     index=0
+19     settings_menu_pivot_origin     PREDICATE      pivot_mode_origin          PASS     pivot=0
+19     settings_menu_pivot_origin     PREDICATE      pivot_dropdown_collapsed   PASS     collapsed
+20     settings_menu_overlay_before   PREDICATE      overlay_default            PASS     overlay=0
+21     settings_menu_overlay_expand   PREDICATE      overlay_dropdown_expanded  PASS     expanded
+22     settings_menu_overlay_ao       PREDICATE      overlay_dropdown_ao        PASS     index=1
+22     settings_menu_overlay_ao       PREDICATE      overlay_mode_ao            PASS     overlay=1
+23     settings_menu_closed           PREDICATE      menu_closed                PASS     closed
+23     settings_menu_closed           PREDICATE      rows_destroyed             PASS     0
+24     settings_menu_reopened         PREDICATE      menu_reopened              PASS     open
+24     settings_menu_reopened         PREDICATE      rows_respawned             PASS     5
+24     settings_menu_reopened         PREDICATE      pivot_reseeded_from_getter PASS     index=0
+25     settings_menu_quit             PREDICATE      quit_requested_close       PASS     close-requested
+
+[gui-verify] 48/49 assertions passed
+
+Failing assertions:
+  shot=3 name=newest_completed_pick_frame kind=PICK_FRAME_CURRENT actual=current=0/30
