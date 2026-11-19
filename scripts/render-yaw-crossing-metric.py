@@ -17,7 +17,12 @@ shadow's own motion and needs no reference image.
 ``capture`` runs IRCanvasStress five times in the engine's default
 configuration (needs a GL/Metal host), keeps the frames as ``<dir>/yaw_<k>.png``
 and grades them; ``--env KEY=VALUE`` sets a variable for every run, e.g.
-``--env IR_PERAXIS_SURFACE_LIGHTING=1`` for the opt-in route. ``grade``
+``--env IR_PERAXIS_SURFACE_LIGHTING=0`` for the sampled receiver.
+``--fog-reveal <radius>`` is the fog-pass arm: the fixture registers the fog
+pass and reveals that radius, and a run whose log shows no fog pass on the
+captured frame is an error, so a fog-free run cannot stand in for it. The
+result's ``fog_routes`` is each frame's logged route (``compose``,
+``fallback`` or ``none``; ``null`` when the build logs nothing). ``grade``
 re-reads a kept directory. The receiver region and the coverage floors scale
 with the frame's output scale (framebuffer px per game px), so a 1280x720
 capture on a 1x host and a 2560x1440 one on a 2x HiDPI host grade the same
@@ -28,6 +33,7 @@ import argparse
 import json
 import math
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -63,10 +69,33 @@ FIXTURE_ARGS = (
     "--no-auto-rotate", "--pivot-origin", "--zoom", "4", "--subdivisions", "1",
     "--no-ao", "--sweep-frames", "1", "10", "--probe-overlapping-source",
 )
+SURFACE_ROUTE_RE = re.compile(r"SURFACE-ROUTE\b.*?\bfog=(\w+)")
+RUN_LOG = "run.log"
 
 
 def frame_name(offset: int) -> str:
     return f"yaw_{offset:+d}.png"
+
+
+def run_directory(output: Path, offset: int) -> Path:
+    return output / f"yaw_{offset:+d}"
+
+
+def logged_fog_route(log: str) -> str | None:
+    """The fog route of the last SURFACE-ROUTE line in a run's ``log``, which is
+    the route its captured frame drew on; ``None`` when the run logged none."""
+    routes = SURFACE_ROUTE_RE.findall(log)
+    return routes[-1] if routes else None
+
+
+def kept_fog_routes(directory: Path) -> dict[str, str | None] | None:
+    """Each frame's logged fog route from a kept capture directory, or ``None``
+    when it keeps no run logs."""
+    logs = {offset: run_directory(directory, offset) / RUN_LOG for offset in OFFSETS}
+    if not any(path.is_file() for path in logs.values()):
+        return None
+    return {f"{offset:+d}": logged_fog_route(path.read_text(encoding="utf-8", errors="replace"))
+            if path.is_file() else None for offset, path in logs.items()}
 
 
 def yaw_radians(cardinal_deg: float, step_deg: float, offset: int) -> float:
@@ -255,13 +284,16 @@ def parse_env(values: list[str]) -> dict[str, str]:
 
 
 def capture(output: Path, cardinal_deg: float, step_deg: float, env: dict[str, str],
-            timeout: int) -> dict[int, Path]:
+            timeout: int, fog_reveal: float | None = None) -> dict[int, Path]:
     root = verify_common.detect_worktree_root(verify_common.SCRIPT_DIR)
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    fixture = list(FIXTURE_ARGS)
+    if fog_reveal is not None:
+        fixture += ["--fog-reveal", f"{fog_reveal:g}"]
     frames = {}
     for offset in OFFSETS:
-        shots_dir = output / f"yaw_{offset:+d}"
+        shots_dir = run_directory(output, offset)
         if shots_dir.exists():
             shutil.rmtree(shots_dir)
         shots_dir.mkdir()
@@ -274,17 +306,23 @@ def capture(output: Path, cardinal_deg: float, step_deg: float, env: dict[str, s
             + json.dumps(str(shots_dir)) + "}\n", encoding="utf-8")
         yaw = yaw_radians(cardinal_deg, step_deg, offset)
         cmd = [FLEET_RUN, "--timeout", str(timeout), TARGET, "--config-preset", str(config),
-               *FIXTURE_ARGS, "--auto-screenshot", "10", f"--yaw={yaw:.9f}"]
+               *fixture, "--auto-screenshot", "10", f"--yaw={yaw:.9f}"]
         prefix = " ".join(f"{key}={value}" for key, value in env.items())
         print("+ " + " ".join(filter(None, [prefix, *cmd])), flush=True)
         proc = subprocess.run(
             verify_common.platform_launch_argv(cmd), cwd=str(root),
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
             errors="replace", timeout=timeout + 60, env={**os.environ, **env})
-        (shots_dir / "run.log").write_text(proc.stdout, encoding="utf-8")
+        (shots_dir / RUN_LOG).write_text(proc.stdout, encoding="utf-8")
         verdict = verify_common.run_result(proc.stdout)
         if proc.returncode != 0 or verdict != "CLEAN":
             raise ValueError(f"{' '.join(cmd)}: exit {proc.returncode}, RESULT={verdict}")
+        route = logged_fog_route(proc.stdout)
+        if fog_reveal is not None and route in (None, "none"):
+            raise ValueError(
+                f"{' '.join(cmd)}: --fog-reveal is set and the run logged "
+                f"{'no SURFACE-ROUTE line' if route is None else 'fog=none'}; "
+                "a frame without a fog pass is not the fog-pass arm")
         shots = verify_common.collect_full_frames(shots_dir)
         if len(shots) != 1:
             raise ValueError(f"{' '.join(cmd)}: {len(shots)} captures, fixture takes 1")
@@ -300,6 +338,9 @@ def main(argv: list[str]) -> int:
     gpu.add_argument("--output", required=True, type=Path)
     gpu.add_argument("--env", action="append", default=[], metavar="KEY=VALUE",
                      help="environment variable for every run (repeatable)")
+    gpu.add_argument("--fog-reveal", type=float, metavar="RADIUS",
+                     help="the fog-pass arm: register the fog pass and reveal this radius; "
+                          "a run that logs no fog pass is an error")
     gpu.add_argument("--timeout", type=int, default=180)
     offline = modes.add_parser("grade", help="grade a kept capture directory")
     offline.add_argument("directory", type=Path)
@@ -318,15 +359,22 @@ def main(argv: list[str]) -> int:
         if args.step_deg <= 0.0:
             raise ValueError("--step-deg must be positive")
         if args.mode == "capture":
+            if args.fog_reveal is not None and args.fog_reveal <= 0.0:
+                raise ValueError("--fog-reveal must be positive")
             frames = capture(args.output, args.cardinal_deg, args.step_deg,
-                             parse_env(args.env), args.timeout)
+                             parse_env(args.env), args.timeout, args.fog_reveal)
+            directory = args.output
         else:
             frames = kept_frames(args.directory)
+            directory = args.directory
         yaws = None
         if args.mode == "capture" or args.region == "receiver-top":
             yaws = [yaw_radians(args.cardinal_deg, args.step_deg, offset)
                     for offset in OFFSETS]
         result = grade(frames, yaws, args.min_shadow_px, args.min_receiver_px)
+        routes = kept_fog_routes(directory)
+        if routes is not None:
+            result["fog_routes"] = routes
     except (OSError, ValueError, struct.error, IndexError, zlib.error,
             subprocess.TimeoutExpired) as error:
         print(json.dumps({"error": str(error)}))

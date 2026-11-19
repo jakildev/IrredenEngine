@@ -10,6 +10,7 @@
 #version 450 core
 
 #include "ir_iso_common.glsl"
+#include "ir_scatter_depth.glsl"
 
 // Unit quad corner in [-0.5, 0.5]^2 from the shared QuadVAO. (aPos + 0.5)
 // gives the {0,1}^2 corner selector for the two in-plane face axes.
@@ -345,6 +346,9 @@ void main() {
     if (overflowMode != 0) {
         vDepth += 2.0 * kScatterCellTieBand;
     }
+    // Window depth to clip z under the default [-1, 1] depth range.
+    gl_Position.z =
+        (2.0 * scatterEarlyDepth(vDepth, vDepthSlope, cornerSel) - 1.0) * gl_Position.w;
     // cell2 separates immediate lattice neighbors; displaced cells can collide:
     // in-plane world steps project to iso-diagonal or (0,+/-2) only.
     const int rank2 = (flip != 0) ? 3 : slot;

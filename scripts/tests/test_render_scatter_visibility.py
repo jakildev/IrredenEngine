@@ -192,6 +192,55 @@ int main(){
 }
 """
 
+EARLY_DEPTH_ADAPTER = r"""
+float dot(vec2 a,vec2 b){return a.x*b.x+a.y*b.y;}
+float min(float a,float b){return std::min(a,b);}
+float max(float a,float b){return std::max(a,b);}
+float clamp(float d,float a,float b){return std::clamp(d,a,b);}
+"""
+
+EARLY_DEPTH_CHECKS = r"""
+int fail(const char* label){std::fprintf(stderr,"%s\n",label);return 1;}
+int main(){
+    unsigned state=0x2545f491u,fragments=0,outside=0;
+    const auto next=[&]{state=1664525u*state+1013904223u;return float(state>>8)/16777216.f;};
+    for(int face=0;face<20000;++face){
+        // Depth at the (0,0) corner; one face in fifty leaves the depth range.
+        const bool wide=face%50==0;
+        const float origin=wide?next()*2.4f-.7f:next();
+        // One face in seven faces the view head on: no slope lifts its
+        // fragments above the final-depth floor.
+        const bool headOn=face%7==0;
+        const vec2 slope=headOn?vec2(0.f,0.f):vec2((next()-.5f)*0x1p-9f,(next()-.5f)*0x1p-9f);
+        const float tie=headOn?0.f:float(int(next()*16.f))*kScatterCellTieStep;
+        float lowest=2.f,highest=-1.f;
+        for(int corner=0;corner<4;++corner){
+            const vec2 q(float(corner&1),float(corner>>1));
+            const float early=scatterEarlyDepth(origin+slope.x*q.x+slope.y*q.y,slope,q);
+            if(early<0.f||early>1.f)return fail("early depth leaves the depth range");
+            lowest=std::min(lowest,early);highest=std::max(highest,early);
+        }
+        if(highest-lowest>4.f*kScatterCellTieStep)return fail("corners rasterize apart");
+        for(int sample=0;sample<16;++sample){
+            const int u=sample%4,v=sample/4;
+            const vec2 q(u==0?0.f:u==3?1.f:next(),v==0?0.f:v==3?1.f:next());
+            const float depth=origin+slope.x*q.x+slope.y*q.y;
+            const float written=std::clamp(
+                scatterFinalDepth(scatterEdgeTieDepth(depth,slope,q),tie),0.f,1.f);
+            if(written<highest)return fail("a fragment writes less than its face rasterizes at");
+            ++fragments;
+        }
+        const float nearest=origin+std::min(slope.x,0.f)+std::min(slope.y,0.f);
+        if(nearest<=0.f||nearest>=1.f)++outside;
+        else if(nearest>.01f&&nearest-lowest>2.f*kScatterEarlyDepthMargin)
+            return fail("early depth is slack");
+    }
+    if(!outside)return fail("no face left the depth range");
+    std::printf("early_depth_fragments=%u out_of_range_faces=%u\n",fragments,outside);
+    return 0;
+}
+"""
+
 COSORT_CHECKS = r"""
 const int kMin=-65535,kMax=65535;
 int fail(const char* label){std::fprintf(stderr,"%s\n",label);return 1;}
@@ -411,6 +460,15 @@ def depth_helpers(root, suffix):
     return constants, depth
 
 
+def early_depth_helpers(root, suffix):
+    common = (root / f"ir_iso_common.{suffix}").read_text()
+    constants, depth = depth_helpers(root, suffix)
+    margin = re.search(r"(?:const|constant) float kScatterEarlyDepthMargin\s*=[^;]+;", common)[0]
+    source = (root / f"ir_scatter_depth.{suffix}").read_text()
+    return host(constants + "\n" + margin + "\n" + depth + "\n"
+                + functions(source, "scatterEarlyDepth"))
+
+
 def visibility_helpers(root, suffix):
     source = (root / f"ir_scatter_visibility.{suffix}").read_text()
     return host("\n".join(functions(source, name) for name in (
@@ -488,6 +546,24 @@ class ScatterVisibilityTest(unittest.TestCase):
             self.check_variants(suffix, variants, "edge_tie", lambda candidate:
                                 PREAMBLE + EDGE_TIE_ADAPTER + candidate + EDGE_TIE_CHECKS)
 
+
+    def test_early_depth_bounds_every_written_depth(self):
+        """The depth a face rasterizes at never exceeds a depth its fragments write."""
+        for suffix, folder in (("glsl", ""), ("metal", "metal/")):
+            helpers = early_depth_helpers(ROOT / "engine/render/src/shaders" / folder, suffix)
+            variants = {
+                "production": helpers,
+                "no-margin": re.sub(r"nearestCorner\s*-\s*kScatterEarlyDepthMargin",
+                                    "nearestCorner", helpers),
+                "farthest-corner": re.sub(r"min\(depthSlope\.", "max(depthSlope.", helpers),
+                "per-corner": re.sub(r"dot\(depthSlope,\s*quadParam\)", "0.0f", helpers),
+                "unclamped": re.sub(r"clamp\((nearestCorner\s*-\s*kScatterEarlyDepthMargin)"
+                                    r",[^;]+\);", r"\1;", helpers),
+                "always-near-plane": re.sub(r"return clamp\([^;]+;", "return 0.0f;", helpers),
+            }
+            self.check_variants(suffix, variants, "early_depth", lambda candidate:
+                                PREAMBLE + EDGE_TIE_ADAPTER + EARLY_DEPTH_ADAPTER + candidate
+                                + EARLY_DEPTH_CHECKS)
 
     def test_sdf_gather_cosorts_with_scatter_faces(self):
         """A coincident SDF and scattered voxel face co-sort whatever the face."""

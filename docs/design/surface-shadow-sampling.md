@@ -233,11 +233,10 @@ Native sparse-scene acceptance and outstanding limits are recorded in the
   producer lifecycles; particle pipelines retain legacy casting.
 - Preserve both the four GRID cubes and detached/attached entities in sweeps.
 - Voxel faces take the continuous receiver at and between cardinal camera
-  yaws by default on pipelines without a fog pass; the model, its fallback
-  routes, the staged plan for fog-pass pipelines and the measurements are in
+  yaws by default, on pipelines with and without a fog pass; the model, its
+  fallback routes and the measurements are in
   [voxel receiver yaw continuity](voxel-receiver-yaw-continuity.md).
-- Detached local triangles, fog-pass pipelines with the switch unset, and fog
-  pipelines on a fallback route
+- Detached local triangles, and fog pipelines on a fallback route
   (line-of-sight gated sources, an active glitch subject), still use sampled
   receiver lighting. Unify their presentation composition without blurring or
   changing the geometry.

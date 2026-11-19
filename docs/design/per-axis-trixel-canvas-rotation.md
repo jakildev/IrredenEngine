@@ -392,6 +392,41 @@ already in it and takes no anchor. `scatterFinalDepth` floors the key onto the
 tie-band lattice and adds a tie code under one band, and a receding edge adds
 one more band, so the drawn value is within two bands of the formula.
 
+### Early depth rejection
+
+Every scatter fragment writes its own depth, so the rasterizer cannot assume
+the interpolated depth and by default shades every fragment before the depth
+test. A dense rotating scene draws several faces over each pixel (the million
+control at 45° draws 6.4 million fragments for 0.93 million pixels), and on
+the surface routes each of them would take a sun query.
+
+The vertex stage therefore rasterizes each face at `scatterEarlyDepth`: the
+depth of the face's nearest corner less `kScatterEarlyDepthMargin`, the same
+value on all four corners, clamped to the depth range. No fragment of the face
+writes less. Interpolation stays inside the corner range, `scatterFinalDepth`
+floors by under one tie band, and the tie code, the receding-edge yield and
+the overflow lane's two bands only add depth. The fragment stage declares that
+bound (`depth(greater)` on Metal, `layout(depth_greater)` on GLSL), which lets
+the rasterizer drop a fragment whose face already lies behind the stored depth
+before it is shaded. The depth test still runs on the written value, so the
+image, the depth attachment and the tie arbitration are the ones the unbounded
+draw produces.
+
+The value is flat across the face on purpose. A per-corner bound would be
+tighter, but it would rely on the rasterizer interpolating its own depth and
+the `depth` varying to the same value at every sample, and a per-corner clamp
+of a face that leaves the depth range interpolates above the clamped written
+depth. `scripts/tests/test_render_scatter_visibility.py` compiles both
+backends' helpers and checks the bound over random faces, head-on faces and
+faces outside the depth range, with mutation controls for a missing margin,
+the farthest corner, a per-corner value and a missing clamp.
+
+How much it rejects depends on draw order: a fragment is dropped only when a
+nearer face at its pixel was drawn first. The visibility prepass
+(`IR_PERAXIS_VISIBILITY_PREPASS=1`) removes that dependence at the price of
+rasterizing every face twice, and stays opt-in. Measured cost of both:
+[voxel receiver yaw continuity](voxel-receiver-yaw-continuity.md#cost-mechanism).
+
 ## Overflow lane background — superseded mask admission (epic #2331, 2026-07-14)
 
 > Supersedes §"Per-axis store occlusion model — engine invariant (established
@@ -1507,9 +1542,8 @@ the full rotation, which is the part #1396 did not do).
   **MRT G-buffer / post-composite per-fragment** approach (the pre-implementation
   findings note below) is **rejected**: the engine keeps lighting at trixel
   resolution (hard product constraint — no fragment-rate lighting). Sun
-  visibility on voxel faces is the one exception: by default, on a pipeline
-  without a fog pass, the scatter fragment takes the exact query at its own
-  point on the face
+  visibility on voxel faces is the one exception: by default the scatter
+  fragment takes the exact query at its own point on the face
   ([voxel receiver yaw continuity](voxel-receiver-yaw-continuity.md)). The two
   cross-canvas maps stay **world-space and SHARED** — the sun-shadow depth SSBO
   and the 128³ light volume are sampled by world-pos reconstructed per-axis

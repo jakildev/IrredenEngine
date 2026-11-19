@@ -24,9 +24,11 @@
 //     voxel surfaces under this frame's resolveRoute (cardinal_ and not
 //     cardinalGlitch_, zero residual yaw). IR_ASSERTs on both sides check that
 //     the two skip sets agree.
-//   - C_CanvasSunShadow::readFactorsSynced (the fog demo's ceiling probe) reads
-//     only occupied fog-canvas texels; a canvas with fog reports its voxels as
-//     needing a query, so this pass writes them.
+//   - C_CanvasSunShadow::readFactorsSynced has one caller, the fog demo's
+//     ceiling probe, which reads it only on a frame without a surface route.
+//     On a surface route the surface variant stores nothing for a cardinal
+//     voxel surface, fog canvas or not, and the probe reads the composited
+//     frame instead.
 // Ordering precondition: every distance and entity-id writer of a canvas runs
 // before this pass. A writer moved between it and LIGHTING_TO_TRIXEL, a new
 // reader of the canvas sun-shadow texture, or a non-detached non-main canvas

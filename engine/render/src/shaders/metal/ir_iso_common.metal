@@ -1048,6 +1048,11 @@ constant float kScatterCellTieBand = 16.0f * kScatterCellTieStep;
 // advances toward its interior keeps the pixel.
 constant float kScatterEdgeTieWidth = 1.0f / 32.0f;
 
+// How far below a face's nearest corner scatterEarlyDepth rasterizes it: the
+// final-depth floor's one band, plus the rounding of the corner reconstruction
+// and of the rasterizer's own depth.
+constant float kScatterEarlyDepthMargin = 4.0f * kScatterCellTieBand;
+
 // Builds the local->world matrix from an SQT triple (scale, quaternion
 // rotation, translation). Composition is T * R * S; quaternion layout matches
 // the engine canon: float4(qx, qy, qz, qw) with .w the scalar; identity is

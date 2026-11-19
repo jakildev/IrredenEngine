@@ -125,7 +125,7 @@ timing on/off. `--suite baseline` preserves the original 16-case reproduction;
 
 For sun-only receiver comparisons, add `--no-ao --no-local-lights`; the isolated
 scene honors both. `--surface-lighting` forces the continuous per-axis
-receiver on, the default on a pipeline without a fog pass
+receiver on, the default on every pipeline
 ([voxel receiver yaw continuity](voxel-receiver-yaw-continuity.md)), over an
 ambient `IR_PERAXIS_SURFACE_LIGHTING=0`. It changes where an eligible face samples lighting,
 not its caster geometry, and cardinal/fog/debug paths keep their existing
@@ -133,7 +133,6 @@ eligibility rules. Face-center sampling can turn a narrow real opening between
 two projected solids into an isolated lit cell. The
 [tilted-shape attribution](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/tilted-baked-shadow-gaps/README.md)
 checks such a ray against rebuilt occupancy instead of filling it by appearance.
-The continuous path remains opt-in because its wider-view cost is unresolved.
 
 Baking costs CPU time and dense storage once per authored asset; attaching still
 allocates one pool span per entity. Sharing an asset does not yet imply shared

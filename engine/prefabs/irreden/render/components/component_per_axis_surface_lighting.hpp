@@ -9,8 +9,7 @@ namespace IRComponents {
 // `IRPrefab::PerAxisSurfaceLighting::` (`per_axis_surface_lighting.hpp`).
 // `System<LIGHTING_TO_TRIXEL>` applies IR_PERAXIS_SURFACE_LIGHTING (`0` off,
 // `1` on) at registration and reads the switch once per frame in `beginTick`.
-// Unset follows the pipeline: on without a FOG_TO_TRIXEL pass, off with one
-// (`enabledFor`).
+// Unset is on (`enabledFor`).
 struct C_PerAxisSurfaceLighting {
     std::optional<bool> enabled_;
 };

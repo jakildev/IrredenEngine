@@ -2,7 +2,6 @@
 #define PER_AXIS_SURFACE_LIGHTING_H
 
 #include <irreden/ir_entity.hpp>
-#include <irreden/ir_system.hpp>
 
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_per_axis_surface_lighting.hpp>
@@ -17,10 +16,10 @@
 // change at runtime.
 //
 // The same switch admits both surface routes, cardinal and per-axis, on a
-// pipeline that registers FOG_TO_TRIXEL; without it fog keeps lighting in
-// compute there. See `surfaceFogRoute`. Unset, the switch is on for a pipeline
-// without a fog pass and off for one with it (`enabledFor`); `setEnabled`
-// overrides both.
+// pipeline that registers FOG_TO_TRIXEL, where the composite then fogs each
+// surface-lit sample; disabled, fog keeps lighting in compute there. See
+// `surfaceFogRoute`. Unset, the switch is on for every pipeline
+// (`enabledFor`); `setEnabled` overrides it.
 namespace IRPrefab::PerAxisSurfaceLighting {
 
 /// How fog of war lets this frame's main canvas take the surface routes.
@@ -58,11 +57,9 @@ inline SurfaceFogRoute surfaceFogRoute(
     return SurfaceFogRoute::COMPOSE;
 }
 
-/// Whether @p lighting admits the surface routes on a pipeline that does or
-/// does not register FOG_TO_TRIXEL.
-inline bool
-enabledFor(const IRComponents::C_PerAxisSurfaceLighting &lighting, bool fogPassRegistered) {
-    return lighting.enabled_.value_or(!fogPassRegistered);
+/// Whether @p lighting admits the surface routes.
+inline bool enabledFor(const IRComponents::C_PerAxisSurfaceLighting &lighting) {
+    return lighting.enabled_.value_or(true);
 }
 
 // The lazy `singleton<T>()` create is a `createEntity`, so its first call runs
@@ -75,12 +72,8 @@ inline void setEnabled(bool enabled) {
     state().enabled_ = enabled;
 }
 
-/// The switch as it applies to the registered pipeline.
 inline bool isEnabled() {
-    return enabledFor(
-        state(),
-        IRSystem::findSystem(IRSystem::FOG_TO_TRIXEL) != IRSystem::kNullSystemId
-    );
+    return enabledFor(state());
 }
 
 } // namespace IRPrefab::PerAxisSurfaceLighting

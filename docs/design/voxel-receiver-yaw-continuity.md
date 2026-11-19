@@ -17,27 +17,39 @@ face. Ambient occlusion, the local-light sample and the material are taken once
 per face on either side of the crossing.
 
 The switch is `C_PerAxisSurfaceLighting::enabled_`, unset by default. Unset,
-it is on for a pipeline that does not register `FOG_TO_TRIXEL` and off for one
-that does (`IRPrefab::PerAxisSurfaceLighting::enabledFor`). An explicit value
-applies to every pipeline: `IR_PERAXIS_SURFACE_LIGHTING=1` or `setEnabled(true)`
-admits the surface routes on a fog-pass pipeline as well, and
+it is on for every pipeline (`IRPrefab::PerAxisSurfaceLighting::enabledFor`),
+whether or not the pipeline registers `FOG_TO_TRIXEL`.
 `IR_PERAXIS_SURFACE_LIGHTING=0` or `setEnabled(false)` selects the per-face
-sampled receiver everywhere: while rotating, one query at the face centre
-(`perAxisSunShadowFactor`) whose result the lighting kernel applies to the
-whole face. That receiver is kept for comparisons and as the fallback below.
+sampled receiver everywhere: one query per stored micro-face at a cardinal yaw
+and, while rotating, one query at the face centre (`perAxisSunShadowFactor`)
+whose result the lighting kernel applies to the whole face. That receiver is
+kept for comparisons and as the fallback below.
 
-## Staged plan
+## Fog-pass pipelines
 
-The default is one model on pipelines **without** a fog pass. That is stage 1.
-A pipeline that registers `FOG_TO_TRIXEL` keeps the compute default at both yaw
-classes (one query per stored micro-face at cardinal, one per base-resolution
-face while rotating) until stage 2,
-[#5123](https://github.com/jakildev/IrredenEngine/issues/5123), flips it with
-its own moved-row inventory, `light-verify` re-bless and million-control cost
-gate. The fog-pass demos (`perf_grid`, `lua_perf_grid`, `fog_demo`,
-`random_voxels`, `skeletal_demo`, `chunk_streaming_smoke`, `scene_reset`,
-`persist_roundtrip`, `reposition_stress`, `IRLightingCombined`,
-`IRCanvasStress --fog-reveal`) therefore render as they did before stage 1.
+A pipeline that registers `FOG_TO_TRIXEL` takes the same two routes as one
+that does not. Fog still applies once per pixel, and
+`IRPrefab::PerAxisSurfaceLighting::surfaceFogRoute` says where:
+
+| Main canvas | Route | Where fog applies |
+|---|---|---|
+| Carries fog, no line-of-sight gated source, no active glitch subject | `COMPOSE` | The lit composite fogs each surface-lit sample; `FOG_TO_TRIXEL` leaves those samples alone |
+| Carries no fog (fog lives on other canvases) | `NONE` | Nothing fogs the main canvas |
+| Carries fog and a source is line-of-sight gated, or a glitch subject is active | `FALLBACK` | `FOG_TO_TRIXEL`, on compute-lit colour |
+
+The pipelines this covers in the tree are `perf_grid` (the million control),
+`lua_perf_grid`, `fog_demo`, `random_voxels`, `skeletal_demo`,
+`chunk_streaming_smoke`, `scene_reset`, `persist_roundtrip`,
+`reposition_stress`, `IRLightingCombined` and `IRCanvasStress --fog-reveal`.
+Their cardinal frames changed along with their rotating ones when the default
+moved: a cardinal frame used to take one query per stored micro-face and now
+takes one per fragment.
+
+The default arrived in two stages. Stage 1 covered pipelines without a fog
+pass. Stage 2 ([#5123](https://github.com/jakildev/IrredenEngine/issues/5123))
+covered the pipelines above, together with the cost mechanism below. The
+measurements keep that split, because each stage was read against its own
+parent.
 
 The per-axis design's earlier resolution, "no fragment-rate lighting", is
 superseded for sun visibility on voxel faces: the query is geometric and exact
@@ -57,7 +69,6 @@ classes:
 | The main canvas lacks AO, sun-shadow or light-volume resources, or the pipeline has no `COMPUTE_SUN_SHADOW` / `TRIXEL_TO_FRAMEBUFFER` | Incomplete lighting pipeline |
 | A fog pass is registered and a source is line-of-sight gated | The gated source keeps its compute march |
 | A fog pass is registered and a glitch subject is active | The composite does not fog the glitch presentation |
-| A fog pass is registered and the switch is unset | Stage 1 default; stage 2 (#5123) removes it |
 | The switch is off | Comparison arm |
 
 Without a fog pass, an active cardinal glitch subject keeps the continuous
@@ -72,12 +83,41 @@ Route tests: `scripts/tests/test_render_per_axis_surface_lighting.py`,
 `SurfaceFogRoute.*` / `PerAxisSurfaceLightingTest.*` /
 `PerAxisSurfaceLightingDefault.*` cases in
 `test/render/per_axis_surface_lighting_test.cpp`. Each harness runs the switch
-unset on a fog-pass pipeline (compute fallback) and on a fog-free one (surface
-route), and fails when `enabledFor` ignores the fog pass.
+unset on a fog-pass pipeline and on a fog-free one. On the fog-pass pipeline
+it has one case per route: `COMPOSE`, `NONE`, and `FALLBACK` for a gated
+source and for a glitch subject. Each harness fails when the unset switch
+follows the fog pass again.
 
-## Measurements
+### Fixtures that read compute-route intermediates
 
-Metal, Apple M4 Max, macOS, Debug. The parent is the commit this change is
+A probe that asserts on what `FOG_TO_TRIXEL` or the sampled sun-shadow pass
+wrote into the main canvas cannot read a surface route, which leaves those
+writes to the composite. `IRFogDemo` handles its probes two ways.
+
+Five modes pin the switch off after `initSystems()`, so their rows are
+comparison-arm rows on the compute route:
+
+| Mode | What its probe reads |
+|---|---|
+| `--channel-probe` | Fog-painted canvas colours per vision channel |
+| `--world-pan` | Fog-painted canvas colours across window moves |
+| `--explored-decay` | Fog-painted canvas and overflow-lane colours |
+| `--ghost-policy` | Explored-style canvas colours of ghost-held subjects |
+| `--ceiling-shadow-curved` | Sampled sun-shadow factors under the fog rim, where the composite shows no shadow to read |
+
+`--ceiling-shadow` is not pinned, because it guards a shadow the player sees.
+On a surface route the canvas sun-shadow texture holds no query for a cardinal
+voxel surface, so its probe reads the composited frame. It draws one warmup
+frame with sun shadows off and the next with them on, and counts a receiver
+pixel as shadowed when the two frames differ there. A pixel fog has darkened
+to nothing reads as lit, so fog cannot stand in for a shadow. With the switch
+off the probe reads the sampled factors as before. `--no-sun-shadows` is the
+control arm: both frames match and the probe fails on the cut cap's missing
+shadow.
+
+## Stage 1 measurements (pipelines without a fog pass)
+
+Metal, Apple M4 Max, macOS, Debug. The parent is the commit stage 1 was
 stacked on. The parent columns of the crossing tables, the receiver-polygon
 controls and the alternative costs were read on battery in an earlier session;
 the head crossing readings were repeated on mains power with the same figures,
@@ -143,9 +183,9 @@ Linux copies of the same rows are stale until those hosts re-capture them.
 yaw-0 rows and hover sweep read the same figures; 22 of its 24 yaw-30 and
 yaw-45 rows moved and stay inside the gate, so no baseline is re-blessed.
 
-Fog-pass pipelines are unchanged: `render-verify --target IRFogDemo` reads the
-same figures on all 66 rows, parent and head, and `IRLightingCombined
---auto-screenshot 5` captures are byte-identical.
+Stage 1 left fog-pass pipelines as they were: `render-verify --target
+IRFogDemo` read the same figures on all 66 rows on its parent and its head,
+and `IRLightingCombined --auto-screenshot 5` captures were byte-identical.
 
 ### Cost
 
@@ -168,10 +208,9 @@ in scatter and 0.10 ms in compute lighting. The GPU envelope goes from 3.91 to
 5.23 ms, while the frame moves only from 8.71 to 9.16 ms. With overlapping
 casters the per-axis envelope reads 0.94 to 1.05 times the parent. On the lit
 per-axis cases at base subdivision, `computeSunShadow` falls from 0.13–0.30 ms
-to 0.01–0.06 ms, and at subdivision 4 from 0.32–0.39 ms to 0.18–0.20 ms. If a
-later scene is
-GPU-bound on a large unoccluded rotating receiver, the lever is hoisting the
-per-face terms (below).
+to 0.01–0.06 ms, and at subdivision 4 from 0.32–0.39 ms to 0.18–0.20 ms.
+Stage 2 met the GPU-bound case on the million control and found the cost in
+the sun query on occluded fragments ([cost mechanism](#cost-mechanism)).
 
 ### Not yet measured
 
@@ -182,8 +221,6 @@ per-face terms (below).
   2x) and pass on both. The crossing reading at 90° and 270°, which Metal has
   not taken, fails on the continuous route from shadow-edge motion with no
   lone-frame pixel (#5184).
-- Pipelines that register a fog pass: unchanged by stage 1. Stage 2 (#5123)
-  measures them.
 
 ### Alternatives measured
 
@@ -213,11 +250,131 @@ continuous at zoom 4 with 8 casters, 10.14 against 10.85 ms at zoom 1.
   discontinuity for a worse still image (the polygon controls' 18 to 32 missing
   and 638 to 650 excess pixels).
 - **Hoisting the per-face terms out of the fragment** (lit and shadowed colours
-  per face, visibility per fragment). The remaining lever if the cost gate
-  needs one; exact only for visibility 0 or 1, so fractional samples would
-  still take the full compose.
+  per face, visibility per fragment). Not built; exact only for visibility 0
+  or 1, so fractional samples would still take the full compose. Stage 2 read
+  the surface draw at parity with the sampled route once shadows are off on
+  the million control, so on that scene it has nothing to recover.
 
 The frame figures in `docs/perf/capacity-envelope/README.md` (9.12 ms sampled
 against 18.00 ms continuous) predate the offscreen pacing change that stopped a
 late Metal frame from sleeping one refresh interval, and must not be read as
 the current cost.
+
+## Stage 2 measurements (fog-pass pipelines)
+
+Metal, Apple M4 Max, macOS, mains power. The parent is the commit stage 2 is
+stacked on, built in its own worktree; every comparison pairs head and parent
+captures from one session. Captures are Debug, timings Release.
+
+### Crossing continuity
+
+`scripts/render-yaw-crossing-metric.py capture --fog-reveal 16`, the stage 1
+fixture with the fog pass registered and the whole graded receiver revealed,
+2560×1440. No `IR_PERAXIS_*` variable is set unless the row names one:
+
+| Configuration | −0.5° / −0.25° | −0.25° / 0° | 0° / +0.25° | +0.25° / +0.5° | Result | Logged fog route, all five frames |
+|---|---:|---:|---:|---:|---|---|
+| Parent, default | 0 | 968 | 968 | 0 | FAIL | `fallback` |
+| Parent, `IR_PERAXIS_SURFACE_LIGHTING=1` | 32 | 24 | 16 | 16 | PASS | `compose` |
+| Head, default | 32 | 24 | 16 | 16 | PASS | `compose` |
+| Head, `IR_PERAXIS_SURFACE_LIGHTING=0` | 0 | 968 | 968 | 0 | FAIL | `fallback` |
+
+The fog-free arm reads 32 / 24 / 16 / 16 and PASS on the head, as it did
+after stage 1.
+
+### Receiver correctness
+
+The receiver-polygon capture set
+(`docs/evidence/receiver-shadow-polygon/README.md`) re-captured with
+`--fog-reveal 16` in the default configuration and graded by
+`scripts/render_receiver_shadow_polygon.py`. Counts are pixels outside the
+one-pixel band; no case has an unknown-colour pixel:
+
+| Camera yaw, radians | Parent missing / excess | Parent route | Head missing / excess | Head route |
+|---|---:|---|---:|---|
+| 0, π | 60 / 52 | `fallback` | 0 / 0 | `compose`, cardinal |
+| π/2, 3π/2 | 64 / 59 | `fallback` | 0 / 0 | `compose`, cardinal |
+| 0.6, π+0.6 | 18 / 638 | `fallback` | 0 / 0 | `compose`, per-axis |
+| π/2+0.6, 3π/2+0.6 | 32 / 650 | `fallback` | 0 / 0 | `compose`, per-axis |
+
+The cardinal rows are the ones stage 2 had to show at least as correct: a fog
+pipeline's cardinal frame took one query per stored micro-face, which the
+oracle fails by 112 to 123 pixels, and now takes one per fragment.
+
+### Exactness
+
+Stage 2 changes which model is the default and what it costs. It does not
+change either model's pixels. For all 103 `render-verify` rows of
+`IRPerfGrid`, `IRLuaPerfGrid` and `IRFogDemo`, the six `IRLightingCombined
+--auto-screenshot 10` frames and the five crossing frames:
+
+- The head with `IR_PERAXIS_SURFACE_LIGHTING=0` is RGB-identical to the
+  parent's default on every row (109 of 109, and the five crossing frames).
+- The head's default is RGB-identical to the parent with
+  `IR_PERAXIS_SURFACE_LIGHTING=1` on every row the parent can capture that
+  way (104 of 104, and the five crossing frames). The parent cannot capture
+  five: its `--ceiling-shadow` and `--ghost-policy` probes read compute-route
+  intermediates and exit before the shot. The two `--ceiling-shadow` rows are
+  identical to a parent build with that probe unregistered. The three
+  `--ghost-policy` rows are pinned to the compute route on the head and are
+  identical to the parent's default.
+
+### Moved rows
+
+Head default against a same-session parent default, 109 rows. 41 moved:
+
+- `IRPerfGrid` (14 rows): all seven shots of the `static_cycle` and
+  `static_cycle_dynamic` passes, four cardinal and three rotating in each.
+  The 21 rows of the other three passes did not move.
+- `IRLuaPerfGrid` (2 rows): `fit_grid`, `zoom1_origin`, both cardinal.
+- `IRFogDemo` (19 rows): `fog_ceiling_shadow9`, `fog_ceiling_shadow_yaw9`,
+  `fog_ceiling_treatment_yaw9`, `fog_detached_edge_zoom5`,
+  `fog_detached_edge_zoom9`, `fog_detached_edge_yaw90_zoom5`,
+  `fog_detached_field_hidden`, `fog_edge_zoom5`, `fog_edge_zoom9`,
+  `fog_edge_zoom14`, `fog_edge_sdf_blocker_zoom5`,
+  `fog_edge_sdf_blocker_zoom9`, `fog_edge_smooth5`, `fog_edge_smooth9`,
+  `fog_edge_smooth14`, `fog_edge_zcost_ceiling_paint_yaw9`,
+  `fog_entity_reveal`, `fog_entity_reveal_soft`, `fog_peraxis_overflow_yaw9`.
+  The other 47 rows did not move; the line-of-sight (`occlusion*`) rows and
+  the five pinned modes stay on the compute route.
+- `IRLightingCombined` (6 frames): every frame. `light-verify` has no macOS
+  baseline for this demo.
+
+Two kinds of pixel move. Sun-shadow edges on voxel receivers follow the
+fragment instead of the stored face (channel deltas up to 123). And where
+fog now composes in the composite, the fogged lit colour rounds once instead
+of twice, a delta of exactly 1: of the 136,468 pixels that move in
+`fog_ceiling_shadow9`, 128,048 move by 1 and 8,420 are shadow edge.
+
+The 28 macOS references behind the 35 moved `render-verify` rows are
+re-blessed from the head (the two `IRPerfGrid` cycle passes share seven
+files). The `windows-debug` copies of 18 of the `IRFogDemo` rows are stale
+until a Windows host re-captures them: every moved row above except
+`fog_detached_field_hidden`, which has no Windows reference. `perf_grid` has
+no `windows-debug` copy of a moved row, `lua_perf_grid` has no Windows set,
+and no demo here has a `linux-debug` set.
+
+### Cost
+
+<!-- STAGE2-COST -->
+
+### Not yet measured
+
+- OpenGL. Every stage 2 reading is Metal. The crossing reading on the
+  fog-pass arm is owed on an OpenGL host; the fog-composing GLSL programs were
+  compiled, linked and graded there before the default moved
+  (`docs/evidence/fog-surface-lighting-gl-native/README.md`). The
+  `depth_greater` declaration and the early-depth vertex output have not been
+  compiled by a GL driver.
+- `IRLightingCombined` through `light-verify` on macOS, which has no baseline
+  for it.
+
+## Cost mechanism
+
+The surface routes take one sun query per fragment, and the scatter draws
+every fragment of every face the rotated view could show. The million control
+at 45° draws 6,378,421 fragments for 927,048 framebuffer pixels (the
+`IR_PERAXIS_VISIBILITY_STATS=1` counters, Debug). On the stage 2 parent that
+is where the whole cost of the route sits:
+
+<!-- STAGE2-MECHANISM -->
