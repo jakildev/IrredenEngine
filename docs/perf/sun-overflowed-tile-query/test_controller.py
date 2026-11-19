@@ -183,6 +183,28 @@ class PositiveFireWitness(unittest.TestCase):
             with self.assertRaises(rm.ProvenanceError):
                 rm.score_case(Path(tmp), entry)
 
+    def test_a_pre_tree_capture_is_compared_with_the_closing_production(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            entry = {}
+            receiver = rm.scaled_crop(rm.RECEIVER_CROP, 1280)
+            for label in ("oracle", *rm.DIAGNOSTIC_VARIANTS, "production", rm.PRE_PRODUCTION):
+                pixels = bytearray(1280 * 720 * 3)
+                if label == rm.PRE_PRODUCTION:
+                    pixels[(receiver[1] * 1280 + receiver[0]) * 3] = 7
+                path = Path(tmp) / label / "shot.png"
+                path.parent.mkdir()
+                rm.RENDER_COMPARE.write_png(str(path), 1280, 720, bytes(pixels), 3)
+                entry[label] = {"frame": path.name, "frame_sha256": rm.sha256(path)}
+            entry["oracle"]["index_witness"] = {"hierarchy_ready": False,
+                                                "receiver_tiles": [{"route": "sampled-fallback"}]}
+            rm.score_case(Path(tmp), entry)
+            self.assertEqual(entry[rm.PRE_PRODUCTION]["receiver_changed_vs_production"], 1)
+            self.assertFalse(entry["verdict"]["production_matches_pre_tree"])
+            self.assertTrue(entry["verdict"]["production_matches_oracle"])
+            del entry[rm.PRE_PRODUCTION]
+            rm.score_case(Path(tmp), entry)
+            self.assertNotIn("production_matches_pre_tree", entry["verdict"])
+
     def test_verdict(self):
         def entry(route, entered, hit, production=0):
             tile = {"route": route}
@@ -305,11 +327,15 @@ class PreTreeProvenance(unittest.TestCase):
                 rm.tree_provenance(build, "pre", dest)
 
     def test_retained_records_pin_their_committed_diffs(self):
-        retained = Path(__file__).resolve().parent / "windows-opengl-mechanism"
-        records = sorted(retained.glob("*/pre-tree/tree.json"))
-        self.assertEqual(len(records), len(rm.BUILDS))
+        here = Path(__file__).resolve().parent
+        for retained in (here / "windows-opengl-mechanism", here / "windows-opengl-early-tests"):
+            records = sorted(retained.glob("*/pre-tree/tree.json"))
+            self.assertEqual(len(records), len(rm.BUILDS), retained.name)
+            self.check_retained(records)
+
+    def check_retained(self, records):
         for path in records:
-            with self.subTest(record=path.parent.parent.name):
+            with self.subTest(record=f"{path.parents[2].name}/{path.parent.parent.name}"):
                 tree = json.loads(path.read_text())
                 self.assertEqual(tree["build_type"], rm.BUILDS[path.parent.parent.name][1])
                 self.assertEqual(tree["diff_sha256"], rm.sha256(path.parent / "tree.diff"))
@@ -462,6 +488,109 @@ class BinaryAB(unittest.TestCase):
         self.assertGreater(rm.WITNESS_EXIT_FRAME, rm.WITNESS_FIRST_FRAME + rm.WITNESS_FRAMES)
         stripped = [v for v in rm.COMMON if v not in ("--auto-profile", "--profile-frames", "360")]
         self.assertEqual(rm.WITNESS_COMMON[:-2], stripped)
+
+
+def profile_report(composite_row):
+    """A minimal exclusive+window profile report with the given composite stage row."""
+    return "\n".join((
+        "=== PROFILE REPORT (360 frames) ===",
+        "Frame time:   avg=30.00ms   p50=30.00ms   p95=31.00ms   p99=32.00ms   min=29.00ms"
+        "   max=33.00ms",
+        "Steady frame time (first 90 of 360 frames excluded):   avg=29.50ms   p50=29.50ms"
+        "   p95=30.00ms   p99=31.00ms   min=29.00ms   max=32.00ms",
+        "", "--- GPU frame timing ---",
+        "Coverage: supported=1 attempted=360 valid=360 invalid=0 commandBuffers=360",
+        "Metric Avg(ms) Min(ms) Max(ms) Samples",
+        "commandBufferSpans 27.210 26.900 27.600 360",
+        "", "--- GPU stage timing ---", "Format: exclusive+window",
+        "Stage                                  Avg(ms)   Min(ms)   Max(ms) Samples Window(ms)"
+        " WindowOnly",
+        "voxelCompact                             0.100     0.079     0.297     360      0.101"
+        "          0",
+        composite_row,
+        "Exclusive sum: 10.359 ms; commandBufferSpans: 27.210 ms (38.1%)",
+        "=== END REPORT ===", ""))
+
+
+SAMPLED_COMPOSITE = ("entityCanvasToFb                        47.950    47.000    49.000"
+                     "     360     47.990          0")
+WINDOW_ONLY_COMPOSITE = "entityCanvasToFb                             -         -         -" \
+                        "       0      5.800        360 window-only"
+
+
+class CompositeRow(unittest.TestCase):
+    def metrics(self, row, backend):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "arm" / "run-1.txt"
+            path.parent.mkdir()
+            path.write_text(profile_report(row))
+            return rm.report_metrics(path, "counters", backend)
+
+    def test_a_sampled_row_is_read_on_both_backends(self):
+        for backend in ("opengl", "metal"):
+            with self.subTest(backend=backend):
+                metrics = self.metrics(SAMPLED_COMPOSITE, backend)
+                self.assertEqual((metrics["entityCanvasToFb"], metrics["entityCanvasToFb_samples"],
+                                  metrics["entityCanvasToFb_row"]), (47.95, 360, "sampled"))
+                self.assertEqual(metrics["gpu_frame"]["commandBufferSpans"], 27.21)
+
+    def test_metal_reads_its_window_only_composite(self):
+        metrics = self.metrics(WINDOW_ONLY_COMPOSITE, "metal")
+        self.assertEqual((metrics["entityCanvasToFb"], metrics["entityCanvasToFb_samples"],
+                          metrics["entityCanvasToFb_row"]), (5.8, 360, "window-only"))
+
+    def test_opengl_refuses_a_window_only_composite(self):
+        with self.assertRaises(rm.ProvenanceError):
+            self.metrics(WINDOW_ONLY_COMPOSITE, "opengl")
+
+    def test_a_report_with_no_composite_row_is_refused_on_both_backends(self):
+        for backend in ("opengl", "metal"):
+            with self.subTest(backend=backend), self.assertRaises(rm.ProvenanceError):
+                self.metrics("perAxisScatter 0.649 0.575 0.761 360 0.649 0", backend)
+
+    def test_metal_guard_compares_post_and_pre_means(self):
+        def stats(post, pre):
+            return {"post vs pre, production": {"production_mean": post, "ablation_mean": pre}}
+
+        contrasts = {"entityCanvasToFb": stats(5.71, 5.80),
+                     "gpu_frame:commandBufferSpans": stats(27.03, 27.21)}
+        guard = rm.metal_guard(contrasts)
+        self.assertTrue(guard["met"])
+        self.assertAlmostEqual(guard["entityCanvasToFb"]["ratio"], 5.71 / 5.80)
+        contrasts["gpu_frame:commandBufferSpans"] = stats(27.21 * 1.03, 27.21)
+        self.assertFalse(rm.metal_guard(contrasts)["met"])
+        self.assertIsNone(rm.metal_guard({"entityCanvasToFb": stats(5.71, 5.80)}))
+        self.assertEqual(rm.ab_value({"gpu_frame": {"commandBufferSpans": 2.0}},
+                                     "gpu_frame:commandBufferSpans"), 2.0)
+
+
+class ShippedLeverRefusesTheControl(unittest.TestCase):
+    def test_early_tests_control_is_refused_once_the_body_forces_early_tests(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "shaders"
+            sampler = root / rm.SUBDIR / rm.SAMPLER
+            sampler.parent.mkdir(parents=True, exist_ok=True)
+            sampler.write_bytes(TWINS[0].read_bytes())
+            wrapper = (SHADERS / rm.EARLY_FRAGMENT).read_bytes()
+            (root / rm.EARLY_FRAGMENT).write_bytes(wrapper)
+            body = root / rm.EARLY_FRAGMENT_BODY
+            shipped = (SHADERS / rm.EARLY_FRAGMENT_BODY).read_text()
+            self.assertIn(rm.EARLY_TESTS_LINE.strip(), shipped)
+            for text, refused in ((shipped, True),
+                                  (shipped.replace(rm.EARLY_TESTS_LINE.strip(), ""), False)):
+                body.write_text(text)
+                hash_, digest = rm.sha256(sampler), rm.directory_digest(root)
+                with self.subTest(refused=refused):
+                    if refused:
+                        with self.assertRaises(rm.StageError):
+                            with rm.staged(root, rm.EARLY_TESTS, hash_, digest):
+                                self.fail("staged the control over the shipped lever")
+                    else:
+                        with rm.staged(root, rm.EARLY_TESTS, hash_, digest):
+                            self.assertIn(rm.EARLY_TESTS_LINE.encode(),
+                                          (root / rm.EARLY_FRAGMENT).read_bytes())
+                    self.assertEqual((root / rm.EARLY_FRAGMENT).read_bytes(), wrapper)
+                    self.assertEqual(rm.directory_digest(root), digest)
 
 
 def witness_row(instance, kind, invocations, owned, gpu_ms=1.0, center=(10.0, 20.0)):

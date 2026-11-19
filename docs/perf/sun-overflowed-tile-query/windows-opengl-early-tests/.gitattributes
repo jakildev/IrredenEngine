@@ -1,0 +1,3 @@
+# witness.json records each witness.csv sha256 over the bytes the engine wrote:
+# keep them unnormalized, and let the whitespace gate accept their CRLF endings.
+**/witness.csv -text whitespace=cr-at-eol

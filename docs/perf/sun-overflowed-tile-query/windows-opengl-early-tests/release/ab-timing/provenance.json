@@ -1,0 +1,45 @@
+{
+  "source_revision": "f8c280aa1dc55f24aeb88cc57cb2ce61eaa837ab",
+  "backend": "opengl",
+  "build": "release",
+  "trees": {
+    "pre": {
+      "build_dir": "C:/msys64/tmp/p4935/pre/release",
+      "build_type": "Release",
+      "binary_sha256": "a5b14aa2c7ebe0f5dcb5dc7d0f75ac31d01721c5605a866c229ec1863fd5649c",
+      "pristine_sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "pristine_shader_dir_sha256": "be8bb10aaad40d5e6e3541d0ca3d42b9ce220dd9f3cfb5ea523f3d7be42fa2f3",
+      "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+      "tree": {
+        "label": "pre",
+        "head": "f8c280aa1dc55f24aeb88cc57cb2ce61eaa837ab",
+        "reverts": "f8c280aa1",
+        "build_type": "Release",
+        "diff_sha256": "3927f85c5faf32cf3559c66acbf600e1183267edcacefc8e1d330bb178f94694",
+        "binary_sha256": "a5b14aa2c7ebe0f5dcb5dc7d0f75ac31d01721c5605a866c229ec1863fd5649c",
+        "shader_dir_sha256": "be8bb10aaad40d5e6e3541d0ca3d42b9ce220dd9f3cfb5ea523f3d7be42fa2f3"
+      }
+    },
+    "post": {
+      "build_dir": "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-4/build-release",
+      "build_type": "Release",
+      "binary_sha256": "a5b14aa2c7ebe0f5dcb5dc7d0f75ac31d01721c5605a866c229ec1863fd5649c",
+      "pristine_sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "pristine_shader_dir_sha256": "2df92b51e1f8e928057cd42c999546b7185fe008e9aada7a6c9fa30883a16327",
+      "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b"
+    }
+  },
+  "controller_sha256": "2fce7a49975753e3dd8e0867a07d6cd43bd8536d8956cee6c3bcf0fd87f48aa4",
+  "variant_sampler_sha256": {
+    "production": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+    "ablation": "5d4ddb6b34c239d20c5cb9255f94b66eae663d37b6500e000d554de63fc0ec08"
+  },
+  "host": "Windows-10-10.0.19045-SP0",
+  "host_gpu": [
+    {
+      "Name": "NVIDIA GeForce RTX 3060 Ti",
+      "DriverVersion": "32.0.15.8180"
+    }
+  ],
+  "python": "3.14.3"
+}

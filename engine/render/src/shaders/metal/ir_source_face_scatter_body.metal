@@ -70,6 +70,12 @@ vertex SourceFaceVertex IR_SOURCE_FACE_VERTEX(
         return out;
     }
     const SourceVoxelFace face = sourceFaces.faces[sourceOrder[128u + instanceId * kFaceSortRecordWords + 1u]];
+    // The alpha cutout is per face and lives here so neither fragment stage discards:
+    // the early route forces early fragment tests, which a discard would turn into depth holes.
+    if (face.color.a < 0.1) {
+        out.position = float4(2.0, 2.0, 2.0, 1.0);
+        return out;
+    }
     const int faceId = int(face.centerAndFace.w);
     const int axis = faceId >> 1;
     float3 eu, ev;
@@ -101,13 +107,18 @@ vertex SourceFaceVertex IR_SOURCE_FACE_VERTEX(
     out.priority = decodePriority(face.owner.xy);
     return out;
 }
+// Never add a discard, a depth write or a side effect to the early route: each makes early
+// and late tests disagree, and a depth-hidden fragment would otherwise run the sun-shadow
+// query in full.
+#if IR_SOURCE_FACE_EARLY_DEPTH
+[[early_fragment_tests]]
+#endif
 fragment SourceFaceFragment IR_SOURCE_FACE_FRAGMENT(
     SourceFaceVertex in [[stage_in]],
     constant FrameDataIsoTriangles& frameData [[buffer(3)]],
     constant GlobalConstants& globals [[buffer(1)]],
     constant FrameDataSun& sunFrameData [[buffer(29)]],
     device const uint* sunDepthBuf [[buffer(28)]]) {
-    if (in.color.a < 0.1) discard_fragment();
     SourceFaceFragment out;
 #if !IR_SOURCE_FACE_EARLY_DEPTH
     const int tier = max(frameData.depthPriorityMode, int(in.priority));

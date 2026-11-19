@@ -101,8 +101,12 @@ PRODUCTION, ABLATION = "production", "ablation"
 # sampler stays pristine.
 EARLY_TESTS = "early-tests"
 EARLY_FRAGMENT = "f_source_face_scatter_early.glsl"
+EARLY_FRAGMENT_BODY = "ir_source_face_scatter_fragment.glsl"
 EARLY_TESTS_LINE = "layout(early_fragment_tests) in;\n"
 DIAGNOSTIC_VARIANTS = ("entry-shadow", "entry-lit", "hit-cleared")
+# diagnose --pre-tree: the pre snapshot's production capture, compared at exact RGB
+# against this tree's closing production capture.
+PRE_PRODUCTION = "pre-production"
 QUIET_ATTEMPTS = 8
 ARM_TIMEOUT, WARM_TIMEOUT = 180, 900
 
@@ -182,6 +186,10 @@ def staged(shader_root, variant, pristine_sha256, pristine_digest):
     data = staged_bytes(original, variant)
     fragment = Path(shader_root) / EARLY_FRAGMENT
     fragment_original = fragment.read_bytes() if variant == EARLY_TESTS else None
+    if fragment_original is not None and EARLY_TESTS_LINE.strip() in (
+            Path(shader_root) / EARLY_FRAGMENT_BODY).read_text():
+        raise StageError(f"{EARLY_FRAGMENT_BODY} already forces early fragment tests; "
+                         "the control applies to a tree without the shipped lever")
     try:
         path.write_bytes(data)
         if fragment_original is not None:
@@ -271,16 +279,32 @@ def validate_arm(manifest, expected):
         raise ProvenanceError("; ".join(problems))
 
 
-def report_metrics(report_path, mode):
-    report = parse_report(Path(report_path), Path(report_path).parent.name)
+def composite_row(report, report_path, backend):
+    """(ms, invocations, row kind) of the composite stage. Metal reports the composite
+    as a window-only row (its encoders interleave with other stages'), so a Metal report
+    without a sampled row reads the window; an OpenGL report must carry a sampled row."""
     stage = report.gpu_by_name("entityCanvasToFb")
-    if stage is None or not stage.samples:
-        raise ProvenanceError(f"{report_path}: no sampled entityCanvasToFb row")
+    if stage is not None and stage.samples:
+        return stage.avg_ms, stage.samples, "sampled"
+    if backend == "metal":
+        window = next((s for s in report.gpu_window_only_stages
+                       if s.name == "entityCanvasToFb"), None)
+        if window is not None and window.window_only:
+            return window.window_ms, window.window_only, "window-only"
+    raise ProvenanceError(f"{report_path}: no sampled entityCanvasToFb row"
+                          + (" or window-only row" if backend == "metal" else ""))
+
+
+def report_metrics(report_path, mode, backend=None):
+    report = parse_report(Path(report_path), Path(report_path).parent.name)
+    composite_ms, composite_samples, composite_kind = composite_row(
+        report, report_path, backend or BACKEND)
     substage = report.gpu_by_name("voxelCompact")
     has_substage = substage is not None and bool(substage.samples)
     if has_substage != (mode == "counters"):
         raise ProvenanceError(f"{report_path}: substage samples disagree with the {mode} mode")
-    metrics = {"entityCanvasToFb": stage.avg_ms, "entityCanvasToFb_samples": stage.samples,
+    metrics = {"entityCanvasToFb": composite_ms, "entityCanvasToFb_samples": composite_samples,
+               "entityCanvasToFb_row": composite_kind,
                "frame_avg": report.frame.avg,
                "steady_frame_avg": report.steady_frame.avg if report.steady_frame else None,
                "gpu_frame": {m.name: m.avg_ms for m in report.gpu_frame.metrics},
@@ -656,11 +680,20 @@ def score_case(directory, entry):
                             frame_changed_vs_oracle=len(changed_pixels(shot, oracle)))
     entry["entry_receiver_px"] = len(receiver_sets["entry-shadow"] | receiver_sets["entry-lit"])
     entry["verdict"] = case_verdict(entry)
+    if PRE_PRODUCTION in entry:
+        production, pre = frame("production"), frame(PRE_PRODUCTION)
+        entry[PRE_PRODUCTION].update(
+            receiver_changed_vs_production=len(changed_pixels(production, pre, receiver)),
+            stack_changed_vs_production=len(changed_pixels(production, pre, stack)),
+            frame_changed_vs_production=len(changed_pixels(production, pre)))
+        entry["verdict"]["production_matches_pre_tree"] = (
+            entry[PRE_PRODUCTION]["receiver_changed_vs_production"] == 0)
 
 
-def capture(build, directory, case):
-    """One probed screenshot of a case; returns the frame and index CSV it wrote."""
-    build_dir, _, binary, _ = build_paths(build)
+def capture(build, directory, case, paths=None):
+    """One probed screenshot of a case; returns the frame and index CSV it wrote.
+    `paths` is a tree_paths() tuple; the default is this worktree's build."""
+    build_dir, _, binary, _ = paths or build_paths(build)
     directory.mkdir(parents=True)
     config = directory / "config.lua"
     config.write_text('config = {window_mode="offscreen", profiling_enabled=false, '
@@ -690,14 +723,20 @@ def diagnose(args):
     if output.exists():
         raise ProvenanceError(f"{output} exists; diagnostics are captured once")
     report = {"provenance": prov, "cases": {}}
+    labels = [("oracle", PRODUCTION, None), *((v, v, None) for v in DIAGNOSTIC_VARIANTS),
+              ("production", PRODUCTION, None)]
+    if args.pre_tree:
+        report["pre_tree"] = tree_provenance(args.build, "pre", args.pre_tree)
+        labels.append((PRE_PRODUCTION, PRODUCTION, tree_paths(args.build, "pre", args.pre_tree)))
     for case in CASES:
         entry = report["cases"][case] = {}
-        for label, variant in (("oracle", PRODUCTION), *((v, v) for v in DIAGNOSTIC_VARIANTS),
-                               ("production", PRODUCTION)):
-            with staged(shader_root, variant, prov["pristine_sampler_sha256"],
-                        prov["pristine_shader_dir_sha256"]) as stage:
+        for label, variant, paths in labels:
+            pristine = report["pre_tree"] if paths else prov
+            with staged(paths[3] if paths else shader_root, variant,
+                        pristine["pristine_sampler_sha256"],
+                        pristine["pristine_shader_dir_sha256"]) as stage:
                 print(f"diagnose {case} {label}", flush=True)
-                shot = capture(args.build, output / case / label, case)
+                shot = capture(args.build, output / case / label, case, paths)
             shot.update(stage)
             shot["index_witness"] = index_witness(output / case / label / shot["index"])
             entry[label] = shot
@@ -932,6 +971,33 @@ AB_CONTRASTS = (
 )
 
 
+AB_MEASUREMENTS = (*METRICS[:2], ("gpu_frame:commandBufferSpans",
+                                  "GPU frame commandBufferSpans ms"))
+# The top of Metal's measured far-128 Debug spread over its mean (9.54 / 9.325 ms).
+METAL_GUARD_RATIO = 1.023
+METAL_GUARD_KEYS = ("entityCanvasToFb", "gpu_frame:commandBufferSpans")
+
+
+def ab_value(metrics, key):
+    """A measurement of one arm; `gpu_frame:<name>` reads that GPU frame metric."""
+    if key.startswith("gpu_frame:"):
+        return metrics["gpu_frame"].get(key.split(":", 1)[1])
+    return metrics[key]
+
+
+def metal_guard(contrasts):
+    """post / pre production means of the guarded measurements, or None while one is
+    missing."""
+    guard = {}
+    for key in METAL_GUARD_KEYS:
+        stats = contrasts.get(key, {}).get("post vs pre, production")
+        if stats is None or not stats["ablation_mean"]:
+            return None
+        guard[key] = {"ratio": stats["production_mean"] / stats["ablation_mean"]}
+    guard["met"] = all(value["ratio"] <= METAL_GUARD_RATIO for value in guard.values())
+    return guard
+
+
 def summarize_ab(output):
     output = Path(output)
     prov = json.loads((output / "provenance.json").read_text())
@@ -961,12 +1027,12 @@ def summarize_ab(output):
         if not complete:
             continue
         entry = summary["cases"][case] = {"pairs": len(complete), "contrasts": {}}
-        for key, label in METRICS[:2]:
+        for key, label in AB_MEASUREMENTS:
             for name, after, before in AB_CONTRASTS:
                 if after not in declared or before not in declared:
                     continue
-                a = [p[after][key] for p in complete]
-                b = [p[before][key] for p in complete]
+                a = [ab_value(p[after], key) for p in complete]
+                b = [ab_value(p[before], key) for p in complete]
                 if any(value is None for value in a + b):
                     continue
                 stats = paired_difference(a, b)
@@ -988,6 +1054,13 @@ def summarize_ab(output):
         lines += ["", f"`{LEGACY_CASE}` production composite cut: upper bound "
                   f"{fmt_share(gate['upper_share'])} of the pre mean; the half-cut gate "
                   f"(≤ −50.0%) is {'met' if summary['gl_cut']['met'] else 'not met'}."]
+    guard = metal_guard(summary["cases"].get(LEGACY_CASE, {}).get("contrasts", {}))
+    if prov["backend"] == "metal" and guard:
+        summary["metal_guard"] = guard
+        lines += ["", f"`{LEGACY_CASE}` Metal guard (post / pre mean ≤ {METAL_GUARD_RATIO}): "
+                  + "; ".join(f"{key} {value['ratio']:.3f}×" for key, value in guard.items()
+                              if key != "met")
+                  + f"; {'met' if guard['met'] else 'not met'}."]
     lines += ["", "Columns read after = the first arm named in the contrast, before = the "
               "second. Rows are sampled invocation spans or frame averages; they are never "
               "summed."]
@@ -1219,7 +1292,7 @@ def main():
         if name == "timing":
             command.add_argument("--pairs", type=int, default=5)
             command.add_argument("--legacy-pairs", type=int, default=5)
-        if name in ("restore", "ab-timing", "witness"):
+        if name in ("restore", "ab-timing", "witness", "diagnose"):
             command.add_argument("--pre-tree", type=Path,
                                  help="snapshot root of the pre binary (needed for the pre tree)")
         if name == "ab-timing":

@@ -1,4 +1,5 @@
-"""Execute source-face routing and metadata with independent corner-depth bounds.
+"""Execute source-face routing, metadata and the alpha cull with independent
+corner-depth bounds, and pin the fragment-stage early-test contract.
 
 Serial atomics validate aggregation, not GPU publication. The corner oracle uses
 a binary64 quaternion matrix; framebuffer depth precision needs native captures.
@@ -161,6 +162,30 @@ int main(){
 """
 
 
+CLIPPED_POSITION = re.compile(r"(?:gl_Position = vec4|out\.position = float4)"
+                              r"\(2\.0, 2\.0, 2\.0, 1\.0\);\s*return(?: out)?;")
+
+
+def alpha_cull(vertex):
+    """The vertex stage's statements between the per-instance face read and the first
+    use of the face's geometry, as a host predicate: `return true` where the stage clips."""
+    read = re.search(r"    const SourceVoxelFace face = [^;]+;\n", vertex)
+    block = vertex[read.end():vertex.index("    const int faceId", read.end())]
+    if not CLIPPED_POSITION.search(block):
+        raise AssertionError("the alpha cull must emit the whole-instance clipped position")
+    return CLIPPED_POSITION.sub("return true;", re.sub(r"//[^\n]*", "", block))
+
+
+EARLY_TESTS_GATE = re.compile(
+    r"#if IR_SOURCE_FACE_EARLY_DEPTH\n((?:(?!#endif)[^\n]*\n)*?[^\n]*early_fragment_tests[^\n]*\n)"
+    r"#endif\n")
+
+
+def ungate_early_tests(body):
+    """Mutation: the early-tests declaration applies to both routes."""
+    return EARLY_TESTS_GATE.sub(r"\1", body, count=1)
+
+
 def host_source(suffix, directory):
     base = SHADERS / directory
     common = (base / f"ir_iso_common.{suffix}").read_text()
@@ -239,6 +264,19 @@ void checkHeaderReset(){
     adapter += ("bool vertexAccept(uint magnitude,vec4 q,float density,float scale,int offset,"
                 "uint priority,uint invalid,int mode,int pass){\n" + context + gate +
                 "\nreturn true;\n}\n")
+    # The host predicate runs in binary64 so an alpha equal to the literal itself
+    # separates `<` from `<=`.
+    adapter += ("bool vertexCullsAlpha(double alpha){\n"
+                "    struct {struct {double a;} color;} face{{alpha}};\n" + alpha_cull(vertex) +
+                "\nreturn false;\n}\n")
+    adapter += r"""
+void checkAlphaCull(){
+    for(double alpha:{0.,.05,std::nextafter(.1,0.)})
+        require(vertexCullsAlpha(alpha),"vertex stage clips a face whose alpha is below 0.1");
+    for(double alpha:{.1,std::nextafter(.1,1.),.5,1.})
+        require(!vertexCullsAlpha(alpha),"vertex stage keeps a face whose alpha is 0.1 or more");
+}
+"""
     assignment = re.search(r"#if IR_SOURCE_FACE_EARLY_DEPTH\n(.*?)#endif", vertex, re.DOTALL)[1]
     adapter += r"""
 float vertexDepth(float faceDepth,int offset,float w){
@@ -266,7 +304,8 @@ float vertexDepth(float faceDepth,int offset,float w){
             checks += (f'require(offsetof({name},{field})=={offset},'
                        '"shader metadata offsets match CPU header");\n')
     adapter += "void checkShaderHeaders(){\n" + checks + "}\n"
-    cases = CASES.replace("    checkHeaderReset();", "    checkHeaderReset();checkShaderHeaders();")
+    cases = CASES.replace("    checkHeaderReset();",
+                          "    checkHeaderReset();checkShaderHeaders();checkAlphaCull();")
     code = "\n".join((PREAMBLE, constants, extract_function(common, "decodePriority"),
                       helper, adapter, cases))
     return (code.replace("constant ", "const ").replace("float3", "vec3")
@@ -275,12 +314,16 @@ float vertexDepth(float faceDepth,int offset,float w){
 
 @unittest.skipUnless(COMPILER, "early-depth routing controls require a C++ compiler")
 class SourceFaceEarlyDepthTest(unittest.TestCase):
-    def preprocess_fragment(self, suffix, directory, early, inverted=False):
+    def preprocess_fragment(self, suffix, directory, early, inverted=False, edit=None):
         name = ("f_source_face_scatter" if suffix == "glsl" else "source_face_scatter")
         wrapper = (SHADERS / directory / f"{name}{'_early' if early else ''}.{suffix}").read_text()
         body_name = ("ir_source_face_scatter_fragment.glsl" if suffix == "glsl" else
                      "ir_source_face_scatter_body.metal")
         body = (SHADERS / directory / body_name).read_text()
+        if edit is not None:
+            edited = edit(body)
+            self.assertNotEqual(edited, body, "mutation did not apply")
+            body = edited
         if inverted:
             self.assertIn("#if !IR_SOURCE_FACE_EARLY_DEPTH", body)
             body = body.replace("#if !IR_SOURCE_FACE_EARLY_DEPTH", "#if IR_SOURCE_FACE_EARLY_DEPTH")
@@ -305,6 +348,47 @@ class SourceFaceEarlyDepthTest(unittest.TestCase):
                         self.assertEqual(has_fragment_depth, early if inverted else not early)
                         self.assertIn("worldSurfaceSunShadowFactor", shader)
                         self.assertIn("sourceFaceLitColor", shader)
+
+    # Metal's attribute must sit on the declaration itself, which precedes the marker the
+    # depth check slices from.
+    EARLY_TESTS = {
+        "glsl": re.compile(r"\blayout\(early_fragment_tests\) in;"),
+        "metal": re.compile(r"\[\[early_fragment_tests\]\]\s*fragment SourceFaceFragment\b"),
+    }
+    DISCARD = re.compile(r"\bdiscard\b|\bdiscard_fragment\s*\(")
+    FRAGMENT_MUTATIONS = {
+        "drop_early_tests": {"glsl": lambda b: b.replace("layout(early_fragment_tests) in;", ""),
+                             "metal": lambda b: b.replace("[[early_fragment_tests]]", "")},
+        "early_tests_on_fallback": {"glsl": ungate_early_tests, "metal": ungate_early_tests},
+        "restore_discard": {
+            "glsl": lambda b: b.replace("void main() {\n",
+                                        "void main() {\n    if (faceColor.a < 0.1) discard;\n"),
+            "metal": lambda b: b.replace("    SourceFaceFragment out;\n",
+                                         "    if (in.color.a < 0.1) discard_fragment();\n"
+                                         "    SourceFaceFragment out;\n")},
+    }
+
+    def fragment_contract(self, suffix, directory, edit=None):
+        """Violations, over both routes, of: the early route alone forces early fragment
+        tests, and neither route's fragment stage discards."""
+        problems = []
+        for early in (False, True):
+            shader = self.preprocess_fragment(suffix, directory, early, edit=edit)
+            if bool(self.EARLY_TESTS[suffix].search(shader)) != early:
+                problems.append(f"early={early}: early fragment tests "
+                                + ("missing" if early else "forced on the fallback route"))
+            if self.DISCARD.search(shader):
+                problems.append(f"early={early}: fragment stage discards")
+        return problems
+
+    def test_early_route_forces_early_tests_and_no_route_discards(self):
+        for suffix, directory in (("glsl", ""), ("metal", "metal/")):
+            with self.subTest(backend=suffix):
+                self.assertEqual(self.fragment_contract(suffix, directory), [])
+            for name, edits in self.FRAGMENT_MUTATIONS.items():
+                with self.subTest(backend=suffix, mutation=name):
+                    self.assertNotEqual(self.fragment_contract(suffix, directory, edits[suffix]),
+                                        [], "mutation escaped the fragment contract")
 
     def compile_and_run(self, source):
         with tempfile.TemporaryDirectory() as tmp:
@@ -339,6 +423,8 @@ class SourceFaceEarlyDepthTest(unittest.TestCase):
             "both_draws": ("if (earlyDepth != (pass != 0))", "if (false)"),
             "drop_emitted_radius": ("sourceFacePositionMagnitudeBits(voxelPosition.xyz())", "0u"),
             "drop_emitted_priority": ("decodePriority(packedEntityId)", "0u"),
+            "drop_alpha_cull": ("face.color.a < 0.1", "false"),
+            "inclusive_alpha_cull": ("face.color.a < 0.1", "face.color.a <= 0.1"),
         }
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
             production = host_source(suffix, directory)

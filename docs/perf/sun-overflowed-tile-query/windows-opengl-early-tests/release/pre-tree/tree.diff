@@ -1,0 +1,73 @@
+diff --git a/engine/render/src/shaders/ir_source_face_scatter_fragment.glsl b/engine/render/src/shaders/ir_source_face_scatter_fragment.glsl
+index c9f14d166..92554e597 100644
+--- a/engine/render/src/shaders/ir_source_face_scatter_fragment.glsl
++++ b/engine/render/src/shaders/ir_source_face_scatter_fragment.glsl
+@@ -40,13 +40,8 @@ flat in vec4 faceDirectSunAndExposure;
+ flat in float faceAO;
+ flat in uint faceLightingMode;
+ layout(location = 0) out vec4 FragColor;
+-#if IR_SOURCE_FACE_EARLY_DEPTH
+-// Never add a discard, a gl_FragDepth write or a side effect to this route: each makes
+-// early and late tests disagree, and a depth-hidden fragment would otherwise run the
+-// sun-shadow query in full.
+-layout(early_fragment_tests) in;
+-#endif
+ void main() {
++    if (faceColor.a < 0.1) discard;
+ #if !IR_SOURCE_FACE_EARLY_DEPTH
+     const int tier = max(depthPriorityMode, int(facePriority));
+     float depth = faceDepth + float(distanceOffset);
+diff --git a/engine/render/src/shaders/ir_source_face_scatter_vertex.glsl b/engine/render/src/shaders/ir_source_face_scatter_vertex.glsl
+index 9c5fe5ae8..d498e9276 100644
+--- a/engine/render/src/shaders/ir_source_face_scatter_vertex.glsl
++++ b/engine/render/src/shaders/ir_source_face_scatter_vertex.glsl
+@@ -54,12 +54,6 @@ void main() {
+         return;
+     }
+     const SourceVoxelFace face = sourceFaces[sourceOrder[128u + uint(gl_InstanceID) * kFaceSortRecordWords + 1u]];
+-    // The alpha cutout is per face and lives here so neither fragment stage discards:
+-    // the early route forces early fragment tests, which a discard would turn into depth holes.
+-    if (face.color.a < 0.1) {
+-        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+-        return;
+-    }
+     const int faceId = int(face.centerAndFace.w);
+     const int axis = faceId >> 1;
+     vec3 eu, ev;
+diff --git a/engine/render/src/shaders/metal/ir_source_face_scatter_body.metal b/engine/render/src/shaders/metal/ir_source_face_scatter_body.metal
+index f5e27ede2..25936f2e5 100644
+--- a/engine/render/src/shaders/metal/ir_source_face_scatter_body.metal
++++ b/engine/render/src/shaders/metal/ir_source_face_scatter_body.metal
+@@ -70,12 +70,6 @@ vertex SourceFaceVertex IR_SOURCE_FACE_VERTEX(
+         return out;
+     }
+     const SourceVoxelFace face = sourceFaces.faces[sourceOrder[128u + instanceId * kFaceSortRecordWords + 1u]];
+-    // The alpha cutout is per face and lives here so neither fragment stage discards:
+-    // the early route forces early fragment tests, which a discard would turn into depth holes.
+-    if (face.color.a < 0.1) {
+-        out.position = float4(2.0, 2.0, 2.0, 1.0);
+-        return out;
+-    }
+     const int faceId = int(face.centerAndFace.w);
+     const int axis = faceId >> 1;
+     float3 eu, ev;
+@@ -107,18 +101,13 @@ vertex SourceFaceVertex IR_SOURCE_FACE_VERTEX(
+     out.priority = decodePriority(face.owner.xy);
+     return out;
+ }
+-// Never add a discard, a depth write or a side effect to the early route: each makes early
+-// and late tests disagree, and a depth-hidden fragment would otherwise run the sun-shadow
+-// query in full.
+-#if IR_SOURCE_FACE_EARLY_DEPTH
+-[[early_fragment_tests]]
+-#endif
+ fragment SourceFaceFragment IR_SOURCE_FACE_FRAGMENT(
+     SourceFaceVertex in [[stage_in]],
+     constant FrameDataIsoTriangles& frameData [[buffer(3)]],
+     constant GlobalConstants& globals [[buffer(1)]],
+     constant FrameDataSun& sunFrameData [[buffer(29)]],
+     device const uint* sunDepthBuf [[buffer(28)]]) {
++    if (in.color.a < 0.1) discard_fragment();
+     SourceFaceFragment out;
+ #if !IR_SOURCE_FACE_EARLY_DEPTH
+     const int tier = max(frameData.depthPriorityMode, int(in.priority));

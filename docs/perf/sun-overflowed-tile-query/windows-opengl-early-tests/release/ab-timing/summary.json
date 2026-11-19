@@ -1,0 +1,246 @@
+{
+  "provenance": {
+    "source_revision": "f8c280aa1dc55f24aeb88cc57cb2ce61eaa837ab",
+    "backend": "opengl",
+    "build": "release",
+    "trees": {
+      "pre": {
+        "build_dir": "C:/msys64/tmp/p4935/pre/release",
+        "build_type": "Release",
+        "binary_sha256": "a5b14aa2c7ebe0f5dcb5dc7d0f75ac31d01721c5605a866c229ec1863fd5649c",
+        "pristine_sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+        "pristine_shader_dir_sha256": "be8bb10aaad40d5e6e3541d0ca3d42b9ce220dd9f3cfb5ea523f3d7be42fa2f3",
+        "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+        "tree": {
+          "label": "pre",
+          "head": "f8c280aa1dc55f24aeb88cc57cb2ce61eaa837ab",
+          "reverts": "f8c280aa1",
+          "build_type": "Release",
+          "diff_sha256": "3927f85c5faf32cf3559c66acbf600e1183267edcacefc8e1d330bb178f94694",
+          "binary_sha256": "a5b14aa2c7ebe0f5dcb5dc7d0f75ac31d01721c5605a866c229ec1863fd5649c",
+          "shader_dir_sha256": "be8bb10aaad40d5e6e3541d0ca3d42b9ce220dd9f3cfb5ea523f3d7be42fa2f3"
+        }
+      },
+      "post": {
+        "build_dir": "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-4/build-release",
+        "build_type": "Release",
+        "binary_sha256": "a5b14aa2c7ebe0f5dcb5dc7d0f75ac31d01721c5605a866c229ec1863fd5649c",
+        "pristine_sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+        "pristine_shader_dir_sha256": "2df92b51e1f8e928057cd42c999546b7185fe008e9aada7a6c9fa30883a16327",
+        "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b"
+      }
+    },
+    "controller_sha256": "2fce7a49975753e3dd8e0867a07d6cd43bd8536d8956cee6c3bcf0fd87f48aa4",
+    "variant_sampler_sha256": {
+      "production": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "ablation": "5d4ddb6b34c239d20c5cb9255f94b66eae663d37b6500e000d554de63fc0ec08"
+    },
+    "host": "Windows-10-10.0.19045-SP0",
+    "host_gpu": [
+      {
+        "Name": "NVIDIA GeForce RTX 3060 Ti",
+        "DriverVersion": "32.0.15.8180"
+      }
+    ],
+    "python": "3.14.3"
+  },
+  "cases": {
+    "far-128": {
+      "pairs": 5,
+      "contrasts": {
+        "entityCanvasToFb": {
+          "post vs pre, production": {
+            "n": 5,
+            "production_mean": 3.2184,
+            "production_min": 2.857,
+            "production_max": 3.367,
+            "ablation_mean": 63.865,
+            "ablation_min": 63.267,
+            "ablation_max": 64.189,
+            "delta_mean": -60.6466,
+            "deltas": [
+              -59.997,
+              -60.712,
+              -60.92999999999999,
+              -60.748,
+              -60.846000000000004
+            ],
+            "delta_sd": 0.37303324248650993,
+            "delta_lower_95": -61.00227204619177,
+            "delta_upper_95": -60.29092795380823,
+            "share": -18.843711160825254,
+            "change_share": -0.949606200579347,
+            "upper_share": -0.944037077488581
+          },
+          "post vs pre, ablation": {
+            "n": 5,
+            "production_mean": 0.35159999999999997,
+            "production_min": 0.308,
+            "production_max": 0.376,
+            "ablation_mean": 0.28459999999999996,
+            "ablation_min": 0.254,
+            "ablation_max": 0.297,
+            "delta_mean": 0.067,
+            "deltas": [
+              0.057999999999999996,
+              0.07100000000000001,
+              0.063,
+              0.08900000000000002,
+              0.05399999999999999
+            ],
+            "delta_sd": 0.01383835250309806,
+            "delta_lower_95": 0.053805692924598116,
+            "delta_upper_95": 0.08019430707540189,
+            "share": 0.19055745164960186,
+            "change_share": 0.23541813070976814,
+            "upper_share": 0.2817790129142723
+          },
+          "query term, pre": {
+            "n": 5,
+            "production_mean": 63.865,
+            "production_min": 63.267,
+            "production_max": 64.189,
+            "ablation_mean": 0.28459999999999996,
+            "ablation_min": 0.254,
+            "ablation_max": 0.297,
+            "delta_mean": 63.5804,
+            "deltas": [
+              62.978,
+              63.273,
+              63.891999999999996,
+              63.827999999999996,
+              63.931000000000004
+            ],
+            "delta_sd": 0.4297386415020165,
+            "delta_lower_95": 63.17066165890237,
+            "delta_upper_95": 63.99013834109763,
+            "share": 0.9955437250450168,
+            "change_share": 223.40267041461703,
+            "upper_share": 224.8423694346368
+          },
+          "query term, post": {
+            "n": 5,
+            "production_mean": 3.2184,
+            "production_min": 2.857,
+            "production_max": 3.367,
+            "ablation_mean": 0.35159999999999997,
+            "ablation_min": 0.308,
+            "ablation_max": 0.376,
+            "delta_mean": 2.8668,
+            "deltas": [
+              2.923,
+              2.49,
+              2.899,
+              2.991,
+              3.031
+            ],
+            "delta_sd": 0.21711794029973658,
+            "delta_lower_95": 2.6597868620377922,
+            "delta_upper_95": 3.073813137962208,
+            "share": 0.8907531692766593,
+            "change_share": 8.153583617747442,
+            "upper_share": 8.742358185330513
+          }
+        },
+        "steady_frame_avg": {
+          "post vs pre, production": {
+            "n": 5,
+            "production_mean": 40.446,
+            "production_min": 36.0,
+            "production_max": 42.08,
+            "ablation_mean": 101.614,
+            "ablation_min": 100.19,
+            "ablation_max": 102.2,
+            "delta_mean": -61.168,
+            "deltas": [
+              -59.05,
+              -65.81,
+              -60.55,
+              -60.49,
+              -59.94
+            ],
+            "delta_sd": 2.663816810518323,
+            "delta_lower_95": -63.707841139523495,
+            "delta_upper_95": -58.6281588604765,
+            "share": -1.5123374375710825,
+            "change_share": -0.6019642962583895,
+            "upper_share": -0.5769693040375982
+          },
+          "post vs pre, ablation": {
+            "n": 5,
+            "production_mean": 36.316,
+            "production_min": 31.07,
+            "production_max": 38.69,
+            "ablation_mean": 37.064,
+            "ablation_min": 31.02,
+            "ablation_max": 38.74,
+            "delta_mean": -0.7480000000000011,
+            "deltas": [
+              -0.5900000000000034,
+              -3.6099999999999994,
+              0.12999999999999545,
+              0.28000000000000114,
+              0.05000000000000071
+            ],
+            "delta_sd": 1.634050182827932,
+            "delta_lower_95": -2.3060004833683463,
+            "delta_upper_95": 0.8100004833683443,
+            "share": -0.02059698204648092,
+            "change_share": -0.020181308007770373,
+            "upper_share": 0.021854103263769274
+          },
+          "query term, pre": {
+            "n": 5,
+            "production_mean": 101.614,
+            "production_min": 100.19,
+            "production_max": 102.2,
+            "ablation_mean": 37.064,
+            "ablation_min": 31.02,
+            "ablation_max": 38.74,
+            "delta_mean": 64.55,
+            "deltas": [
+              61.449999999999996,
+              63.120000000000005,
+              63.28999999999999,
+              63.89,
+              71.0
+            ],
+            "delta_sd": 3.7175462337407463,
+            "delta_lower_95": 61.00547065201598,
+            "delta_upper_95": 68.09452934798402,
+            "share": 0.6352471116184777,
+            "change_share": 1.7415821282106625,
+            "upper_share": 1.8372148000211532
+          },
+          "query term, post": {
+            "n": 5,
+            "production_mean": 40.446,
+            "production_min": 36.0,
+            "production_max": 42.08,
+            "ablation_mean": 36.316,
+            "ablation_min": 31.07,
+            "ablation_max": 38.69,
+            "delta_mean": 4.13,
+            "deltas": [
+              2.990000000000002,
+              0.9200000000000017,
+              2.6099999999999994,
+              3.1199999999999974,
+              11.009999999999998
+            ],
+            "delta_sd": 3.94552277904969,
+            "delta_lower_95": 0.3681042751931587,
+            "delta_upper_95": 7.891895724806841,
+            "share": 0.10211145725164417,
+            "change_share": 0.11372397841171934,
+            "upper_share": 0.21731181090447296
+          }
+        }
+      }
+    }
+  },
+  "gl_cut": {
+    "upper_share": -0.944037077488581,
+    "met": true
+  }
+}

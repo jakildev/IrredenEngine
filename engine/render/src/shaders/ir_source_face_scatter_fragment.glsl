@@ -40,8 +40,13 @@ flat in vec4 faceDirectSunAndExposure;
 flat in float faceAO;
 flat in uint faceLightingMode;
 layout(location = 0) out vec4 FragColor;
+#if IR_SOURCE_FACE_EARLY_DEPTH
+// Never add a discard, a gl_FragDepth write or a side effect to this route: each makes
+// early and late tests disagree, and a depth-hidden fragment would otherwise run the
+// sun-shadow query in full.
+layout(early_fragment_tests) in;
+#endif
 void main() {
-    if (faceColor.a < 0.1) discard;
 #if !IR_SOURCE_FACE_EARLY_DEPTH
     const int tier = max(depthPriorityMode, int(facePriority));
     float depth = faceDepth + float(distanceOffset);
