@@ -2089,17 +2089,7 @@ void initSystems() {
     IRSystem::registerPipelineGroups(IRTime::Events::UPDATE, updateGroups);
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
-        {IRSystem::createSystem<C_Camera>(
-             "StaticFixtureWindow",
-             [](C_Camera &) {},
-             []() {
-                 if (g_staticWindowOpening) {
-                     g_staticWindowOpening = false;
-                     IREngine::enableFrameTiming(true);
-                 }
-             }
-         ),
-         IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
+        {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
     // PERF_STATS_OVERLAY implicitly enables both timing histograms at
@@ -2528,6 +2518,10 @@ void failStaticFixture(const char *what) {
 // settlement when its first capture begins; the static cycle, the render
 // fixture, is held to its full start condition.
 void watchStaticFixture() {
+    if (g_staticWindowOpening) {
+        g_staticWindowOpening = false;
+        IREngine::enableFrameTiming(true);
+    }
     ++g_staticFixtureFrames;
     if (g_staticBudgetLifted && staticFixtureSettled()) {
         IREntity::singleton<C_StaticSettings>() = C_StaticSettings{};
