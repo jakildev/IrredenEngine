@@ -11,6 +11,7 @@
 #   ir-acquire perf -- <cmd...>           # take the perf lock, run cmd, release
 #   ir-acquire benchmark -- <cmd...>      # take (budget-1) CPU + GPU + perf
 #   ir-acquire --info                     # show what's currently held
+#   ir-acquire --queue-timeout            # print the resolved queue bound (s)
 #   ir-acquire --quiet-status [--json]    # show benchmark quiet-window state
 #   ir-acquire --quiet-disable [reason]   # run benchmarks without the window
 #   ir-acquire --quiet-enable             # restore guarded benchmarks
@@ -19,7 +20,10 @@
 #
 # Flags (before the resource verb):
 #   --nonblock        fail fast if any required lock is contended
-#   --timeout SECS    wait at most SECS for each lock (default 600)
+#   --timeout SECS    wait at most SECS for each lock (default: the
+#                     IR_QUEUE_TIMEOUT → host.toml → concurrency.toml bound,
+#                     600). A gpu/perf wait parked behind a benchmark quiet
+#                     window counts against it; a cpu-slot wait does not.
 #
 # Reservation semantics — "acquire-late, release-early":
 #   Hold a lock for the operation that needs it and nothing more. The script
@@ -87,6 +91,10 @@ while [[ $# -gt 0 ]]; do
         --timeout)  timeout_secs="$2"; shift 2 ;;
         --info)
             ir_print_lock_state
+            exit 0
+            ;;
+        --queue-timeout)
+            ir_queue_timeout
             exit 0
             ;;
         --quiet-status)

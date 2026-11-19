@@ -601,6 +601,12 @@ def write_parker(path: Path, state: dict) -> None:
         print(f"ir-acquire: parker row write failed, parker continues: {error}", file=sys.stderr)
 
 
+# `park --deadline` reached its deadline with the window still open; the
+# waiter's queue bound has run out (concurrency_helpers.sh
+# _ir_quiet_defer_nonbenchmark).
+PARK_DEADLINE = 3
+
+
 def cmd_park(args: argparse.Namespace) -> int:
     path = lease_path(args.tag)
     meta = read_json(path / "lease.json")
@@ -628,6 +634,8 @@ def cmd_park(args: argparse.Namespace) -> int:
     write_parker(parker_path, state)
     try:
         while True:
+            if args.deadline and time.time() >= args.deadline:
+                return PARK_DEADLINE
             payload = status_payload(args.tag)
             if payload["state"] in {"off", "expired", "disabled"}:
                 state["state"] = "busy"
@@ -882,6 +890,8 @@ def parser() -> argparse.ArgumentParser:
     park.add_argument("--measurement-root-token", default="")
     park.add_argument("--runtime-root", default="")
     park.add_argument("--launcher-token", default="")
+    park.add_argument("--deadline", type=float, default=0.0,
+                      help="epoch seconds; exit 3 if the window is still open then")
     park.set_defaults(func=cmd_park)
     park_drop = sub.add_parser("park-drop")
     park_drop.add_argument("tag")

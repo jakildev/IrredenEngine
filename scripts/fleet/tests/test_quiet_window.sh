@@ -395,6 +395,87 @@ kill "$HOLDER_PID" 2>/dev/null || true
 wait "$HOLDER_PID" 2>/dev/null || true
 HOLDER_PID=""
 
+# A queued gpu waiter parked behind a benchmark window is charged for the
+# park: it ends at its own queue bound, unlike the cpu waiter above.
+sleep 30 &
+HOLDER_PID=$!
+"$IR_ACQUIRE" --quiet-lease gpu-waiter create "$HOLDER_PID"
+"$IR_ACQUIRE" gpu -- sleep 15 >"$TMP_ROOT/gpu-holder.out" 2>&1 &
+GPU_HOLD_PID=$!
+for _attempt in $(seq 1 100); do
+    [[ -e "$IR_LOCK_ROOT/gpu/lock/owner" ]] && break
+    sleep 0.02
+done
+"$IR_ACQUIRE" benchmark -- true >"$TMP_ROOT/gpu-bench.out" 2>&1 &
+BENCH_PID=$!
+for _attempt in $(seq 1 100); do
+    OUT=$("$IR_ACQUIRE" --quiet-status --json 2>&1)
+    [[ "$OUT" == *'"state": "waiting"'* ]] && break
+    sleep 0.02
+done
+assert_contains "$OUT" '"state": "waiting"' "benchmark queues behind the gpu holder"
+WAIT_START=$(date +%s)
+OUT=$(IR_QUIET_OWNER=gpu-waiter IR_QUEUE_TIMEOUT=3 "$IR_ACQUIRE" gpu -- \
+    touch "$TMP_ROOT/gpu-waiter.ran" 2>&1)
+RC=$?
+WAIT_ELAPSED=$(( $(date +%s) - WAIT_START ))
+assert_eq "$RC" "1" "parked gpu waiter fails at its queue bound"
+assert_contains "$OUT" "timeout waiting for lock lock (gpu, 3s)" \
+    "parked gpu waiter names the queue timeout"
+assert_eq "$(( WAIT_ELAPSED <= 3 + 5 ))" "1" \
+    "parked gpu waiter ends within its bound (${WAIT_ELAPSED}s <= 8s)"
+assert_absent "$(find "$TMP_ROOT" -maxdepth 1 -type f -print)" "$TMP_ROOT/gpu-waiter.ran" \
+    "a timed-out gpu waiter never runs its command"
+assert_eq "$(find "$IR_LOCK_ROOT/quiet/leases/gpu-waiter/parkers" -name '*.json' 2>/dev/null | wc -l | tr -d ' ')" \
+    "0" "a deadline-stopped park drops its parker row"
+kill "$GPU_HOLD_PID" "$BENCH_PID" 2>/dev/null || true
+wait "$GPU_HOLD_PID" 2>/dev/null || true
+wait "$BENCH_PID" 2>/dev/null || true
+BENCH_PID=""
+"$IR_ACQUIRE" --quiet-lease gpu-waiter drop
+kill "$HOLDER_PID" 2>/dev/null || true
+wait "$HOLDER_PID" 2>/dev/null || true
+HOLDER_PID=""
+
+# A parker that errors (any exit but its deadline status) never proves the
+# window closed, so the waiter fails closed instead of taking the resource.
+# The stubs stand in for an open window whose parker exits <park-rc>; rc 0 is
+# the control that the stubbed path does grant.
+park_probe() {
+    local verb="$1" park_rc="$2" lock_root="$TMP_ROOT/park-fail-$1-$2"
+    IR_LOCK_ROOT="$lock_root" IR_QUIET_OWNER=park-fail IR_QUIET_ACQUIRE_VERB="" \
+        bash -c '
+            set -euo pipefail
+            source "$1"
+            ir_quiet_status() { return 0; }
+            ir_quiet_park() { return "$PARK_RC"; }
+            case "$2" in
+                gpu) ir_acquire_exclusive lock gpu --timeout 2 ;;
+                cpu) ir_acquire_cpu 1 --timeout 2 ;;
+            esac
+            touch "$3"
+        ' _ "$HELPERS" "$verb" "$lock_root.ran" 2>&1
+}
+for verb in gpu cpu; do
+    for park_rc in 2 1 143; do
+        OUT=$(PARK_RC=$park_rc park_probe "$verb" "$park_rc")
+        RC=$?
+        assert_eq "$RC" "1" "$verb waiter fails closed when its parker exits $park_rc"
+        assert_contains "$OUT" "quiet-window park for park-fail failed (exit $park_rc)" \
+            "$verb waiter names the failed parker (exit $park_rc)"
+        assert_absent "$(find "$TMP_ROOT" -maxdepth 1 -type f -print)" \
+            "$TMP_ROOT/park-fail-$verb-$park_rc.ran" \
+            "$verb waiter never runs its command after a parker exit $park_rc"
+        assert_eq "$(find "$TMP_ROOT/park-fail-$verb-$park_rc" -name owner 2>/dev/null | wc -l | tr -d ' ')" \
+            "0" "$verb waiter holds no lock after a parker exit $park_rc"
+    done
+    OUT=$(PARK_RC=0 park_probe "$verb" 0)
+    RC=$?
+    assert_eq "$RC" "0" "$verb waiter grants after a clean park (stub control)"
+    assert_contains "$(find "$TMP_ROOT" -maxdepth 1 -type f -print)" "$TMP_ROOT/park-fail-$verb-0.ran" \
+        "$verb waiter runs its command after a clean park (stub control)"
+done
+
 sleep 30 & holder_a=$!
 sleep 30 & holder_b=$!
 "$IR_ACQUIRE" --quiet-lease requester-a create "$holder_a"

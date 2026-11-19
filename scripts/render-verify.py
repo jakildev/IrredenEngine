@@ -17,7 +17,9 @@ Workflow:
      verdict, reported apart from crashes and failures. A pass that times
      out — ``RESULT=ALIVE-TIMEOUT``, ``RESULT=TERM-IGNORED``, or the pass
      outliving this harness's own backstop — is a ``timeout`` row: never
-     compared, never a pass, never recordable as a control.
+     compared, never a pass, never recordable as a control. A pass whose gpu
+     lock was never granted inside the queue bound (``RESULT=LOCK-FAILED``)
+     is a ``lock-failed`` row, with the same consequences.
   6. For each shot (manifest order), map `screenshot_NNNNNN.png` → `<label>.png`
      and compare via `render-compare.py`.
   7. For each shot the manifest opts into a `crops` block, compare its ROI
@@ -110,6 +112,7 @@ import verify_common
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 RENDER_COMPARE = SCRIPT_DIR / "render-compare.py"
+IR_ACQUIRE = REPO_ROOT / "engine" / "tools" / "bin" / "ir-acquire"
 CONTROL_CACHE_SUBDIR = "render-verify-controls"
 CONTROL_CACHE_LIMIT = 30
 
@@ -229,12 +232,12 @@ def _write_json_atomic(path: Path, record: dict[str, Any]) -> None:
 
 def _row_verdict(row: dict[str, Any]) -> str:
     return {"skip": "SKIP", "host-closed": "HOST-CLOSED",
-            "timeout": "TIMEOUT"}.get(row["kind"],
-                                      "PASS" if row["pass"] else "FAIL")
+            "timeout": "TIMEOUT", "lock-failed": "LOCK-FAILED"}.get(
+                row["kind"], "PASS" if row["pass"] else "FAIL")
 
 
 # Rows that carry no pixel verdict, so control grading never reads them.
-NO_VERDICT_KINDS = {"skip", "host-closed", "timeout"}
+NO_VERDICT_KINDS = {"skip", "host-closed", "timeout", "lock-failed"}
 
 
 def _row_metrics(row: dict[str, Any]) -> dict[str, Any]:
@@ -941,13 +944,36 @@ def _env_seconds(name: str, default: int) -> int:
     return int(value) if value.isdigit() else default
 
 
+def _export_queue_bound() -> int:
+    """Resolve the gpu-lock queue bound once and export it to every pass.
+
+    ``ir-acquire --queue-timeout`` reads the same env → host.toml →
+    concurrency.toml layers the lock wait enforces, so the backstop below and
+    each pass's ir-run see the bound the queue actually ends at.
+    """
+    try:
+        done = subprocess.run([verify_common.resolve_bash(), str(IR_ACQUIRE),
+                               "--queue-timeout"], capture_output=True, text=True,
+                              timeout=30, check=False)
+        resolved = done.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        resolved = ""
+    if not resolved.isdigit():
+        resolved = str(_env_seconds("IR_QUEUE_TIMEOUT", 600))
+        print(f"[render-verify] warning: could not resolve the queue bound "
+              f"through {IR_ACQUIRE}; using {resolved}s", file=sys.stderr)
+    os.environ["IR_QUEUE_TIMEOUT"] = resolved
+    return int(resolved)
+
+
 def _pass_backstop_seconds(timeout: int) -> int:
     """Wall-clock bound on one capture pass, strictly past ir-run's own.
 
     ir-run returns within ``timeout`` of the run clock starting plus three
     ``IR_RUN_KILL_GRACE`` stages (TERM to SIGKILL, the launch's exit, the
     output drain); the clock starts only once the gpu lock is granted, and the
-    queue for it is bounded by ``IR_QUEUE_TIMEOUT``. The backstop must stay
+    queue for it is bounded by ``IR_QUEUE_TIMEOUT`` (``_export_queue_bound``
+    sets it for the sweep). The backstop must stay
     larger than that sum: its group TERM reaches ir-acquire, which releases
     the lock, so firing first could free the GPU under a still-running exe.
     """
@@ -1036,7 +1062,8 @@ def _run_capture(*, worktree: Path, target: str, shots_dir: Path, warmup: int,
     ``verify_common.HOST_CLOSED`` when ir-run proved Windows' hang handling
     closed the demo, ``verify_common.NO_DISPLAY`` for a host with no monitor,
     one of ``TIMEOUT_VERDICTS`` when the pass was stopped for running too
-    long, else ``"CRASH"`` (failed or unproven completion). Each pass owns the
+    long, ``verify_common.LOCK_FAILED`` when the gpu lock was never granted,
+    else ``"CRASH"`` (failed or unproven completion). Each pass owns the
     whole ``shots_dir``, so the caller must collect this pass's screenshots
     before starting the next one.
     """
@@ -1065,7 +1092,7 @@ def _run_capture(*, worktree: Path, target: str, shots_dir: Path, warmup: int,
         for line in tail:
             print(f"    {line}", file=sys.stderr)
         verdict = (result if result in (verify_common.HOST_CLOSED, verify_common.NO_DISPLAY,
-                                        *TIMEOUT_VERDICTS)
+                                        verify_common.LOCK_FAILED, *TIMEOUT_VERDICTS)
                    else "CRASH")
         return (returncode, "\n".join(tail), verdict)
     return None
@@ -1107,6 +1134,13 @@ def _timeout_row(pass_label: str, verdict: str, timeout: int) -> dict[str, Any]:
             "reason": f"pass timed out: {bound} — captures not compared"}
 
 
+def _lock_failed_row(pass_label: str) -> dict[str, Any]:
+    bound = _env_seconds("IR_QUEUE_TIMEOUT", 600)
+    return {"label": pass_label, "kind": "lock-failed", "pass": False,
+            "reason": f"gpu lock not granted within the {bound}s queue bound "
+                      f"(RESULT=LOCK-FAILED) — the demo never ran; re-run"}
+
+
 def _outcome_row(pass_label: str, outcome: tuple[int, str, str] | None,
                  timeout: int) -> dict[str, Any] | None:
     """The no-verdict row a pass outcome stands for, else ``None``."""
@@ -1114,6 +1148,8 @@ def _outcome_row(pass_label: str, outcome: tuple[int, str, str] | None,
         return None
     if outcome[2] == verify_common.HOST_CLOSED:
         return _host_closed_row(pass_label)
+    if outcome[2] == verify_common.LOCK_FAILED:
+        return _lock_failed_row(pass_label)
     if outcome[2] in TIMEOUT_VERDICTS:
         return _timeout_row(pass_label, outcome[2], timeout)
     return None
@@ -1155,12 +1191,14 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
                 backend: str, target: str, demo_dir: Path) -> dict[str, Any]:
     """Build, capture, and gate one target; return its tally.
 
-    ``{target, demo, rc, checked, failed, skipped, host_closed, timed_out}``.
+    ``{target, demo, rc, checked, failed, skipped, host_closed, timed_out,
+    lock_failed}``.
     ``rc`` is what a single-target run exits with (0 pass, 1 fail/crash/no
     verdict, 2 no references); the counts are what ``--all`` aggregates.
-    ``host_closed`` counts capture passes the host closed on both attempts and
-    ``timed_out`` passes stopped for running too long — neither has a verdict,
-    so they are neither checks nor failures, and both fail the run. Everything a
+    ``host_closed`` counts capture passes the host closed on both attempts,
+    ``timed_out`` passes stopped for running too long, and ``lock_failed``
+    passes whose gpu lock was never granted — none has a verdict, so they are
+    neither checks nor failures, and all fail the run. Everything a
     single-target run prints is printed here — ``main`` adds output only when
     it is sweeping.
     """
@@ -1195,12 +1233,13 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
 
     def tally(rc: int, checked: int = 0, failed: int = 0,
               skipped: int = 0, host_closed: int = 0, timed_out: int = 0,
-              rows: list[dict[str, Any]] | None = None,
+              lock_failed: int = 0, rows: list[dict[str, Any]] | None = None,
               recordable: bool = False) -> dict[str, Any]:
         return {"target": target, "demo": demo_name, "rc": rc,
                 "checked": checked, "failed": failed, "skipped": skipped,
                 "host_closed": host_closed, "timed_out": timed_out,
-                "rows": rows or [], "recordable": recordable}
+                "lock_failed": lock_failed, "rows": rows or [],
+                "recordable": recordable}
 
     print(
         f"[render-verify] target={target} demo={demo_name} "
@@ -1264,7 +1303,9 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
         if main_outcome is not None and not main_closed:
             print("[render-verify] --update-references: the default pass did not "
                   "complete cleanly; references not updated.", file=sys.stderr)
-            return tally(1, timed_out=int(main_row is not None))
+            main_kind = main_row["kind"] if main_row is not None else ""
+            return tally(1, timed_out=int(main_kind == "timeout"),
+                         lock_failed=int(main_kind == "lock-failed"))
         if captured is None:
             print("[render-verify] --update-references: the default pass was "
                   "closed twice by Windows hang handling (RESULT=HOST-CLOSED); "
@@ -1284,9 +1325,12 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
             if outcome is not None:
                 closed = outcome[2] == verify_common.HOST_CLOSED
                 timed_out = outcome[2] in TIMEOUT_VERDICTS
+                lock_failed = outcome[2] == verify_common.LOCK_FAILED
                 what = ("was closed twice by Windows hang handling "
                         "(RESULT=HOST-CLOSED)" if closed
                         else f"timed out (RESULT={outcome[2]})" if timed_out
+                        else "never got the gpu lock (RESULT=LOCK-FAILED)"
+                        if lock_failed
                         else f"did not complete cleanly (exit {outcome[0]})")
                 print(
                     f"[render-verify] --update-references: extra run "
@@ -1294,7 +1338,8 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
                     f"this pass.",
                     file=sys.stderr,
                 )
-                return tally(1, host_closed=int(closed), timed_out=int(timed_out))
+                return tally(1, host_closed=int(closed), timed_out=int(timed_out),
+                             lock_failed=int(lock_failed))
             all_caps = _collect_all_shots(shots_dir)
             sliced = _slice_capture(all_caps, extra["capture_offset"],
                                     len(extra["shots"]), extra["name"])
@@ -1396,6 +1441,7 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
     skipped: list[dict[str, Any]] = []
     host_closed: list[dict[str, Any]] = []
     timed_out: list[dict[str, Any]] = []
+    lock_failed: list[dict[str, Any]] = []
     for row in rows:
         verdict = _row_verdict(row)
         result = row.get("result")
@@ -1413,14 +1459,18 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
             host_closed.append(row)
         elif row["kind"] == "timeout":
             timed_out.append(row)
+        elif row["kind"] == "lock-failed":
+            lock_failed.append(row)
         elif not row["pass"]:
             failures.append(row)
     all_pass = not failures
-    checked = len(rows) - len(skipped) - len(host_closed) - len(timed_out)
+    checked = (len(rows) - len(skipped) - len(host_closed) - len(timed_out)
+               - len(lock_failed))
+    no_verdict = bool(crashes or host_closed or timed_out or lock_failed)
 
     print()
     skip_note = f" ({len(skipped)} skipped — references pending)" if skipped else ""
-    if all_pass and not crashes and not host_closed and not timed_out:
+    if all_pass and not no_verdict:
         print(f"[render-verify] all {checked} checks PASS{skip_note}")
         return tally(0, checked=checked, skipped=len(skipped), rows=rows,
                      recordable=True)
@@ -1450,10 +1500,15 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
               f"{', '.join(r['label'] for r in timed_out)} — stopped before "
               f"completing, so their captures were not compared; failing the "
               f"verify run.", file=sys.stderr)
+    if lock_failed:
+        print(f"[render-verify] {len(lock_failed)} capture pass(es) LOCK-FAILED: "
+              f"{', '.join(r['label'] for r in lock_failed)} — the gpu lock was "
+              f"not granted within the queue bound, so the demo never ran; "
+              f"failing the verify run — re-run.", file=sys.stderr)
     return tally(1, checked=checked, failed=len(failures),
                  skipped=len(skipped), host_closed=len(host_closed),
-                 timed_out=len(timed_out), rows=rows,
-                 recordable=not crashes and not host_closed and not timed_out)
+                 timed_out=len(timed_out), lock_failed=len(lock_failed),
+                 rows=rows, recordable=not no_verdict)
 
 
 def _print_sweep_summary(results: list[dict[str, Any]]) -> None:
@@ -1470,12 +1525,15 @@ def _print_sweep_summary(results: list[dict[str, Any]]) -> None:
     for r in results:
         closed = r.get("host_closed", 0)
         timed = r.get("timed_out", 0)
+        locked = r.get("lock_failed", 0)
         if r.get("out_of_scope"):
             verdict = f"OUT-OF-SCOPE ({r['out_of_scope']} not declared)"
         elif r["rc"] == 0:
             verdict = "PASS"
         elif timed and not r["failed"]:
             verdict = f"TIMEOUT ({timed} pass(es) timed out)"
+        elif locked and not r["failed"]:
+            verdict = f"LOCK-FAILED ({locked} pass(es) never got the gpu lock)"
         elif closed and not r["failed"]:
             verdict = f"HOST-CLOSED ({closed} pass(es), no verdict — re-run)"
         elif r["checked"] == 0:
@@ -1490,20 +1548,30 @@ def _print_sweep_summary(results: list[dict[str, Any]]) -> None:
     skipped = sum(r["skipped"] for r in results)
     closed = [r["target"] for r in results if r.get("host_closed", 0)]
     timed = [r["target"] for r in results if r.get("timed_out", 0)]
+    locked = [r["target"] for r in results if r.get("lock_failed", 0)]
     errored = [r["target"] for r in results
                if r["rc"] != 0 and r["checked"] == 0
-               and not r.get("host_closed", 0) and not r.get("timed_out", 0)]
+               and not r.get("host_closed", 0) and not r.get("timed_out", 0)
+               and not r.get("lock_failed", 0)]
     out_of_scope = [r for r in results if r.get("out_of_scope")]
     closed_note = f", {len(closed)} HOST-CLOSED" if closed else ""
     timed_count = sum(r.get("timed_out", 0) for r in results)
     timed_note = f", {timed_count} pass(es) TIMEOUT" if timed else ""
+    locked_count = sum(r.get("lock_failed", 0) for r in results)
+    locked_note = f", {locked_count} pass(es) LOCK-FAILED" if locked else ""
     scope_note = f", {len(out_of_scope)} out of scope" if out_of_scope else ""
     print(f"[render-verify] total: {total} checks across {len(results)} demos, "
-          f"{failed} FAIL, {skipped} skipped{closed_note}{timed_note}{scope_note}")
+          f"{failed} FAIL, {skipped} skipped{closed_note}{timed_note}"
+          f"{locked_note}{scope_note}")
     if timed:
         print(f"[render-verify] {len(timed)} demo(s) had a capture pass time "
               f"out: {', '.join(timed)} — stopped by the watchdog or the "
               f"backstop; no verdict, and the sweep fails.", file=sys.stderr)
+    if locked:
+        print(f"[render-verify] {len(locked)} demo(s) had a capture pass never "
+              f"get the gpu lock within the {_env_seconds('IR_QUEUE_TIMEOUT', 600)}s "
+              f"queue bound (RESULT=LOCK-FAILED): {', '.join(locked)} — no "
+              f"verdict, and the sweep fails; re-run.", file=sys.stderr)
     if out_of_scope:
         print(f"[render-verify] {len(out_of_scope)} demo(s) OUT-OF-SCOPE on "
               f"{out_of_scope[0]['out_of_scope']}: "
@@ -1589,6 +1657,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.record_control:
         _validate_control_source(worktree)
+    _export_queue_bound()
 
     if not args.all:
         demo_dir = _resolve_demo_dir(worktree, args.target, args.demo)

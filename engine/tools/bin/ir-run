@@ -34,9 +34,10 @@
 # --timeout budgets the executable's run time only. When the run is
 # wrapped with ir-acquire, time spent queued on the resource lock does
 # not count: the watchdog starts once the lock is granted. The wait is
-# bounded separately by ir-acquire's own queue timeout
-# (IR_QUEUE_TIMEOUT, default 600 s), and a run that never gets its lock
-# reports RESULT=LOCK-FAILED, not a watchdog verdict.
+# bounded separately by ir-acquire's own queue timeout (IR_QUEUE_TIMEOUT →
+# host.toml → concurrency.toml, default 600 s; time parked behind a
+# benchmark quiet window counts against it), and a run that never gets its
+# lock reports RESULT=LOCK-FAILED, not a watchdog verdict.
 #
 # Fleet agents should always use --timeout for interactive (non-
 # auto-screenshot) GUI executables to avoid leaving windows open and
@@ -252,7 +253,8 @@ Run mode
                         FLEET_RUN_DEFAULT_TIMEOUT default if set, else exec.
                         N covers the executable's run time only: time queued
                         on an ir-acquire lock is not counted (the lock wait
-                        has its own bound, IR_QUEUE_TIMEOUT, default 600 s).
+                        has its own bound, IR_QUEUE_TIMEOUT, default 600 s,
+                        quiet-window deferral included).
                         While queued, ir-run prints "ir-run: queued on the
                         <verb> lock ..." every 15 s and "ir-run: <verb> lock
                         granted after Ns" once the run clock starts.
@@ -301,7 +303,8 @@ Run mode
                                 mode for every run in a shell. ir-run never
                                 overwrites a value already present.
     IR_QUEUE_TIMEOUT            Seconds a wrapped run may wait for its
-                                ir-acquire lock (default 600).
+                                ir-acquire lock (default: host.toml, then
+                                concurrency.toml, 600).
     IR_RUN_KILL_GRACE           Seconds for each stage of stopping a --timeout
                                 run: TERM to SIGKILL, SIGKILL to the launch's
                                 exit, exit to its output closing (default 5).
@@ -570,8 +573,12 @@ fi
 # Using an array preserves quoting around exe args containing spaces.
 # gpu and benchmark are the only verbs ir-run dispatches; both take no
 # args other than the wrapped command.
+# The bound the queued status line prints is the one ir-acquire enforces:
+# resolved once here and exported to it.
 acquire_prefix=()
 if [[ -n "$acquire_verb" ]]; then
+    QUEUE_BOUND="$(ir_queue_timeout)"
+    export IR_QUEUE_TIMEOUT="$QUEUE_BOUND"
     acquire_prefix=("$IR_ACQUIRE" "$acquire_verb" "--")
 fi
 
@@ -1168,7 +1175,7 @@ while true; do
         if (( SECONDS - queue_start >= queue_note )); then
             echo "ir-run: queued on the $acquire_verb lock for" \
                  "$((SECONDS - queue_start))s; the ${TIMEOUT}s run clock has" \
-                 "not started (queue bound IR_QUEUE_TIMEOUT=${IR_QUEUE_TIMEOUT:-600}s)"
+                 "not started (queue bound IR_QUEUE_TIMEOUT=${QUEUE_BOUND}s)"
             queue_note=$((queue_note + 15))
         fi
         sleep 0.2

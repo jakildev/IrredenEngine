@@ -201,6 +201,7 @@ class ParkRuntimeRootsTest(unittest.TestCase):
             measurement_root_token=f"{ROOT} {RUNTIME}",
             runtime_root=str(SECOND_RUNTIME),
             launcher_token="run-a",
+            deadline=0.0,
         )
         held = {
             "state": "held",
