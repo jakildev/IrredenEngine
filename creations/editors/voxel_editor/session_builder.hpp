@@ -586,6 +586,15 @@ struct PickCheck {
     std::string name_;
 };
 
+// Whole-frame pick-versus-render expectation. spatialRayOffsetPx_ shifts the
+// spatial oracle's CPU ray off each rendered pixel, in main-framebuffer pixels,
+// while the render side stays as drawn: a nonzero offset is the oracle's
+// negative control and must fail with texels > 0 and agree < texels.
+struct PickMatchesRenderCheck {
+    IRMath::vec2 spatialRayOffsetPx_ = IRMath::vec2(0.0f);
+    std::string name_;
+};
+
 // Fill-preview expectation, read from the main canvas's entity ids at a shot's
 // capture frame. With expectDrawn_ the ghost shape is flagged visible, owns at
 // least one texel, and every texel it owns lies on a view ray through the box
@@ -716,6 +725,9 @@ struct Segment {
     std::vector<GuiAimFixup> guiAims_;
     std::vector<IRPrefab::GuiTest::Assertion> assertions_;
     SceneUiPressCheck *sceneUiPressCheck_ = nullptr;
+    // Arms the composite's depth-tested owner capture while this segment runs,
+    // in the spatial view, for its whole-frame pick-versus-render check.
+    bool capturesDepthTestedOwners_ = false;
 };
 
 // A built session. `shots_` points into `segments_`, so neither collection may
@@ -753,6 +765,7 @@ struct Recipe {
     std::deque<SliderCheck> sliderChecks_;
     // Same stable-storage contract as checks_, for expectPick.
     std::deque<PickCheck> pickChecks_;
+    std::deque<PickMatchesRenderCheck> pickMatchesRenderChecks_;
     // Same contract, for expectFillGhost and expectNoFillGhost.
     std::deque<FillGhostCheck> fillGhostChecks_;
     // Same contract, for the module checks.
@@ -838,8 +851,8 @@ bool evaluateCameraZoomCheck(const void *context, std::string &actual);
 // as evaluateOccupancyCheck. Defined in main.cpp, beside the pick itself.
 bool evaluatePickCheck(const void *context, std::string &actual);
 
-// Sweeps the rendered frame for agreement with the edit pick; takes no
-// context. Defined in main.cpp.
+// Sweeps the rendered frame for agreement with the edit pick; reads one
+// PickMatchesRenderCheck. Defined in main.cpp.
 bool evaluatePickMatchesRender(const void *context, std::string &actual);
 
 // Reads one FillGhostCheck against the fill tool's ghost shape and the main
@@ -2530,11 +2543,16 @@ class Builder {
     // when this segment settles — the check an aim-based assertion cannot make,
     // since the aim and the pick share one screen mapping and would agree with
     // each other even if both were offset from the render.
-    void expectPickMatchesRender(std::string name) {
-        m_recipe.pickChecks_.push_back(PickCheck{IRMath::ivec3(0), std::move(name)});
-        const PickCheck &check = m_recipe.pickChecks_.back();
+    void expectPickMatchesRender(
+        std::string name, IRMath::vec2 spatialRayOffsetPx = IRMath::vec2(0.0f)
+    ) {
+        m_recipe.pickMatchesRenderChecks_.push_back(
+            PickMatchesRenderCheck{spatialRayOffsetPx, std::move(name)}
+        );
+        const PickMatchesRenderCheck &check = m_recipe.pickMatchesRenderChecks_.back();
+        m_current.capturesDepthTestedOwners_ = true;
         m_current.assertions_.push_back(
-            IRPrefab::GuiTest::predicate(&evaluatePickMatchesRender, nullptr, check.name_.c_str())
+            IRPrefab::GuiTest::predicate(&evaluatePickMatchesRender, &check, check.name_.c_str())
         );
     }
 

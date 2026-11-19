@@ -214,9 +214,13 @@ vec2 getMousePositionOutputView() {
 vec2 getMousePositionMainFramebuffer() {
     return getMousePositionOutputView() / vec2(getRenderManager().getOutputScaleFactor());
 }
-ivec2 mouseMainFramebufferPixel() {
+namespace {
+
+// Output-framebuffer pixel, top-down, where the centre of the main framebuffer
+// is drawn: the screen half of FRAMEBUFFER_TO_SCREEN's placement, camera
+// residual included.
+vec2 mainFramebufferCenterOutputPx() {
     const auto entity = getRenderManager().getMainFramebuffer();
-    const auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>(entity);
     const auto &transform = IREntity::getComponent<C_WorldTransform>(entity);
     const vec2 offset = IRMath::isoDeltaToScreenDelta(
                             IRMath::pos3DtoPos2DIso(transform.translation_),
@@ -229,11 +233,30 @@ ivec2 mouseMainFramebufferPixel() {
                                 getOutputScaleFactor()
                             )
                         );
+    return vec2(getViewport()) * 0.5f + vec2(offset.x, -offset.y);
+}
+
+vec2 mainFramebufferHalfResolution() {
+    const auto &framebuffer =
+        IREntity::getComponent<C_TrixelCanvasFramebuffer>(getRenderManager().getMainFramebuffer());
+    return vec2(framebuffer.getResolutionPlusBuffer()) * 0.5f;
+}
+
+} // namespace
+
+ivec2 mouseMainFramebufferPixel() {
     const vec2 pixel = (windowPointsToFramebufferPx(IRInput::getMousePosition()) -
-                        vec2(getViewport()) * 0.5f - vec2(offset.x, -offset.y)) /
+                        mainFramebufferCenterOutputPx()) /
                            vec2(getOutputScaleFactor()) +
-                       vec2(framebuffer.getResolutionPlusBuffer()) * 0.5f;
+                       mainFramebufferHalfResolution();
     return ivec2(IRMath::floor(pixel));
+}
+
+vec2 mainFramebufferPixelToWindowPoints(vec2 framebufferPixel) {
+    return framebufferPxToWindowPoints(
+        (framebufferPixel - mainFramebufferHalfResolution()) * vec2(getOutputScaleFactor()) +
+        mainFramebufferCenterOutputPx()
+    );
 }
 
 ivec2 guiTrixelToScreenPx(vec2 guiTrixel) {

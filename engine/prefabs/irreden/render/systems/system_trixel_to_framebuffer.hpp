@@ -36,6 +36,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <vector>
 
 using namespace IRComponents;
 using namespace IRRender;
@@ -160,6 +161,36 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // The last census logged, so a held pose logs one line and a sweep one per
     // change.
     std::array<std::uint32_t, kOverflowCensusCounters> lastOverflowCensusLogged_{};
+    // Armed through IRPrefab::DepthTestedOwner: the depth attachment as the
+    // scatter left it, read back before any later draw, for the probe that
+    // grades this frame. Stamped with the RENDER tick it was taken on.
+    bool scatterDepthCaptureArmed_ = false;
+    bool scatterDepthCaptured_ = false;
+    std::uint64_t scatterDepthCaptureRenderTick_ = 0;
+    ivec2 scatterDepthCaptureSize_ = ivec2(0);
+    std::vector<float> scatterDepthCapture_;
+
+    // Leaves the framebuffer unbound; the caller rebinds it.
+    void captureScatterDepth(const C_TrixelCanvasFramebuffer &framebuffer) {
+        framebuffer.framebuffer_.second->unbind();
+        IRRender::device()->finish();
+        scatterDepthCaptureSize_ = framebuffer.getResolutionPlusBuffer();
+        scatterDepthCapture_.resize(
+            static_cast<std::size_t>(scatterDepthCaptureSize_.x) *
+            static_cast<std::size_t>(scatterDepthCaptureSize_.y)
+        );
+        framebuffer.getTextureDepth().getSubImage2D(
+            0,
+            0,
+            scatterDepthCaptureSize_.x,
+            scatterDepthCaptureSize_.y,
+            PixelDataFormat::DEPTH_COMPONENT,
+            PixelDataType::FLOAT32,
+            scatterDepthCapture_.data()
+        );
+        scatterDepthCaptured_ = true;
+        scatterDepthCaptureRenderTick_ = IRSystem::getEventTickCount(IRTime::Events::RENDER);
+    }
 
     void resolveScatterHover(
         C_TrixelCanvasFramebuffer &framebuffer, C_FrameDataTrixelToFramebuffer &frameData, int mode
@@ -364,6 +395,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             );
             if (overflowCensusEnabled_ && !overflowDrawDisabled_) {
                 countOverflowOwners(framebuffer, *perAxisCanvases_);
+            }
+            if (scatterDepthCaptureArmed_) {
+                captureScatterDepth(framebuffer);
             }
             framebuffer.bindFramebuffer();
             if (behavior.mouseHoverEnabled_) {

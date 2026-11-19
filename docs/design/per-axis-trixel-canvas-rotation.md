@@ -381,6 +381,17 @@ pixel; two faces that both advance or both recede fall back to the band code.
 Fixture: `IRShapeDebug --voxel-entity-cube --auto-screenshot` draws a cube of
 single-voxel entities beside its voxel-set twin at inter-cardinal yaws.
 
+On the CPU, the key the scatter draws for a point `q` on a voxel's surface,
+in authored world coordinates, is
+`IRRender::viewDepth(q) * kDepthEncodeShift * getVoxelRenderEffectiveSubdivisions()`
+raw composite units (`compositeRawDepthFromNormalized` converts the depth
+attachment to the same units). The shader's `kVoxelRasterCellAnchor` turns the
+store's lower-corner lattice into that frame; a CPU hit point, such as a
+`castGridRay` entry whose cells are centred on the authored lattice, is
+already in it and takes no anchor. `scatterFinalDepth` floors the key onto the
+tie-band lattice and adds a tie code under one band, and a receding edge adds
+one more band, so the drawn value is within two bands of the formula.
+
 ## Overflow lane background — superseded mask admission (epic #2331, 2026-07-14)
 
 > Supersedes §"Per-axis store occlusion model — engine invariant (established
@@ -602,6 +613,22 @@ depth texel and publishes the saved id only if the depth bits are unchanged.
 A later depth-winning gather keeps its own hover result. This compares the
 same hardware-quantized texel on both reads, including OpenGL's 24-bit depth.
 The gather's original 16-byte prefix and hover rule remain unchanged.
+
+The same rule holds for the whole frame. Every draw after the scatter
+writes colour and depth but not the owner attachment, so at frame end the
+attachment names the last scatter winner at each pixel whether or not later
+content covered it; the pixel still shows that owner only where its depth
+texel is bit-identical to its value right after the scatter draws. A probe
+reads it through `IRPrefab::DepthTestedOwner` (`depth_tested_owner.hpp`).
+While armed, `TRIXEL_TO_FRAMEBUFFER` reads the whole depth attachment back
+between the scatter (and the overflow census, when on) and the mode-0 hover
+resolve, stamped with the RENDER tick; `read()` then reads the owner
+attachment and the final depth and compares the two depth images on the CPU.
+It fails, rather than falling back to the raw attachment, when no capture
+comes from the newest composite or the size changed. The capture flushes the
+GPU every armed frame and changes no presented pixel; an unarmed frame pays
+one flag test. The voxel editor's `face_pick` session arms it for its
+whole-frame pick check ([editor validation](editor-validation.md)).
 
 `mouseMainFramebufferPixel()` inverts the screen blit's placement, including
 its camera residual. Its integer pixel and the resolve mode occupy the tail
