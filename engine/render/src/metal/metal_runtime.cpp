@@ -58,6 +58,12 @@ struct MetalRuntimeState {
     MTL::PixelFormat colorPixelFormat_ = MTL::PixelFormatBGRA8Unorm;
     MTL::PixelFormat depthPixelFormat_ = MTL::PixelFormatInvalid;
 
+    // Retained while open; endMetalRenderPass ends and releases it.
+    MTL::RenderCommandEncoder *openRenderEncoder_ = nullptr;
+    MetalRenderPassAttachments openRenderAttachments_{};
+    MetalRenderPassBindings openRenderBindings_{};
+    RenderPassStats renderPassStats_;
+
     // The one MTL::Texture * here that untrackMetalTexture does NOT scrub: the
     // map key is cleared at its own site, releaseImageAtomicScratchBuffer,
     // because the entry owns the mapped MTL::Buffer and has to release it
@@ -160,6 +166,7 @@ void setMetalBootstrapDevice(MTL::Device *device) {
 }
 
 void shutdownMetalRuntime() {
+    endMetalRenderPass();
     if (g_runtime().commandQueue_ != nullptr) {
         g_runtime().commandQueue_->release();
         g_runtime().commandQueue_ = nullptr;
@@ -325,6 +332,9 @@ bool consumeMetalRenderPipelineFailureForTesting() {
 }
 
 void setMetalCommandBuffer(MTL::CommandBuffer *commandBuffer) {
+    if (commandBuffer != g_runtime().commandBuffer_) {
+        endMetalRenderPass();
+    }
     g_runtime().commandBuffer_ = commandBuffer;
 }
 
@@ -436,6 +446,9 @@ void untrackMetalTexture(MTL::Texture *texture) {
     if (texture == nullptr) {
         return;
     }
+    if (metalRenderPassAttaches(texture)) {
+        endMetalRenderPass();
+    }
     auto &runtime = g_runtime();
     for (std::uint32_t unit = 0; unit < kMaxMetalTextureBindings; ++unit) {
         if (runtime.textures_[unit] == texture) {
@@ -501,6 +514,64 @@ bool consumeMetalRenderTargetClear() {
     const bool clear = g_runtime().clearRenderTarget_;
     g_runtime().clearRenderTarget_ = false;
     return clear;
+}
+
+bool metalRenderTargetClearPending() {
+    return g_runtime().clearRenderTarget_;
+}
+
+MTL::RenderCommandEncoder *openMetalRenderPass(const MetalRenderPassAttachments &attachments) {
+    const auto &runtime = g_runtime();
+    if (runtime.openRenderEncoder_ == nullptr || runtime.openRenderAttachments_ != attachments) {
+        return nullptr;
+    }
+    return runtime.openRenderEncoder_;
+}
+
+void beginMetalRenderPass(
+    MTL::RenderCommandEncoder *encoder, const MetalRenderPassAttachments &attachments
+) {
+    endMetalRenderPass();
+    if (encoder == nullptr) {
+        return;
+    }
+    auto &runtime = g_runtime();
+    runtime.openRenderEncoder_ = encoder->retain();
+    runtime.openRenderAttachments_ = attachments;
+    ++runtime.renderPassStats_.renderPasses_;
+}
+
+void endMetalRenderPass() {
+    auto &runtime = g_runtime();
+    if (runtime.openRenderEncoder_ == nullptr) {
+        return;
+    }
+    runtime.openRenderEncoder_->endEncoding();
+    runtime.openRenderEncoder_->release();
+    runtime.openRenderEncoder_ = nullptr;
+    runtime.openRenderAttachments_ = {};
+    runtime.openRenderBindings_ = {};
+}
+
+bool metalRenderPassOpen() {
+    return g_runtime().openRenderEncoder_ != nullptr;
+}
+
+MetalRenderPassBindings &metalRenderPassBindings() {
+    return g_runtime().openRenderBindings_;
+}
+
+bool metalRenderPassAttaches(MTL::Texture *texture) {
+    const auto &runtime = g_runtime();
+    if (runtime.openRenderEncoder_ == nullptr || texture == nullptr) {
+        return false;
+    }
+    const auto &open = runtime.openRenderAttachments_;
+    return open.color_ == texture || open.depth_ == texture || open.entityId_ == texture;
+}
+
+RenderPassStats &metalRenderPassStats() {
+    return g_runtime().renderPassStats_;
 }
 
 bool metalUsesDefaultRenderTarget() {

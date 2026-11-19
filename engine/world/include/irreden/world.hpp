@@ -120,6 +120,8 @@ class World {
     IRRender::BufferWriteStats m_bufferWritesAtLastFrame;
     std::vector<IRRender::DeviceErrorStats> m_frameDeviceErrors;
     IRRender::DeviceErrorStats m_deviceErrorsAtLastFrame;
+    std::vector<IRRender::RenderPassStats> m_framePassStats;
+    IRRender::RenderPassStats m_passStatsAtLastFrame;
     uint64_t m_gpuProcessPeakBytes = 0;
     IRRender::InputLatencyAccumulator m_inputLatency;
     // Incremented once per RENDER; the frame id the input latency probe and

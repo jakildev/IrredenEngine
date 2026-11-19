@@ -43,12 +43,21 @@ struct DeviceErrorStats {
     std::string_view firstCommandBufferError_;
 };
 
+// Draw calls and the render passes that encoded them, cumulative since the
+// device was created. Consecutive draws to one target share a pass on a
+// backend that keeps it open, so passes can fall well below draws.
+struct RenderPassStats {
+    std::uint64_t renderPasses_ = 0;
+    std::uint64_t draws_ = 0;
+};
+
 // Backend counters. `supported_` false means the backend counts none of
 // them, so every zero is unknown rather than measured.
 struct RenderDeviceStats {
     bool supported_ = false;
     BufferWriteStats bufferWrites_;
     DeviceErrorStats errors_;
+    RenderPassStats renderPasses_;
 };
 
 using GpuTimestampHandle = std::uint32_t;

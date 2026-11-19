@@ -156,6 +156,7 @@ add_executable(IrredenEngineTest
   render/light_volume_boundary_seed_test.cpp
   render/light_volume_dispatch_test.cpp
   render/metal_pipeline_key_test.cpp
+  render/metal_render_pass_test.cpp
   render/metal_sticky_untrack_test.cpp
   render/named_resource_probe_test.cpp
   render/help_overlay_layout_test.cpp

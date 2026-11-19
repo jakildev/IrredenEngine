@@ -15,6 +15,7 @@ namespace IRRender {
 class RenderDevice;
 struct BufferWriteStats;
 struct DeviceErrorStats;
+struct RenderPassStats;
 
 enum class MetalAllocationKind {
     BUFFER,
@@ -96,6 +97,8 @@ class MetalPipelineStateProvider {
 struct MetalBufferBinding {
     MTL::Buffer *buffer_ = nullptr;
     NS::UInteger offset_ = 0;
+
+    bool operator==(const MetalBufferBinding &) const = default;
 };
 
 struct MetalVertexLayoutBinding {
@@ -211,12 +214,54 @@ void bindMetalFramebufferRenderTarget(
 );
 void requestMetalRenderTargetClear();
 bool consumeMetalRenderTargetClear();
+bool metalRenderTargetClearPending();
 bool metalUsesDefaultRenderTarget();
 MTL::Texture *metalCurrentColorTexture();
 MTL::Texture *metalCurrentDepthTexture();
 MTL::Texture *metalCurrentEntityIdTexture();
 MTL::PixelFormat metalCurrentColorPixelFormat();
 MTL::PixelFormat metalCurrentDepthPixelFormat();
+
+struct MetalRenderPassAttachments {
+    MTL::Texture *color_ = nullptr;
+    MTL::Texture *depth_ = nullptr;
+    MTL::Texture *entityId_ = nullptr;
+
+    bool operator==(const MetalRenderPassAttachments &) const = default;
+};
+
+// At most one render pass stays open, so consecutive draws to the same
+// attachments share it. A command buffer has one active encoder at a time:
+// creating a compute or blit encoder, committing or swapping the command
+// buffer, a GPU timing boundary, a device memory barrier, and destroying one of
+// the pass's attachments each end the open pass first. A pass's load action
+// and its timing sample attachment are fixed when it begins, so a pending
+// clear or a sampled attachment makes the next draw begin a new pass.
+//
+// The open pass when its attachments match, else nullptr.
+MTL::RenderCommandEncoder *openMetalRenderPass(const MetalRenderPassAttachments &attachments);
+// Ends any open pass, then holds @p encoder open and counts it.
+void beginMetalRenderPass(
+    MTL::RenderCommandEncoder *encoder, const MetalRenderPassAttachments &attachments
+);
+void endMetalRenderPass();
+bool metalRenderPassOpen();
+// What the open pass's encoder holds at each slot; all empty while no pass is
+// open. A shared encoder keeps every binding an earlier draw set, so a draw
+// sets each slot whose value differs from this record, nil included, leaving
+// the encoder as a fresh one bound for that draw alone. Comparing raw pointers
+// is sound: the command buffer retains everything its encoders were given, so
+// no recorded address can be reused while the pass is open.
+struct MetalRenderPassBindings {
+    static constexpr std::uint32_t kSlots = 32;
+    std::array<MetalBufferBinding, kSlots> vertexBuffers_{};
+    std::array<MetalBufferBinding, kSlots> fragmentBuffers_{};
+    std::array<MTL::Texture *, kSlots> textures_{};
+};
+MetalRenderPassBindings &metalRenderPassBindings();
+bool metalRenderPassAttaches(MTL::Texture *texture);
+// The counters RenderDevice::deviceStats() reports for draws and passes.
+RenderPassStats &metalRenderPassStats();
 
 // A CPU write to a buffer in the encoded set must not land before queued GPU
 // work that reads it. Word-aligned partial writes are staged and copied in
