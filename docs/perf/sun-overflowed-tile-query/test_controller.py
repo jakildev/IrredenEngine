@@ -8,6 +8,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_matrix as rm  # noqa: E402
@@ -246,6 +248,73 @@ class ProvenanceRefusal(unittest.TestCase):
                 rm.check_provenance(tmp, {**current, "binary_sha256": "c"})
 
 
+class PreTreeProvenance(unittest.TestCase):
+    DIFF = "diff --git a/engine/x.cpp b/engine/x.cpp\n-old\n+new"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.build = Path(self.tmp.name) / "build"
+        demo = self.build / "creations/demos" / rm.DEMO
+        sampler = demo / "shaders" / rm.SUBDIR / rm.SAMPLER
+        sampler.parent.mkdir(parents=True)
+        sampler.write_bytes(rm.SOURCE_SAMPLER.read_bytes())
+        (demo / "shaders/other.glsl").write_bytes(b"void main() {}\n")
+        (demo / "scripts").mkdir()
+        (demo / rm.TARGET).write_bytes(b"binary")
+        (self.build / "CMakeCache.txt").write_text("CMAKE_BUILD_TYPE:STRING=Debug\n")
+        self.count = 0
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def snapshot(self):
+        """A fresh `snapshot` of the fake Debug build, taken over a non-empty revert diff."""
+        self.count += 1
+        dest = Path(self.tmp.name) / f"pre-{self.count}"
+        binary = self.build / "creations/demos" / rm.DEMO / rm.TARGET
+        paths = (self.build, "Debug", binary, binary.parent / "shaders")
+        args = SimpleNamespace(build="debug", dest=str(dest), label="pre", reverts="r" * 40)
+        with mock.patch.object(rm, "build_paths", return_value=paths), \
+                mock.patch.object(rm, "git", side_effect=lambda *a: self.DIFF
+                                  if a[0] == "diff" else "c" * 40), \
+                mock.patch("builtins.print"):
+            rm.snapshot(args)
+        return dest
+
+    def test_a_snapshot_reopens_with_its_recorded_diff(self):
+        dest = self.snapshot()
+        record = rm.tree_provenance("debug", "pre", dest)
+        written = (dest / "tree.diff").read_bytes()
+        self.assertEqual(written, (self.DIFF + "\n").encode())
+        self.assertEqual(record["tree"]["diff_sha256"], rm.sha256_bytes(written))
+
+    def test_each_mismatch_is_refused(self):
+        demo = Path(rm.DEMO)
+        mutations = {
+            "binary": ("debug", lambda d: (d / "creations/demos" / demo / rm.TARGET)
+                       .write_bytes(b"other")),
+            "diff": ("debug", lambda d: (d / "tree.diff").write_bytes(b"changed\n")),
+            "shader dir": ("debug", lambda d: (d / "creations/demos" / demo / "shaders/new.glsl")
+                           .write_bytes(b"\n")),
+            "build type": ("release", lambda d: None),
+        }
+        for name, (build, mutate) in mutations.items():
+            dest = self.snapshot()
+            mutate(dest)
+            with self.subTest(name=name), self.assertRaises(rm.ProvenanceError):
+                rm.tree_provenance(build, "pre", dest)
+
+    def test_retained_records_pin_their_committed_diffs(self):
+        retained = Path(__file__).resolve().parent / "windows-opengl-mechanism"
+        records = sorted(retained.glob("*/pre-tree/tree.json"))
+        self.assertEqual(len(records), len(rm.BUILDS))
+        for path in records:
+            with self.subTest(record=path.parent.parent.name):
+                tree = json.loads(path.read_text())
+                self.assertEqual(tree["build_type"], rm.BUILDS[path.parent.parent.name][1])
+                self.assertEqual(tree["diff_sha256"], rm.sha256(path.parent / "tree.diff"))
+
+
 class ByteForByteRestoration(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -315,6 +384,124 @@ class ByteForByteRestoration(unittest.TestCase):
 
         discarded = rm.run_profile_arm("debug", Path(self.tmp.name) / "arm", [], 1, runner=runner)
         self.assertEqual((discarded, len(attempts)), (2, 3))
+
+
+class BinaryAB(unittest.TestCase):
+    def test_every_pair_runs_both_trees_in_both_variants_in_mirrored_order(self):
+        arms = rm.ab_plan(4)
+        self.assertEqual(len(arms), 4 * len(rm.CASES) * 4)
+        for pair in range(1, 5):
+            for case in rm.CASES:
+                order = [(a["tree"], a["variant"]) for a in arms
+                         if (a["pair"], a["case"]) == (pair, case)]
+                self.assertEqual(tuple(order), rm.ab_order(pair))
+        self.assertEqual(rm.ab_order(2), tuple(reversed(rm.ab_order(1))))
+        # Each tree leads the production comparison in half the pairs.
+        leads = [next(tree for tree, variant in rm.ab_order(p) if variant == rm.PRODUCTION)
+                 for p in range(1, 5)]
+        self.assertEqual(leads.count("pre"), leads.count("post"))
+        self.assertEqual(len({rm.ab_arm_dir("out", arm) for arm in arms}), len(arms))
+
+    def test_a_single_tree_probe_alternates_its_variants(self):
+        variants = (rm.PRODUCTION, rm.EARLY_TESTS)
+        self.assertEqual(rm.ab_order(1, ("post",), variants),
+                         (("post", rm.PRODUCTION), ("post", rm.EARLY_TESTS)))
+        self.assertEqual(rm.ab_order(2, ("post",), variants),
+                         (("post", rm.EARLY_TESTS), ("post", rm.PRODUCTION)))
+
+    def test_early_tests_control_forces_early_tests_on_the_early_route_only(self):
+        pristine = (SHADERS / rm.EARLY_FRAGMENT).read_bytes()
+        staged = rm.early_tests_bytes(pristine).decode()
+        for backend in ("opengl", "metal"):
+            with self.subTest(backend=backend), mock.patch.object(rm, "BACKEND", backend):
+                self.assertEqual(rm.early_tests_bytes(pristine).decode(), staged)
+        self.assertTrue(staged.startswith("#version 450 core\n" + rm.EARLY_TESTS_LINE))
+        self.assertEqual(staged.replace(rm.EARLY_TESTS_LINE, "", 1), pristine.decode())
+        self.assertIn("#define IR_SOURCE_FACE_EARLY_DEPTH 1", staged)
+        with self.assertRaises(rm.StageError):
+            rm.early_tests_bytes(staged.encode())
+        sampler = TWINS[0].read_text()
+        self.assertEqual(rm.transform(sampler, rm.EARLY_TESTS), sampler)
+
+    def dispatch(self, backend, command):
+        """main() on an early-tests argv with the backend forced and the runners stubbed;
+        returns (exit code, the stubbed runner's call count)."""
+        runner = "ab_timing" if command == "ab-timing" else "witness"
+        argv = ["run_matrix.py", command, "--build", "debug", "--output", "out",
+                "--variants", rm.PRODUCTION, rm.EARLY_TESTS]
+        with mock.patch.object(rm, "BACKEND", backend), mock.patch.object(sys, "argv", argv), \
+                mock.patch.object(rm, runner) as stub, mock.patch("sys.stderr"):
+            try:
+                code = rm.main()
+            except SystemExit as exit_:
+                code = exit_.code
+        return code, stub.call_count
+
+    def test_early_tests_variant_is_refused_off_opengl(self):
+        for command in ("ab-timing", "witness"):
+            with self.subTest(command=command):
+                self.assertEqual(self.dispatch("metal", command), (2, 0))
+                self.assertEqual(self.dispatch("opengl", command), (0, 1))
+
+    def test_explicit_tree_command_targets_the_snapshot(self):
+        command = rm.ab_profile_command(Path("snap"), Path("arm"), ["--x"], 7)
+        self.assertEqual(command[command.index("--build-dir") + 1], "snap")
+        self.assertNotIn("--release", command)
+        self.assertEqual(command[-2:], ["--", "--x"])
+
+    def test_cut_share_is_against_the_before_mean(self):
+        stats = rm.paired_difference([30.0, 32.0, 31.0], [60.0, 62.0, 64.0])
+        self.assertAlmostEqual(stats["delta_mean"], -31.0)
+        self.assertAlmostEqual(stats["change_share"], -31.0 / 62.0)
+        self.assertAlmostEqual(stats["upper_share"], stats["delta_upper_95"] / 62.0)
+
+    def test_witness_fixture_drops_the_profile_and_exits_after_the_window(self):
+        self.assertNotIn("--auto-profile", rm.WITNESS_COMMON)
+        self.assertNotIn("--profile-frames", rm.WITNESS_COMMON)
+        self.assertEqual(rm.WITNESS_COMMON[-2:], ["--exit-after-frames", str(rm.WITNESS_EXIT_FRAME)])
+        self.assertGreater(rm.WITNESS_EXIT_FRAME, rm.WITNESS_FIRST_FRAME + rm.WITNESS_FRAMES)
+        stripped = [v for v in rm.COMMON if v not in ("--auto-profile", "--profile-frames", "360")]
+        self.assertEqual(rm.WITNESS_COMMON[:-2], stripped)
+
+
+def witness_row(instance, kind, invocations, owned, gpu_ms=1.0, center=(10.0, 20.0)):
+    return {"frame": 60, "draw": 0, "instance": instance, "entity": instance, "kind": kind,
+            "center_x": center[0], "center_y": center[1], "extent_x": 4.0, "extent_y": 4.0,
+            "distance_offset": 0, "fragment_invocations": invocations, "owned_samples": owned,
+            "gpu_ms": gpu_ms}
+
+
+class DrawWitness(unittest.TestCase):
+    def test_coincident_canvases_split_hidden_work_into_front_and_cross_canvas(self):
+        rows = [witness_row(0, "source-early", 300, 100), witness_row(0, "source-fallback", 0, 0),
+                witness_row(1, "source-early", 250, 0), witness_row(2, "source-early", 250, 0),
+                witness_row(0, "texture-layer", 50, 0),
+                witness_row(3, "source-early", 40, 40, center=(99.0, 0.0))]
+        groups = rm.witness_frame(rows)
+        stack = groups[rm.canvas_signature(rows[0])]
+        self.assertEqual(stack["canvases"], 3)
+        self.assertEqual((stack["source_invocations"], stack["source_owned"]), (800, 100))
+        self.assertAlmostEqual(stack["source_invocations_per_owned"], 8.0)
+        self.assertEqual(stack["front_canvas"], 0)
+        self.assertEqual((stack["front_canvas_hidden"], stack["cross_canvas_hidden"]), (200, 500))
+        self.assertAlmostEqual(stack["cross_canvas_share"], 500 / 700)
+        self.assertEqual(stack["kinds"]["texture-layer"]["invocations"], 50)
+        lone = groups[rm.canvas_signature(rows[-1])]
+        self.assertEqual((lone["canvases"], lone["cross_canvas_hidden"]), (1, 0))
+        self.assertIsNone(lone["cross_canvas_share"])
+
+    def test_unsupported_or_empty_witness_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "witness.csv"
+            for text in ("unsupported\n", ",".join(rm.WITNESS_COLUMNS) + "\n", ""):
+                path.write_text(text)
+                with self.subTest(text=text), self.assertRaises(rm.ChildFailure):
+                    rm.read_witness(path)
+            path.write_text(",".join(rm.WITNESS_COLUMNS) + "\n"
+                            "60,0,0,7,source-early,1.0,2.0,3.0,4.0,-5,90,30,0.25\n")
+            row = rm.read_witness(path)[0]
+            self.assertEqual((row["fragment_invocations"], row["owned_samples"]), (90, 30))
+            self.assertEqual((row["distance_offset"], row["gpu_ms"]), (-5, 0.25))
 
 
 if __name__ == "__main__":

@@ -94,6 +94,8 @@ glQueryCounter
 glReadBuffer
 glReadPixels
 glShaderSource
+glStencilFunc
+glStencilOp
 glTexSubImage2D
 glTexImage2D
 glTexImage3D

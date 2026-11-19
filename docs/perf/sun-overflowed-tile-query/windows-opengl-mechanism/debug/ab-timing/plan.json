@@ -1,0 +1,602 @@
+[
+  {
+    "case": "far-128",
+    "pair": 1,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 1,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 1,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 1,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 1,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 1,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 1,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 1,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 1,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 1,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 1,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 1,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 1,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 1,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 1,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 1,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 1,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 1,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 1,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 1,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 2,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 2,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 2,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 2,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 2,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 2,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 2,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 2,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 2,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 2,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 2,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 2,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 2,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 2,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 2,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 2,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 2,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 2,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 2,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 2,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 3,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 3,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 3,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 3,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 3,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 3,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 3,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 3,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 3,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 3,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 3,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 3,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 3,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 3,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 3,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 3,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 3,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 3,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 3,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 3,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 4,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 4,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 4,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 4,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 4,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 4,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 4,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 4,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 4,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 4,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 4,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 4,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 4,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 4,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 4,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 4,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 4,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 4,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 4,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 4,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 5,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 5,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 5,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 5,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 5,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 5,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 5,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last",
+    "pair": 5,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 5,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 5,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 5,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first",
+    "pair": 5,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 5,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 5,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 5,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-last-frozen",
+    "pair": 5,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 5,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 5,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 5,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128-filler-first-frozen",
+    "pair": 5,
+    "tree": "pre",
+    "variant": "ablation"
+  }
+]

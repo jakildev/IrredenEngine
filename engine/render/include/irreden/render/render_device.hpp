@@ -74,6 +74,16 @@ enum class TimestampReadStatus {
     INVALID,
 };
 
+using DrawCounterHandle = std::uint32_t;
+constexpr DrawCounterHandle kInvalidDrawCounterHandle = 0;
+
+// Diagnostic counters bracketing draws. At most one counter of each kind is
+// active at a time.
+enum class DrawCounter {
+    FRAGMENT_INVOCATIONS,
+    SAMPLES_PASSED,
+};
+
 // One resolved stage invocation. `exclusiveMs_` is time during which the
 // stage's own encoders were executing; `windowMs_` runs from its first encoder's
 // start to its last encoder's end and can contain other stages' work. A backend
@@ -263,6 +273,31 @@ class RenderDevice {
         }
         return status;
     }
+
+    // Per-draw diagnostic counters. False when the backend cannot count
+    // fragment-shader invocations; the rest of this group is then inert and
+    // reads zero, so a caller must check this first.
+    virtual bool supportsDrawCounters() const {
+        return false;
+    }
+    virtual DrawCounterHandle createDrawCounter() {
+        return kInvalidDrawCounterHandle;
+    }
+    virtual void destroyDrawCounter(DrawCounterHandle) {}
+    virtual void beginDrawCounter(DrawCounterHandle, DrawCounter) {}
+    virtual void endDrawCounter(DrawCounter) {}
+    // Blocks until the counter's draws have completed.
+    virtual std::uint64_t readDrawCounter(DrawCounterHandle) {
+        return 0;
+    }
+    // Ownership replay against the bound framebuffer's final depth: depth
+    // EQUAL, no colour or depth writes, and a stencil claim so only the first
+    // passing fragment at each pixel counts. Replaying a pass's draws in their
+    // original order under it gives each draw the samples it owns when depth
+    // ties go to the first draw (LESS). Clobbers the stencil plane.
+    virtual void beginFirstClaimReplay() {}
+    // Restores depth LESS with writes, colour writes, and stencil off.
+    virtual void endFirstClaimReplay() {}
 
   protected:
     GpuFrameTimingAccumulator m_gpuFrameTiming;

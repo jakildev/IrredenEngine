@@ -1,0 +1,5053 @@
+{
+  "provenance": {
+    "source_revision": "45a220089c6b843cab5fb09007ae34356b2df275",
+    "backend": "opengl",
+    "build": "debug",
+    "trees": {
+      "pre": {
+        "build_dir": "C:/msys64/tmp/p4935/pre-debug",
+        "build_type": "Debug",
+        "binary_sha256": "1b6310828d709b4710e21a2f452f9e61293ac6bbee47f8251a7551f698add3d3",
+        "pristine_sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+        "pristine_shader_dir_sha256": "b0c17006a24e4ad03893334b1ea9b43a3a939680dacbfaf7f3b2b0bcf10dfffa",
+        "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+        "tree": {
+          "label": "pre",
+          "head": "d69ddf9fd2feeb1859113094993c2cb27400b378",
+          "reverts": "84d6f7bc93de19e3c1586f27b4330387aa9ac011",
+          "build_type": "Debug",
+          "diff_sha256": "4181baeaed3880322ebb50cb8c010b8e20dff47a964c77b64c4b14d615a5bef3",
+          "binary_sha256": "1b6310828d709b4710e21a2f452f9e61293ac6bbee47f8251a7551f698add3d3",
+          "shader_dir_sha256": "b0c17006a24e4ad03893334b1ea9b43a3a939680dacbfaf7f3b2b0bcf10dfffa"
+        }
+      },
+      "post": {
+        "build_dir": "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build",
+        "build_type": "Debug",
+        "binary_sha256": "8c3e90d1541a10748e5d443624b66b64f17e6b4a7ab9f1b931bfa1eed29161cd",
+        "pristine_sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+        "pristine_shader_dir_sha256": "a94cf2928e9f025c1ca7cd01c2f592671700fc6e5f837cf54a9de6a4f332f260",
+        "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b"
+      }
+    },
+    "controller_sha256": "2a3bd59a6f52b13b0fcbdb92cedf6493ad8d1becb188818634908c4e5bd752a2",
+    "variant_sampler_sha256": {
+      "production": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "ablation": "5d4ddb6b34c239d20c5cb9255f94b66eae663d37b6500e000d554de63fc0ec08"
+    },
+    "host": "Windows-10-10.0.19045-SP0",
+    "host_gpu": [
+      {
+        "Name": "NVIDIA GeForce RTX 3060 Ti",
+        "DriverVersion": "32.0.15.8180"
+      }
+    ],
+    "python": "3.14.3"
+  },
+  "captures": {
+    "pre/far-128/production": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/msys64/tmp/p4935/pre-debug",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/pre/far-128/production/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "2428b6dc393301c550f7421559d21e07f79ae43a84622931a5bcd5bc960fe5c4",
+      "variant": "production",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "b0c17006a24e4ad03893334b1ea9b43a3a939680dacbfaf7f3b2b0bcf10dfffa",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 1,
+            "source_invocations": 12472,
+            "source_owned": 106,
+            "source_invocations_per_owned": 117.66037735849056,
+            "source_hidden_invocations": 12366,
+            "front_canvas_hidden": 44,
+            "cross_canvas_hidden": 12320,
+            "cross_canvas_share": 0.9964326252634993,
+            "source_gpu_ms": 59.70329599999999,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 12472,
+                "owned": 106,
+                "invocations_per_owned": 117.66037735849056,
+                "gpu_ms": 59.218943999999986
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.4966399999999999
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.48947199999999974
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 1200,
+            "source_owned": 512,
+            "source_invocations_per_owned": 2.34375,
+            "source_hidden_invocations": 688,
+            "front_canvas_hidden": 688,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.044032,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 512,
+                "invocations_per_owned": 2.34375,
+                "gpu_ms": 0.039936
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.003072
+              }
+            }
+          }
+        }
+      }
+    },
+    "pre/far-128/ablation": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/msys64/tmp/p4935/pre-debug",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/pre/far-128/ablation/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "12b253b596bf855bc523f94ee5ac9533bfcdcabcfcbef3ced83d3c8df0257078",
+      "variant": "ablation",
+      "sampler_sha256": "5d4ddb6b34c239d20c5cb9255f94b66eae663d37b6500e000d554de63fc0ec08",
+      "shader_dir_sha256": "5cd297d833b7a7be21c07ad2e7a61be998d577cf2a9b0e60bf9a9d925f117d2c",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 1,
+            "source_invocations": 12468,
+            "source_owned": 106,
+            "source_invocations_per_owned": 117.62264150943396,
+            "source_hidden_invocations": 12362,
+            "front_canvas_hidden": 41,
+            "cross_canvas_hidden": 12321,
+            "cross_canvas_share": 0.9966833845656042,
+            "source_gpu_ms": 0.9707519999999996,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 12468,
+                "owned": 106,
+                "invocations_per_owned": 117.62264150943396,
+                "gpu_ms": 0.4853759999999997
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.48537599999999986
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.49459199999999987
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 1200,
+            "source_owned": 524,
+            "source_invocations_per_owned": 2.2900763358778624,
+            "source_hidden_invocations": 676,
+            "front_canvas_hidden": 676,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.037888000000000005,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 524,
+                "invocations_per_owned": 2.2900763358778624,
+                "gpu_ms": 0.034816
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "pre/far-128/early-tests": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/msys64/tmp/p4935/pre-debug",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/pre/far-128/early-tests/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "7e5056b76c7ec31f23900eea6c11ebade95892e689cffe2346d668c6f9d0ca90",
+      "variant": "early-tests",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "14cf88e8914bd33e2253b9ec653199825c1b3f373ded348f1a7e91c8f2299b3c",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 1,
+            "source_invocations": 110,
+            "source_owned": 106,
+            "source_invocations_per_owned": 1.0377358490566038,
+            "source_hidden_invocations": 4,
+            "front_canvas_hidden": 4,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 8.159231999999992,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 110,
+                "owned": 106,
+                "invocations_per_owned": 1.0377358490566038,
+                "gpu_ms": 7.652351999999993
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.4976639999999996
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5038079999999996
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 516,
+            "source_owned": 514,
+            "source_invocations_per_owned": 1.0038610038610039,
+            "source_hidden_invocations": 2,
+            "front_canvas_hidden": 2,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.041984,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 516,
+                "owned": 514,
+                "invocations_per_owned": 1.0038610038610039,
+                "gpu_ms": 0.037888
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.003072
+              }
+            }
+          }
+        }
+      }
+    },
+    "pre/far-128-filler-last/production": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/msys64/tmp/p4935/pre-debug",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--probe-record-pool-filler-last"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/pre/far-128-filler-last/production/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "24208bd6d565cd6f502113daa5bbe46c50c2eedf210e85c5cc75c2a71ee77226",
+      "variant": "production",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "b0c17006a24e4ad03893334b1ea9b43a3a939680dacbfaf7f3b2b0bcf10dfffa",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 12525,
+            "source_owned": 106,
+            "source_invocations_per_owned": 118.16037735849056,
+            "source_hidden_invocations": 12419,
+            "front_canvas_hidden": 39,
+            "cross_canvas_hidden": 12382,
+            "cross_canvas_share": 0.9968576262992507,
+            "source_gpu_ms": 62.94732799999997,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 12525,
+                "owned": 106,
+                "invocations_per_owned": 118.16037735849056,
+                "gpu_ms": 59.00083199999997
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 5.254143999999999
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 1.4264320000000048
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 43696,
+            "source_owned": 41382,
+            "source_invocations_per_owned": 1.0569403596740754,
+            "source_hidden_invocations": 2362,
+            "front_canvas_hidden": 2362,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.408576,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 43696,
+                "owned": 41382,
+                "invocations_per_owned": 1.0569403596740754,
+                "gpu_ms": 0.366592
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.039936
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.01024
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 1200,
+            "source_owned": 516,
+            "source_invocations_per_owned": 2.3255813953488373,
+            "source_hidden_invocations": 684,
+            "front_canvas_hidden": 684,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.05632,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 516,
+                "invocations_per_owned": 2.3255813953488373,
+                "gpu_ms": 0.052224
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "pre/far-128-filler-last/ablation": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/msys64/tmp/p4935/pre-debug",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--probe-record-pool-filler-last"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/pre/far-128-filler-last/ablation/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "b719dd0a375fba0d82fc6036134176ed647faf82366c63276796459ce9dba17e",
+      "variant": "ablation",
+      "sampler_sha256": "5d4ddb6b34c239d20c5cb9255f94b66eae663d37b6500e000d554de63fc0ec08",
+      "shader_dir_sha256": "5cd297d833b7a7be21c07ad2e7a61be998d577cf2a9b0e60bf9a9d925f117d2c",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 12516,
+            "source_owned": 106,
+            "source_invocations_per_owned": 118.0754716981132,
+            "source_hidden_invocations": 12410,
+            "front_canvas_hidden": 40,
+            "cross_canvas_hidden": 12374,
+            "cross_canvas_share": 0.9967726319186703,
+            "source_gpu_ms": 1.3537280000000012,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 12516,
+                "owned": 106,
+                "invocations_per_owned": 118.0754716981132,
+                "gpu_ms": 0.7352320000000006
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.6184960000000004
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.6584320000000006
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 43718,
+            "source_owned": 38782,
+            "source_invocations_per_owned": 1.1267525773195877,
+            "source_hidden_invocations": 4918,
+            "front_canvas_hidden": 4918,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.664576,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 43718,
+                "owned": 38782,
+                "invocations_per_owned": 1.1267525773195877,
+                "gpu_ms": 0.560128
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.060416
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.019456
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 1200,
+            "source_owned": 532,
+            "source_invocations_per_owned": 2.255639097744361,
+            "source_hidden_invocations": 668,
+            "front_canvas_hidden": 668,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.075776,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 532,
+                "invocations_per_owned": 2.255639097744361,
+                "gpu_ms": 0.07168
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.00512
+              }
+            }
+          }
+        }
+      }
+    },
+    "pre/far-128-filler-last/early-tests": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/msys64/tmp/p4935/pre-debug",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--probe-record-pool-filler-last"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/pre/far-128-filler-last/early-tests/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "a70abc8f247ad909ac904a30ddb6052f2cad74d2524a0d0e4a686466fea6c9e7",
+      "variant": "early-tests",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "14cf88e8914bd33e2253b9ec653199825c1b3f373ded348f1a7e91c8f2299b3c",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 110,
+            "source_owned": 106,
+            "source_invocations_per_owned": 1.0377358490566038,
+            "source_hidden_invocations": 4,
+            "front_canvas_hidden": 4,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 11.643904000000049,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 110,
+                "owned": 106,
+                "invocations_per_owned": 1.0377358490566038,
+                "gpu_ms": 10.490880000000043
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5744639999999995
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 1.513472000000009
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 38990,
+            "source_owned": 38990,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.5509120000000001,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 38990,
+                "owned": 38990,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.478208
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.065536
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.014336
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 516,
+            "source_owned": 514,
+            "source_invocations_per_owned": 1.0038910505836576,
+            "source_hidden_invocations": 2,
+            "front_canvas_hidden": 2,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.064512,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 516,
+                "owned": 514,
+                "invocations_per_owned": 1.0038910505836576,
+                "gpu_ms": 0.060416
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "pre/far-128-filler-first/production": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/msys64/tmp/p4935/pre-debug",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/pre/far-128-filler-first/production/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "cb23071a78396157eead0c2849ac0393da4a290daf4da4501bb338d09ff3b5f5",
+      "variant": "production",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "b0c17006a24e4ad03893334b1ea9b43a3a939680dacbfaf7f3b2b0bcf10dfffa",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 12494,
+            "source_owned": 106,
+            "source_invocations_per_owned": 117.86792452830188,
+            "source_hidden_invocations": 12388,
+            "front_canvas_hidden": 49,
+            "cross_canvas_hidden": 12347,
+            "cross_canvas_share": 0.9960566553999678,
+            "source_gpu_ms": 58.96908799999999,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 12494,
+                "owned": 106,
+                "invocations_per_owned": 117.86792452830188,
+                "gpu_ms": 53.06470399999999
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 6.010879999999998
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5498879999999994
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 43752,
+            "source_owned": 38650,
+            "source_invocations_per_owned": 1.1291591203104787,
+            "source_hidden_invocations": 4992,
+            "front_canvas_hidden": 4992,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.454656,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 43752,
+                "owned": 38650,
+                "invocations_per_owned": 1.1291591203104787,
+                "gpu_ms": 0.412672
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.041984
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.01024
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 1200,
+            "source_owned": 496,
+            "source_invocations_per_owned": 2.4193548387096775,
+            "source_hidden_invocations": 704,
+            "front_canvas_hidden": 704,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.045056000000000006,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 496,
+                "invocations_per_owned": 2.4193548387096775,
+                "gpu_ms": 0.04096
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "pre/far-128-filler-first/ablation": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/msys64/tmp/p4935/pre-debug",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/pre/far-128-filler-first/ablation/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "0a270e81414b4a38c0efc8d2985f6b536ce2fc0a741ee430c0baf60ae5a9f3a5",
+      "variant": "ablation",
+      "sampler_sha256": "5d4ddb6b34c239d20c5cb9255f94b66eae663d37b6500e000d554de63fc0ec08",
+      "shader_dir_sha256": "5cd297d833b7a7be21c07ad2e7a61be998d577cf2a9b0e60bf9a9d925f117d2c",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 12432,
+            "source_owned": 106,
+            "source_invocations_per_owned": 117.28301886792453,
+            "source_hidden_invocations": 12326,
+            "front_canvas_hidden": 43,
+            "cross_canvas_hidden": 12283,
+            "cross_canvas_share": 0.9965114392341392,
+            "source_gpu_ms": 1.6609280000000013,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 12432,
+                "owned": 106,
+                "invocations_per_owned": 117.28301886792453,
+                "gpu_ms": 0.6973440000000007
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.7680000000000006
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.6236160000000007
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 43880,
+            "source_owned": 38744,
+            "source_invocations_per_owned": 1.1291474714012113,
+            "source_hidden_invocations": 4990,
+            "front_canvas_hidden": 4990,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.7424,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 43880,
+                "owned": 38744,
+                "invocations_per_owned": 1.1291474714012113,
+                "gpu_ms": 0.698368
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.049152
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.022528
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 1200,
+            "source_owned": 520,
+            "source_invocations_per_owned": 2.3076923076923075,
+            "source_hidden_invocations": 680,
+            "front_canvas_hidden": 680,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.060416000000000004,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 520,
+                "invocations_per_owned": 2.3076923076923075,
+                "gpu_ms": 0.05632
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.00512
+              }
+            }
+          }
+        }
+      }
+    },
+    "pre/far-128-filler-first/early-tests": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/msys64/tmp/p4935/pre-debug",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/pre/far-128-filler-first/early-tests/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "786ac1156c7ffd91bd0a092c9d670864d2cc58baa11b3637ba944b01f8a4242f",
+      "variant": "early-tests",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "14cf88e8914bd33e2253b9ec653199825c1b3f373ded348f1a7e91c8f2299b3c",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 110,
+            "source_owned": 106,
+            "source_invocations_per_owned": 1.0377358490566038,
+            "source_hidden_invocations": 4,
+            "front_canvas_hidden": 4,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 8.321023999999992,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 110,
+                "owned": 106,
+                "invocations_per_owned": 1.0377358490566038,
+                "gpu_ms": 7.761919999999994
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5591039999999995
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5068799999999996
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 41242,
+            "source_owned": 41242,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.4352,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 41242,
+                "owned": 41242,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.397312
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.038912
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.01024
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 516,
+            "source_owned": 514,
+            "source_invocations_per_owned": 1.0038610038610039,
+            "source_hidden_invocations": 2,
+            "front_canvas_hidden": 2,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.03584,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 516,
+                "owned": 514,
+                "invocations_per_owned": 1.0038610038610039,
+                "gpu_ms": 0.032768
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.003072
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "pre/far-128-filler-last-frozen/production": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/msys64/tmp/p4935/pre-debug",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--probe-record-pool-filler-last",
+        "--sun-record-capacity",
+        "65536",
+        "--sun-record-ceiling",
+        "65536"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/pre/far-128-filler-last-frozen/production/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "26679a153d7070cc7cad78b006faae9167fbebea89dd01b2e8a0c5572ad4bc31",
+      "variant": "production",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "b0c17006a24e4ad03893334b1ea9b43a3a939680dacbfaf7f3b2b0bcf10dfffa",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 12505,
+            "source_owned": 106,
+            "source_invocations_per_owned": 117.97169811320755,
+            "source_hidden_invocations": 12399,
+            "front_canvas_hidden": 40,
+            "cross_canvas_hidden": 12348,
+            "cross_canvas_share": 0.996770547392217,
+            "source_gpu_ms": 60.64435199999996,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 12505,
+                "owned": 106,
+                "invocations_per_owned": 117.97169811320755,
+                "gpu_ms": 57.67987199999996
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 4.0345600000000035
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 1.4561280000000014
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 43844,
+            "source_owned": 38962,
+            "source_invocations_per_owned": 1.131458064516129,
+            "source_hidden_invocations": 5094,
+            "front_canvas_hidden": 5094,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.36454400000000003,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 43844,
+                "owned": 38962,
+                "invocations_per_owned": 1.131458064516129,
+                "gpu_ms": 0.328704
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.03072
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.01024
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 1200,
+            "source_owned": 516,
+            "source_invocations_per_owned": 2.3255813953488373,
+            "source_hidden_invocations": 684,
+            "front_canvas_hidden": 684,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.055296,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 516,
+                "invocations_per_owned": 2.3255813953488373,
+                "gpu_ms": 0.052224
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.003072
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "pre/far-128-filler-last-frozen/ablation": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/msys64/tmp/p4935/pre-debug",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--probe-record-pool-filler-last",
+        "--sun-record-capacity",
+        "65536",
+        "--sun-record-ceiling",
+        "65536"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/pre/far-128-filler-last-frozen/ablation/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "42522bf943b3ee68a52a22cf587f074a7c874e3f98a8da3d1e6ffea0326ed7ea",
+      "variant": "ablation",
+      "sampler_sha256": "5d4ddb6b34c239d20c5cb9255f94b66eae663d37b6500e000d554de63fc0ec08",
+      "shader_dir_sha256": "5cd297d833b7a7be21c07ad2e7a61be998d577cf2a9b0e60bf9a9d925f117d2c",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 12551,
+            "source_owned": 106,
+            "source_invocations_per_owned": 118.40566037735849,
+            "source_hidden_invocations": 12445,
+            "front_canvas_hidden": 43,
+            "cross_canvas_hidden": 12402,
+            "cross_canvas_share": 0.9965422965583789,
+            "source_gpu_ms": 1.3004800000000005,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 12551,
+                "owned": 106,
+                "invocations_per_owned": 118.40566037735849,
+                "gpu_ms": 0.6594560000000002
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.600064
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.6451200000000005
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 43920,
+            "source_owned": 38832,
+            "source_invocations_per_owned": 1.1301030927835052,
+            "source_hidden_invocations": 5048,
+            "front_canvas_hidden": 5048,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.507904,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 43920,
+                "owned": 38832,
+                "invocations_per_owned": 1.1301030927835052,
+                "gpu_ms": 0.45568
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.0512
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.017408
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 1200,
+            "source_owned": 504,
+            "source_invocations_per_owned": 2.380952380952381,
+            "source_hidden_invocations": 696,
+            "front_canvas_hidden": 696,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.070656,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 504,
+                "invocations_per_owned": 2.380952380952381,
+                "gpu_ms": 0.06656
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "pre/far-128-filler-last-frozen/early-tests": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/msys64/tmp/p4935/pre-debug",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--probe-record-pool-filler-last",
+        "--sun-record-capacity",
+        "65536",
+        "--sun-record-ceiling",
+        "65536"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/pre/far-128-filler-last-frozen/early-tests/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "26a20e60a2d902c5d34bcfa202337cff95faecd1b97b84c22aea025b58a5b6c6",
+      "variant": "early-tests",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "14cf88e8914bd33e2253b9ec653199825c1b3f373ded348f1a7e91c8f2299b3c",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 110,
+            "source_owned": 106,
+            "source_invocations_per_owned": 1.0377358490566038,
+            "source_hidden_invocations": 4,
+            "front_canvas_hidden": 4,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 9.60000000000004,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 110,
+                "owned": 106,
+                "invocations_per_owned": 1.0377358490566038,
+                "gpu_ms": 8.808448000000046
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5232639999999995
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 1.0209279999999998
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 38694,
+            "source_owned": 38694,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.436224,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 38694,
+                "owned": 38694,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.392192
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.038912
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.012288
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 492,
+            "source_owned": 492,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.05632,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 492,
+                "owned": 492,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.052224
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "pre/far-128-filler-first-frozen/production": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/msys64/tmp/p4935/pre-debug",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--sun-record-capacity",
+        "65536",
+        "--sun-record-ceiling",
+        "65536"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/pre/far-128-filler-first-frozen/production/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "592e7d0553927fd6b2df9ddf234d8b10e7e910ca141070983682031cd88e41c3",
+      "variant": "production",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "b0c17006a24e4ad03893334b1ea9b43a3a939680dacbfaf7f3b2b0bcf10dfffa",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 12441,
+            "source_owned": 106,
+            "source_invocations_per_owned": 117.36792452830188,
+            "source_hidden_invocations": 12335,
+            "front_canvas_hidden": 44,
+            "cross_canvas_hidden": 12299,
+            "cross_canvas_share": 0.9964274114972393,
+            "source_gpu_ms": 1.251328,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 12441,
+                "owned": 106,
+                "invocations_per_owned": 117.36792452830188,
+                "gpu_ms": 0.6225920000000001
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.6287359999999997
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5836799999999996
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 43868,
+            "source_owned": 38854,
+            "source_invocations_per_owned": 1.1315179904256962,
+            "source_hidden_invocations": 5076,
+            "front_canvas_hidden": 5076,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.6103040000000001,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 43868,
+                "owned": 38854,
+                "invocations_per_owned": 1.1315179904256962,
+                "gpu_ms": 0.559104
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.062464
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.016384
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 1200,
+            "source_owned": 492,
+            "source_invocations_per_owned": 2.4390243902439024,
+            "source_hidden_invocations": 708,
+            "front_canvas_hidden": 708,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.010239999999999999,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 492,
+                "invocations_per_owned": 2.4390243902439024,
+                "gpu_ms": 0.006144
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "pre/far-128-filler-first-frozen/ablation": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/msys64/tmp/p4935/pre-debug",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--sun-record-capacity",
+        "65536",
+        "--sun-record-ceiling",
+        "65536"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/pre/far-128-filler-first-frozen/ablation/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "b9982100a3a126063e886c11cff1f155470c4b89d9d305af900a0ff64abd2ca7",
+      "variant": "ablation",
+      "sampler_sha256": "5d4ddb6b34c239d20c5cb9255f94b66eae663d37b6500e000d554de63fc0ec08",
+      "shader_dir_sha256": "5cd297d833b7a7be21c07ad2e7a61be998d577cf2a9b0e60bf9a9d925f117d2c",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 12508,
+            "source_owned": 106,
+            "source_invocations_per_owned": 118.0,
+            "source_hidden_invocations": 12402,
+            "front_canvas_hidden": 49,
+            "cross_canvas_hidden": 12355,
+            "cross_canvas_share": 0.9960471119716038,
+            "source_gpu_ms": 1.6353280000000003,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 12508,
+                "owned": 106,
+                "invocations_per_owned": 118.0,
+                "gpu_ms": 0.9646080000000001
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.6195200000000002
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.6154240000000001
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 43812,
+            "source_owned": 38772,
+            "source_invocations_per_owned": 1.1301520659464441,
+            "source_hidden_invocations": 5060,
+            "front_canvas_hidden": 5060,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.580608,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 43812,
+                "owned": 38772,
+                "invocations_per_owned": 1.1301520659464441,
+                "gpu_ms": 0.533504
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.049152
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.016384
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 1200,
+            "source_owned": 512,
+            "source_invocations_per_owned": 2.34375,
+            "source_hidden_invocations": 688,
+            "front_canvas_hidden": 688,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.009216,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 512,
+                "invocations_per_owned": 2.34375,
+                "gpu_ms": 0.00512
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.00512
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.00512
+              }
+            }
+          }
+        }
+      }
+    },
+    "pre/far-128-filler-first-frozen/early-tests": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/msys64/tmp/p4935/pre-debug",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--sun-record-capacity",
+        "65536",
+        "--sun-record-ceiling",
+        "65536"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/pre/far-128-filler-first-frozen/early-tests/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "3b5b77beae4b37ea1397dc8ba13e82d19d4714f6dab67362fe1c90456fb4f594",
+      "variant": "early-tests",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "14cf88e8914bd33e2253b9ec653199825c1b3f373ded348f1a7e91c8f2299b3c",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 110,
+            "source_owned": 106,
+            "source_invocations_per_owned": 1.0377358490566038,
+            "source_hidden_invocations": 4,
+            "front_canvas_hidden": 4,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 1.1284479999999986,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 110,
+                "owned": 106,
+                "invocations_per_owned": 1.0377358490566038,
+                "gpu_ms": 0.5672959999999994
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5509119999999994
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5570559999999992
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 38820,
+            "source_owned": 38820,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.515072,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 38820,
+                "owned": 38820,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.461824
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.0512
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.013312
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 508,
+            "source_owned": 506,
+            "source_invocations_per_owned": 1.0039525691699605,
+            "source_hidden_invocations": 2,
+            "front_canvas_hidden": 2,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": 0.0,
+            "source_gpu_ms": 0.008192,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 508,
+                "owned": 506,
+                "invocations_per_owned": 1.0039525691699605,
+                "gpu_ms": 0.004096
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "post/far-128/production": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/post/far-128/production/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "3ba847f08866c1d5ffea36c8dd963307111232f079ae6f72f31a943df9eaca96",
+      "variant": "production",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "a94cf2928e9f025c1ca7cd01c2f592671700fc6e5f837cf54a9de6a4f332f260",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 1,
+            "source_invocations": 13568,
+            "source_owned": 106,
+            "source_invocations_per_owned": 128.0,
+            "source_hidden_invocations": 13462,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 13462,
+            "cross_canvas_share": 1.0,
+            "source_gpu_ms": 61.04371199999999,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 13568,
+                "owned": 106,
+                "invocations_per_owned": 128.0,
+                "gpu_ms": 58.87180799999997
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 2.2855680000000014
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 3.9331840000000047
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 1200,
+            "source_owned": 1200,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.045056000000000006,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 1200,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.04096
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "post/far-128/ablation": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/post/far-128/ablation/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "e322f6c468f065efbcda755ff2e06d8ccc5d2d3a6b47541183a90c5fccefb201",
+      "variant": "ablation",
+      "sampler_sha256": "5d4ddb6b34c239d20c5cb9255f94b66eae663d37b6500e000d554de63fc0ec08",
+      "shader_dir_sha256": "a271353ff34a3e98e8539fce9f23939cfa42043a1e0a6f9886e4334f1f1e84ff",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 1,
+            "source_invocations": 13568,
+            "source_owned": 106,
+            "source_invocations_per_owned": 128.0,
+            "source_hidden_invocations": 13462,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 13462,
+            "cross_canvas_share": 1.0,
+            "source_gpu_ms": 3.0709760000000013,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 13568,
+                "owned": 106,
+                "invocations_per_owned": 128.0,
+                "gpu_ms": 0.49766399999999966
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.6410239999999989
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 1.9251200000000006
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 1200,
+            "source_owned": 1200,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.037888,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 1200,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.034816
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.003072
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "post/far-128/early-tests": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/post/far-128/early-tests/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "74d5cb6f6468aa6911a4db2b91675114562c5c35168a3e9de1c0047b3013a860",
+      "variant": "early-tests",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "50dc787a1742f854ec43e1d779bcda7acd095055477e4e6b105fd6fe0a3506ef",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 1,
+            "source_invocations": 106,
+            "source_owned": 106,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 3.263488000000006,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 106,
+                "owned": 106,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 2.7678720000000063
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.4986879999999995
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5109759999999995
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 1200,
+            "source_owned": 1200,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.041984,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 1200,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.037888
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.003072
+              }
+            }
+          }
+        }
+      }
+    },
+    "post/far-128-filler-last/production": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--probe-record-pool-filler-last"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/post/far-128-filler-last/production/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "2b377c3635f5589865a0389968fb547c697ead8aef2949304cd71b30578910f1",
+      "variant": "production",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "a94cf2928e9f025c1ca7cd01c2f592671700fc6e5f837cf54a9de6a4f332f260",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 13568,
+            "source_owned": 106,
+            "source_invocations_per_owned": 128.0,
+            "source_hidden_invocations": 13462,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 13462,
+            "cross_canvas_share": 1.0,
+            "source_gpu_ms": 43.94803199999998,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 13568,
+                "owned": 106,
+                "invocations_per_owned": 128.0,
+                "gpu_ms": 42.895359999999975
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 1.0526719999999992
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 1.0403839999999998
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 98566,
+            "source_owned": 98566,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.59904,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 98566,
+                "owned": 98566,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.553984
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.043008
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.01024
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 1200,
+            "source_owned": 1200,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.051199999999999996,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 1200,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.048128
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.003072
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "post/far-128-filler-last/ablation": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--probe-record-pool-filler-last"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/post/far-128-filler-last/ablation/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "873ac5e7c0f3d728d6e7187f9b5198c746ec5cc9982b38ce46026f3b7d95e109",
+      "variant": "ablation",
+      "sampler_sha256": "5d4ddb6b34c239d20c5cb9255f94b66eae663d37b6500e000d554de63fc0ec08",
+      "shader_dir_sha256": "a271353ff34a3e98e8539fce9f23939cfa42043a1e0a6f9886e4334f1f1e84ff",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 13568,
+            "source_owned": 106,
+            "source_invocations_per_owned": 128.0,
+            "source_hidden_invocations": 13462,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 13462,
+            "cross_canvas_share": 1.0,
+            "source_gpu_ms": 1.0127359999999992,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 13568,
+                "owned": 106,
+                "invocations_per_owned": 128.0,
+                "gpu_ms": 0.5119999999999996
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.47513599999999967
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.826367999999999
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 98566,
+            "source_owned": 98566,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.516096,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 98566,
+                "owned": 98566,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.480256
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.033792
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.011264
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 1200,
+            "source_owned": 1200,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.043008000000000005,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 1200,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.038912
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "post/far-128-filler-last/early-tests": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--probe-record-pool-filler-last"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/post/far-128-filler-last/early-tests/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "06077688571a882d517c2c4e1d573f68e11d49b5acffc64a917a213b53505889",
+      "variant": "early-tests",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "50dc787a1742f854ec43e1d779bcda7acd095055477e4e6b105fd6fe0a3506ef",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 106,
+            "source_owned": 106,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 2.8149760000000046,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 106,
+                "owned": 106,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 2.322432000000005
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.49254399999999965
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.4935679999999999
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 98566,
+            "source_owned": 98566,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.6062080000000001,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 98566,
+                "owned": 98566,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.560128
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.043008
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.01024
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 1200,
+            "source_owned": 1200,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.0512,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 1200,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.047104
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.003072
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "post/far-128-filler-first/production": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/post/far-128-filler-first/production/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "3bb7e2d8a2b6bd7d9bf7319736fe3012f27b4aa3a157b9b1e87a56f6df07a449",
+      "variant": "production",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "a94cf2928e9f025c1ca7cd01c2f592671700fc6e5f837cf54a9de6a4f332f260",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 13568,
+            "source_owned": 106,
+            "source_invocations_per_owned": 128.0,
+            "source_hidden_invocations": 13462,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 13462,
+            "cross_canvas_share": 1.0,
+            "source_gpu_ms": 41.244672000000016,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 13568,
+                "owned": 106,
+                "invocations_per_owned": 128.0,
+                "gpu_ms": 40.65689600000001
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5242879999999995
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 1.091584
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 98566,
+            "source_owned": 98566,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.663552,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 98566,
+                "owned": 98566,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.617472
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.044032
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.011264
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 1200,
+            "source_owned": 1200,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.035840000000000004,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 1200,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.032768
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.003072
+              }
+            }
+          }
+        }
+      }
+    },
+    "post/far-128-filler-first/ablation": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/post/far-128-filler-first/ablation/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "7b43d47c746829aa772426b33738ef3877d52b52e7e614916eb0447e5528ed89",
+      "variant": "ablation",
+      "sampler_sha256": "5d4ddb6b34c239d20c5cb9255f94b66eae663d37b6500e000d554de63fc0ec08",
+      "shader_dir_sha256": "a271353ff34a3e98e8539fce9f23939cfa42043a1e0a6f9886e4334f1f1e84ff",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 13568,
+            "source_owned": 106,
+            "source_invocations_per_owned": 128.0,
+            "source_hidden_invocations": 13462,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 13462,
+            "cross_canvas_share": 1.0,
+            "source_gpu_ms": 1.1939839999999982,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 13568,
+                "owned": 106,
+                "invocations_per_owned": 128.0,
+                "gpu_ms": 0.5744639999999992
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5580799999999992
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5294079999999992
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 98566,
+            "source_owned": 98566,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.7372799999999999,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 98566,
+                "owned": 98566,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.693248
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.041984
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.013312
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 1200,
+            "source_owned": 1200,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.037888000000000005,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 1200,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.033792
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "post/far-128-filler-first/early-tests": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/post/far-128-filler-first/early-tests/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "e864d48439958974fa640b9276f9750d4c4da298401a9b409c86667810563ccd",
+      "variant": "early-tests",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "50dc787a1742f854ec43e1d779bcda7acd095055477e4e6b105fd6fe0a3506ef",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 106,
+            "source_owned": 106,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 3.137536000000004,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 106,
+                "owned": 106,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 2.2958080000000063
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5171199999999997
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.4976639999999998
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 98566,
+            "source_owned": 98566,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.658432,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 98566,
+                "owned": 98566,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.6144
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.045056
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.011264
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 1200,
+            "source_owned": 1200,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.036864,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 1200,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.033792
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.003072
+              }
+            }
+          }
+        }
+      }
+    },
+    "post/far-128-filler-last-frozen/production": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--probe-record-pool-filler-last",
+        "--sun-record-capacity",
+        "65536",
+        "--sun-record-ceiling",
+        "65536"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/post/far-128-filler-last-frozen/production/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "d66edd5258c702da328204ef85e6edfc3c478cc0716f59b7d66779df96647ac5",
+      "variant": "production",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "a94cf2928e9f025c1ca7cd01c2f592671700fc6e5f837cf54a9de6a4f332f260",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 13568,
+            "source_owned": 106,
+            "source_invocations_per_owned": 128.0,
+            "source_hidden_invocations": 13462,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 13462,
+            "cross_canvas_share": 1.0,
+            "source_gpu_ms": 39.60627199999998,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 13568,
+                "owned": 106,
+                "invocations_per_owned": 128.0,
+                "gpu_ms": 38.44095999999997
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.4710399999999998
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.4956159999999998
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 98566,
+            "source_owned": 98566,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.521216,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 98566,
+                "owned": 98566,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.468992
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.052224
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.011264
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 1200,
+            "source_owned": 1200,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.0512,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 1200,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.047104
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "post/far-128-filler-last-frozen/ablation": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--probe-record-pool-filler-last",
+        "--sun-record-capacity",
+        "65536",
+        "--sun-record-ceiling",
+        "65536"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/post/far-128-filler-last-frozen/ablation/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "445d431ebf1fabdd8338360edba8dff6b6d40f68376504906e0322cc4433ad49",
+      "variant": "ablation",
+      "sampler_sha256": "5d4ddb6b34c239d20c5cb9255f94b66eae663d37b6500e000d554de63fc0ec08",
+      "shader_dir_sha256": "a271353ff34a3e98e8539fce9f23939cfa42043a1e0a6f9886e4334f1f1e84ff",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 13568,
+            "source_owned": 106,
+            "source_invocations_per_owned": 128.0,
+            "source_hidden_invocations": 13462,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 13462,
+            "cross_canvas_share": 1.0,
+            "source_gpu_ms": 0.9871359999999997,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 13568,
+                "owned": 106,
+                "invocations_per_owned": 128.0,
+                "gpu_ms": 0.5048319999999998
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.4720639999999998
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.4925439999999999
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 98566,
+            "source_owned": 98566,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.470016,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 98566,
+                "owned": 98566,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.413696
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.055296
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.011264
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 1200,
+            "source_owned": 1200,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.044032,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 1200,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.039936
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.003072
+              }
+            }
+          }
+        }
+      }
+    },
+    "post/far-128-filler-last-frozen/early-tests": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--probe-record-pool-filler-last",
+        "--sun-record-capacity",
+        "65536",
+        "--sun-record-ceiling",
+        "65536"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/post/far-128-filler-last-frozen/early-tests/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "ece2f582216e4699fe6ca4093ef4506180f11b3b4a135c187d8b7a3c48bc9216",
+      "variant": "early-tests",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "50dc787a1742f854ec43e1d779bcda7acd095055477e4e6b105fd6fe0a3506ef",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 106,
+            "source_owned": 106,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 3.1457280000000094,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 106,
+                "owned": 106,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 2.382848000000007
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5089279999999993
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5099519999999995
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 98566,
+            "source_owned": 98566,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.549888,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 98566,
+                "owned": 98566,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.495616
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.055296
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.011264
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 1200,
+            "source_owned": 1200,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.052224,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 1200,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.048128
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "post/far-128-filler-first-frozen/production": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--sun-record-capacity",
+        "65536",
+        "--sun-record-ceiling",
+        "65536"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/post/far-128-filler-first-frozen/production/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "6ed1a52275c75970111c423327f9941367c49f10888bcec5dcdf544393e1602e",
+      "variant": "production",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "a94cf2928e9f025c1ca7cd01c2f592671700fc6e5f837cf54a9de6a4f332f260",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 13568,
+            "source_owned": 106,
+            "source_invocations_per_owned": 128.0,
+            "source_hidden_invocations": 13462,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 13462,
+            "cross_canvas_share": 1.0,
+            "source_gpu_ms": 1.0700799999999988,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 13568,
+                "owned": 106,
+                "invocations_per_owned": 128.0,
+                "gpu_ms": 0.5335039999999995
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5119999999999993
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5017599999999995
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 98566,
+            "source_owned": 98566,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.6584319999999999,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 98566,
+                "owned": 98566,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.603136
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.053248
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.011264
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 1200,
+            "source_owned": 1200,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.008192,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 1200,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.004096
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "post/far-128-filler-first-frozen/ablation": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--sun-record-capacity",
+        "65536",
+        "--sun-record-ceiling",
+        "65536"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/post/far-128-filler-first-frozen/ablation/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "9906065e2cc1dfe4bc1e2974ebb2be47f236e966ff731c690dc0818601c79f58",
+      "variant": "ablation",
+      "sampler_sha256": "5d4ddb6b34c239d20c5cb9255f94b66eae663d37b6500e000d554de63fc0ec08",
+      "shader_dir_sha256": "a271353ff34a3e98e8539fce9f23939cfa42043a1e0a6f9886e4334f1f1e84ff",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 13568,
+            "source_owned": 106,
+            "source_invocations_per_owned": 128.0,
+            "source_hidden_invocations": 13462,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 13462,
+            "cross_canvas_share": 1.0,
+            "source_gpu_ms": 1.585151999999999,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 13568,
+                "owned": 106,
+                "invocations_per_owned": 128.0,
+                "gpu_ms": 0.6236159999999997
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5785599999999993
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.548863999999999
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 98566,
+            "source_owned": 98566,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.713728,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 98566,
+                "owned": 98566,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.644096
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.070656
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.014336
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 1200,
+            "source_owned": 1200,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.008192,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 1200,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.004096
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    },
+    "post/far-128-filler-first-frozen/early-tests": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "900",
+        "--build-dir",
+        "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--exit-after-frames",
+        "70",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0",
+        "--sun-record-capacity",
+        "65536",
+        "--sun-record-ceiling",
+        "65536"
+      ],
+      "environment": {
+        "IR_COMPOSITE_DRAW_WITNESS": "60,5,C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl-mechanism/debug/witness/post/far-128-filler-first-frozen/early-tests/witness.csv"
+      },
+      "result": "CLEAN",
+      "csv": "witness.csv",
+      "csv_sha256": "1587de3dcc22e6ce0dd3236eef6fe7f50575b15799b79c075f6dae6c5ce6c4f5",
+      "variant": "early-tests",
+      "sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "shader_dir_sha256": "50dc787a1742f854ec43e1d779bcda7acd095055477e4e6b105fd6fe0a3506ef",
+      "summary": {
+        "frames": [
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "groups": {
+          "642.0,529.0 128.0x64.0 d-672": {
+            "canvases": 128,
+            "front_canvas": 2,
+            "source_invocations": 106,
+            "source_owned": 106,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 1.1110399999999985,
+            "kinds": {
+              "source-early": {
+                "draws": 128,
+                "invocations": 106,
+                "owned": 106,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.5488639999999992
+              },
+              "source-fallback": {
+                "draws": 128,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5591039999999992
+              },
+              "texture-layer": {
+                "draws": 128,
+                "invocations": 1048576,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.5273599999999993
+              }
+            }
+          },
+          "-158.0,385.0 2048.0x1024.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 0,
+            "source_invocations": 98566,
+            "source_owned": 98566,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.7833600000000001,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 98566,
+                "owned": 98566,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.713728
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.069632
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 625252,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.013312
+              }
+            }
+          },
+          "642.0,385.0 256.0x128.0 d-96": {
+            "canvases": 1,
+            "front_canvas": 1,
+            "source_invocations": 1200,
+            "source_owned": 1200,
+            "source_invocations_per_owned": 1.0,
+            "source_hidden_invocations": 0,
+            "front_canvas_hidden": 0,
+            "cross_canvas_hidden": 0,
+            "cross_canvas_share": null,
+            "source_gpu_ms": 0.008192,
+            "kinds": {
+              "source-early": {
+                "draws": 1,
+                "invocations": 1200,
+                "owned": 1200,
+                "invocations_per_owned": 1.0,
+                "gpu_ms": 0.004096
+              },
+              "source-fallback": {
+                "draws": 1,
+                "invocations": 0,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              },
+              "texture-layer": {
+                "draws": 1,
+                "invocations": 32768,
+                "owned": 0,
+                "invocations_per_owned": null,
+                "gpu_ms": 0.004096
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

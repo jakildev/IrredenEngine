@@ -1,0 +1,28 @@
+{
+  "source_revision": "45a220089c6b843cab5fb09007ae34356b2df275",
+  "backend": "opengl",
+  "build": "release",
+  "trees": {
+    "post": {
+      "build_dir": "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/build-release",
+      "build_type": "Release",
+      "binary_sha256": "71387cb90d784eb8ccb82f0aeac89d662bbdef77d0e3e7277815c99cd48471ae",
+      "pristine_sampler_sha256": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+      "pristine_shader_dir_sha256": "ab59efd9f287bc6e5f45bcd37bcd507f008878c1dba3805b2e90ee0cff230d0f",
+      "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b"
+    }
+  },
+  "controller_sha256": "2a3bd59a6f52b13b0fcbdb92cedf6493ad8d1becb188818634908c4e5bd752a2",
+  "variant_sampler_sha256": {
+    "production": "3e11bc35735b6f44e3ba3cb1405fcc76c50d617054485e7451ed6ca68d6db578",
+    "ablation": "5d4ddb6b34c239d20c5cb9255f94b66eae663d37b6500e000d554de63fc0ec08"
+  },
+  "host": "Windows-10-10.0.19045-SP0",
+  "host_gpu": [
+    {
+      "Name": "NVIDIA GeForce RTX 3060 Ti",
+      "DriverVersion": "32.0.15.8180"
+    }
+  ],
+  "python": "3.14.3"
+}

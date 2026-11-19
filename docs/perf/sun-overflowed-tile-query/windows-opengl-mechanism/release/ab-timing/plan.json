@@ -1,0 +1,122 @@
+[
+  {
+    "case": "far-128",
+    "pair": 1,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 1,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 1,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 1,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 2,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 2,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 2,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 2,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 3,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 3,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 3,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 3,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 4,
+    "tree": "pre",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 4,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 4,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 4,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 5,
+    "tree": "pre",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 5,
+    "tree": "post",
+    "variant": "production"
+  },
+  {
+    "case": "far-128",
+    "pair": 5,
+    "tree": "post",
+    "variant": "ablation"
+  },
+  {
+    "case": "far-128",
+    "pair": 5,
+    "tree": "pre",
+    "variant": "ablation"
+  }
+]

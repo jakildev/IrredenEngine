@@ -1,0 +1,221 @@
+diff --git a/engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp b/engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp
+index 5b13ca0f1..3fd4e559b 100644
+--- a/engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp
++++ b/engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp
+@@ -2138,7 +2138,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
+                         triangleCanvasTextures.sourceFaceOrder_.first
+                     );
+                 IR_ASSERT(
+-                    capacity <= (std::size_t{1} << 29),
++                    capacity <= (std::size_t{1} << 30),
+                     "source face order exceeds shader capacity"
+                 );
+                 const auto orderCapacity = IRMath::nextPowerOfTwo(
+@@ -2146,8 +2146,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
+                 );
+                 triangleCanvasTextures.sourceFaceOrder_ = IRRender::createResource<Buffer>(
+                     nullptr,
+-                    (std::size_t{128} + std::size_t{kFaceSortRecordWords} * orderCapacity) *
+-                        sizeof(std::uint32_t),
++                    (std::size_t{128} + std::size_t{3} * orderCapacity) * sizeof(std::uint32_t),
+                     BUFFER_STORAGE_DYNAMIC,
+                     BufferTarget::SHADER_STORAGE,
+                     kBufferIndex_PerAxisResolveScratch
+diff --git a/engine/render/include/irreden/render/ir_render_types.hpp b/engine/render/include/irreden/render/ir_render_types.hpp
+index 90150e653..9fe408632 100644
+--- a/engine/render/include/irreden/render/ir_render_types.hpp
++++ b/engine/render/include/irreden/render/ir_render_types.hpp
+@@ -118,9 +118,6 @@ enum class GatherFilterDiagnostic : int {
+     OWNER = 2,
+ };
+ 
+-// Shared with the GPU face-order sorter, emitter, and vertex reader.
+-constexpr std::uint32_t kFaceSortRecordWords = 4;
+-
+ // Prefix is an indexed indirect draw command followed by producer depth bounds.
+ struct SourceVoxelFaceHeader {
+     std::uint32_t indexCount_ = 6;
+diff --git a/engine/render/src/shaders/c_per_axis_overflow_sort.glsl b/engine/render/src/shaders/c_per_axis_overflow_sort.glsl
+index 668e6bc6e..3219c41dc 100644
+--- a/engine/render/src/shaders/c_per_axis_overflow_sort.glsl
++++ b/engine/render/src/shaders/c_per_axis_overflow_sort.glsl
+@@ -226,7 +226,7 @@ void main() {
+         // virtual sentinels, so materializing them would be pure waste.
+         const uint i = (gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x) * kThreads + gl_LocalInvocationID.x;
+         if (i >= span || i < liveEntryCount()) return;
+-        const uint b = entriesBase() + i * kFaceSortRecordWords;
++        const uint b = entriesBase() + i * 4u;
+         scratch[b] = kSentinelWord;
+         scratch[b + 1u] = kSentinelWord;
+         scratch[b + 2u] = kSentinelWord;
+@@ -251,7 +251,7 @@ void main() {
+             return;
+         }
+         for (uint e = t; e < kBlock; e += kThreads) {
+-            const uint b = entriesBase() + (blockBase + e) * kFaceSortRecordWords;
++            const uint b = entriesBase() + (blockBase + e) * 4u;
+             sW0[e] = scratch[b];
+             sW1[e] = scratch[b + 1u];
+             sW2[e] = scratch[b + 2u];
+@@ -268,7 +268,7 @@ void main() {
+             }
+         }
+         for (uint e = t; e < kBlock; e += kThreads) {
+-            const uint b = entriesBase() + (blockBase + e) * kFaceSortRecordWords;
++            const uint b = entriesBase() + (blockBase + e) * 4u;
+             scratch[b] = sW0[e];
+             scratch[b + 1u] = sW1[e];
+             scratch[b + 2u] = sW2[e];
+@@ -318,7 +318,7 @@ void main() {
+             sW3[e] = kSentinelWord;
+             continue;
+         }
+-        const uint b = entriesBase() + i * kFaceSortRecordWords;
++        const uint b = entriesBase() + i * 4u;
+         sW0[e] = scratch[b];
+         sW1[e] = scratch[b + 1u];
+         sW2[e] = scratch[b + 2u];
+@@ -347,7 +347,7 @@ void main() {
+         // Never write back a virtual slot — that region stays untouched and is
+         // never read by the draw.
+         if (i >= span) continue;
+-        const uint b = entriesBase() + i * kFaceSortRecordWords;
++        const uint b = entriesBase() + i * 4u;
+         scratch[b] = sW0[e];
+         scratch[b + 1u] = sW1[e];
+         scratch[b + 2u] = sW2[e];
+diff --git a/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl b/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
+index 32bee6188..a1935d567 100644
+--- a/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
++++ b/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
+@@ -371,11 +371,10 @@ void main() {
+             sourceFaces[index].worldCenterAndAO = vec4(0.0);
+             sourceFaces[index].owner = uvec4(packedEntityId, 0u, 0u);
+             // Unique source keys make coplanar draw ownership independent of append order.
+-            const uint order = 128u + index * kFaceSortRecordWords;
++            const uint order = 128u + index * 3u;
+             perAxisWinnerIds[order] = voxelIndex * 3u + uint(slot);
+             perAxisWinnerIds[order + 1u] = index;
+             perAxisWinnerIds[order + 2u] = 0u;
+-            perAxisWinnerIds[order + 3u] = 0u;
+             atomicAdd(perAxisWinnerIds[1u], 1u);
+             return;
+         }
+diff --git a/engine/render/src/shaders/ir_iso_common.glsl b/engine/render/src/shaders/ir_iso_common.glsl
+index e1daeb933..23734bf46 100644
+--- a/engine/render/src/shaders/ir_iso_common.glsl
++++ b/engine/render/src/shaders/ir_iso_common.glsl
+@@ -1346,8 +1346,6 @@ const uint kSourceLightingHDR = 2u;
+ const uint kSourceLightingShadow = 3u;
+ const uint kSourceLightingAOShadow = 4u;
+ 
+-const uint kFaceSortRecordWords = 4u;
+-
+ // owner.z selects color interpretation; owner.xy retain packed entity identity.
+ struct SourceVoxelFace {
+     vec4 centerAndFace;
+diff --git a/engine/render/src/shaders/ir_source_face_scatter_vertex.glsl b/engine/render/src/shaders/ir_source_face_scatter_vertex.glsl
+index d498e9276..cf362aeeb 100644
+--- a/engine/render/src/shaders/ir_source_face_scatter_vertex.glsl
++++ b/engine/render/src/shaders/ir_source_face_scatter_vertex.glsl
+@@ -53,7 +53,7 @@ void main() {
+         gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+         return;
+     }
+-    const SourceVoxelFace face = sourceFaces[sourceOrder[128u + uint(gl_InstanceID) * kFaceSortRecordWords + 1u]];
++    const SourceVoxelFace face = sourceFaces[sourceOrder[128u + uint(gl_InstanceID) * 3u + 1u]];
+     const int faceId = int(face.centerAndFace.w);
+     const int axis = faceId >> 1;
+     vec3 eu, ev;
+diff --git a/engine/render/src/shaders/metal/c_per_axis_overflow_sort.metal b/engine/render/src/shaders/metal/c_per_axis_overflow_sort.metal
+index 69ee3f616..b23fd2d91 100644
+--- a/engine/render/src/shaders/metal/c_per_axis_overflow_sort.metal
++++ b/engine/render/src/shaders/metal/c_per_axis_overflow_sort.metal
+@@ -127,7 +127,7 @@ kernel void c_per_axis_overflow_sort(
+     if (mode == 0u) {
+         const uint i = (groupId.x + groupId.y * gridGroups.x) * kSortThreads + localId.x;
+         if (i >= span || i < liveCount) return;
+-        const uint b = entriesBase + i * kFaceSortRecordWords;
++        const uint b = entriesBase + i * 4u;
+         scratch[b] = kSortSentinelWord;
+         scratch[b + 1u] = kSortSentinelWord;
+         scratch[b + 2u] = kSortSentinelWord;
+@@ -154,7 +154,7 @@ kernel void c_per_axis_overflow_sort(
+             return;
+         }
+         for (uint e = t; e < kSortBlock; e += kSortThreads) {
+-            const uint b = entriesBase + (blockBase + e) * kFaceSortRecordWords;
++            const uint b = entriesBase + (blockBase + e) * 4u;
+             sW0[e] = scratch[b];
+             sW1[e] = scratch[b + 1u];
+             sW2[e] = scratch[b + 2u];
+@@ -173,7 +173,7 @@ kernel void c_per_axis_overflow_sort(
+             }
+         }
+         for (uint e = t; e < kSortBlock; e += kSortThreads) {
+-            const uint b = entriesBase + (blockBase + e) * kFaceSortRecordWords;
++            const uint b = entriesBase + (blockBase + e) * 4u;
+             scratch[b] = sW0[e];
+             scratch[b + 1u] = sW1[e];
+             scratch[b + 2u] = sW2[e];
+@@ -219,7 +219,7 @@ kernel void c_per_axis_overflow_sort(
+             sW3[e] = kSortSentinelWord;
+             continue;
+         }
+-        const uint b = entriesBase + i * kFaceSortRecordWords;
++        const uint b = entriesBase + i * 4u;
+         sW0[e] = scratch[b];
+         sW1[e] = scratch[b + 1u];
+         sW2[e] = scratch[b + 2u];
+@@ -252,7 +252,7 @@ kernel void c_per_axis_overflow_sort(
+         // Never write back a virtual slot — that region stays untouched and is
+         // never read by the draw.
+         if (i >= span) continue;
+-        const uint b = entriesBase + i * kFaceSortRecordWords;
++        const uint b = entriesBase + i * 4u;
+         scratch[b] = sW0[e];
+         scratch[b + 1u] = sW1[e];
+         scratch[b + 2u] = sW2[e];
+diff --git a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal
+index 4ec860751..7a88971f2 100644
+--- a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal
++++ b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal
+@@ -350,11 +350,10 @@ kernel void IR_STAGE2_KERNEL_NAME(
+             sourceFaces.faces[index].worldCenterAndAO = float4(0.0);
+             sourceFaces.faces[index].owner = uint4(packedEntityId, 0u, 0u);
+             // Unique source keys make coplanar draw ownership independent of append order.
+-            const uint order = 128u + index * kFaceSortRecordWords;
++            const uint order = 128u + index * 3u;
+             atomic_store_explicit(&perAxisWinnerIds[order], voxelIndex * 3u + uint(slot), memory_order_relaxed);
+             atomic_store_explicit(&perAxisWinnerIds[order + 1u], index, memory_order_relaxed);
+             atomic_store_explicit(&perAxisWinnerIds[order + 2u], 0u, memory_order_relaxed);
+-            atomic_store_explicit(&perAxisWinnerIds[order + 3u], 0u, memory_order_relaxed);
+             atomic_fetch_add_explicit(&perAxisWinnerIds[1u], 1u, memory_order_relaxed);
+             return;
+         }
+diff --git a/engine/render/src/shaders/metal/ir_iso_common.metal b/engine/render/src/shaders/metal/ir_iso_common.metal
+index 9daf5e8e6..4dc2abd12 100644
+--- a/engine/render/src/shaders/metal/ir_iso_common.metal
++++ b/engine/render/src/shaders/metal/ir_iso_common.metal
+@@ -1332,8 +1332,6 @@ constant uint kSourceLightingHDR = 2u;
+ constant uint kSourceLightingShadow = 3u;
+ constant uint kSourceLightingAOShadow = 4u;
+ 
+-constant uint kFaceSortRecordWords = 4u;
+-
+ // owner.z selects color interpretation; owner.xy retain packed entity identity.
+ struct SourceVoxelFace {
+     float4 centerAndFace;
+diff --git a/engine/render/src/shaders/metal/ir_source_face_scatter_body.metal b/engine/render/src/shaders/metal/ir_source_face_scatter_body.metal
+index 25936f2e5..bb138e1d5 100644
+--- a/engine/render/src/shaders/metal/ir_source_face_scatter_body.metal
++++ b/engine/render/src/shaders/metal/ir_source_face_scatter_body.metal
+@@ -69,7 +69,7 @@ vertex SourceFaceVertex IR_SOURCE_FACE_VERTEX(
+         out.position = float4(2.0, 2.0, 2.0, 1.0);
+         return out;
+     }
+-    const SourceVoxelFace face = sourceFaces.faces[sourceOrder[128u + instanceId * kFaceSortRecordWords + 1u]];
++    const SourceVoxelFace face = sourceFaces.faces[sourceOrder[128u + instanceId * 3u + 1u]];
+     const int faceId = int(face.centerAndFace.w);
+     const int axis = faceId >> 1;
+     float3 eu, ev;

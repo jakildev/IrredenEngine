@@ -22,23 +22,32 @@ struct OpenGLTimestampPair {
     bool hasEnd_ = false;
 };
 
+bool hasGLExtension(const char *name) {
+    GLint extensionCount = 0;
+    ENG_API->glGetIntegerv(GL_NUM_EXTENSIONS, &extensionCount);
+    for (GLint index = 0; index < extensionCount; ++index) {
+        const auto *extension = reinterpret_cast<const char *>(
+            ENG_API->glGetStringi(GL_EXTENSIONS, static_cast<GLuint>(index))
+        );
+        if (extension != nullptr && std::strcmp(extension, name) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+GLenum toGLDrawCounterTarget(DrawCounter counter) {
+    return counter == DrawCounter::FRAGMENT_INVOCATIONS ? GL_FRAGMENT_SHADER_INVOCATIONS
+                                                        : GL_SAMPLES_PASSED;
+}
+
 class OpenGLRenderDevice final : public RenderDevice {
   public:
     GpuMemoryStats gpuMemoryStats() const override {
         constexpr GLenum kDedicatedVideoMemory = 0x9047;
         constexpr GLenum kCurrentAvailableVideoMemory = 0x9049;
         if (!m_checkedNvxMemoryInfo) {
-            GLint extensionCount = 0;
-            ENG_API->glGetIntegerv(GL_NUM_EXTENSIONS, &extensionCount);
-            for (GLint index = 0; index < extensionCount; ++index) {
-                const auto *extension = reinterpret_cast<const char *>(
-                    ENG_API->glGetStringi(GL_EXTENSIONS, static_cast<GLuint>(index))
-                );
-                if (extension != nullptr && std::strcmp(extension, "GL_NVX_gpu_memory_info") == 0) {
-                    m_hasNvxMemoryInfo = true;
-                    break;
-                }
-            }
+            m_hasNvxMemoryInfo = hasGLExtension("GL_NVX_gpu_memory_info");
             m_checkedNvxMemoryInfo = true;
         }
         if (!m_hasNvxMemoryInfo) {
@@ -427,6 +436,65 @@ class OpenGLRenderDevice final : public RenderDevice {
         );
     }
 
+    // Fragment-shader invocation statistics are core only from GL 4.6; the
+    // engine's 4.5 context needs the ARB extension.
+    bool supportsDrawCounters() const override {
+        if (!m_checkedPipelineStatistics) {
+            m_hasPipelineStatistics = hasGLExtension("GL_ARB_pipeline_statistics_query");
+            m_checkedPipelineStatistics = true;
+        }
+        return m_hasPipelineStatistics;
+    }
+
+    DrawCounterHandle createDrawCounter() override {
+        GLuint query = 0;
+        ENG_API->glGenQueries(1, &query);
+        return query;
+    }
+
+    void destroyDrawCounter(DrawCounterHandle handle) override {
+        if (handle != kInvalidDrawCounterHandle) {
+            const GLuint query = handle;
+            ENG_API->glDeleteQueries(1, &query);
+        }
+    }
+
+    void beginDrawCounter(DrawCounterHandle handle, DrawCounter counter) override {
+        ENG_API->glBeginQuery(toGLDrawCounterTarget(counter), handle);
+    }
+
+    void endDrawCounter(DrawCounter counter) override {
+        ENG_API->glEndQuery(toGLDrawCounterTarget(counter));
+    }
+
+    std::uint64_t readDrawCounter(DrawCounterHandle handle) override {
+        GLuint64 value = 0;
+        ENG_API->glGetQueryObjectui64v(handle, GL_QUERY_RESULT, &value);
+        return value;
+    }
+
+    // The claim test passes while a pixel's stencil is still 0 (1 > 0) and
+    // writes 1 only when depth passes too, so a later fragment at the same
+    // pixel fails stencil.
+    void beginFirstClaimReplay() override {
+        ENG_API->glClearStencil(0);
+        ENG_API->glClear(GL_STENCIL_BUFFER_BIT);
+        ENG_API->glEnable(GL_STENCIL_TEST);
+        ENG_API->glStencilFunc(GL_GREATER, 1, 0xFFu);
+        ENG_API->glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+        ENG_API->glEnable(GL_DEPTH_TEST);
+        ENG_API->glDepthFunc(GL_EQUAL);
+        ENG_API->glDepthMask(GL_FALSE);
+        ENG_API->glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    }
+
+    void endFirstClaimReplay() override {
+        ENG_API->glDisable(GL_STENCIL_TEST);
+        ENG_API->glDepthFunc(GL_LESS);
+        ENG_API->glDepthMask(GL_TRUE);
+        ENG_API->glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    }
+
   private:
     // A timestamp query becomes available only once every command issued
     // before it has completed, so it fences a submission without a sync
@@ -460,6 +528,8 @@ class OpenGLRenderDevice final : public RenderDevice {
     std::unordered_map<GpuTimestampHandle, OpenGLTimestampPair> m_timestamps;
     mutable bool m_checkedNvxMemoryInfo = false;
     mutable bool m_hasNvxMemoryInfo = false;
+    mutable bool m_checkedPipelineStatistics = false;
+    mutable bool m_hasPipelineStatistics = false;
     // 0 = the window's default framebuffer (every mode but OFFSCREEN).
     GLuint m_offscreenFbo = 0;
     GLuint m_offscreenColor = 0;
