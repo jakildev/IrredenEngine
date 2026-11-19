@@ -512,9 +512,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // the off-screen shadow feeders (struct 1), so the visible stage-1 program
     // carries none of the feeder branches (no runtime predication tax).
     ShaderProgram *stage1FeederProgram_ = nullptr;
-    // The per-axis overflow append: the IR_OVERFLOW_APPEND 1 specialization of
-    // stage 1, which keeps a cardinal-store loser unless the occluder pyramid
-    // proves its footprint hidden.
+    // The per-axis list walks: IR_PER_AXIS_PASS 1 specializations of the stage
+    // bodies, one invocation per list entry, selected per pass by program — the
+    // store, the winner election, the colour pass, and the overflow append,
+    // which keeps a cardinal-store loser unless the occluder pyramid proves its
+    // footprint hidden.
+    ShaderProgram *perAxisStoreProgram_ = nullptr;
+    ShaderProgram *perAxisWinnerResolveProgram_ = nullptr;
+    ShaderProgram *perAxisColorProgram_ = nullptr;
     ShaderProgram *overflowAppendProgram_ = nullptr;
     // Reduces the occluder prepass's depth to the pyramid the append reads.
     ShaderProgram *occluderReduceProgram_ = nullptr;
@@ -1233,13 +1238,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         // Per-axis store list-walk split: each axis dispatches over
         // only its own ~1/3 region of the compacted list (every voxel in it
-        // already has an exposed face on this axis), with the store shader's
-        // (faceId>>1)!=axis reject pruning the other two of the workgroup's
-        // three visible-triplet slots. Bind this axis's region +
-        // indirect-params struct onto the 25/26 the store shaders read; the
-        // store-shader SSBO declarations are unchanged (they read from offset
-        // 0 of the bound range). The compact filled these in the split pass
-        // above. Offsets are kPerAxisSsboAlignBytes-aligned by construction.
+        // already has an exposed face on this axis), one invocation per entry
+        // taking the entry's visible-triplet slot on this axis. Bind this
+        // axis's region + indirect-params struct onto the 25/26 the per-axis
+        // kernels read (from offset 0 of the bound range). The compact filled
+        // these in the split pass above, including the one-invocation-per-entry
+        // dispatch grid. Offsets are kPerAxisSsboAlignBytes-aligned by
+        // construction.
         auto bindAxisListRegions = [&](int axis) -> std::ptrdiff_t {
             const std::ptrdiff_t regionOffsetBytes = static_cast<std::ptrdiff_t>(axis) *
                                                      perAxisRegionStride_ *
@@ -1260,20 +1265,20 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             );
             return indirectOffsetBytes;
         };
-        auto uploadAxisFrameData = [&](int axis, int mode) {
+        auto uploadAxisFrameData = [&](int axis) {
             frameData_.perAxisRoute_ = axis + 1;
-            frameData_.resolveMode_ = mode;
             frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
         };
 
-        // Dispatch order per rotating frame: cardinal stores (mode 0) ×3 →
-        // barrier → per axis {election (mode 1) → stage 2} → occupied-cell
+        // Dispatch order per rotating frame: cardinal stores ×3 →
+        // barrier → per axis {election → stage 2} → occupied-cell
         // compaction → occluder prepass and pyramid → overflow append ×3 →
         // barrier → overflow canonical sort. The append reads each axis's
         // settled distance store and, through the pyramid, the depth of the
         // faces that won their cells, so it follows the pass that lists them.
         //
-        // Store pass — clears + cardinal stores (mode 0).
+        // Store pass — clears + cardinal stores. Each list pass is its own
+        // per-axis program, launched one invocation per list entry.
         // Each dispatch group owns a GPU row so the rotating burst is
         // attributable by operation (the braces bound the
         // timers, not the GPU bindings).
@@ -1284,7 +1289,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             if (resetListedCells) {
                 resetListedStoreCells(axes);
             }
-            stage1Program_->use();
+            perAxisStoreProgram_->use();
             for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
                 auto &tex = axes.axes_[axis];
                 Texture2D *distances = tex.distances_.second;
@@ -1303,7 +1308,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     );
                 }
 
-                uploadAxisFrameData(axis, 0);
+                uploadAxisFrameData(axis);
                 const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
 
                 // STAGE_1 reads the fog grid (slot 0) + observers (binding 27) for its
@@ -1332,7 +1337,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         {
             GpuSubStageScope finalizeScope("voxelPerAxisFinalize");
             IR_PROFILE_SCOPE("vs1_pa_finalize");
-            // Winner election (mode 1) + stage 2, per axis. The
+            // Winner election + stage 2, per axis. The
             // winner scratch (region 0) is serially reused across axes: refill to
             // the no-winner sentinel, elect this axis's winners, then let stage 2's
             // guard admit exactly one tied face per cell.
@@ -1347,8 +1352,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 // before this axis's winner-resolve dispatch below.
                 IRRender::device()->fillBuffer(axes.winnerIds_.second, winnerScratchBytes, 0xFFu);
 
-                stage1Program_->use();
-                uploadAxisFrameData(axis, 1);
+                perAxisWinnerResolveProgram_->use();
+                uploadAxisFrameData(axis);
                 const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
                 fogTex->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
                 fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
@@ -1359,14 +1364,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 );
                 // The winner SSBO writes must land before stage 2's guard reads.
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-                frameData_.resolveMode_ = 0;
-                frameDataBuf_->subData(
-                    offsetof(FrameDataVoxelToCanvas, resolveMode_),
-                    sizeof(int),
-                    &frameData_.resolveMode_
-                );
 
-                stage2Program_->use();
+                perAxisColorProgram_->use();
                 colors->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
                 distances->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
                 entityIds->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
@@ -1414,7 +1413,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 );
             }
             for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
-                uploadAxisFrameData(axis, 3);
+                uploadAxisFrameData(axis);
                 const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
                 fogTex->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
                 fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
@@ -3120,9 +3119,30 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             "PerAxisCellClearProgram",
             std::vector{ShaderStage{IRRender::kFileCompPerAxisCellClear, ShaderType::COMPUTE}}
         );
-        // The per-axis overflow append: the IR_OVERFLOW_APPEND 1 specialization
-        // of the shared stage-1 body, so the store kernel carries neither the
-        // append nor its occluder test.
+        // The per-axis list walks: IR_PER_AXIS_PASS 1 specializations of the
+        // shared stage bodies, one invocation per list entry, so the general
+        // stage-1/2 kernels carry no per-axis code. The append also defines
+        // IR_OVERFLOW_APPEND 1, so the store kernel carries neither the append
+        // nor its occluder test.
+        IRRender::createNamedResource<ShaderProgram>(
+            "SingleVoxelPerAxisStore",
+            std::vector{
+                ShaderStage{IRRender::kFileCompVoxelToTrixelStage1PerAxis, ShaderType::COMPUTE}
+            }
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "SingleVoxelPerAxisWinnerResolve",
+            std::vector{ShaderStage{
+                IRRender::kFileCompVoxelToTrixelStage1PerAxisWinnerResolve,
+                ShaderType::COMPUTE
+            }}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "SingleVoxel2PerAxis",
+            std::vector{
+                ShaderStage{IRRender::kFileCompVoxelToTrixelStage2PerAxis, ShaderType::COMPUTE}
+            }
+        );
         IRRender::createNamedResource<ShaderProgram>(
             "SingleVoxelOverflowAppend",
             std::vector{ShaderStage{
@@ -3169,8 +3189,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // kBufferIndex_PerAxisResolveScratch (28). The real scratch is
         // allocated lazily with the per-axis canvases; this placeholder
         // guarantees index 28 is never unbound for the single-canvas /
-        // detached dispatches, which gate every access behind
-        // resolveMode / perAxisRoute but can run before any lighting system
+        // detached dispatches, which gate every access behind their compiled
+        // variant but can run before any lighting system
         // has bound 28 (Metal re-binds the shadow table per encoder).
         IRRender::createNamedResource<Buffer>(
             "PerAxisWinnerPlaceholder",
@@ -3380,6 +3400,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->cellFinalizeProgram_ =
             IRRender::getNamedResource<ShaderProgram>("PerAxisCellFinalizeProgram");
         p->cellClearProgram_ = IRRender::getNamedResource<ShaderProgram>("PerAxisCellClearProgram");
+        p->perAxisStoreProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("SingleVoxelPerAxisStore");
+        p->perAxisWinnerResolveProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("SingleVoxelPerAxisWinnerResolve");
+        p->perAxisColorProgram_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxel2PerAxis");
         p->overflowAppendProgram_ =
             IRRender::getNamedResource<ShaderProgram>("SingleVoxelOverflowAppend");
         p->occluderReduceProgram_ =

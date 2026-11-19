@@ -44,10 +44,18 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
     if (functionName == "c_per_axis_occluder_reduce") {
         return MTL::Size(1, 1, 1);
     }
+    // One thread per per-axis list entry; must match Metal's
+    // kPerAxisEntriesPerGroup, which perAxisDispatchEntry shares with the
+    // compact writer.
+    if (functionName == "c_voxel_to_trixel_stage_1_per_axis" ||
+        functionName == "c_voxel_to_trixel_stage_1_per_axis_winner_resolve" ||
+        functionName == "c_voxel_to_trixel_stage_1_overflow_append" ||
+        functionName == "c_voxel_to_trixel_stage_2_per_axis") {
+        return MTL::Size(64, 1, 1);
+    }
     if (functionName == "c_voxel_to_trixel_stage_1" ||
         functionName == "c_voxel_to_trixel_stage_1_feeder" ||
         functionName == "c_voxel_to_trixel_stage_1_winner_resolve" ||
-        functionName == "c_voxel_to_trixel_stage_1_overflow_append" ||
         functionName == "c_voxel_to_trixel_stage_2" ||
         functionName == "c_voxel_to_trixel_stage_2_winner") {
         // Must match Metal's kStageMicroSlicesPerGroup;
@@ -191,9 +199,12 @@ bool functionUsesImageAtomicScratch(const std::string &functionName) {
            functionName == "c_voxel_to_trixel_stage_1" ||
            functionName == "c_voxel_to_trixel_stage_1_feeder" ||
            functionName == "c_voxel_to_trixel_stage_1_winner_resolve" ||
+           functionName == "c_voxel_to_trixel_stage_1_per_axis" ||
+           functionName == "c_voxel_to_trixel_stage_1_per_axis_winner_resolve" ||
            functionName == "c_voxel_to_trixel_stage_1_overflow_append" ||
            functionName == "c_voxel_to_trixel_stage_2" ||
            functionName == "c_voxel_to_trixel_stage_2_winner" ||
+           functionName == "c_voxel_to_trixel_stage_2_per_axis" ||
            functionName == "c_shapes_to_trixel_depth" ||
            functionName == "c_shapes_to_trixel_publish" ||
            functionName == "c_shapes_to_trixel_caster" ||

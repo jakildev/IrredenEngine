@@ -168,7 +168,9 @@ def harness(backend):
     emitter = functions(producer, "emitDeformedFace")
     prefix = "frameData." if backend == "metal" else ""
     start = producer.index(f"    if ({prefix}voxelRenderOptions.x == 0)")
-    body = producer[start:producer.rindex("\n}")]
+    # The cardinal raster is the tail of the general variant's main; the
+    # closing `#endif` ends the per-axis variant split around it.
+    body = re.sub(r"\n#endif\s*$", "", producer[start:producer.rindex("\n}")])
     producer_code = emitter + "\nvoid produce(){\n" + body + "\n}\n"
     producer_code = producer_code.replace("frameData.", "")
     producer_code = producer_code.replace("device atomic_int*", "void*")

@@ -1139,15 +1139,8 @@ struct FrameDataVoxelToTrixel {
     // (stage 1 still wrote its full-res depth, all the bake + AO read). Mirrors
     // FrameDataVoxelToCanvas::visibleIsoBounds_. Other kernels never read it.
     int4 visibleIsoBounds;
-    // Per-axis deterministic-winner resolve mode. 0 = the normal
-    // distance store. 1 = the winner-resolve dispatch between the stage-1
-    // store and stage 2: re-run the identical per-axis geometry and, for each
-    // face whose encoded distance matches the settled per-cell atomic-min
-    // winner, atomic-min the face's run-stable voxel pool index into the
-    // per-cell winner scratch (buffer 28 = kBufferIndex_PerAxisResolveScratch,
-    // transiently reused) — so stage 2's color/entity-id tap admits exactly
-    // one of the equal-key faces. Mirrors FrameDataVoxelToCanvas::resolveMode_
-    // (offset 192). Read only by c_voxel_to_trixel_stage_1.
+    // Reserved; no shader reads it. Mirrors FrameDataVoxelToCanvas::resolveMode_
+    // (offset 192) so every binding-7 shader shares one layout.
     int resolveMode;
     // Per-voxel Hi-Z occlusion-cull gate. 0 = the compact's per-voxel test is
     // skipped; non-zero = the Hi-Z chain level count, so

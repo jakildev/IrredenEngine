@@ -1,12 +1,13 @@
 // Stage-1 per-axis OVERFLOW APPEND dispatch. A thin wrapper that specializes
-// the shared body at compile time: IR_OVERFLOW_APPEND 1 compiles the per-axis
-// route as the append, with the occluder-pyramid test, and leaves the store
-// and election taps textually absent. The store twin is
-// c_voxel_to_trixel_stage_1.glsl. Includes come BEFORE the body because the
-// body declares no #includes of its own.
+// the shared body at compile time: IR_PER_AXIS_PASS 1 with IR_OVERFLOW_APPEND 1
+// compiles the per-axis list walk, one invocation per entry, as the append, with
+// the occluder-pyramid test, and leaves the store and election taps textually
+// absent. The store twin is c_voxel_to_trixel_stage_1_per_axis.glsl. Includes
+// come BEFORE the body because the body declares no #includes of its own.
 #version 450 core
 #define IR_FEEDER_PASS 0
 #define IR_STORE_WINNER_ELECTION 0
+#define IR_PER_AXIS_PASS 1
 #define IR_OVERFLOW_APPEND 1
 #include "ir_iso_common.glsl"
 #define IR_VOXEL_FOG_GRID_BINDING 0

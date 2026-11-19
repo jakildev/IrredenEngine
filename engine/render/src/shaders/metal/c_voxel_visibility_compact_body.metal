@@ -69,6 +69,16 @@ static void writeDispatchDims(
     atomic_store_explicit(&indirectParams[base + kSlotNumGroupsZ], gz, memory_order_relaxed);
 }
 
+// Per-axis list grid: one invocation per entry (perAxisDispatchDims).
+static void writePerAxisDispatchDims(device atomic_uint* indirectParams, uint base) {
+    const uint3 dims = perAxisDispatchDims(atomic_load_explicit(
+        &indirectParams[base + kSlotVisibleCount], memory_order_relaxed
+    ));
+    atomic_store_explicit(&indirectParams[base + kSlotNumGroupsX], dims.x, memory_order_relaxed);
+    atomic_store_explicit(&indirectParams[base + kSlotNumGroupsY], dims.y, memory_order_relaxed);
+    atomic_store_explicit(&indirectParams[base + kSlotNumGroupsZ], dims.z, memory_order_relaxed);
+}
+
 // Fog-of-war column cull. Mirrors c_voxel_visibility_compact.glsl. The
 // fog `.r` lane is the state integer, decoded through fogTexelState:
 // unexplored 0.0, explored ≈0.5, visible 1.0; the `.g` channel mask is the
@@ -265,7 +275,7 @@ static bool fogColumnInVisionCircle(
 
 static void finalizeDispatchDims(device atomic_uint* indirectParams, constant FrameDataVoxelToTrixel& frameData) {
     const uint visibleSlices = uint(voxelDispatchMicroSliceCount(
-        frameData.voxelRenderOptions.x, frameData.voxelRenderOptions.y, 0
+        frameData.voxelRenderOptions.x, frameData.voxelRenderOptions.y
     ));
     if (frameData.perAxisRoute == 0) {
         writeDispatchDims(indirectParams, 0u, visibleSlices);
@@ -274,14 +284,12 @@ static void finalizeDispatchDims(device atomic_uint* indirectParams, constant Fr
         // survivor was classified feeder ⇒ its stage-1 dispatch
         // early-returns every workgroup.
         const uint feederSlices = uint(voxelDispatchMicroSliceCount(
-            frameData.voxelRenderOptions.x, frameData.feederSubCap, 0
+            frameData.voxelRenderOptions.x, frameData.feederSubCap
         ));
         writeDispatchDims(indirectParams, kPerAxisIndirectStrideUints, feederSlices);
     } else {
         for (int axis = 0; axis < 3; ++axis) {
-            writeDispatchDims(
-                indirectParams, uint(axis) * kPerAxisIndirectStrideUints, 1u
-            );
+            writePerAxisDispatchDims(indirectParams, uint(axis) * kPerAxisIndirectStrideUints);
         }
     }
 }
