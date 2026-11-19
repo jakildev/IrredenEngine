@@ -276,7 +276,15 @@ class MetalGpuComputeDispatchTest : public ::testing::Test {
     IRRender::RenderDevice *device_ = nullptr;
 };
 
-using MetalDeviceErrorsTest = MetalGpuComputeDispatchTest;
+class MetalDeviceErrorsTest : public MetalGpuComputeDispatchTest {
+  protected:
+    void SetUp() override {
+        MetalGpuComputeDispatchTest::SetUp();
+        if (device_ != nullptr) {
+            IRRender::resetMetalDeviceErrorStatsForTesting();
+        }
+    }
+};
 
 TEST_F(MetalDeviceErrorsTest, BufferAllocationFailureNamesKindAndSize) {
     IRRender::failNextMetalAllocationForTesting(IRRender::MetalAllocationKind::BUFFER);
@@ -355,6 +363,49 @@ TEST_F(MetalDeviceErrorsTest, CommandBufferAndSkippedFrameCountersAreReported) {
     EXPECT_EQ(after.skippedFrames_, before.skippedFrames_ + 1);
     EXPECT_EQ(after.firstCommandBufferErrorFrame_, 23u);
     EXPECT_EQ(after.firstCommandBufferError_, "injected command failure");
+}
+
+TEST_F(MetalDeviceErrorsTest, FirstCommandBufferErrorIsKeptByRecordNotByText) {
+    IRRender::recordMetalCommandBufferCompletion(MTL::CommandBufferStatusError, 1, "", 5);
+    IRRender::recordMetalCommandBufferCompletion(
+        MTL::CommandBufferStatusError,
+        2,
+        "later failure",
+        9
+    );
+
+    const IRRender::DeviceErrorStats stats = IRRender::device()->deviceStats().errors_;
+    EXPECT_EQ(stats.commandBufferErrors_, 2u);
+    EXPECT_EQ(stats.firstCommandBufferErrorFrame_, 5u);
+    EXPECT_EQ(stats.firstCommandBufferError_, "");
+}
+
+TEST_F(MetalDeviceErrorsTest, FailedResizeLeavesTheBufferUnchanged) {
+    constexpr std::size_t kSize = 64;
+    std::vector<std::uint8_t> original(kSize);
+    for (std::size_t i = 0; i < kSize; ++i) {
+        original[i] = static_cast<std::uint8_t>(i + 1);
+    }
+    IRRender::Buffer buffer{original.data(), kSize, IRRender::BUFFER_STORAGE_NONE};
+    void *const backing = buffer.getNativeBuffer();
+    const NS::UInteger length = static_cast<MTL::Buffer *>(backing)->length();
+
+    IRRender::failNextMetalAllocationForTesting(IRRender::MetalAllocationKind::BUFFER);
+    EXPECT_THROW(buffer.resize(kSize * 2), std::runtime_error);
+
+    EXPECT_EQ(buffer.getNativeBuffer(), backing);
+    EXPECT_EQ(static_cast<MTL::Buffer *>(backing)->length(), length);
+
+    std::vector<std::uint8_t> rewritten(kSize, 0x5a);
+    buffer.subData(0, kSize, rewritten.data());
+    std::vector<std::uint8_t> readBack(kSize, 0);
+    buffer.getSubData(0, kSize, readBack.data());
+    EXPECT_EQ(readBack, rewritten);
+
+#ifndef IR_RELEASE
+    std::vector<std::uint8_t> oversized(kSize * 2, 0);
+    EXPECT_THROW(buffer.subData(0, oversized.size(), oversized.data()), std::runtime_error);
+#endif
 }
 
 void snapshotClearTexture(

@@ -146,10 +146,11 @@ class MetalBufferImpl final : public BufferImpl {
     void unmap() override {}
 
     void resize(std::size_t size) override {
-        m_size = size == 0 ? 1 : size;
+        const std::size_t newSize = size == 0 ? 1 : size;
         auto *newBuffer = newMetalBuffer(
-            backingBytes(m_size), MTL::ResourceStorageModeShared, "resized buffer"
+            backingBytes(newSize), MTL::ResourceStorageModeShared, "resized buffer"
         );
+        m_size = newSize;
         adoptBacking(newBuffer);
     }
 
