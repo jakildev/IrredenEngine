@@ -1,9 +1,12 @@
 """A fake macOS display session for the fleet_display_session seams.
 
-``FakeDisplay(root)`` writes a probe state file ("<online> <awake> <NSScreen>")
-and a fake caffeinate that logs each invocation, optionally rewrites the state
-(the wake), and then lives until the ``-w`` pid exits, as caffeinate does.
-``env()`` returns the seam variables that point the helper at both.
+``FakeDisplay(root)`` writes a probe state file ("<online> <awake> <NSScreen>"),
+a fake probe that logs each call and prints that state, and a fake caffeinate
+that logs each invocation, optionally rewrites the state (the wake), and then
+lives until the ``-w`` pid exits, as caffeinate does. ``env()`` returns the
+seam variables that point the helper at them. It also pins the sandbox seam
+(default "allowed"): unpinned, a suite run inside a sandbox would get the
+kernel's "denied" and stop every arm at the sandbox check.
 """
 
 import os
@@ -29,6 +32,13 @@ while True:
     except ProcessLookupError:
         break
     time.sleep(0.05)
+"""
+# Paths are baked in: the helper runs the probe without passing its env.
+PROBE = r"""import sys
+with open({log!r}, "a") as log:
+    log.write("probe\n")
+with open({state!r}) as state:
+    sys.stdout.write(state.read())
 """
 
 
@@ -63,22 +73,32 @@ class FakeDisplay:
         self.caffeinate = self.root / "caffeinate"
         self.caffeinate.write_text(f"#!{sys.executable}\n{CAFFEINATE}")
         self.caffeinate.chmod(0o755)
+        self.probe_log = self.root / "probe.log"
+        self.probe = self.root / "probe"
+        probe = PROBE.format(log=str(self.probe_log), state=str(self.state))
+        self.probe.write_text(f"#!{sys.executable}\n{probe}")
+        self.probe.chmod(0o755)
         self.wake_to = wake_to
         self.set_state(state)
 
     def set_state(self, state):
         self.state.write_text(state)
 
-    def env(self, platform="darwin", timeout="2"):
+    def env(self, platform="darwin", timeout="2", sandbox="allowed"):
         env = {"FLEET_DISPLAY_PLATFORM": platform,
+               "FLEET_DISPLAY_SANDBOX": sandbox,
                "FLEET_DISPLAY_CAFFEINATE": str(self.caffeinate),
-               "FLEET_DISPLAY_PROBE": f"cat {shlex.quote(str(self.state))}",
+               "FLEET_DISPLAY_PROBE": shlex.quote(str(self.probe)),
                "FLEET_DISPLAY_WAKE_TIMEOUT": timeout,
                "FAKE_CAFFEINATE_LOG": str(self.log),
                "FAKE_DISPLAY_STATE": str(self.state)}
         if self.wake_to:
             env["FAKE_WAKE_TO"] = self.wake_to
         return env
+
+    def probes(self):
+        """How many times the fake probe ran."""
+        return len(self.probe_log.read_text().splitlines()) if self.probe_log.exists() else 0
 
     def invocations(self):
         """[(pid, argv)] for every fake caffeinate started."""

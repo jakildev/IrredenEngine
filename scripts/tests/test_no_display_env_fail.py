@@ -6,6 +6,7 @@ import argparse
 import importlib.util
 import io
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -232,6 +233,45 @@ class IrRunDisplayWakeTest(unittest.TestCase):
         self.assertFalse(gone(outer.pid), "ir-run ended a hold it did not own")
         self.assertEqual(self.record.read_text().split()[:2], [str(outer.pid), "alive"])
 
+    def test_sandbox_denial_is_no_display_before_wake_or_probe(self) -> None:
+        for timeout in (None, "20"):
+            with self.subTest(timeout=timeout):
+                result = self.run_ir("--auto-screenshot", "1", timeout=timeout,
+                                     env=self.env(FLEET_DISPLAY_SANDBOX="denied"))
+                self.assertEqual(result.returncode, verify_common.EXIT_ENV_FAIL, result.stderr)
+                self.assertIn("ir-run: display unreachable: the launching process runs inside "
+                              "a sandbox that denies the WindowServer lookup", result.stderr)
+                self.assertIn("fleet-jobs start render-verify|light-verify|gui-verify",
+                              result.stderr)
+                self.assertIn("RESULT=NO-DISPLAY exe=IRHoldProbe exit=69", result.stderr)
+                self.assertFalse(self.record.exists(), "the exe ran inside the sandbox")
+                self.assertEqual(self.display.invocations(), [])
+                self.assertEqual(self.display.probes(), 0)
+
+    def test_sandbox_allowed_or_unanswered_keeps_the_wake_path(self) -> None:
+        for seam in ("allowed", "error"):
+            with self.subTest(sandbox=seam):
+                self.display.log.unlink(missing_ok=True)
+                self.display.set_state("1 0 1")
+                result = self.run_ir("--auto-screenshot", "1",
+                                     env=self.env(FLEET_DISPLAY_SANDBOX=seam))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("RESULT=CLEAN", result.stdout)
+                self.assertNotIn("sandbox", result.stderr)
+                self.held_run()
+                self.assertGreater(self.display.probes(), 0)
+
+    def test_sandbox_denial_leaves_other_launches_alone(self) -> None:
+        cases = ((self.env(FLEET_DISPLAY_PLATFORM="linux", FLEET_DISPLAY_SANDBOX="denied"),
+                  ("--auto-screenshot", "1"), None),
+                 (self.env(FLEET_DISPLAY_SANDBOX="denied"), (), "5"))
+        for env, args, timeout in cases:
+            with self.subTest(platform=env["FLEET_DISPLAY_PLATFORM"], args=args):
+                result = self.run_ir(*args, env=env, timeout=timeout)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotIn("sandbox", result.stderr)
+                self.assertTrue(self.record.exists(), "the exe did not run")
+
     def test_no_caffeinate_off_macos_or_outside_capture_verbs(self) -> None:
         cases = ((self.env(FLEET_DISPLAY_PLATFORM="linux"), ("--auto-screenshot", "1"), None),
                  (self.env(), (), "5"))
@@ -268,10 +308,53 @@ class DisplaySessionTest(unittest.TestCase):
             self.assertTrue(wait_gone(hold.holder_pid))
 
     def test_off_macos_does_nothing(self) -> None:
-        hold = fleet_display_session.hold_display(os.getpid(),
-                                                  env={"FLEET_DISPLAY_PLATFORM": "linux"})
-        self.assertTrue(hold.ready)
-        self.assertEqual((hold.lines, hold.holder_pid), ([], None))
+        for sandbox in ("allowed", "denied"):
+            with self.subTest(sandbox=sandbox):
+                hold = fleet_display_session.hold_display(
+                    os.getpid(), env={"FLEET_DISPLAY_PLATFORM": "linux",
+                                      "FLEET_DISPLAY_SANDBOX": sandbox})
+                self.assertTrue(hold.ready)
+                self.assertEqual((hold.lines, hold.holder_pid), ([], None))
+
+    def test_sandbox_denial_blocks_and_names_the_remedy(self) -> None:
+        hold = fleet_display_session.hold_display(
+            os.getpid(), env={"FLEET_DISPLAY_PLATFORM": "darwin",
+                              "FLEET_DISPLAY_SANDBOX": "denied",
+                              "FLEET_DISPLAY_PROBE": "false",
+                              "FLEET_DISPLAY_CAFFEINATE": "/nonexistent/caffeinate"})
+        self.assertEqual((hold.ready, hold.condition, hold.holder_pid),
+                         (False, "sandboxed", None))
+        self.assertTrue(hold.blocks_launch)
+        self.assertEqual(len(hold.lines), 1)
+        self.assertIn("sandbox that denies the WindowServer lookup", hold.failure)
+        self.assertIn("the engine would discover 0 display monitors", hold.failure)
+        self.assertIn("docs/agents/CODEX.md", hold.failure)
+
+    def test_real_kernel_query_reads_a_windowserver_denying_sandbox(self) -> None:
+        if sys.platform != "darwin":
+            self.skipTest("sandbox_check is a macOS kernel query")
+        sandbox_exec = shutil.which("sandbox-exec")
+        if sandbox_exec is None:
+            self.skipTest("sandbox-exec is not installed")
+        # Seatbelt does not nest: inside a sandbox, sandbox-exec cannot apply a
+        # profile and the bare query already reads the outer one.
+        if fleet_display_session.in_any_sandbox():
+            self.skipTest("this suite runs inside a sandbox; the profile cannot nest")
+        query = ("import sys; sys.path.insert(0, sys.argv[1]); import fleet_display_session as s;"
+                 " print(s.windowserver_denied({}))")
+        helper_dir = str(Path(fleet_display_session.__file__).resolve().parent)
+        deny = ('(version 1)(allow default)'
+                '(deny mach-lookup (global-name "com.apple.windowserver.active"))')
+        cases = (([], "False"),
+                 ([sandbox_exec, "-p", "(version 1)(allow default)"], "False"),
+                 ([sandbox_exec, "-p", deny], "True"))
+        for prefix, expected in cases:
+            with self.subTest(profile=prefix[2:]):
+                result = subprocess.run([*prefix, sys.executable, "-c", query, helper_dir],
+                                        capture_output=True, text=True, check=False,
+                                        timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), expected)
 
 
 class VerifierNoDisplayTest(unittest.TestCase):
@@ -363,6 +446,22 @@ class VerifierNoDisplayTest(unittest.TestCase):
         self.assertIn("[test] display ready after", output)
         self.assertIn(f"[test] display held by the outer run (caffeinate pid {holder})", output)
         self.assertNotIn("ENV-FAIL", output)
+
+    def test_sandbox_denial_stops_the_verifier_before_the_wake(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            display = FakeDisplay(Path(tmp))
+            env = {k: v for k, v in os.environ.items() if not k.startswith("FLEET_DISPLAY_")}
+            with patch.dict(os.environ, env | display.env(sandbox="denied"), clear=True), \
+                    redirect_stdout(io.StringIO()) as captured:
+                self.assertEqual(verify_common.display_preflight("[test] "),
+                                 verify_common.EXIT_ENV_FAIL)
+                self.assertNotIn(fleet_display_session.HOLDER_ENV, os.environ)
+            self.assertEqual((display.invocations(), display.probes()), ([], 0))
+        output = captured.getvalue()
+        self.assertEqual(output.count("ENV-FAIL:"), 1)
+        self.assertIn("[test] ENV-FAIL: display unreachable: the launching process runs "
+                      "inside a sandbox", output)
+        self.assertIn("0 display monitors", output)
 
     def test_display_domain_mismatch_stops_each_verifier_before_fleet_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, \
