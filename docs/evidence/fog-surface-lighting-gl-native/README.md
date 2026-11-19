@@ -7,7 +7,8 @@ GLSL twins on Windows/OpenGL and graded the receiver-shadow polygon oracle at th
 Windows clamped a 2560×1440 window to 1421 rows. #4852 (PR #5186) makes a 2560×1440
 offscreen request capture a 2560×1440 frame. This directory grades the other 10
 placements (`near` ×4 yaws, `mid` ×4 yaws, `subpos`, `subneg`) **natively**, with no
-upscale, on master `00b5da049`.
+upscale, on master `00b5da049`. The sub-pixel pair was re-run on `1bff5ea9d` after
+#5190 landed; see [Sub-pixel re-run after #5190](#sub-pixel-re-run-after-5190).
 
 Host, driver and binary hashes: [artifacts.txt](artifacts.txt). NVIDIA RTX 3060 Ti,
 driver 581.80, `windows-debug`. No code changed.
@@ -98,18 +99,53 @@ to `ceil` where the contract (`camera_screen_offset`, which Metal meets exactly)
 `floor`. That fits a floor taken on GL's bottom-up y axis. It is filed as #5190 with
 this repro. #4813's scope routes a GL defect outside the GLSL twins to its own issue.
 
-## What remains for #4813
+## Sub-pixel re-run after #5190
 
-Criterion 2 is met at the 8 origin placements (PR #4853) and at the 8 `near`/`mid`
-placements (here). The two sub-pixel placements wait on #5190. Once it lands, re-run
-`matrix.py <out> default,ambient0.15,ambient0.55,local,local-lit,local-dark --fog 16 --surface 1,0`
-for `subpos`/`subneg` (40 captures; delete those folders first), then `grade.py`. Every
-row should equal Metal's: 0/0/0 opt-in on, 18/638/0 opt-in off.
+#5190 (PR #5201) moved the iso-to-screen sign outside `floor()` in the GL camera
+residual helpers. `subpos` and `subneg` were re-captured on master `1bff5ea9d`, which
+includes that fix. The run used the same drivers, retargeted at the pool-1 worktree
+(only the `ROOT` / `WT` path and `matrix.py`'s import path differ). There were two arms:
+
+```
+matrix.py <out> default,ambient0.15,ambient0.55,local,local-lit,local-dark --fog 16 --surface 1,0 --placements subpos,subneg
+matrix.py <out> default --fog 0 --surface 1 --placements subpos,subneg
+```
+
+That makes 26 captures: 18 graded rows and 8 local-light references. The "40
+captures" this section used to predict was a miscount, since 6 variants × 2 placements ×
+2 opt-in values is 24, plus the 2 fog-off discriminators. All 26 are `RESULT=CLEAN` and
+audit-clean. Each one has one frame with the recorded hash,
+`OpenGL offscreen screen target attached (2560x1440)` and 0 GL error lines.
+
+| Opt-in | `--fog-reveal` | Placements | Palette | GL m/e/u | Metal m/e/u | Count dicts equal Metal |
+|---|---|---|---|---|---|---|
+| on | 16 | subpos, subneg | default | 0/0/0 | 0/0/0 | 2/2 |
+| on | 16 | subpos, subneg | ambient0.15 | 0/0/0 | 0/0/0 | 2/2 |
+| on | 16 | subpos, subneg | ambient0.55 | 0/0/0 | 0/0/0 | 2/2 |
+| on | 16 | subpos, subneg | local | 0/0/0 | 0/0/0 | 2/2 |
+| on | 0 | subpos, subneg | default | 0/0/0 | 0/0/0 | 2/2 |
+| off | 16 | subpos, subneg | default | 18/638/0 | 18/638/0 | 2/2 |
+| off | 16 | subpos, subneg | ambient0.15 | 18/638/0 | 18/638/0 | 2/2 |
+| off | 16 | subpos, subneg | ambient0.55 | 18/638/0 | 18/638/0 | 2/2 |
+| off | 16 | subpos, subneg | local | 18/638/0 | 18/638/0 | 2/2 |
+
+The opt-in-on rows log `fog=compose fogComposed=1`, the opt-in-off rows log
+`fog=fallback fogComposed=0`, and the `--fog-reveal 0` rows log `fog=none fogComposed=0`.
+The 21/26/0 and 28/647/0 above are gone. Every graded row now has a count dictionary
+equal to Metal's, so the sub-pixel failure was #5190's one-row offset and not the fog
+twins. Rows: [polygon/results-after-5190.json](polygon/results-after-5190.json).
+Retained: `polygon/retained-after-5190/default/subpos-yaw0.6-fog16-surface1/`.
+
+With PR #4853's 8 origin placements and the 8 `near`/`mid` placements above,
+criterion 2 is met at all 18 placements, in every palette, with every fallback arm
+reproducing Metal's failing counts.
 
 ## Engine tests
 
 `fleet-run IrredenEngineTest --gtest_filter='Fog*:SurfaceFogRoute.*:PerAxisSurfaceLighting*'`
 on `00b5da049`: `[  PASSED  ] 245 tests.`, `RESULT=CLEAN` ([engine-test.log](engine-test.log)).
+On `1bff5ea9d` (after #5190): `[  PASSED  ] 250 tests.`, `RESULT=CLEAN`
+([engine-test-after-5190.log](engine-test-after-5190.log)).
 
 ## Retained captures
 
