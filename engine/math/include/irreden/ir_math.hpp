@@ -1763,23 +1763,24 @@ struct CameraSubPixelOffsets {
 /// per-frame +/-1px jitter as a smoothly-moving camera crosses a game-pixel
 /// boundary at low game resolutions.
 ///
-/// `IRPlatform::kIsoToScreenSign` is applied internally on both outputs:
-/// the game-pixel offset multiplies by sign AFTER floor() (to match the
-/// trixel-to-framebuffer convention); the screen residual multiplies by
-/// sign INSIDE floor() (so floor() always rounds toward -infinity in the
-/// motion direction, keeping the upscale residual monotone with camera
-/// motion). Both conventions are preserved as-is from the legacy split
-/// across `TRIXEL_TO_FRAMEBUFFER` and `FRAMEBUFFER_TO_SCREEN`; the helper
-/// is the single source of truth for both.
-constexpr CameraSubPixelOffsets
-cameraSubPixelOffsets(const vec2 cameraIso, const vec2 zoomLevel, const ivec2 scaleFactor) {
+/// Both outputs are floored in the unsigned iso direction, which is top-down
+/// screen pixels, and only then multiplied by @p screenSign
+/// (`IRPlatform::kIsoToScreenSign` unless a test pins one backend's sign). The
+/// sign must stay outside the floor: on a backend whose screen Y runs bottom-up
+/// (`screenSign.y == -1`), `floor(-a)` is `-ceil(a)`, and a fractional-y camera
+/// would then land one screen row below where the other backends put it.
+constexpr CameraSubPixelOffsets cameraSubPixelOffsets(
+    const vec2 cameraIso,
+    const vec2 zoomLevel,
+    const ivec2 scaleFactor,
+    const vec2 screenSign = IRPlatform::kIsoToScreenSign
+) {
     const vec2 subIsoGamePx = pos2DIsoToPos2DGameResolution(IRMath::fract(cameraIso), zoomLevel);
     const vec2 gamePxFloor = IRMath::floor(subIsoGamePx);
     const vec2 subGamePxResidual = subIsoGamePx - gamePxFloor;
-    const vec2 sign = IRPlatform::kIsoToScreenSign;
     return CameraSubPixelOffsets{
-        ivec2(gamePxFloor) * ivec2(sign),
-        ivec2(IRMath::floor(subGamePxResidual * sign * vec2(scaleFactor))),
+        ivec2(gamePxFloor) * ivec2(screenSign),
+        ivec2(IRMath::floor(subGamePxResidual * vec2(scaleFactor)) * screenSign),
     };
 }
 
@@ -1863,12 +1864,15 @@ inline dvec2 cameraRasterGatherTranslation(
 
 /// Screen-pixel residual of @p sample for the framebuffer-to-screen upscale:
 /// the part of `H` the whole-pixel framebuffer placement left over. Same sign
-/// convention as `CameraSubPixelOffsets::screenPxResidual_`.
-inline ivec2 cameraRasterScreenResidual(const CameraRasterPhase &sample, const ivec2 scaleFactor) {
+/// convention as `CameraSubPixelOffsets::screenPxResidual_`: floored top-down,
+/// then signed by @p screenSign.
+inline ivec2 cameraRasterScreenResidual(
+    const CameraRasterPhase &sample,
+    const ivec2 scaleFactor,
+    const vec2 screenSign = IRPlatform::kIsoToScreenSign
+) {
     const dvec2 residual = IRMath::fract(detail::cameraRasterOffset(sample));
-    return ivec2(
-        IRMath::floor(residual * dvec2(IRPlatform::kIsoToScreenSign) * dvec2(scaleFactor))
-    );
+    return ivec2(IRMath::floor(residual * dvec2(scaleFactor)) * dvec2(screenSign));
 }
 
 /// Camera term of a detached canvas's framebuffer centre under @p sample, in

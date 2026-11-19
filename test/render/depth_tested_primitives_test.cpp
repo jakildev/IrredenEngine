@@ -15,9 +15,9 @@ TEST(DepthTestedPrimitives, GeometryUsesCameraPixelPhaseAtFractionalPan) {
     const IRMath::vec2 zoom(4.0f);
     const auto correction =
         IRPrefab::detail::primitiveCameraRasterCorrection(camera, zoom, IRMath::ivec2(2), nullptr);
+    // Top-down framebuffer pixels: the same on every backend.
     EXPECT_FLOAT_EQ(correction.x, 0.0f);
-    const float expectedY = IRPlatform::kGfx.screenYDirection_ > 0 ? -0.5f : 0.5f;
-    EXPECT_FLOAT_EQ(correction.y, expectedY);
+    EXPECT_FLOAT_EQ(correction.y, -0.5f);
     const auto whole = IRPrefab::detail::primitiveCameraRasterCorrection(
         IRMath::vec2(-2.0f, 3.0f),
         zoom,
@@ -33,7 +33,7 @@ TEST(DepthTestedPrimitives, GeometryUsesCameraPixelPhaseAtFractionalPan) {
     const auto continuous =
         IRPrefab::detail::primitiveCameraRasterCorrection(camera, zoom, IRMath::ivec2(2), &frame);
     EXPECT_FLOAT_EQ(continuous.x, -0.5f);
-    EXPECT_FLOAT_EQ(continuous.y, expectedY);
+    EXPECT_FLOAT_EQ(continuous.y, -0.5f);
 }
 
 TEST(DepthTestedPrimitives, SupportGridLiesOnBottomFaceAndCellBoundaries) {
