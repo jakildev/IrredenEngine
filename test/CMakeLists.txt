@@ -316,6 +316,7 @@ add_executable(IrredenEngineTest
   video/recording_state_test.cpp
   video/video_recorder_queue_test.cpp
   video/capture_source_test.cpp
+  window/window_framebuffer_scale_test.cpp
   window/window_mode_test.cpp
   window/close_guard_test.cpp
   window/file_dialog_test.cpp
