@@ -43,7 +43,7 @@ lock_state() {
 }
 
 unlock_state() {
-    rmdir "${CLAIM_STATE}.lock"
+    race_unlock "${CLAIM_STATE}.lock"
 }
 
 emit_labels() {
