@@ -81,7 +81,7 @@ the fallbacks. Fog composes once: in the composite on the surface routes
 Route tests: `scripts/tests/test_render_per_axis_surface_lighting.py`,
 `scripts/tests/test_render_cardinal_surface_lighting.py` and the
 `SurfaceFogRoute.*` / `PerAxisSurfaceLightingTest.*` /
-`PerAxisSurfaceLightingDefault.*` cases in
+`PerAxisSurfaceLightingFogPassTest.*` cases in
 `test/render/per_axis_surface_lighting_test.cpp`. Each harness runs the switch
 unset on a fog-pass pipeline and on a fog-free one. On the fog-pass pipeline
 it has one case per route: `COMPOSE`, `NONE`, and `FALLBACK` for a gated
@@ -105,13 +105,18 @@ comparison-arm rows on the compute route:
 | `--ghost-policy` | Explored-style canvas colours of ghost-held subjects |
 | `--ceiling-shadow-curved` | Sampled sun-shadow factors under the fog rim, where the composite shows no shadow to read |
 
+A pin hides no visible difference. With the pins removed, the 13
+`render-verify` rows of the first four modes draw on `fog=compose` and match
+the compute route: 12 are RGB-identical and `fog_ghost_policy_discarded`
+differs by 1 on 992 pixels.
+
 `--ceiling-shadow` is not pinned, because it guards a shadow the player sees.
 On a surface route the canvas sun-shadow texture holds no query for a cardinal
 voxel surface, so its probe reads the composited frame. It draws one warmup
 frame with sun shadows off and the next with them on, and counts a receiver
 pixel as shadowed when the two frames differ there. A pixel fog has darkened
 to nothing reads as lit, so fog cannot stand in for a shadow. With the switch
-off the probe reads the sampled factors as before. `--no-sun-shadows` is the
+off the probe reads the canvas's sampled factors. `--no-sun-shadows` is the
 control arm: both frames match and the probe fails on the cut cap's missing
 shadow.
 
@@ -356,7 +361,62 @@ and no demo here has a `linux-debug` set.
 
 ### Cost
 
-<!-- STAGE2-COST -->
+Release, default configuration on both arms (no `IR_PERAXIS_*` variable set),
+five interleaved parent/head pairs per case, every accepted run `RESULT=CLEAN`
+and `QUIET=guarded`. Data, driver and per-row tables:
+`docs/perf/voxel-receiver-yaw-continuity/stage2/`. Every frame row passes the
+1.10 point gate, which is rule (i) of
+`docs/design/gpu-stage-timing-cost-model.md` § "State the noise bound".
+
+Million control (`IRPerfGrid`), the six cases:
+
+| Case | Frame parent → head ms | Ratio | Route stage on the head |
+|---|---:|---:|---|
+| profiling on, yaw 0 | 18.436 → 18.588 | 1.008 | `cardinalSurfaceFb` 17.45 ms |
+| profiling on, yaw 45° | 10.886 → 11.286 | 1.037 | `perAxisSurfaceFb` 1.80 ms |
+| profiling on, sweep | 11.852 → 12.594 | 1.063 | `perAxisSurfaceFb` 1.83 ms, `cardinalSurfaceFb` on the crossings |
+| profiling off, yaw 0 | 18.210 → 18.336 | 1.007 | untimed |
+| profiling off, yaw 45° | 10.496 → 10.954 | 1.044 | untimed |
+| profiling off, sweep | 11.490 → 12.200 | 1.062 | untimed |
+
+No parent run samples a surface-route stage; the parent's rotating frames
+spend 0.50 to 0.59 ms in `perAxisScatter` and 0.53 to 0.59 ms in
+`computeSunShadow`, which falls to 0.03 ms on the head. The paired deltas are
+tight (standard deviation 0.03 to 0.09 ms), so the 0.40 to 0.74 ms the
+rotating rows gain is real. Most of it is one sun query per shaded fragment
+where the parent took one per face; 0.09 ms is `computeLightVolume`, which
+reads 0.32 ms on the surface routes against 0.23 ms.
+
+Shadowbox matrix with `--fog-reveal 16` (`IRCanvasStress`, 20 cases, 360
+frames from the first frame): all 40 frame and steady rows pass. Every head
+run samples `cardinalSurfaceFb` or `perAxisSurfaceFb` except the two `-unlit`
+cases, where a debug overlay keeps the compute route by design; no parent run
+samples either.
+
+| Cases | Frame ratio, lowest to highest | Surface stage on the head |
+|---|---|---|
+| Cardinal, 10 cases | 0.935 to 1.048 | `cardinalSurfaceFb` 0.49 to 2.37 ms |
+| Per-axis, 10 cases | 0.915 to 1.078 | `perAxisSurfaceFb` 0.21 to 1.67 ms |
+
+The highest row is per-axis, zoom 4, eight overlapping casters, subdivision
+4: 1.078 on the frame row and 1.076 on the steady row over ten pairs. Its
+first five pairs read 1.113 and 1.127, a paired delta of +1.13 ± 1.46 ms, so
+the three cases with a frame or steady ratio outside 0.91 to 1.10 after five
+pairs, one high and two low, each took five more. The spread is the host, not
+the route: across runs of one binary, an UPDATE system this change does not
+touch (`RebuildGridVoxelsImplicit`) reads 0.29 to 1.16 ms per tick, and the
+paced frame follows it on both arms along the same line (11.12 ms on the
+parent at 0.90 ms, 11.01 ms on the head at 0.92 ms).
+
+Fog-free shadowbox matrix, the same 20 cases without the flag: all 40 frame
+and steady rows pass (0.967 to 1.074 on the per-axis cases, 0.970 to 1.012 on
+the cardinal ones). It is in the gate because the depth bound is in every
+scatter program. Both arms take the surface routes there, and
+`perAxisSurfaceFb` reads 0.96 to 1.09 times the parent: this fixture has
+little overdraw for early depth to reject. The case that read highest in the
+fogged matrix read highest here after five pairs as well (1.143), then 1.060
+over twenty; a three-arm control in a later session has the parent binary as
+the slowest arm on it (11.52 ms against 11.05 ms for the head).
 
 ### Not yet measured
 
@@ -377,4 +437,64 @@ at 45° draws 6,378,421 fragments for 927,048 framebuffer pixels (the
 `IR_PERAXIS_VISIBILITY_STATS=1` counters, Debug). On the stage 2 parent that
 is where the whole cost of the route sits:
 
-<!-- STAGE2-MECHANISM -->
+| Pose | Default frame ms | Surface routes on | Ratio | Surface routes on with sun shadows off: GPU envelope against the default with shadows off |
+|---|---:|---:|---:|---:|
+| yaw 45° | 10.91 | 12.31 | 1.128 | 0.98 |
+| sweep | 11.85 | 13.38 | 1.129 | 1.02 |
+
+(Parent tree, Release, `IR_PERAXIS_SURFACE_LIGHTING=1` against no variable
+through `scripts/perf/repeat_profile.py`, two interleaved `QUIET=guarded`
+rounds; the sweep's shadows-off arms have one accepted run each.) With sun
+shadows off the two routes cost the same, so the excess is the sun query, and
+at most one queried fragment in seven ends up owning its pixel. A fragment's
+query result cannot reach the image once a nearer face owns its pixel, so
+skipping it is exact.
+
+- **Early depth rejection in the single pass (chosen).** The scatter
+  rasterizes each face at a lower bound of the depth its fragments write and
+  declares the bound on the fragment depth output, so the rasterizer discards
+  a fragment behind the stored depth before shading it
+  ([mechanism](per-axis-trixel-canvas-rotation.md#early-depth-rejection)). It
+  adds no pass and no buffer, and the written depths are unchanged, so the
+  image is identical by construction. `perAxisSurfaceFb` at yaw 45° reads
+  1.80 ms against 2.74 ms without it, and the frame ratio against the parent's
+  default falls from 1.128 to 1.037.
+- **Visibility prepass** (`IR_PERAXIS_VISIBILITY_PREPASS=1`, already in the
+  tree, stays opt-in). It records the nearest depth per pixel in a first pass
+  and rejects 5,555,819 of the 6,378,421 fragments in the second, whatever
+  the draw order. It rasterizes every face twice, though: on the parent it
+  reads 1.087 at yaw 45° and 1.070 on the sweep (`perAxisSurfaceFb` 2.23 and
+  1.85 ms), inside the gate with little margin. On top of early depth it
+  costs more than it saves at yaw 45° (`perAxisSurfaceFb` 2.24 ms against
+  1.80 ms, frame 11.72 against 11.28 ms) and changes nothing on the sweep.
+- **A per-corner depth bound** instead of one value per face. One Debug run
+  each at yaw 45° reads 1.80 ms against 1.78 ms for the flat bound: no gain,
+  and it would depend on the rasterizer and the varying interpolating depth
+  alike.
+- **Hoisting the per-face terms** (stage 1's candidate lever). The shadows-off
+  parity above leaves it nothing to recover on this scene.
+- **A per-face verdict with per-fragment refinement** (classify a face as
+  uniformly lit in compute, query per fragment elsewhere). Not built. A
+  centre query does not prove a face uniform, and a conservative classifier
+  needs its own traversal of the caster index per face.
+
+How much early depth rejects depends on draw order, which the compacted cell
+lists do not sort by depth. A front-to-back order would reject more; the gate
+did not need it.
+
+One more cost moved with the default. Two sets of programs used to compile on
+first use, which with the routes on by default is a fog pipeline's first
+frame (Release, `IRCanvasStress --fog-reveal 16`):
+
+- The fog-composing lit programs, on the first fog-composing frame: 1.43 s
+  inside the composite's `beginTick`, a 1.5 s frame.
+- `FOG_TO_TRIXEL`'s surface-preserving kernel, on the first cardinal surface
+  frame: 0.26 s, a 0.29 s frame.
+
+Both now compile at system creation. `FOG_TO_TRIXEL` compiles its kernel in
+`create()`. `TRIXEL_TO_FRAMEBUFFER` compiles the lit programs in `create()`
+on a pipeline whose fog pass is already registered, which the render ordering
+contract guarantees; a pipeline that registers `FOG_TO_TRIXEL` after the
+composite still compiles them on first use. The worst frame of the same runs
+then reads 23 ms at a cardinal yaw and 74 ms rotating, against the parent's
+23 and 72 ms.

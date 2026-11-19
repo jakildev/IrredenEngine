@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""Interleaved parent/head A/B for the stage-2 cost criterion.
+
+Each case runs one parent and one head run per round; odd rounds parent first,
+even rounds head first; case order forward on odd rounds, reverse on even.
+Both arms run the default configuration (every IR_PERAXIS_* variable unset).
+A run is accepted only when repeat_profile exits 0 and the manifest says
+clean + fresh + QUIET=guarded; otherwise it is retried (up to --max-tries
+tries). A rerun keeps every run already accepted and continues after the
+tries already spent.
+
+Suites: `million` (the IRPerfGrid million control, a fog-pass pipeline),
+`surface-fog` (the IRCanvasStress shadowbox matrix with --fog-reveal 16) and
+`surface` (the same matrix fog-free).
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ENGINE = Path("<engine-worktree>")
+sys.path.insert(0, str(ENGINE / "scripts/perf"))
+
+import million_controls  # noqa: E402
+import surface_lighting_controls  # noqa: E402
+
+TREES = {
+    "parent": Path("<parent-worktree>/build-release"),
+    "head": ENGINE / "build-release",
+}
+FOG_REVEAL = ["--fog-reveal", "16"]
+
+
+def suite_cases(suite):
+    if suite in ("surface", "surface-fog"):
+        common = [*surface_lighting_controls.scene_arguments("shadowbox"),
+                  "--auto-profile", "--profile-frames", "360", "--window-mode", "offscreen",
+                  *(FOG_REVEAL if suite == "surface-fog" else [])]
+        return "IRCanvasStress", common, surface_lighting_controls.cases("shadowbox"), 180
+    if suite == "million":
+        common = [*million_controls.COMMON, "--auto-profile", "300"]
+        selected = {
+            f"profiling-{profiling}-yaw{pose}": ["--config-preset", preset, *pose_args]
+            for profiling, preset in million_controls.PRESETS.items()
+            for pose, pose_args in million_controls.POSES.items()
+        }
+        return "IRPerfGrid", common, selected, 900
+    raise ValueError(suite)
+
+
+def wait_for_quiet(cap_seconds):
+    deadline = time.time() + cap_seconds
+    while time.time() < deadline:
+        verifiers = subprocess.run(
+            ["pgrep", "-f", r"scripts/(render|light|gui)-verify\.py"],
+            capture_output=True, text=True).stdout.split()
+        load = os.getloadavg()[0]
+        if not verifiers and load < 12.0:
+            return {"waited_s": round(cap_seconds - (deadline - time.time())), "load": load}
+        time.sleep(20)
+    return {"waited_s": cap_seconds, "load": os.getloadavg()[0], "gave_up": True}
+
+
+def run_one(target, common, arguments, arm, out_dir, timeout, max_tries):
+    tries = sorted(out_dir.parent.glob(f"{out_dir.name}-try*"))
+    if any((directory / "ACCEPTED").exists() for directory in tries):
+        return None
+    env = {k: v for k, v in os.environ.items() if not k.startswith("IR_PERAXIS_")}
+    env["IRREDEN_BUILD_DIR"] = str(TREES[arm])
+    for attempt in range(len(tries) + 1, max_tries + 1):
+        subprocess.run(["fleet-heartbeat", "<worktree-name>"], capture_output=True)
+        gate = wait_for_quiet(300)
+        destination = out_dir.with_name(f"{out_dir.name}-try{attempt}")
+        result = subprocess.run(
+            [sys.executable, str(ENGINE / "scripts/perf/repeat_profile.py"),
+             "--target", target, "--output", str(destination), "--repeats", "1",
+             "--timeout", str(timeout), "--", *common, *arguments],
+            env=env, capture_output=True, text=True)
+        destination.mkdir(parents=True, exist_ok=True)
+        (destination / "driver.txt").write_text(
+            json.dumps({"gate": gate, "exit": result.returncode}) + "\n"
+            + result.stdout[-4000:] + "\n" + result.stderr[-4000:])
+        manifest_path = destination / "manifest.json"
+        if manifest_path.is_file():
+            run = json.loads(manifest_path.read_text())["runs"][-1]
+            if (result.returncode == 0 and run["clean"] and run["fresh_report"]
+                    and run["quiet"] == "guarded"):
+                (destination / "ACCEPTED").write_text("")
+                return destination
+        print(f"    retry {arm} attempt {attempt}: exit {result.returncode}", flush=True)
+    raise SystemExit(f"{out_dir}: no accepted run after {max_tries} tries")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("suite", choices=("surface", "surface-fog", "million"))
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--rounds", type=int, default=5)
+    parser.add_argument("--first-round", type=int, default=1)
+    parser.add_argument("--case", action="append")
+    parser.add_argument("--max-tries", type=int, default=3)
+    args = parser.parse_args()
+    target, common, selected, timeout = suite_cases(args.suite)
+    if args.case:
+        selected = {name: selected[name] for name in args.case}
+    args.output.mkdir(parents=True, exist_ok=True)
+    if not (args.output / "cases.json").exists():
+        (args.output / "cases.json").write_text(json.dumps(
+            {"target": target, "common": common, "cases": selected,
+             "trees": {k: str(v) for k, v in TREES.items()}, "rounds": args.rounds}, indent=2))
+    for round_index in range(args.first_round, args.rounds + 1):
+        order = list(selected) if round_index % 2 else list(reversed(selected))
+        arms = ("parent", "head") if round_index % 2 else ("head", "parent")
+        for name in order:
+            for arm in arms:
+                print(f"round {round_index}/{args.rounds} {name} {arm}", flush=True)
+                run_one(target, common, selected[name], arm,
+                        args.output / name / arm / f"round-{round_index}", timeout,
+                        args.max_tries)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

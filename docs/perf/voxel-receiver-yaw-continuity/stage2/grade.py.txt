@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Grade a driver.py output: per case, paired parent/head frame and GPU stage rows,
+then which arm's reports carry a surface-route stage."""
+
+import json
+import math
+import statistics
+import sys
+from pathlib import Path
+
+sys.path.insert(0, "<engine-worktree>/scripts/perf")
+from compare_perf_runs import parse_report  # noqa: E402
+
+T95 = {1: 6.314, 2: 2.920, 3: 2.353, 4: 2.132, 5: 2.015, 6: 1.943, 7: 1.895}
+SURFACE_STAGES = ("cardinalSurfaceFb", "perAxisSurfaceFb")
+
+
+def surface_stage(report):
+    """The surface-route stages a report sampled, "none" when it timed stages and
+    sampled neither, "untimed" when it has no GPU stage rows at all."""
+    if not report.gpu_stages:
+        return "untimed"
+    sampled = [name for name in SURFACE_STAGES
+               if (stage := report.gpu_by_name(name)) is not None and stage.samples]
+    return " + ".join(sampled) if sampled else "none"
+
+
+def accepted(case_dir, arm):
+    runs = {}
+    for path in sorted((case_dir / arm).glob("round-*-try*/ACCEPTED")):
+        round_index = int(path.parent.name.split("-")[1])
+        runs[round_index] = parse_report(path.parent / "run-1.txt", f"{arm}-{round_index}")
+    return runs
+
+
+def row(label, base, head, ratio_limit=1.10):
+    n = len(base)
+    deltas = [h - b for b, h in zip(base, head)]
+    base_mean, head_mean = statistics.mean(base), statistics.mean(head)
+    ratio = head_mean / base_mean if base_mean else math.nan
+    sd = statistics.stdev(deltas) if n > 1 else 0.0
+    lower = statistics.mean(deltas) - T95.get(n - 1, 1.833) * sd / math.sqrt(n) if n > 1 else math.nan
+    verdict = "PASS(i)" if ratio <= ratio_limit else "FAIL(i)"
+    return (f"| {label} | {n} | {base_mean:.3f} | {head_mean:.3f} | {ratio:.3f} | "
+            f"{min(base):.3f}–{max(base):.3f} | {min(head):.3f}–{max(head):.3f} | "
+            f"{statistics.mean(deltas):+.3f} ± {sd:.3f} | {lower:+.3f} | {verdict} |")
+
+
+def main():
+    output = Path(sys.argv[1])
+    cases = json.loads((output / "cases.json").read_text())["cases"]
+    print("| Case / row | n | parent mean ms | head mean ms | head/parent | parent range | "
+          "head range | paired Δ mean ± sd | one-sided 95% lower | rule |")
+    print("|---|---:|---:|---:|---:|---|---|---:|---:|---|")
+    stage_lines = []
+    route_lines = []
+    for name in cases:
+        parent, head = accepted(output / name, "parent"), accepted(output / name, "head")
+        rounds = sorted(set(parent) & set(head))
+        if not rounds:
+            continue
+        p = [parent[r] for r in rounds]
+        h = [head[r] for r in rounds]
+        print(row(f"{name} frame", [r.frame.avg for r in p], [r.frame.avg for r in h]))
+        if all(r.steady_frame is not None for r in p + h):
+            print(row(f"{name} steady", [r.steady_frame.avg for r in p],
+                      [r.steady_frame.avg for r in h]))
+        route_lines.append(
+            f"| {name} | {', '.join(sorted({surface_stage(r) for r in p}))} | "
+            f"{', '.join(sorted({surface_stage(r) for r in h}))} |")
+        names = sorted({s.name for r in p + h for s in r.gpu_stages})
+        for stage in names:
+            ps = [r.gpu_by_name(stage) for r in p]
+            hs = [r.gpu_by_name(stage) for r in h]
+            pv = [s.avg_ms if s is not None and s.samples else 0.0 for s in ps]
+            hv = [s.avg_ms if s is not None and s.samples else 0.0 for s in hs]
+            if max(pv + hv) < 0.005:
+                continue
+            if min(pv) == 0.0 or min(hv) == 0.0:
+                stage_lines.append(f"| {name} {stage} | {len(rounds)} | "
+                                   f"{statistics.mean(pv):.3f} | {statistics.mean(hv):.3f} | route |")
+                continue
+            stage_lines.append(row(f"{name} {stage}", pv, hv))
+    print()
+    print("GPU stage rows (route = present on one arm only):")
+    print()
+    for line in stage_lines:
+        print(line)
+    print()
+    print("Surface-route stage each arm's reports sampled:")
+    print()
+    print("| Case | parent runs | head runs |")
+    print("|---|---|---|")
+    for line in route_lines:
+        print(line)
+
+
+if __name__ == "__main__":
+    main()
