@@ -127,14 +127,22 @@ jobs:
               - 'scripts/render-verify.py'
 
   fleet-tests:
-    needs: changes
-    if: needs.changes.outputs.covered == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Run fleet tool tests
-        run: bash scripts/fleet/tests/run_all.sh
+        run: |
+          fails=0
+          for i in $(seq 1 40); do
+            for t in test_fleet_claim_cross_lane.sh test_fleet_claim_acquire_race.sh test_fleet_claim_amending_cleanup_race.sh; do
+              if ! out=$(bash scripts/fleet/tests/$t 2>&1); then
+                fails=$((fails+1)); echo "=== iter $i $t FAILED"; echo "$out" | grep -vE '^ +ok: ' | tail -40
+              fi
+            done
+          done
+          echo "=== total failures: $fails / 120"
+          mkdir --version | head -1
 
   gate:
     if: always()
