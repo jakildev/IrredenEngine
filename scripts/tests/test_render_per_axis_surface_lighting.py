@@ -309,8 +309,8 @@ int main(){
         systems[FOG_TO_TRIXEL]=fog;glitchActive=glitch;
         ShadowProducer shadow;shadow.perAxisCanvases_=&axes;currentRouteProducer=&producer;
         shadow.begin();
-        // Unset admits the routes only without a fog pass.
-        const bool exact=enabled.value_or(!fog)&&(!fog||!hasFog||(!gated&&!glitch));
+        // Unset admits the routes with or without a fog pass.
+        const bool exact=enabled.value_or(true)&&(!fog||!hasFog||(!gated&&!glitch));
         if(shadow.dispatch(7)==exact){std::fprintf(stderr,"live fog fallback\n");return 9;}
         IREntity::surfaceLighting.enabled_=false;
         shadow.begin();
@@ -369,8 +369,9 @@ def routing_harness(variant):
         recognised, requested = "surfaceLighting != nullptr", "false"
     elif variant == "default-off":
         default = "false"
-    elif variant == "unset-ignores-fog-pass":
-        fog_route = fog_route.replace("value_or(!fogPassRegistered)", "value_or(true)")
+    elif variant == "unset-follows-fog-pass":
+        gate = gate.replace("IRPrefab::PerAxisSurfaceLighting::enabledFor(*surfaceLighting)",
+                            "surfaceLighting->enabled_.value_or(!fogPassRegistered)")
     elif variant == "per-axis-glitch-gate":
         gate = gate.replace("perAxisSurfaceLightingEligible_ =",
                             "perAxisSurfaceLightingEligible_ = "
@@ -615,7 +616,7 @@ class PerAxisSurfaceLightingTest(unittest.TestCase):
         original = routing_harness("production")
         for variant in ("production", "stale-ready", "ready-before-tick", "consumer-eligibility",
                         "fog-accepted", "relight-eligible", "presence-disables", "default-off",
-                        "unset-ignores-fog-pass",
+                        "unset-follows-fog-pass",
                         "per-axis-glitch-gate", "per-axis-voxel-pool", "shadow-always-sampled",
                         "shadow-always-skipped", "shadow-missing-consumer", "shadow-stale-route"):
             with self.subTest(variant=variant), tempfile.TemporaryDirectory() as temporary:

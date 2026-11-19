@@ -103,16 +103,6 @@ template <> struct System<FOG_TO_TRIXEL> {
         const bool mainCanvas = entity == perAxisCanvasEntity_;
         const bool preserveSurfaces =
             mainCanvas && lighting_ != nullptr && lighting_->cardinalSurfaceLightingReady_;
-        if (preserveSurfaces && preserveSurfacesProgram_ == nullptr) {
-            // Compiled on the first frame that preserves surfaces.
-            preserveSurfacesProgram_ =
-                IRRender::createNamedResource<ShaderProgram>(
-                    "FogToTrixelPreserveSurfacesProgram",
-                    std::vector{
-                        ShaderStage{IRRender::kFileCompFogToTrixelSurface, ShaderType::COMPUTE}
-                    }
-                ).second;
-        }
         {
             GpuSubStageScope mainScope("fogToTrixel");
             if (preserveSurfaces) {
@@ -226,6 +216,10 @@ template <> struct System<FOG_TO_TRIXEL> {
             "FogOverflowFacesProgram",
             std::vector{ShaderStage{IRRender::kFileCompFogOverflowFaces, ShaderType::COMPUTE}}
         );
+        IRRender::createNamedResource<ShaderProgram>(
+            "FogToTrixelPreserveSurfacesProgram",
+            std::vector{ShaderStage{IRRender::kFileCompFogToTrixelSurface, ShaderType::COMPUTE}}
+        );
         IRRender::createNamedResource<Buffer>(
             "FogObserverData",
             nullptr,
@@ -242,6 +236,8 @@ template <> struct System<FOG_TO_TRIXEL> {
             C_CanvasFogOfWar>("FogToTrixel");
         auto *params = getSystemParams<System<FOG_TO_TRIXEL>>(systemId);
         params->program_ = IRRender::getNamedResource<ShaderProgram>("FogToTrixelProgram");
+        params->preserveSurfacesProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("FogToTrixelPreserveSurfacesProgram");
 
         params->overflowProgram_ =
             IRRender::getNamedResource<ShaderProgram>("FogOverflowFacesProgram");

@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""Write comparison.json for a driver.py output: rows paired by round, with run witnesses."""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, "<engine-worktree>/scripts/perf")
+from compare_perf_runs import parse_report  # noqa: E402
+
+
+def runs(case_dir, arm):
+    found = {}
+    for marker in sorted((case_dir / arm).glob("round-*-try*/ACCEPTED")):
+        directory = marker.parent
+        round_index = int(directory.name.split("-")[1])
+        manifest = json.loads((directory / "manifest.json").read_text())
+        run = manifest["runs"][-1]
+        report = parse_report(directory / "run-1.txt", f"{arm}-{round_index}")
+        rows = {"frame": report.frame.avg}
+        if report.steady_frame is not None:
+            rows["steady_frame"] = report.steady_frame.avg
+        for metric in report.gpu_frame.metrics:
+            if metric.name == "envelope":
+                rows["gpu_envelope"] = metric.avg_ms
+        for stage in report.gpu_stages:
+            if stage.samples:
+                rows[f"gpu:{stage.name}"] = stage.avg_ms
+        found[round_index] = {
+            "rows": rows,
+            "attempt": int(directory.name.rsplit("try", 1)[1]),
+            "head": manifest["head"],
+            "binary_sha256": manifest["binary_sha256"],
+            "build_type": manifest["build_type"],
+            "render_environment": manifest["render_environment"],
+            "launched_utc": run["launched_utc"],
+            "quiet": run["quiet"],
+            "clean": run["clean"],
+            "host_power": manifest["host_power"],
+            "host_load_1m": run["host_load_1m"],
+            "host_battery_percent": run["host_battery_percent"],
+        }
+    return found
+
+
+def main():
+    output, destination = Path(sys.argv[1]), Path(sys.argv[2])
+    meta = json.loads((output / "cases.json").read_text())
+    cases = {}
+    for name in meta["cases"]:
+        base, head = runs(output / name, "parent"), runs(output / name, "head")
+        rounds = sorted(set(base) & set(head))
+        cases[name] = {
+            "arguments": meta["cases"][name],
+            "order": [("parent-first" if r % 2 else "head-first") for r in rounds],
+            "base_runs": [base[r] for r in rounds],
+            "head_runs": [head[r] for r in rounds],
+        }
+    destination.write_text(json.dumps(
+        {"target": meta["target"], "common": meta["common"], "rounds": meta["rounds"],
+         "interleaving": "per round: case order forward on odd rounds, reverse on even; "
+                         "each case runs parent then head on odd rounds, head then parent on even",
+         "cases": cases}, indent=1) + "\n")
+
+
+if __name__ == "__main__":
+    main()

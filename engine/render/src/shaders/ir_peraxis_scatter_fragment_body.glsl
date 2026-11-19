@@ -33,6 +33,8 @@ flat in uint vFogCarrier;
 
 #endif
 
+// v_peraxis_scatter rasterizes each face at scatterEarlyDepth.
+layout(depth_greater) out float gl_FragDepth;
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out uvec2 FragEntityId;
 flat in uvec2 vOverflowEntityId;

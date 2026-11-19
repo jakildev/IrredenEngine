@@ -119,7 +119,7 @@ void select(int entity){
 
 CHECKS = r"""
 int main(){
- for(int bad=-1;bad<21;++bad){
+ for(int bad=-1;bad<24;++bad){
   mainCanvasTextures_=mainVoxelPool_=mainCanvasAO_=mainCanvasSunShadow_=mainCanvasLightVolume_=&resource;
   perAxisCanvases_=nullptr;axes.allocated=true;
   systems[0]=systems[1]=true;systems[2]=systems[3]=false;
@@ -141,12 +141,16 @@ int main(){
   if(bad==10)IRRender::overlay=DebugOverlayMode::OTHER;
   if(bad==11)IRRender::depthDebug=true;if(bad==12)behavior.useCameraPositionIso_=false;
   if(bad==13)hasBehavior=false;
-  // Unset, the switch admits the route only without a fog pass.
+  // Unset, the switch admits the route with or without a fog pass; on a
+  // fogged main canvas a gated source or an active glitch subject falls back.
   if(bad==19){systems[2]=true;surfaceLighting.enabled_.reset();}
   if(bad==20)surfaceLighting.enabled_.reset();
+  if(bad>=21){systems[2]=true;mainCanvasFog_=&mainFog;surfaceLighting.enabled_.reset();}
+  if(bad==22)mainFog.observers_.losSourceMask_=1;
+  if(bad==23){systems[3]=true;glitchActive=true;}
   producer.cardinalSurfaceLightingEligible_=producer.cardinalSurfaceLightingReady_=true;
   producer.begin();consume();
-  const bool eligible=bad<0||bad==9||bad==16||bad==17||bad==18||bad==20;
+  const bool eligible=bad<0||bad==9||(bad>=16&&bad<=21);
   require(producer.cardinalSurfaceLightingEligible_==eligible,"producer eligibility");
   require(!cardinalLightingEnabled_,"begin resets readiness before main tick");
   producer.tick(2);consume();require(!cardinalLightingEnabled_,"secondary tick cannot publish");
@@ -408,13 +412,19 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
                     "true && color.a >= 0.1",
                 ),
                 "cut_face": source.replace("!decodeCutFace(rawId)", "true"),
+                "unset_follows_fog_pass": replace_once(
+                    source,
+                    "IRPrefab::PerAxisSurfaceLighting::enabledFor(*surfaceLighting)",
+                    "surfaceLighting->enabled_.value_or(!fogPassRegistered)",
+                ),
             }
             messages = {"lighting_disabled": "fragment lighting gate",
                         "stale_ready": "begin resets readiness before main tick",
                         "eligible_not_ready": "begin resets readiness before main tick",
                         "glitch_exclusion": "producer eligibility",
                         "destination_relighting": "fragment lighting gate",
-                        "cut_face": "fragment lighting gate"}
+                        "cut_face": "fragment lighting gate",
+                        "unset_follows_fog_pass": "producer eligibility"}
             for name, candidate in variants.items():
                 with (self.subTest(backend=backend, variant=name),
                       tempfile.TemporaryDirectory() as temp):

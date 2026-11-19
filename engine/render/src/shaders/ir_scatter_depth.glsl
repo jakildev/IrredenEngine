@@ -22,3 +22,16 @@ float scatterEdgeTieDepth(float depth, vec2 depthSlope, vec2 quadParam) {
     );
     return any(recedingEdge) ? depth + kScatterCellTieBand : depth;
 }
+
+// The window depth a face rasterizes at, the same on all four corners: no
+// greater than the depth any of its fragments writes, so the fragment stage
+// can declare gl_FragDepth depth_greater and the rasterizer may reject an
+// occluded fragment before it is shaded. The face's nearest corner bounds
+// every interpolated depth, scatterFinalDepth floors by under one tie band,
+// and every other term adds depth. depthSlope and quadParam are the corner's
+// own, as scatterEdgeTieDepth takes them.
+float scatterEarlyDepth(float cornerDepth, vec2 depthSlope, vec2 quadParam) {
+    const float nearestCorner = cornerDepth - dot(depthSlope, quadParam) +
+        min(depthSlope.x, 0.0) + min(depthSlope.y, 0.0);
+    return clamp(nearestCorner - kScatterEarlyDepthMargin, 0.0, 1.0);
+}

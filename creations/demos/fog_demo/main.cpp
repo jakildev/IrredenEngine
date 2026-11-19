@@ -55,6 +55,7 @@
 #include <irreden/render/camera_controls.hpp>
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/entity_canvas.hpp>
+#include <irreden/render/shape_sample_probe.hpp>
 
 // Scene components.
 #include <irreden/common/command_suite_capture.hpp>
@@ -2044,6 +2045,13 @@ IREntity::EntityId g_ceilingShadowControl = IREntity::kNullEntity;
 IREntity::EntityId g_occlusionSlab = IREntity::kNullEntity;
 int g_surfaceProbeFrame = 0;
 int g_shadowProbeFrame = 0;
+// probeCeilingShadow's composited reading: whether the fixture's frames take a
+// surface route, the sun-shadow setting it restores, and the main framebuffer
+// colours of the frame it drew with sun shadows off, in texture row order.
+bool g_shadowProbeComposited = false;
+bool g_shadowProbeSunShadows = true;
+std::vector<Color> g_shadowProbeUnshadowedFrame;
+bool g_noSunShadows = false; // --no-sun-shadows
 // The fog output of the frame ahead of the probed one, rendered with the
 // treatment off: the control half of the ceiling probe's treatment diff.
 std::vector<Color> g_surfaceControlColors;
@@ -2386,8 +2394,51 @@ struct ShadowFootprintReading {
     float expectedReach_ = -1.0f;
 };
 
+// The main framebuffer's colours as the last composite left them, in texture
+// row order. Waits for the GPU.
+IRMath::ivec2 readCompositedFrame(std::vector<Color> &colors) {
+    const auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+    const IRMath::ivec2 size = framebuffer.getResolutionPlusBuffer();
+    colors.resize(static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y));
+    IRRender::device()->finish();
+    framebuffer.getTextureColor().getSubImage2D(
+        0,
+        0,
+        size.x,
+        size.y,
+        IRRender::PixelDataFormat::RGBA,
+        IRRender::PixelDataType::UNSIGNED_BYTE,
+        colors.data()
+    );
+    return size;
+}
+
+// Runs at the render front, so each frame it reads is the previous one's.
+// Without a surface route the receivers' sun shadow is the canvas's sampled
+// factor. On a surface route that texture holds no query for a cardinal voxel
+// surface and the shadow exists only in the composite, so the reading is the
+// set of receiver pixels that sun shadows change: one frame is drawn with them
+// off and compared with the next.
 void probeCeilingShadow() {
-    if (++g_shadowProbeFrame != g_autoWarmupFrames) {
+    const int probeFrame = ++g_shadowProbeFrame;
+    if (probeFrame == g_autoWarmupFrames - 2) {
+        g_shadowProbeComposited =
+            IRSystem::getSystemParams<IRSystem::System<IRSystem::TRIXEL_TO_FRAMEBUFFER>>(
+                IRSystem::findSystem(IRSystem::TRIXEL_TO_FRAMEBUFFER)
+            )
+                ->cardinalLightingEnabled_;
+        if (g_shadowProbeComposited) {
+            g_shadowProbeSunShadows = IRRender::getSunShadowsEnabled();
+            IRRender::setSunShadowsEnabled(false);
+        }
+        return;
+    }
+    if (probeFrame == g_autoWarmupFrames - 1 && g_shadowProbeComposited) {
+        readCompositedFrame(g_shadowProbeUnshadowedFrame);
+        IRRender::setSunShadowsEnabled(g_shadowProbeSunShadows);
+        return;
+    }
+    if (probeFrame != g_autoWarmupFrames) {
         return;
     }
 
@@ -2397,9 +2448,56 @@ void probeCeilingShadow() {
     std::vector<IRMath::uvec2> carriers;
     std::vector<int> distances;
     std::vector<Color> factors;
-    shadow.readFactorsSynced(factors);
+    std::vector<Color> shadowedFrame;
+    IRMath::ivec2 frameSize(0);
+    IRPrefab::ShapeSampleProbe::GatherMap gatherMap;
+    const bool surfaceRoute =
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::TRIXEL_TO_FRAMEBUFFER>>(
+            IRSystem::findSystem(IRSystem::TRIXEL_TO_FRAMEBUFFER)
+        )
+            ->cardinalLightingEnabled_;
+    requireFogProbe(
+        "FOG-SHADOW-PROBE",
+        surfaceRoute == g_shadowProbeComposited,
+        "the surface route changed during the reading, or the warmup is under three frames"
+    );
+    if (g_shadowProbeComposited) {
+        frameSize = readCompositedFrame(shadowedFrame);
+        requireFogProbe(
+            "FOG-SHADOW-PROBE",
+            shadowedFrame.size() == g_shadowProbeUnshadowedFrame.size(),
+            "the main framebuffer was resized during the reading"
+        );
+        gatherMap = IRPrefab::ShapeSampleProbe::gatherMap(canvas, textures.size_);
+    } else {
+        shadow.readFactorsSynced(factors);
+    }
+    IR_LOG_INFO("FOG-SHADOW-PROBE reading={}", g_shadowProbeComposited ? "composited" : "sampled");
     textures.readEntityIdCarriers(carriers);
     textures.readDistances(distances);
+    // 1 shadowed, 0 lit, -1 when the texel lies outside the composited frame.
+    const auto sunShadowAt = [&](int x, int y, std::size_t texel) {
+        if (!g_shadowProbeComposited) {
+            return factors[texel].red_ >= 250 ? 0 : 1;
+        }
+        const vec2 fragment = vec2(gatherMap.canvasFromPixel_) +
+                              (vec2(x, y) + 0.5f - 0.5f * vec2(textures.size_)) /
+                                  vec2(gatherMap.canvasFromPixel_.z, gatherMap.canvasFromPixel_.w) *
+                                  vec2(1.0f, -1.0f);
+        const IRMath::ivec2 pixel(
+            static_cast<int>(IRMath::floor(fragment.x)),
+            static_cast<int>(IRMath::floor(static_cast<float>(frameSize.y) - fragment.y))
+        );
+        if (pixel.x < 0 || pixel.y < 0 || pixel.x >= frameSize.x || pixel.y >= frameSize.y) {
+            return -1;
+        }
+        const std::size_t framePixel =
+            static_cast<std::size_t>(IRRender::compositeDepthTextureRow(pixel.y, frameSize.y)) *
+                static_cast<std::size_t>(frameSize.x) +
+            static_cast<std::size_t>(pixel.x);
+        return colorEquals(shadowedFrame[framePixel], g_shadowProbeUnshadowedFrame[framePixel]) ? 0
+                                                                                                : 1;
+    };
 
     const auto *stage1 =
         IRSystem::getSystemParams<IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>>(
@@ -2484,6 +2582,10 @@ void probeCeilingShadow() {
                 if (along < 0.0f || IRMath::abs(IRMath::dot(delta, lateral)) > 1.5f) {
                     continue;
                 }
+                const int sunShadow = sunShadowAt(x, y, i);
+                if (sunShadow < 0) {
+                    continue;
+                }
                 reading.receiverReach_ = IRMath::max(reading.receiverReach_, along);
                 // Independent slab intersection over the CPU-retained solid,
                 // evaluated on this lane's actual receiver samples. It includes
@@ -2508,9 +2610,9 @@ void probeCeilingShadow() {
                 if (capHit.x > capInteriorMin.x && capHit.x < capInteriorMax.x &&
                     capHit.y > capInteriorMin.y && capHit.y < capInteriorMax.y) {
                     ++reading.capWitnesses_;
-                    reading.capWitnessesLit_ += factors[i].red_ >= 250 ? 1 : 0;
+                    reading.capWitnessesLit_ += sunShadow == 0 ? 1 : 0;
                 }
-                if (factors[i].red_ >= 250)
+                if (sunShadow == 0)
                     continue;
                 ++reading.texels_;
                 reading.reach_ = IRMath::max(reading.reach_, along);
@@ -3937,6 +4039,10 @@ int main(int argc, char **argv) {
         "--occlusion ground scene; logs FOG-LOS-BENCH rows, then PASS, and exits"
     );
     IREngine::args().flag(
+        "--no-sun-shadows",
+        "Disable sun shadows: the control arm of a shadow probe, which must then fail"
+    );
+    IREngine::args().flag(
         "--world-pan",
         "Camera-anchored fog window over a persisted field: reveal a disc at the origin and "
         "one 2400 cells away, then jump between them (reveal, leave, return); paints "
@@ -4094,6 +4200,7 @@ int main(int argc, char **argv) {
     }
     g_luaFogSelftest = IREngine::args().getFlag("--lua-fog-selftest");
     g_worldPan = IREngine::args().getFlag("--world-pan");
+    g_noSunShadows = IREngine::args().getFlag("--no-sun-shadows");
     g_depthSlab = IREngine::args().getFlag("--depth-slab") && !g_worldPan;
     g_exploredDecay = IREngine::args().getFlag("--explored-decay") && !g_worldPan && !g_depthSlab &&
                       !g_luaFogSelftest;
@@ -4259,9 +4366,14 @@ int main(int argc, char **argv) {
     }
     initSystems();
     // These modes assert on FOG_TO_TRIXEL's canvas writes, which a surface
-    // route leaves to the composite, so they keep fog in compute.
-    if (g_channelProbe || g_worldPan || g_exploredDecay) {
+    // route leaves to the composite, so they keep fog in compute. The curved
+    // ceiling-shadow fixture compares shadow reach under the fog rim, which
+    // only the sampled sun-shadow factors hold.
+    if (g_channelProbe || g_worldPan || g_exploredDecay || g_ghostPolicy || g_ceilingShadowCurved) {
         IRPrefab::PerAxisSurfaceLighting::setEnabled(false);
+    }
+    if (g_noSunShadows) {
+        IRRender::setSunShadowsEnabled(false);
     }
     // The explored-decay fixture's hidden box reaches the overflow lane only
     // as faces the rotated view cannot see, and its probe requires the lane's

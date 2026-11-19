@@ -43,8 +43,17 @@ offset = round(((yaw + 3.141592653589793) % 6.283185307179586 - 3.14159265358979
                / {step!r})
 rmu.write_png(shots + "/screenshot_0.png", {width}, {height},
               bytes(fixture_row(1, offset)) * {height}, 3)
+route = {route}
+if route:
+    print("[info] SURFACE-ROUTE cardinal=1 perAxis=0 fog=" + route + " fogComposed=0")
+    print("[info] SURFACE-ROUTE cardinal=0 perAxis=1 fog=" + route + " fogComposed=1")
 print("ir-run: RESULT=CLEAN")
 """
+# The stub's logged route as an expression over its argv: the fog pass exists
+# only when the fixture arguments carry the reveal radius.
+ROUTE_FOLLOWS_THE_FLAG = (
+    '"compose" if "--fog-reveal" in args and args[args.index("--fog-reveal") + 1] == "16"'
+    ' else "none"')
 
 
 def fixture_row(scale, offset):
@@ -182,26 +191,67 @@ class YawCrossingMetricTest(unittest.TestCase):
         self.assertGreater(one["cardinal_differing_px"], 0)
         self.assertEqual(one["cardinal_differing_px"], one["rotated_differing_px"])
 
-    def test_capture_grades_a_scale_one_host(self):
-        """The capture path end to end against a 1x host's 1280x720 frames."""
+    def run_capture(self, route, *args):
+        """``capture`` against a stub fleet-run whose log follows ``route``, an
+        expression over the stub's argv."""
         stub = self.root / "fleet-run"
         stub.write_text(STUB_FLEET_RUN.format(
             python=sys.executable, tests=str(Path(__file__).resolve().parent),
             step=math.radians(metric.DEFAULT_STEP_DEG),
-            width=metric.GAME_SIZE[0], height=metric.GAME_SIZE[1]), encoding="utf-8")
+            width=metric.GAME_SIZE[0], height=metric.GAME_SIZE[1], route=route),
+            encoding="utf-8")
         stub.chmod(0o755)
         output = self.root / "capture"
         result = subprocess.run(
-            [sys.executable, str(SCRIPT), "capture", "--output", str(output)],
+            [sys.executable, str(SCRIPT), "capture", "--output", str(output), *args],
             capture_output=True, text=True,
             env={**os.environ, "FLEET_RUN": str(stub)})
+        return result, output
+
+    def test_capture_grades_a_scale_one_host(self):
+        """The capture path end to end against a 1x host's 1280x720 frames."""
+        result, output = self.run_capture(ROUTE_FOLLOWS_THE_FLAG)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         reading = json.loads(result.stdout.splitlines()[-2])
         self.assertEqual(reading["size"], list(metric.GAME_SIZE))
         self.assertEqual(reading["output_scale"], 1)
         self.assertTrue(reading["pass"])
+        self.assertEqual(set(reading["fog_routes"].values()), {"none"})
         for offset in metric.OFFSETS:
             self.assertTrue((output / metric.frame_name(offset)).is_file())
+
+    def test_fog_arm_passes_the_radius_and_records_each_route(self):
+        result, output = self.run_capture(ROUTE_FOLLOWS_THE_FLAG, "--fog-reveal", "16")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        reading = json.loads(result.stdout.splitlines()[-2])
+        self.assertEqual(reading["fog_routes"],
+                         {f"{offset:+d}": "compose" for offset in metric.OFFSETS})
+        regrade = subprocess.run(
+            [sys.executable, str(SCRIPT), "grade", str(output)],
+            capture_output=True, text=True)
+        self.assertEqual(json.loads(regrade.stdout.splitlines()[-2])["fog_routes"],
+                         reading["fog_routes"])
+
+    def test_fog_arm_rejects_a_run_without_a_fog_pass(self):
+        for route, logged in (('"none"', "fog=none"), ("None", "no SURFACE-ROUTE line")):
+            with self.subTest(route=route):
+                result, _ = self.run_capture(route, "--fog-reveal", "16")
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertNotIn("RESULT=", result.stdout)
+                self.assertIn(logged, json.loads(result.stdout.splitlines()[-1])["error"])
+
+    def test_fog_free_capture_needs_no_route_log(self):
+        result, _ = self.run_capture("None")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(set(json.loads(result.stdout.splitlines()[-2])["fog_routes"].values()),
+                         {None})
+
+    def test_fog_route_is_the_last_one_logged(self):
+        log = ("SURFACE-ROUTE cardinal=0 perAxis=0 fog=fallback fogComposed=0\n"
+               "noise fog=compose\n"
+               "SURFACE-ROUTE cardinal=0 perAxis=1 fog=compose fogComposed=1\n")
+        self.assertEqual(metric.logged_fog_route(log), "compose")
+        self.assertIsNone(metric.logged_fog_route("ir-run: RESULT=CLEAN\n"))
 
     def test_yaws_wrap_below_the_cardinal(self):
         self.assertAlmostEqual(metric.yaw_radians(0.0, 0.25, -1), math.radians(359.75))

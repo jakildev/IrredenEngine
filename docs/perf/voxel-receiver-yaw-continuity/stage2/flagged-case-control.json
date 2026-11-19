@@ -1,0 +1,288 @@
+{
+ "case": "per-axis-zoom4-overlap8-subdiv4",
+ "suite": "surface (fog-free)",
+ "interleaving": "nine rounds; arm order rotates each round",
+ "arms": {
+  "parent": "parent tree build",
+  "early": "head tree build",
+  "noearly": "head binary with the parent tree's four scatter shader files staged beside it"
+ },
+ "runs": {
+  "parent": [
+   {
+    "round": 1,
+    "frame": 11.5,
+    "steady_frame": 11.54,
+    "binary_sha256": "f2ba5ff8c29be1be9c91757217b504c3c966eb5690815b9815370ce75a06b7ed",
+    "shader_sha256": "be8bb10aaad40d5e6e3541d0ca3d42b9ce220dd9f3cfb5ea523f3d7be42fa2f3",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:26:35Z",
+    "host_load_1m": 3.28
+   },
+   {
+    "round": 2,
+    "frame": 11.59,
+    "steady_frame": 11.39,
+    "binary_sha256": "f2ba5ff8c29be1be9c91757217b504c3c966eb5690815b9815370ce75a06b7ed",
+    "shader_sha256": "be8bb10aaad40d5e6e3541d0ca3d42b9ce220dd9f3cfb5ea523f3d7be42fa2f3",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:27:12Z",
+    "host_load_1m": 3.27
+   },
+   {
+    "round": 3,
+    "frame": 10.44,
+    "steady_frame": 10.27,
+    "binary_sha256": "f2ba5ff8c29be1be9c91757217b504c3c966eb5690815b9815370ce75a06b7ed",
+    "shader_sha256": "be8bb10aaad40d5e6e3541d0ca3d42b9ce220dd9f3cfb5ea523f3d7be42fa2f3",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:27:49Z",
+    "host_load_1m": 3.67
+   },
+   {
+    "round": 4,
+    "frame": 11.98,
+    "steady_frame": 11.82,
+    "binary_sha256": "f2ba5ff8c29be1be9c91757217b504c3c966eb5690815b9815370ce75a06b7ed",
+    "shader_sha256": "be8bb10aaad40d5e6e3541d0ca3d42b9ce220dd9f3cfb5ea523f3d7be42fa2f3",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:29:20Z",
+    "host_load_1m": 3.81
+   },
+   {
+    "round": 5,
+    "frame": 11.42,
+    "steady_frame": 10.85,
+    "binary_sha256": "f2ba5ff8c29be1be9c91757217b504c3c966eb5690815b9815370ce75a06b7ed",
+    "shader_sha256": "be8bb10aaad40d5e6e3541d0ca3d42b9ce220dd9f3cfb5ea523f3d7be42fa2f3",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:29:57Z",
+    "host_load_1m": 3.9
+   },
+   {
+    "round": 6,
+    "frame": 11.67,
+    "steady_frame": 11.28,
+    "binary_sha256": "f2ba5ff8c29be1be9c91757217b504c3c966eb5690815b9815370ce75a06b7ed",
+    "shader_sha256": "be8bb10aaad40d5e6e3541d0ca3d42b9ce220dd9f3cfb5ea523f3d7be42fa2f3",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:30:34Z",
+    "host_load_1m": 3.4
+   },
+   {
+    "round": 7,
+    "frame": 11.73,
+    "steady_frame": 11.48,
+    "binary_sha256": "f2ba5ff8c29be1be9c91757217b504c3c966eb5690815b9815370ce75a06b7ed",
+    "shader_sha256": "be8bb10aaad40d5e6e3541d0ca3d42b9ce220dd9f3cfb5ea523f3d7be42fa2f3",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:32:04Z",
+    "host_load_1m": 3.23
+   },
+   {
+    "round": 8,
+    "frame": 11.01,
+    "steady_frame": 10.47,
+    "binary_sha256": "f2ba5ff8c29be1be9c91757217b504c3c966eb5690815b9815370ce75a06b7ed",
+    "shader_sha256": "be8bb10aaad40d5e6e3541d0ca3d42b9ce220dd9f3cfb5ea523f3d7be42fa2f3",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:32:39Z",
+    "host_load_1m": 3.05
+   },
+   {
+    "round": 9,
+    "frame": 12.3,
+    "steady_frame": 12.07,
+    "binary_sha256": "f2ba5ff8c29be1be9c91757217b504c3c966eb5690815b9815370ce75a06b7ed",
+    "shader_sha256": "be8bb10aaad40d5e6e3541d0ca3d42b9ce220dd9f3cfb5ea523f3d7be42fa2f3",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:33:15Z",
+    "host_load_1m": 3.48
+   }
+  ],
+  "early": [
+   {
+    "round": 1,
+    "frame": 11.9,
+    "steady_frame": 11.61,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "4b617257eefcdadbf2844ff3adb20a3103bba40c7647863b35948adbfff9d4db",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:26:03Z",
+    "host_load_1m": 2.71
+   },
+   {
+    "round": 2,
+    "frame": 10.67,
+    "steady_frame": 10.44,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "4b617257eefcdadbf2844ff3adb20a3103bba40c7647863b35948adbfff9d4db",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:27:30Z",
+    "host_load_1m": 3.64
+   },
+   {
+    "round": 3,
+    "frame": 10.71,
+    "steady_frame": 10.58,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "4b617257eefcdadbf2844ff3adb20a3103bba40c7647863b35948adbfff9d4db",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:28:07Z",
+    "host_load_1m": 3.33
+   },
+   {
+    "round": 4,
+    "frame": 10.87,
+    "steady_frame": 10.69,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "4b617257eefcdadbf2844ff3adb20a3103bba40c7647863b35948adbfff9d4db",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:28:43Z",
+    "host_load_1m": 3.77
+   },
+   {
+    "round": 5,
+    "frame": 11.8,
+    "steady_frame": 11.67,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "4b617257eefcdadbf2844ff3adb20a3103bba40c7647863b35948adbfff9d4db",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:30:15Z",
+    "host_load_1m": 3.5
+   },
+   {
+    "round": 6,
+    "frame": 10.34,
+    "steady_frame": 9.87,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "4b617257eefcdadbf2844ff3adb20a3103bba40c7647863b35948adbfff9d4db",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:30:52Z",
+    "host_load_1m": 3.43
+   },
+   {
+    "round": 7,
+    "frame": 11.71,
+    "steady_frame": 11.69,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "4b617257eefcdadbf2844ff3adb20a3103bba40c7647863b35948adbfff9d4db",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:31:28Z",
+    "host_load_1m": 3.28
+   },
+   {
+    "round": 8,
+    "frame": 11.13,
+    "steady_frame": 11.11,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "4b617257eefcdadbf2844ff3adb20a3103bba40c7647863b35948adbfff9d4db",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:32:57Z",
+    "host_load_1m": 3.1
+   },
+   {
+    "round": 9,
+    "frame": 10.35,
+    "steady_frame": 9.74,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "4b617257eefcdadbf2844ff3adb20a3103bba40c7647863b35948adbfff9d4db",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:33:34Z",
+    "host_load_1m": 3.61
+   }
+  ],
+  "noearly": [
+   {
+    "round": 1,
+    "frame": 11.66,
+    "steady_frame": 11.45,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "eaa760891f76822accda3330978f7ff56a9b41af1704f449666a18247fa1c7ae",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:26:17Z",
+    "host_load_1m": 2.99
+   },
+   {
+    "round": 2,
+    "frame": 9.71,
+    "steady_frame": 9.11,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "eaa760891f76822accda3330978f7ff56a9b41af1704f449666a18247fa1c7ae",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:26:54Z",
+    "host_load_1m": 3.25
+   },
+   {
+    "round": 3,
+    "frame": 11.6,
+    "steady_frame": 11.41,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "eaa760891f76822accda3330978f7ff56a9b41af1704f449666a18247fa1c7ae",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:28:25Z",
+    "host_load_1m": 4.01
+   },
+   {
+    "round": 4,
+    "frame": 11.16,
+    "steady_frame": 10.94,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "eaa760891f76822accda3330978f7ff56a9b41af1704f449666a18247fa1c7ae",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:29:02Z",
+    "host_load_1m": 3.73
+   },
+   {
+    "round": 5,
+    "frame": 10.41,
+    "steady_frame": 10.51,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "eaa760891f76822accda3330978f7ff56a9b41af1704f449666a18247fa1c7ae",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:29:39Z",
+    "host_load_1m": 3.49
+   },
+   {
+    "round": 6,
+    "frame": 10.99,
+    "steady_frame": 11.08,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "eaa760891f76822accda3330978f7ff56a9b41af1704f449666a18247fa1c7ae",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:31:10Z",
+    "host_load_1m": 3.56
+   },
+   {
+    "round": 7,
+    "frame": 9.98,
+    "steady_frame": 9.44,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "eaa760891f76822accda3330978f7ff56a9b41af1704f449666a18247fa1c7ae",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:31:47Z",
+    "host_load_1m": 3.35
+   },
+   {
+    "round": 8,
+    "frame": 11.88,
+    "steady_frame": 11.8,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "eaa760891f76822accda3330978f7ff56a9b41af1704f449666a18247fa1c7ae",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:32:23Z",
+    "host_load_1m": 3.11
+   },
+   {
+    "round": 9,
+    "frame": 10.15,
+    "steady_frame": 9.66,
+    "binary_sha256": "0a8f9249a43c4f14d0998d0d2ad08a588923a53aded698a675001fc5749c9165",
+    "shader_sha256": "eaa760891f76822accda3330978f7ff56a9b41af1704f449666a18247fa1c7ae",
+    "quiet": "guarded",
+    "launched_utc": "2026-11-19T16:33:51Z",
+    "host_load_1m": 3.21
+   }
+  ]
+ }
+}

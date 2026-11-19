@@ -1160,6 +1160,11 @@ const float kScatterCellTieBand = 16.0 * kScatterCellTieStep;
 // advances toward its interior keeps the pixel.
 const float kScatterEdgeTieWidth = 1.0 / 32.0;
 
+// How far below a face's nearest corner scatterEarlyDepth rasterizes it: the
+// final-depth floor's one band, plus the rounding of the corner reconstruction
+// and of the rasterizer's own depth.
+const float kScatterEarlyDepthMargin = 4.0 * kScatterCellTieBand;
+
 // Builds the local->world matrix from an SQT triple (scale, quaternion
 // rotation, translation). Composition is T * R * S: local p maps to
 // R * (S * p) + t — the same ordering SYSTEM_PROPAGATE_TRANSFORM uses when

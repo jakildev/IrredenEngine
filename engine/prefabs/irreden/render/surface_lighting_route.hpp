@@ -80,7 +80,7 @@ inline Route resolveRoute(
     const bool fogPassRegistered = findSystem(FOG_TO_TRIXEL) != kNullSystemId;
     const bool surfaceLightingEnabled =
         surfaceLighting != nullptr &&
-        IRPrefab::PerAxisSurfaceLighting::enabledFor(*surfaceLighting, fogPassRegistered);
+        IRPrefab::PerAxisSurfaceLighting::enabledFor(*surfaceLighting);
     const bool cardinalCandidate =
         worldSurfaceLightingEligible && mainVoxelPool_ != nullptr &&
         (perAxisCanvases_ == nullptr || !perAxisCanvases_->isAllocated());

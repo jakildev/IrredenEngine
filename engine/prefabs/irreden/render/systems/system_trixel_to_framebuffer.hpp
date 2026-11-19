@@ -68,7 +68,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     bool surfaceFogEnabled_ = false;
     const C_CanvasFogOfWar *surfaceFog_ = nullptr;
     // TRIXEL_TO_TRIXEL's UBO, which owns the slot the snapshot borrows; null
-    // when that system is not registered.
+    // when that system is not registered. Resolved each fog-composing frame.
     Buffer *trixelToTrixelFrameBuf_ = nullptr;
     // The last surface route logged as SURFACE-ROUTE; -1 before the first frame.
     int loggedSurfaceRoute_ = -1;
@@ -821,8 +821,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         visibilityPixelCount_ = pixels;
     }
 
-    // Compiled on the first fog-composing frame; a pipeline that never fogs
-    // its surface routes never pays for them.
+    // Compiled in `create()` on a pipeline whose fog pass is already
+    // registered. A pipeline that registers FOG_TO_TRIXEL after this system
+    // compiles them on its first fog-composing frame and stalls that frame.
     void createSurfaceFogPrograms() {
         const auto create = [](const char *name, const char *vertex, const char *fragment) {
             return IRRender::createNamedResource<ShaderProgram>(
@@ -855,8 +856,6 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 IRRender::kFileFragPerAxisQueryStatsFog
             );
         }
-        trixelToTrixelFrameBuf_ =
-            IRRender::getNamedResourceOrNull<Buffer>("TrixelToTrixelFrameData");
     }
 
     // The fog-composing twin of a lit scatter program; any other program is
@@ -971,8 +970,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         }
         surfaceFogEnabled_ = lighting_ != nullptr && lighting_->surfaceFogComposed();
         surfaceFog_ = surfaceFogEnabled_ ? lighting_->mainCanvasFog_ : nullptr;
-        if (surfaceFogEnabled_ && cardinalLightingFogProgram_ == nullptr) {
-            createSurfaceFogPrograms();
+        if (surfaceFogEnabled_) {
+            if (cardinalLightingFogProgram_ == nullptr) {
+                createSurfaceFogPrograms();
+            }
+            trixelToTrixelFrameBuf_ =
+                IRRender::getNamedResourceOrNull<Buffer>("TrixelToTrixelFrameData");
         }
         logSurfaceRoute();
         // Fog still owns post-lighting colour on shape receivers: this route
@@ -1148,6 +1151,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 IRRender::getNamedResource<ShaderProgram>("PerAxisQueryStatsProgram");
         }
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
+        // The render ordering contract registers FOG_TO_TRIXEL ahead of this
+        // system, so a fog pipeline compiles its fog-composing programs here,
+        // before the first frame.
+        if (findSystem(FOG_TO_TRIXEL) != kNullSystemId) {
+            sys->createSurfaceFogPrograms();
+        }
         sys->overflowDrawDisabled_ = std::getenv("IR_PERAXIS_OVERFLOW_DISABLE") != nullptr;
         const char *overflowCensus = std::getenv("IR_PERAXIS_OVERFLOW_CENSUS");
         sys->overflowCensusEnabled_ =

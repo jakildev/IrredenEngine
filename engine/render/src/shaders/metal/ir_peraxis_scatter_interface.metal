@@ -32,7 +32,7 @@ struct VertexOut {
 struct FragmentOut {
     float4 color [[color(0)]];
     uint2 entityId [[color(1)]];
-    float depth [[depth(any)]];
+    float depth [[depth(greater)]];
 };
 
 #endif

@@ -297,6 +297,7 @@ vertex VertexOut v_peraxis_scatter(
     if (frameData.overflowMode != 0) {
         out.depth += 2.0f * kScatterCellTieBand;
     }
+    out.position.z = scatterEarlyDepth(out.depth, out.depthSlope, cornerSel) * out.position.w;
     // cell2 separates immediate lattice neighbors; displaced cells can collide:
     // in-plane world steps project to iso-diagonal or (0,+/-2) only.
     const uint rank2 = (flip != 0) ? 3u : uint(slot);
