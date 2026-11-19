@@ -56,7 +56,7 @@ a per-axis **raster phase** carried from frame to frame. With `H = c * p - a`:
 
 ```
 gather quad centre   g = (floor(H) + a - floor(c * S) * t) * (1, -1)
-screen residual      r = floor(fract(H) * kIsoToScreenSign * outputScale)
+screen residual      r = floor(fract(H) * outputScale) * kIsoToScreenSign
 detached camera term     floor(H) + a - floor(c) * p        (Y-up)
 ```
 
