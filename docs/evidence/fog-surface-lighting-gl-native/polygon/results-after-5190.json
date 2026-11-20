@@ -1,0 +1,2230 @@
+{
+ "ambient0.15/subneg-yaw0.6-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/ambient0.15/subneg-yaw0.6-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "-0.1",
+   "0.2",
+   "--sun-ambient",
+   "0.15"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "b4872b12ca512935e8f9ba74887ef279a92c89850a549211e9117602671d4a5e"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": false,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "metal": {
+   "passed": false,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 18,
+    "excess": 638
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   -0.1,
+   0.2
+  ]
+ },
+ "ambient0.15/subneg-yaw0.6-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/ambient0.15/subneg-yaw0.6-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "-0.1",
+   "0.2",
+   "--sun-ambient",
+   "0.15"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "3005507550e5869e996b18c644cbaf3cb5f7fd476f940df15a6cfd786a474a1a"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": true,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "metal": {
+   "passed": true,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 0,
+    "excess": 0
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   -0.1,
+   0.2
+  ]
+ },
+ "ambient0.15/subpos-yaw0.6-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/ambient0.15/subpos-yaw0.6-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "0.1",
+   "-0.2",
+   "--sun-ambient",
+   "0.15"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "2d10aa7ae445498eb7bc5a288fba265d9fae7e8aaac90fcf7cebef07556e8792"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": false,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "metal": {
+   "passed": false,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 18,
+    "excess": 638
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   0.1,
+   -0.2
+  ]
+ },
+ "ambient0.15/subpos-yaw0.6-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/ambient0.15/subpos-yaw0.6-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "0.1",
+   "-0.2",
+   "--sun-ambient",
+   "0.15"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "877c674c82f14ac4165afd5f99ff3dfc4d3f23be72e046d9593d00e1a487302b"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": true,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "metal": {
+   "passed": true,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 0,
+    "excess": 0
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   0.1,
+   -0.2
+  ]
+ },
+ "ambient0.55/subneg-yaw0.6-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/ambient0.55/subneg-yaw0.6-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "-0.1",
+   "0.2",
+   "--sun-ambient",
+   "0.55"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "3afe45e9e154fb3998122e47c1e0cfa5b08feb371b95215177702c6a63b80c67"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": false,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "metal": {
+   "passed": false,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 18,
+    "excess": 638
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   -0.1,
+   0.2
+  ]
+ },
+ "ambient0.55/subneg-yaw0.6-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/ambient0.55/subneg-yaw0.6-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "-0.1",
+   "0.2",
+   "--sun-ambient",
+   "0.55"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "c3b1d64639789cb5605fe33102f47dfc09484025ac4c4d33c4c5b33420bdf591"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": true,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "metal": {
+   "passed": true,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 0,
+    "excess": 0
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   -0.1,
+   0.2
+  ]
+ },
+ "ambient0.55/subpos-yaw0.6-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/ambient0.55/subpos-yaw0.6-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "0.1",
+   "-0.2",
+   "--sun-ambient",
+   "0.55"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "f457da8ebe893c093a6a26b188d4c0eb7111ff074e2f9dc297fccaf7f195857d"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": false,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "metal": {
+   "passed": false,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 18,
+    "excess": 638
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   0.1,
+   -0.2
+  ]
+ },
+ "ambient0.55/subpos-yaw0.6-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/ambient0.55/subpos-yaw0.6-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "0.1",
+   "-0.2",
+   "--sun-ambient",
+   "0.55"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "2e8b309f368ed8fe9d5c8e11c130bf3a458db4f711be9d0f76f20657f57e0abd"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": true,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "metal": {
+   "passed": true,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 0,
+    "excess": 0
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   0.1,
+   -0.2
+  ]
+ },
+ "default/subneg-yaw0.6-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/default/subneg-yaw0.6-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "0",
+   "--camera-iso",
+   "-0.1",
+   "0.2"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "3b67276c9083f6040a883575f9f5b53f5fbf7450e2ed5536856efae747741707"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": true,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "metal": {
+   "passed": true,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 0,
+    "excess": 0
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   -0.1,
+   0.2
+  ]
+ },
+ "default/subneg-yaw0.6-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/default/subneg-yaw0.6-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "-0.1",
+   "0.2"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "18761ba935361b04f7f297edd22962bb5f18d8345434a018502a1a70b80343cf"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": false,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "metal": {
+   "passed": false,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 18,
+    "excess": 638
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   -0.1,
+   0.2
+  ]
+ },
+ "default/subneg-yaw0.6-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/default/subneg-yaw0.6-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "-0.1",
+   "0.2"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "1a28daf6ffa099984f592e72049b49209ab6039dd936723105489fa4f9b77ee1"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": true,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "metal": {
+   "passed": true,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 0,
+    "excess": 0
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   -0.1,
+   0.2
+  ]
+ },
+ "default/subpos-yaw0.6-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/default/subpos-yaw0.6-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "0",
+   "--camera-iso",
+   "0.1",
+   "-0.2"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "d0308afb5a7fa9a806e3e20220e554156b105602b1e3b7dc376e3ed09a57b9a7"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": true,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "metal": {
+   "passed": true,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 0,
+    "excess": 0
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   0.1,
+   -0.2
+  ]
+ },
+ "default/subpos-yaw0.6-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/default/subpos-yaw0.6-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "0.1",
+   "-0.2"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "b0f90480dc7af5d0692ae174a590a4317edfc3e79158f0adc79d1243b6e95435"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": false,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "metal": {
+   "passed": false,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 18,
+    "excess": 638
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   0.1,
+   -0.2
+  ]
+ },
+ "default/subpos-yaw0.6-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/default/subpos-yaw0.6-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "0.1",
+   "-0.2"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "9f13d4cf2a59d7f239e2a712d6c499cd96db34f0caeded380f07228001812a32"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": true,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "metal": {
+   "passed": true,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 0,
+    "excess": 0
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   0.1,
+   -0.2
+  ]
+ },
+ "local/subneg-yaw0.6-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/local/subneg-yaw0.6-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "-0.1",
+   "0.2",
+   "--probe-local-light",
+   "8",
+   "0",
+   "-20"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "cbb7989b161a3a97e2386d7b5db3b328899ea61db854b5a437d00703f05861b1"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": false,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638,
+   "reference_invalid": 0,
+   "local_light": 24530
+  },
+  "metal": {
+   "passed": false,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 18,
+    "excess": 638,
+    "reference_invalid": 0,
+    "local_light": 24530
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   -0.1,
+   0.2
+  ]
+ },
+ "local/subneg-yaw0.6-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/local/subneg-yaw0.6-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "-0.1",
+   "0.2",
+   "--probe-local-light",
+   "8",
+   "0",
+   "-20"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "ae83c981df437f455ad9f05e64aa885cd59bf3a5b90b6ad5efb01c9d21c60d11"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": true,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0,
+   "reference_invalid": 0,
+   "local_light": 24530
+  },
+  "metal": {
+   "passed": true,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 0,
+    "excess": 0,
+    "reference_invalid": 0,
+    "local_light": 24530
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   -0.1,
+   0.2
+  ]
+ },
+ "local/subpos-yaw0.6-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/local/subpos-yaw0.6-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "0.1",
+   "-0.2",
+   "--probe-local-light",
+   "8",
+   "0",
+   "-20"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "526f4b5d8d6802d5d24c3b6ff56d6d5d36cd9b4a2b8e8aa7e12814577381b32b"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": false,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638,
+   "reference_invalid": 0,
+   "local_light": 24530
+  },
+  "metal": {
+   "passed": false,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 18,
+    "excess": 638,
+    "reference_invalid": 0,
+    "local_light": 24530
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   0.1,
+   -0.2
+  ]
+ },
+ "local/subpos-yaw0.6-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/local/subpos-yaw0.6-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "0.1",
+   "-0.2",
+   "--probe-local-light",
+   "8",
+   "0",
+   "-20"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "1c2701f7cb6965112977e3020df6d35270c646b1ba53a8237329df8f3f822a8a"
+  ],
+  "audit_problems": [],
+  "graded": true,
+  "upscaled_2x": false,
+  "passed": true,
+  "coverage_valid": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0,
+   "reference_invalid": 0,
+   "local_light": 24530
+  },
+  "metal": {
+   "passed": true,
+   "counts": {
+    "eligible": 24854,
+    "valid": 24854,
+    "unknown": 0,
+    "inside": 3096,
+    "outside": 21266,
+    "boundary": 492,
+    "missing": 0,
+    "excess": 0,
+    "reference_invalid": 0,
+    "local_light": 24530
+   }
+  },
+  "matches_metal_counts": true,
+  "matches_metal_mue": true,
+  "yaw": 0.6,
+  "camera_iso": [
+   0.1,
+   -0.2
+  ]
+ },
+ "local-dark/subneg-yaw0.6-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/local-dark/subneg-yaw0.6-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "-0.1",
+   "0.2",
+   "--probe-local-light",
+   "8",
+   "0",
+   "-20",
+   "--sun-direction",
+   "1",
+   "0",
+   "0",
+   "--probe-overlapping-source-offset",
+   "-12",
+   "0",
+   "-12"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "fddd28d06a800e010c4f42a127eff4cb1a2256a27c6e2e5de167ec754096753e"
+  ],
+  "audit_problems": [],
+  "role": "local-light reference"
+ },
+ "local-dark/subneg-yaw0.6-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/local-dark/subneg-yaw0.6-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "-0.1",
+   "0.2",
+   "--probe-local-light",
+   "8",
+   "0",
+   "-20",
+   "--sun-direction",
+   "1",
+   "0",
+   "0",
+   "--probe-overlapping-source-offset",
+   "-12",
+   "0",
+   "-12"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "e742bec8768871f3c78b6ba38ec7e7bad2f90c22a918f5f740be88fe188f9d38"
+  ],
+  "audit_problems": [],
+  "role": "local-light reference"
+ },
+ "local-dark/subpos-yaw0.6-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/local-dark/subpos-yaw0.6-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "0.1",
+   "-0.2",
+   "--probe-local-light",
+   "8",
+   "0",
+   "-20",
+   "--sun-direction",
+   "1",
+   "0",
+   "0",
+   "--probe-overlapping-source-offset",
+   "-12",
+   "0",
+   "-12"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "a4cfa09d67da8e1e40186de8ace406b53a3a3bfc9b34a79ffa13b873b6495d65"
+  ],
+  "audit_problems": [],
+  "role": "local-light reference"
+ },
+ "local-dark/subpos-yaw0.6-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/local-dark/subpos-yaw0.6-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "0.1",
+   "-0.2",
+   "--probe-local-light",
+   "8",
+   "0",
+   "-20",
+   "--sun-direction",
+   "1",
+   "0",
+   "0",
+   "--probe-overlapping-source-offset",
+   "-12",
+   "0",
+   "-12"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "5bc55d9229d93cc47df8fafb40ebb144a42edd132e4315480612d1a973e947eb"
+  ],
+  "audit_problems": [],
+  "role": "local-light reference"
+ },
+ "local-lit/subneg-yaw0.6-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/local-lit/subneg-yaw0.6-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "-0.1",
+   "0.2",
+   "--probe-local-light",
+   "8",
+   "0",
+   "-20",
+   "--no-shadows"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "3783258e9781444105a7beaa5a2b3a7974353434461ad9f08dfac31376de0a98"
+  ],
+  "audit_problems": [],
+  "role": "local-light reference"
+ },
+ "local-lit/subneg-yaw0.6-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/local-lit/subneg-yaw0.6-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "-0.1",
+   "0.2",
+   "--probe-local-light",
+   "8",
+   "0",
+   "-20",
+   "--no-shadows"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "d7dbba3dbe996b5a1b5909880b8fe59022f15c79fa87bbcab2200eeb09b52ec6"
+  ],
+  "audit_problems": [],
+  "role": "local-light reference"
+ },
+ "local-lit/subpos-yaw0.6-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/local-lit/subpos-yaw0.6-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "0.1",
+   "-0.2",
+   "--probe-local-light",
+   "8",
+   "0",
+   "-20",
+   "--no-shadows"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "ab534af113f6edb95f9c472283c0e0bb8d8955f5839e8f4897c558a6b4f7e08c"
+  ],
+  "audit_problems": [],
+  "role": "local-light reference"
+ },
+ "local-lit/subpos-yaw0.6-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "C:/msys64/tmp/p4813-pool1/out/local-lit/subpos-yaw0.6-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16",
+   "--camera-iso",
+   "0.1",
+   "-0.2",
+   "--probe-local-light",
+   "8",
+   "0",
+   "-20",
+   "--no-shadows"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "screen_target": [
+   "[EngineLog] [info] OpenGL offscreen screen target attached (2560x1440)."
+  ],
+  "gl_error_lines": [],
+  "frame_sha256": [
+   "2e1817e4f3d216719be2ec71544632aefd32df10f38fc3d642c06f3d6e67e319"
+  ],
+  "audit_problems": [],
+  "role": "local-light reference"
+ }
+}
