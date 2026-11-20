@@ -258,6 +258,12 @@
       "capture_offset": 0
     },
     {
+      "name": "image_rotation",
+      "demo_args": ["--image-rotation-sample"],
+      "shots": ["image_rotation_sample"],
+      "capture_offset": 0
+    },
+    {
       "name": "glitch_standard_off",
       "demo_args": ["--glitch-test", "standard-off"],
       "shots": [

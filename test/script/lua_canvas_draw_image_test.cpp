@@ -277,6 +277,40 @@ TEST_F(LuaCanvasDrawImageTest, ImageDefaultsToTheWholeImageUntouchedAtTheFrontDe
     EXPECT_EQ(command.tintPacked_, 0xFFFFFFFFu);
     EXPECT_EQ(command.posterizeLevels_, 0);
     EXPECT_EQ(command.distance_, Draw::kDepthFront);
+    EXPECT_EQ(command.unrotate_, vec4(1.0f, 0.0f, 0.0f, 1.0f));
+}
+
+TEST_F(LuaCanvasDrawImageTest, RotationTurnsTheBoxRigidlyOnScreen) {
+    EXPECT_TRUE(scriptSucceeds(R"lua(
+        local handle = IRCanvas.loadImage('probe.png')
+        IRCanvas.image('layer', handle, 100, 400, 60, 40, { rotation = math.pi / 2 })
+        IRCanvas.image('layer', handle, 100, 600, 60, 40, { rotation = 0.2, cell = 3 })
+        IRCanvas.image('layer', handle, 100, 800, 60, 40, { rotation = 0 })
+    )lua"));
+    const C_CanvasDrawQueue::Batch *queued = batch();
+    ASSERT_NE(queued, nullptr);
+    ASSERT_EQ(queued->images_.size(), 3u);
+    ASSERT_EQ(queued->primitives_.size(), 3u);
+    const IRRender::CanvasImageCommand &quarter = queued->images_[0].command_;
+    EXPECT_EQ(quarter.origin_, ivec2(100, 400));
+    EXPECT_EQ(quarter.size_, ivec2(60, 40));
+    EXPECT_EQ(quarter.unrotate_, Draw::imageUnrotation(IRMath::kHalfPi, Draw::kCanvasTexelPixels));
+    // 60 x 40 texels are 120 x 40 pixels about texel (130, 420); turned a
+    // quarter that is 40 x 120 pixels, 20 x 120 texels.
+    EXPECT_NEAR(quarter.clipLo_.x, 120, 1);
+    EXPECT_NEAR(quarter.clipLo_.y, 360, 1);
+    EXPECT_NEAR(quarter.clipHi_.x, 140, 1);
+    EXPECT_NEAR(quarter.clipHi_.y, 480, 1);
+    EXPECT_EQ(queued->primitives_[0].lo_, quarter.clipLo_);
+    EXPECT_EQ(queued->primitives_[0].hi_, quarter.clipHi_);
+    EXPECT_EQ(
+        queued->images_[1].command_.unrotate_,
+        Draw::imageUnrotation(0.2f, Draw::kCanvasTexelPixels)
+    );
+    EXPECT_EQ(queued->images_[1].command_.cell_, 3);
+    EXPECT_EQ(queued->images_[2].command_.unrotate_, vec4(1.0f, 0.0f, 0.0f, 1.0f));
+    EXPECT_EQ(queued->images_[2].command_.clipLo_, ivec2(100, 800));
+    EXPECT_EQ(queued->images_[2].command_.clipHi_, ivec2(160, 840));
 }
 
 TEST_F(LuaCanvasDrawImageTest, ImageIsClippedToTheCanvasButKeepsItsBox) {
@@ -354,6 +388,11 @@ TEST_F(LuaCanvasDrawImageTest, RejectsBadHandlesCanvasesKeysAndRanges) {
     rejects("IRCanvas.image('layer', handle, 0, 0, 8, 8, { levels = 1 })", "levels");
     rejects("IRCanvas.image('layer', handle, 0, 0, 8, 8, { levels = 65 })", "levels");
     rejects("IRCanvas.image('layer', handle, 0, 0, 8, 8, { distance = 70000 })", "distance");
+    rejects("IRCanvas.image('layer', handle, 0, 0, 8, 8, { rotation = 'a' })", "rotation");
+    rejects("IRCanvas.image('layer', handle, 0, 0, 8, 8, { rotation = { 1 } })", "rotation");
+    rejects("IRCanvas.image('layer', handle, 0, 0, 8, 8, { rotation = 0 / 0 })", "rotation");
+    rejects("IRCanvas.image('layer', handle, 0, 0, 8, 8, { rotation = -math.huge })", "rotation");
+    rejects("IRCanvas.image('layer', handle, 0, 0, 8, 8, { rotate = 1 })", "unknown option");
     EXPECT_EQ(batch(), nullptr);
 }
 

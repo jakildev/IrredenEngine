@@ -11,10 +11,11 @@
 // Draws the frame's queued framebuffer images
 // (`IRPrefab::CanvasDraw::queueFramebufferImage`) as depth-tested quads, one
 // fragment per framebuffer pixel, each writing the depth the composite gives a
-// canvas texel of its distance plus half an encode step. It reports no hovered
-// entity, so a pick goes to whatever the image covers. Depth test and depth
-// write are on when it returns, the state every framebuffer pass rests in; it
-// never touches blending.
+// canvas texel of its distance plus half an encode step. A turned image's quad
+// spans its bounds and the fragments outside the turned box are discarded. It
+// reports no hovered entity, so a pick goes to whatever the image covers.
+// Depth test and depth write are on when it returns, the state every
+// framebuffer pass rests in; it never touches blending.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -45,7 +46,7 @@ struct FrameDataImageToFramebuffer {
     IRRender::CanvasImageCommand command_;
 };
 static_assert(offsetof(FrameDataImageToFramebuffer, command_) == 16);
-static_assert(sizeof(FrameDataImageToFramebuffer) == 96);
+static_assert(sizeof(FrameDataImageToFramebuffer) == 112);
 
 template <> struct System<IMAGE_TO_FRAMEBUFFER> {
     IRRender::Buffer *frameDataBuf_ = nullptr;

@@ -702,6 +702,18 @@ constexpr IRVideo::AutoScreenshotShot kFramebufferImageSampleShots[] = {
     {1.0f, vec2(0, 0), 0.0f, "framebuffer_image_sample"},
 };
 
+// --image-rotation-sample: the --framebuffer-image-sample scene's cube, layer
+// and colour probe, with every image turned about its box's centre. Top row,
+// the probe on the canvas-draw layer at four angles, one of them a mosaic, and
+// a cropped quarter turn; bottom row, the same boxes on the framebuffer path,
+// so each pair has one silhouette although a layer texel is two pixels wide.
+// In the centre, three overlapping turned framebuffer images at the BEHIND
+// depth: the later call on top where they meet, the cube in front of all three.
+bool g_imageRotationSample = false;
+constexpr IRVideo::AutoScreenshotShot kImageRotationSampleShots[] = {
+    {1.0f, vec2(0, 0), 0.0f, "image_rotation_sample"},
+};
+
 // --load-prefab <path>: the scene is the prefab manifest at <path> (exe-relative)
 // spawned at the origin, so each shot shows the parts its LOD bands select at
 // that zoom. Empty = not requested. The manifest is evaluated in the World's
@@ -1914,6 +1926,12 @@ void registerCliArgs() {
         "framebuffer pixel: a fine-detail probe beside its canvas-draw copy, a mosaic, a "
         "posterized tint, one behind a world cube under canvas text and two in front of it"
     );
+    args.flag(
+        "--image-rotation-sample",
+        "Replace the scene + capture table with turned images: the probe at several angles on a "
+        "canvas-draw layer and again on the framebuffer path, and three overlapping turned "
+        "images behind a world cube"
+    );
     args.numbers(
         "--framebuffer-size",
         "Resize the logical window to produce the requested framebuffer width and height",
@@ -1985,7 +2003,9 @@ void readCliArgs() {
     g_voxelTextSample = args.getFlag("--voxel-text-sample");
     g_canvasImageSample = args.getFlag("--canvas-image-sample");
     g_canvasImagePan = args.getFlag("--canvas-image-pan");
-    g_framebufferImageSample = args.getFlag("--framebuffer-image-sample");
+    g_imageRotationSample = args.getFlag("--image-rotation-sample");
+    // The rotation sample draws into the framebuffer image scene.
+    g_framebufferImageSample = g_imageRotationSample || args.getFlag("--framebuffer-image-sample");
     g_recorderFrameProbe = args.getFlag("--recorder-frame-probe");
     if (args.wasProvided("--canvas-image-file")) {
         g_canvasImagePath = args.getString("--canvas-image-file");
@@ -2122,6 +2142,7 @@ void initPostEffectsFixture();
 void initGlitchSubjectFixture();
 void queueCanvasImageSample();
 void queueFramebufferImageSample();
+void queueImageRotationSample();
 void registerDemoSettings();
 
 int main(int argc, char **argv) {
@@ -5386,6 +5407,8 @@ void initSystems() {
             IRVideo::setAutoScreenshotShots(cfg, kVoxelTextSampleShots);
         } else if (g_canvasImageSample) {
             IRVideo::setAutoScreenshotShots(cfg, kCanvasImageSampleShots);
+        } else if (g_imageRotationSample) {
+            IRVideo::setAutoScreenshotShots(cfg, kImageRotationSampleShots);
         } else if (g_framebufferImageSample) {
             IRVideo::setAutoScreenshotShots(cfg, kFramebufferImageSampleShots);
         } else if (!g_loadPrefabPath.empty()) {
@@ -6288,9 +6311,14 @@ void initFramebufferImageSampleScene() {
     );
 }
 
-// One frame of the --framebuffer-image-sample draws; re-issued every frame.
+// One frame of the --framebuffer-image-sample draws, or of the
+// --image-rotation-sample draws that take their place; re-issued every frame.
 void queueFramebufferImageSample() {
     namespace Draw = IRPrefab::CanvasDraw;
+    if (g_imageRotationSample) {
+        queueImageRotationSample();
+        return;
+    }
     constexpr int kGap = 12;
     constexpr int kLabelGap = 4;
     const ivec2 framebuffer = Draw::framebufferSize();
@@ -6377,6 +6405,80 @@ void queueFramebufferImageSample() {
         Draw::kDepthFront
     );
     label("FRONT", insetPos + ivec2(6, 4), Draw::kDepthFront);
+}
+
+// One frame of the --image-rotation-sample draws; re-issued every frame.
+void queueImageRotationSample() {
+    namespace Draw = IRPrefab::CanvasDraw;
+    const ivec2 framebuffer = Draw::framebufferSize();
+    // A layer texel is two framebuffer pixels wide and one tall.
+    const auto texel = [](ivec2 pixel) { return ivec2(pixel.x / 2, pixel.y); };
+    const auto label = [&texel](const char *text, ivec2 pixel) {
+        Draw::queueText(g_framebufferImageLayer, text, texel(pixel), {}, Draw::kDepthFront);
+    };
+
+    struct Tile {
+        const char *label_;
+        Draw::ImageOptions options_;
+    };
+    const Tile tiles[] = {
+        {"BACK 0.5", {.rotation_ = -0.5f}},
+        {"0.79", {.rotation_ = 0.25f * IRMath::kPi}},
+        {"0.2", {.rotation_ = 0.2f}},
+        {"0.35 CELL 6", {.cell_ = 6, .rotation_ = 0.35f}},
+        {"1.57 CROP", {.uvRect_ = vec4(0.12f, 0.2f, 0.52f, 0.6f), .rotation_ = IRMath::kHalfPi}},
+    };
+    // The box in framebuffer pixels, the column pitch, and how far a box
+    // turned to its diagonal reaches from its centre.
+    const ivec2 tile(180, 120);
+    constexpr int kPitch = 250;
+    constexpr int kFirstColumn = 140;
+    constexpr int kReach = 118;
+    const int canvasRow = kReach + 12;
+    const int framebufferRow = framebuffer.y - kReach - 4;
+    label("CANVAS", ivec2(12, canvasRow - kReach));
+    label("FRAMEBUFFER", ivec2(12, framebufferRow - kReach));
+    int column = kFirstColumn;
+    for (const Tile &entry : tiles) {
+        Draw::queueImage(
+            g_framebufferImageLayer,
+            g_framebufferImageColour,
+            texel(ivec2(column, canvasRow) - tile / 2),
+            texel(tile),
+            entry.options_,
+            Draw::kDepthFront
+        );
+        Draw::queueFramebufferImage(
+            g_framebufferImageColour,
+            ivec2(column, framebufferRow) - tile / 2,
+            tile,
+            entry.options_,
+            Draw::kDepthFront
+        );
+        label(entry.label_, ivec2(column - tile.x / 2, canvasRow + kReach - 8));
+        column += kPitch;
+    }
+
+    // Around the framebuffer's centre, where the world origin's cube projects.
+    struct Overlap {
+        ivec2 offset_;
+        float rotation_;
+    };
+    const Overlap overlaps[] = {
+        {ivec2(-70, -8), -0.3f},
+        {ivec2(0, 16), 0.12f},
+        {ivec2(56, 38), 0.45f},
+    };
+    const ivec2 box(210, 140);
+    for (const Overlap &entry : overlaps) {
+        Draw::queueFramebufferImage(
+            g_framebufferImageColour,
+            framebuffer / 2 + entry.offset_ - box / 2,
+            box,
+            {.rotation_ = entry.rotation_},
+            Draw::kDepthBehind
+        );
+    }
 }
 
 // The --text-size-sample scene (see g_textSizeSample).

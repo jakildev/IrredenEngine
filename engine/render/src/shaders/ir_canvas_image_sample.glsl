@@ -58,21 +58,38 @@ vec4 imageTrilinear(ivec2 baseSize, int levelCount, vec2 uv, float lod) {
     return mix(fineColor, coarseColor, clamp(lod - float(fine), 0.0, 1.0));
 }
 
-// The colour the draw gives `pixel`, or false where the source is mostly
-// transparent and the target keeps what it held.
+// The colour the draw gives `pixel`, or false where the target keeps what it
+// held: outside the draw's turned box, and where the source is mostly
+// transparent.
 bool canvasImageColor(CanvasImageCommand cmd, ivec2 pixel, out vec3 rgb) {
-    // Every texel of a block samples the block's centre, so the block is one
-    // colour.
-    int cell = max(cmd.cell, 1);
-    ivec2 block = (pixel - cmd.origin) / cell;
+    // The pixel centre in the unturned box, in texels from its top-left.
+    // Every term is a multiple of one half, so an axis-aligned draw lands on
+    // pixel - origin + 0.5 exactly.
     vec2 extent = vec2(cmd.size);
-    vec2 blockCenter = min((vec2(block) + 0.5) * float(cell), extent);
-    vec2 uvSpan = cmd.uvRect.zw - cmd.uvRect.xy;
-    vec2 uv = clamp(cmd.uvRect.xy + blockCenter / extent * uvSpan, 0.0, 1.0);
+    vec2 fromCenter = vec2(pixel) + 0.5 - (vec2(cmd.origin) + 0.5 * extent);
+    vec2 local = vec2(dot(cmd.unrotate.xy, fromCenter), dot(cmd.unrotate.zw, fromCenter)) +
+        0.5 * extent;
+    if (local.x < 0.0 || local.y < 0.0 || local.x >= extent.x || local.y >= extent.y) {
+        return false;
+    }
 
-    // The block's footprint in level-0 texels. The level is picked for the
+    // Every texel of a mosaic block samples the block's centre, so the block
+    // is one colour and turns with the box. Without a mosaic a texel samples
+    // under its own centre and covers the box texels one target texel spans.
+    int cell = max(cmd.cell, 1);
+    vec2 samplePoint = local;
+    vec2 sampleSpan = abs(cmd.unrotate.xz) + abs(cmd.unrotate.yw);
+    if (cell > 1) {
+        ivec2 block = ivec2(local) / cell;
+        samplePoint = min((vec2(block) + 0.5) * float(cell), extent);
+        sampleSpan = vec2(float(cell));
+    }
+    vec2 uvSpan = cmd.uvRect.zw - cmd.uvRect.xy;
+    vec2 uv = clamp(cmd.uvRect.xy + samplePoint / extent * uvSpan, 0.0, 1.0);
+
+    // The sample's footprint in level-0 texels. The level is picked for the
     // shorter side, and the longer side is covered by taps spread along it.
-    vec2 footprint = abs(uvSpan) * vec2(cmd.baseSize) * float(cell) / extent;
+    vec2 footprint = abs(uvSpan) * vec2(cmd.baseSize) * sampleSpan / extent;
     bool wide = footprint.x >= footprint.y;
     float longSide = max(footprint.x, footprint.y);
     float shortSide = max(min(footprint.x, footprint.y), 1.0);
