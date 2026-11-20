@@ -84,13 +84,14 @@ set -euo pipefail
 lock_state() {
     local tick
     for ((tick = 0; tick < 500; tick++)); do
-        mkdir "${CLAIM_STATE}.lock" 2>/dev/null && return 0
+        # noclobber is O_EXCL; uutils mkdir is not exclusive under a race.
+        ( set -C; : > "${CLAIM_STATE}.lock" ) 2>/dev/null && return 0
         sleep 0.01
     done
     echo "gh stub: timed out acquiring state lock" >&2
     return 1
 }
-unlock_state() { rmdir "${CLAIM_STATE}.lock"; }
+unlock_state() { rm "${CLAIM_STATE}.lock"; }
 
 emit_labels() {
     local first=1 label
