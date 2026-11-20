@@ -41,40 +41,6 @@ race_stage() {
     return 0
 }
 
-race_labels_reset() {
-    rm -rf "$1"
-    mkdir -p "$1"
-}
-
-race_labels_add() {
-    mkdir -p "$1"
-    : > "$1/$2"
-}
-
-race_labels_remove() {
-    rm -f "$1/$2"
-}
-
-race_labels_list() {
-    local path
-    [[ -d "$1" ]] || return 0
-    for path in "$1"/*; do
-        [[ -f "$path" ]] && printf '%s\n' "${path##*/}"
-    done
-}
-
-race_labels_emit_json() {
-    local first=1 label
-    printf '['
-    while IFS= read -r label; do
-        [[ -n "$label" ]] || continue
-        [[ "$first" -eq 1 ]] || printf ','
-        printf '{"name":"%s"}' "$label"
-        first=0
-    done < <(race_labels_list "$1")
-    printf ']'
-}
-
 # race_abandoned: succeed, with the reason in RACE_ABANDONED, once the
 # schedule is abandoned.
 race_abandoned() {
@@ -112,27 +78,6 @@ race_await() {
         fi
         sleep 0.01
     done
-}
-
-# race_lock <lock-file> / race_unlock <lock-file>
-#   Exclusive-create mutex: bash's noclobber redirection opens the file
-#   O_CREAT|O_EXCL, so exactly one racer creates it. Not `mkdir`: the uutils
-#   coreutils mkdir (Ubuntu 26.04's /usr/bin/mkdir) reports success to both
-#   sides of a concurrent create. Holders never wait while holding it, so the
-#   wait ends unsuccessfully only when the schedule is abandoned (a holder
-#   killed mid-section).
-race_lock() {
-    until ( set -C; : > "$1" ) 2>/dev/null; do
-        if race_abandoned; then
-            echo "race: lock $1 aborted: $RACE_ABANDONED" >&2
-            return 1
-        fi
-        sleep 0.005
-    done
-}
-
-race_unlock() {
-    rm "$1"
 }
 
 # --- suite side --------------------------------------------------------------

@@ -12,6 +12,7 @@ CLAIM_RACE_LIB="$(cd "$(dirname "$0")" && pwd)/lib_claim_race.sh"
 CLAIM_RACE_LABEL_LIB="$(cd "$(dirname "$0")" && pwd)/lib_claim_race_labels.sh"
 source "$CLAIM_RACE_LIB"
 source "$CLAIM_RACE_LABEL_LIB"
+unset FLEET_CLAIM_ACQUIRE_SETTLE_SECS
 
 TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/fleet-claim-race.XXXXXX")
 source "$(dirname "$0")/lib_hermetic.sh"

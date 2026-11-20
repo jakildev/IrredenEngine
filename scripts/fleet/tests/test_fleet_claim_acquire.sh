@@ -165,17 +165,29 @@ rc=0
 _acquire_label_on "owner/repo" 1 "$SMALL" "$P" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 1 "persistent holder present → exit 1 (never a co-win)"
 post_count=$(wc -l < "$STUB_POST_LOG" | tr -d ' ')
-if [[ "$post_count" -le $((2 * FLEET_CLAIM_ACQUIRE_RETRIES)) ]]; then
+if [[ "$post_count" -le $((FLEET_CLAIM_ACQUIRE_RETRIES + 1)) ]]; then
     PASS=$((PASS + 1))
     echo "  ok: persistent holder stays within the per-pass POST ceiling"
 else
     FAIL=$((FAIL + 1))
-    echo "  FAIL: persistent holder used $post_count POSTs; ceiling is $((2 * FLEET_CLAIM_ACQUIRE_RETRIES))"
+    echo "  FAIL: persistent holder used $post_count POSTs; ceiling is $((FLEET_CLAIM_ACQUIRE_RETRIES + 1))"
 fi
 rm -f "$STUB_POST_LOG"
 STUB_POST_LOG=""
 unset FLEET_CLAIM_ACQUIRE_SETTLE_SECS
 export FLEET_CLAIM_NO_SLEEP=1
+
+# T7b: zero configured retries make no acquisition attempt.
+echo "T7b: zero retries reports zero attempts"
+STUB_HOLDERS="$LARGE"
+STUB_MINE="$SMALL"
+export FLEET_CLAIM_ACQUIRE_RETRIES=0
+rc=0
+output=$(_acquire_label_on "owner/repo" 1 "$SMALL" "$P" 2>&1) || rc=$?
+assert_exit "$rc" 1 "zero retries → exit 1"
+assert_eq "$([[ "$output" == *"gave up after 0 attempt(s)"* ]] && echo 1 || echo 0)" 1 \
+    "zero retries report no acquisition attempts"
+export FLEET_CLAIM_ACQUIRE_RETRIES=2
 
 # T8: persistent lex-SMALLER holder, I am lex-larger → immediate yield.
 echo "T8: lex-larger claimant vs lex-smaller holder → yield (exit 1)"

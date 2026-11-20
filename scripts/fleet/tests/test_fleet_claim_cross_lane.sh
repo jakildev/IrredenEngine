@@ -8,9 +8,11 @@ source "$(dirname "$0")/lib_preflight.sh"
 source "$(dirname "$0")/lib_assert.sh"
 FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 
-export CLAIM_RACE_LIB CLAIM_RACE_SUITE_PID=$$
+export CLAIM_RACE_LIB CLAIM_RACE_LABEL_LIB CLAIM_RACE_SUITE_PID=$$
 CLAIM_RACE_LIB="$(cd "$(dirname "$0")" && pwd)/lib_claim_race.sh"
+CLAIM_RACE_LABEL_LIB="$(cd "$(dirname "$0")" && pwd)/lib_claim_race_labels.sh"
 source "$CLAIM_RACE_LIB"
+source "$CLAIM_RACE_LABEL_LIB"
 
 TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/fleet-cross-lane.XXXXXX")
 source "$(dirname "$0")/lib_hermetic.sh"
@@ -37,6 +39,7 @@ cat > "$TMPROOT/bin/gh" <<'GH_STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 source "$CLAIM_RACE_LIB"
+source "$CLAIM_RACE_LABEL_LIB"
 
 emit_labels() {
     race_labels_emit_json "$CLAIM_STATE"
