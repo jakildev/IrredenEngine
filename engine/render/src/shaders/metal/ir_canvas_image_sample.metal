@@ -64,26 +64,44 @@ inline float4 imageTrilinear(
     return mix(fineColor, coarseColor, clamp(lod - float(fine), 0.0, 1.0));
 }
 
-// The colour the draw gives `pixel`, or false where the source is mostly
-// transparent and the target keeps what it held.
+// The colour the draw gives `pixel`, or false where the target keeps what it
+// held: outside the draw's turned box, and where the source is mostly
+// transparent.
 inline bool canvasImageColor(
     texture2d<float, access::read> imageAtlas,
     CanvasImageCommand cmd,
     int2 pixel,
     thread float3 &rgb
 ) {
-    // Every texel of a block samples the block's centre, so the block is one
-    // colour.
-    const int cell = max(cmd.cell, 1);
-    const int2 block = (pixel - cmd.origin) / cell;
+    // The pixel centre in the unturned box, in texels from its top-left.
+    // Every term is a multiple of one half, so an axis-aligned draw lands on
+    // pixel - origin + 0.5 exactly.
     const float2 extent = float2(cmd.size);
-    const float2 blockCenter = min((float2(block) + 0.5) * float(cell), extent);
-    const float2 uvSpan = cmd.uvRect.zw - cmd.uvRect.xy;
-    const float2 uv = clamp(cmd.uvRect.xy + blockCenter / extent * uvSpan, 0.0, 1.0);
+    const float2 fromCenter = float2(pixel) + 0.5 - (float2(cmd.origin) + 0.5 * extent);
+    const float2 local =
+        float2(dot(cmd.unrotate.xy, fromCenter), dot(cmd.unrotate.zw, fromCenter)) +
+        0.5 * extent;
+    if (local.x < 0.0 || local.y < 0.0 || local.x >= extent.x || local.y >= extent.y) {
+        return false;
+    }
 
-    // The block's footprint in level-0 texels. The level is picked for the
+    // Every texel of a mosaic block samples the block's centre, so the block
+    // is one colour and turns with the box. Without a mosaic a texel samples
+    // under its own centre and covers the box texels one target texel spans.
+    const int cell = max(cmd.cell, 1);
+    float2 samplePoint = local;
+    float2 sampleSpan = abs(cmd.unrotate.xz) + abs(cmd.unrotate.yw);
+    if (cell > 1) {
+        const int2 block = int2(local) / cell;
+        samplePoint = min((float2(block) + 0.5) * float(cell), extent);
+        sampleSpan = float2(float(cell));
+    }
+    const float2 uvSpan = cmd.uvRect.zw - cmd.uvRect.xy;
+    const float2 uv = clamp(cmd.uvRect.xy + samplePoint / extent * uvSpan, 0.0, 1.0);
+
+    // The sample's footprint in level-0 texels. The level is picked for the
     // shorter side, and the longer side is covered by taps spread along it.
-    const float2 footprint = abs(uvSpan) * float2(cmd.baseSize) * float(cell) / extent;
+    const float2 footprint = abs(uvSpan) * float2(cmd.baseSize) * sampleSpan / extent;
     const bool wide = footprint.x >= footprint.y;
     const float longSide = max(footprint.x, footprint.y);
     const float shortSide = max(min(footprint.x, footprint.y), 1.0);

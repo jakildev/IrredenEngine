@@ -8,7 +8,9 @@
 // rasterizes every batch through the text compute path that `TEXT_TO_TRIXEL`
 // owns and its own image kernel, so a draw costs no CPU texture upload and
 // must be re-issued every frame, like `IRGui.fillRect`. An image is decoded
-// and uploaded once by `loadImage`; drawing it samples that texture.
+// and uploaded once by `loadImage`; drawing it samples that texture, cropped,
+// mosaiced, posterized, tinted and turned about its box's centre as its
+// `ImageOptions` say.
 //
 // Where a draw lands on screen is decided by the depth it writes, because the
 // framebuffer composite depth-tests every canvas texel (GL_LESS on the
@@ -140,7 +142,19 @@ struct ImageOptions {
     // 0 = off; otherwise each channel snaps to this many levels (2 ..
     // kMaxImagePosterizeLevels) before the tint multiplies it.
     int levels_ = 0;
+    // Radians the drawn box turns about its centre, clockwise on screen; 0
+    // leaves it axis-aligned. The turn is rigid in framebuffer pixels on both
+    // paths, so a canvas image turns as the rectangle it shows on screen
+    // although its texels are two pixels wide. The mosaic's blocks turn with
+    // the box, and the distance the draw writes does not change.
+    float rotation_ = 0.0f;
 };
+
+// The framebuffer pixels one texel of an image draw's target spans.
+constexpr IRMath::vec2 kCanvasTexelPixels = IRMath::vec2(2.0f, 1.0f);
+constexpr IRMath::vec2 kFramebufferTexelPixels = IRMath::vec2(1.0f, 1.0f);
+// `CanvasImageCommand::unrotate_` for a box that is not turned.
+constexpr IRMath::vec4 kImageUnturned = IRMath::vec4(1.0f, 0.0f, 0.0f, 1.0f);
 
 // What a loader hands `loadImage` for one decoded file: the file's pixel
 // size and the `MipAtlas` texture built from it.
@@ -178,6 +192,71 @@ inline IRComponents::C_FramebufferImageQueue &framebufferImageQueue() {
 
 inline void ensureFramebufferImageQueueSingleton() {
     framebufferImageQueue();
+}
+
+// The `CanvasImageCommand::unrotate_` matrix of a box turned `rotation`
+// radians clockwise on a target whose texels span `texelPixels` framebuffer
+// pixels. The turn is undone in pixels, where it is rigid. Identity for no
+// turn and for a rotation that is not finite.
+inline IRMath::vec4 imageUnrotation(float rotation, IRMath::vec2 texelPixels) {
+    if (rotation == 0.0f || !IRMath::isFinite(rotation)) {
+        return kImageUnturned;
+    }
+    const float cosine = IRMath::cos(rotation);
+    const float sine = IRMath::sin(rotation);
+    return IRMath::vec4(
+        cosine,
+        sine * texelPixels.y / texelPixels.x,
+        -sine * texelPixels.x / texelPixels.y,
+        cosine
+    );
+}
+
+// The texel box `[lo, hi)` holding every texel `command`'s turned box can
+// cover: the box itself when it is axis-aligned, otherwise its bounds rounded
+// outwards.
+inline void
+imageBounds(const IRRender::CanvasImageCommand &command, IRMath::ivec2 &lo, IRMath::ivec2 &hi) {
+    lo = command.origin_;
+    hi = command.origin_ + command.size_;
+    const IRMath::vec4 unrotate = command.unrotate_;
+    if (command.size_.x <= 0 || command.size_.y <= 0 || unrotate == kImageUnturned) {
+        return;
+    }
+    // `unrotate_` has determinant 1, so the matrix turning the box, its
+    // inverse, is its adjugate.
+    const IRMath::vec2 half = 0.5f * IRMath::vec2(command.size_);
+    const IRMath::vec2 reach(
+        IRMath::abs(unrotate.w) * half.x + IRMath::abs(unrotate.y) * half.y,
+        IRMath::abs(unrotate.z) * half.x + IRMath::abs(unrotate.x) * half.y
+    );
+    const IRMath::vec2 center = IRMath::vec2(command.origin_) + half;
+    lo = IRMath::ivec2(IRMath::floor(center - reach));
+    hi = IRMath::ivec2(IRMath::ceil(center + reach));
+}
+
+// Where the centre of target texel `texel` lies in `command`'s unturned box,
+// in texels from the box's top-left: the mapping `ir_canvas_image_sample`
+// draws with.
+inline IRMath::vec2
+imageBoxPoint(const IRRender::CanvasImageCommand &command, IRMath::ivec2 texel) {
+    const IRMath::vec2 half = 0.5f * IRMath::vec2(command.size_);
+    const IRMath::vec2 fromCenter =
+        IRMath::vec2(texel) + 0.5f - (IRMath::vec2(command.origin_) + half);
+    const IRMath::vec4 unrotate = command.unrotate_;
+    return IRMath::vec2(
+               unrotate.x * fromCenter.x + unrotate.y * fromCenter.y,
+               unrotate.z * fromCenter.x + unrotate.w * fromCenter.y
+           ) +
+           half;
+}
+
+// Whether `command`'s turned box covers target texel `texel`, before any clip
+// to the target: the texel's centre is inside the box.
+inline bool imageCovers(const IRRender::CanvasImageCommand &command, IRMath::ivec2 texel) {
+    const IRMath::vec2 point = imageBoxPoint(command, texel);
+    return point.x >= 0.0f && point.y >= 0.0f && point.x < static_cast<float>(command.size_.x) &&
+           point.y < static_cast<float>(command.size_.y);
 }
 
 namespace detail {
@@ -275,22 +354,20 @@ inline bool uploadImageFile(const std::string &path, ImageSource &source, std::s
     return true;
 }
 
-// The kernel command drawing `image` into the `pos` / `size` box, whose part
-// on the canvas is `[clipLo, clipHi)`. Out-of-range options are pulled into
-// range: the crop into 0..1, the cell to 1 .. kMaxImageCell, and a posterize
-// count below 2 to off.
+// The command drawing `image` into the `pos` / `size` box of a target whose
+// texels span `texelPixels` framebuffer pixels, its clip the turned box's
+// whole bounds. Out-of-range options are pulled into range: the crop into
+// 0..1, the cell to 1 .. kMaxImageCell, a posterize count below 2 to off, and
+// a rotation that is not finite to none.
 inline IRRender::CanvasImageCommand imageCommand(
     const IRComponents::C_CanvasDrawImages::Image &image,
     IRMath::ivec2 pos,
     IRMath::ivec2 size,
-    IRMath::ivec2 clipLo,
-    IRMath::ivec2 clipHi,
     const ImageOptions &options,
+    IRMath::vec2 texelPixels,
     int distance
 ) {
     IRRender::CanvasImageCommand command;
-    command.clipLo_ = clipLo;
-    command.clipHi_ = clipHi;
     command.origin_ = pos;
     command.size_ = size;
     command.uvRect_ = IRMath::clamp(options.uvRect_, IRMath::vec4(0.0f), IRMath::vec4(1.0f));
@@ -301,6 +378,8 @@ inline IRRender::CanvasImageCommand imageCommand(
     command.posterizeLevels_ =
         options.levels_ < 2 ? 0 : IRMath::min(options.levels_, kMaxImagePosterizeLevels);
     command.distance_ = distance;
+    command.unrotate_ = imageUnrotation(options.rotation_, texelPixels);
+    imageBounds(command, command.clipLo_, command.clipHi_);
     return command;
 }
 
@@ -532,9 +611,10 @@ inline void releaseImage(ImageHandle handle) {
 // The image stretched over the `pos` / `size` box of canvas texels, clipped
 // to the canvas. A canvas texel is two framebuffer pixels wide and one tall,
 // so a box of `size` shows the source undistorted when
-// 2 * size.x / size.y equals the crop's pixel aspect. Texels the source
-// leaves transparent keep what the canvas held. Nothing for a handle that
-// names no image.
+// 2 * size.x / size.y equals the crop's pixel aspect. `options.rotation_`
+// turns the box about its centre; the draw then reserves the turned box's
+// bounds in the batch's painter order. Texels the source leaves transparent
+// keep what the canvas held. Nothing for a handle that names no image.
 inline void queueImage(
     IREntity::EntityId canvas,
     ImageHandle handle,
@@ -548,16 +628,23 @@ inline void queueImage(
         return;
     }
     IRComponents::C_CanvasDrawQueue::Batch &batch = detail::batchFor(queue(), canvas);
-    IRMath::ivec2 lo;
-    IRMath::ivec2 hi;
-    if (!IRRender::clipRectToCanvas(pos, size, batch.canvasSize_, lo, hi)) {
+    IRRender::CanvasImageCommand command =
+        detail::imageCommand(*image, pos, size, options, kCanvasTexelPixels, distance);
+    if (!IRRender::clipRectToCanvas(
+            command.clipLo_,
+            command.clipHi_ - command.clipLo_,
+            batch.canvasSize_,
+            command.clipLo_,
+            command.clipHi_
+        )) {
         return;
     }
-    batch.images_.push_back(
-        {handle, detail::imageCommand(*image, pos, size, lo, hi, options, distance)}
-    );
+    batch.images_.push_back({handle, command});
     batch.primitives_.push_back(
-        {lo, hi, batch.commands_.size(), static_cast<int>(batch.images_.size()) - 1}
+        {command.clipLo_,
+         command.clipHi_,
+         batch.commands_.size(),
+         static_cast<int>(batch.images_.size()) - 1}
     );
 }
 
@@ -600,20 +687,19 @@ inline void queueFramebufferImage(
         return;
     }
     drawQueue.draws_.push_back(
-        {handle, detail::imageCommand(*image, pos, size, pos, pos + size, options, distance)}
+        {handle,
+         detail::imageCommand(*image, pos, size, options, kFramebufferTexelPixels, distance)}
     );
 }
 
-// Cuts a queued framebuffer image's clip to a target of `targetSize` pixels.
-// False when none of its box is on the target.
+// Cuts a queued framebuffer image's clip to a target of `targetSize` pixels:
+// the bounds of its box, turned as the command says, that lie on the target.
+// False when none of them do.
 inline bool clipFramebufferImage(IRRender::CanvasImageCommand &command, IRMath::ivec2 targetSize) {
-    return IRRender::clipRectToCanvas(
-        command.origin_,
-        command.size_,
-        targetSize,
-        command.clipLo_,
-        command.clipHi_
-    );
+    IRMath::ivec2 lo;
+    IRMath::ivec2 hi;
+    imageBounds(command, lo, hi);
+    return IRRender::clipRectToCanvas(lo, hi - lo, targetSize, command.clipLo_, command.clipHi_);
 }
 
 // A hollow border `thickness` texels wide inside `pos` / `size`.

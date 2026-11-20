@@ -101,6 +101,97 @@ TEST_F(FramebufferImageTest, OptionsPackAsTheyDoForACanvasImage) {
     EXPECT_EQ(onFramebuffer.tintPacked_, onCanvas.tintPacked_);
     EXPECT_EQ(onFramebuffer.posterizeLevels_, Draw::kMaxImagePosterizeLevels);
     EXPECT_EQ(onFramebuffer.distance_, onCanvas.distance_);
+    EXPECT_EQ(onFramebuffer.unrotate_, onCanvas.unrotate_);
+}
+
+TEST_F(FramebufferImageTest, ARotationTurnsEachPathInItsOwnTexels) {
+    const Draw::ImageHandle handle = load("a.png");
+    const IREntity::EntityId canvas = IREntity::createEntity(C_SizeTriangles{ivec2(400, 300)});
+    const Draw::ImageOptions options{.rotation_ = 0.3f};
+    Draw::queueImage(canvas, handle, ivec2(80, 60), ivec2(120, 90), options, Draw::kDepthFront);
+    Draw::queueFramebufferImage(handle, ivec2(80, 60), ivec2(120, 90), options, Draw::kDepthFront);
+    const IRRender::CanvasImageCommand &onCanvas = Draw::queue().batches_[0].images_[0].command_;
+    const IRRender::CanvasImageCommand &onFramebuffer = draws()[0].command_;
+    EXPECT_EQ(onCanvas.unrotate_, Draw::imageUnrotation(0.3f, Draw::kCanvasTexelPixels));
+    EXPECT_EQ(onFramebuffer.unrotate_, Draw::imageUnrotation(0.3f, Draw::kFramebufferTexelPixels));
+    // One framebuffer pixel is square, so its matrix is the plain rotation.
+    EXPECT_FLOAT_EQ(onFramebuffer.unrotate_.x, IRMath::cos(0.3f));
+    EXPECT_FLOAT_EQ(onFramebuffer.unrotate_.y, IRMath::sin(0.3f));
+    EXPECT_FLOAT_EQ(onFramebuffer.unrotate_.z, -IRMath::sin(0.3f));
+    EXPECT_FLOAT_EQ(onFramebuffer.unrotate_.w, IRMath::cos(0.3f));
+    // The turn writes the distance an unturned draw writes.
+    EXPECT_EQ(onFramebuffer.distance_, Draw::kDepthFront);
+    EXPECT_EQ(onCanvas.distance_, Draw::kDepthFront);
+}
+
+TEST_F(FramebufferImageTest, ATurnedImageQueuesItsBoundsAndTheFlushCutsThem) {
+    const Draw::ImageHandle handle = load("a.png");
+    const ivec2 target(644, 362);
+    // 100 x 40 pixels about (60, 40); a quarter turn makes it 40 x 100.
+    Draw::queueFramebufferImage(
+        handle,
+        ivec2(10, 20),
+        ivec2(100, 40),
+        {.rotation_ = IRMath::kHalfPi},
+        Draw::kDepthFront
+    );
+    IRRender::CanvasImageCommand command = draws()[0].command_;
+    EXPECT_NEAR(command.clipLo_.x, 40, 1);
+    EXPECT_NEAR(command.clipLo_.y, -10, 1);
+    EXPECT_NEAR(command.clipHi_.x, 80, 1);
+    EXPECT_NEAR(command.clipHi_.y, 90, 1);
+    ASSERT_TRUE(Draw::clipFramebufferImage(command, target));
+    EXPECT_NEAR(command.clipLo_.x, 40, 1);
+    EXPECT_EQ(command.clipLo_.y, 0);
+    EXPECT_NEAR(command.clipHi_.x, 80, 1);
+    EXPECT_NEAR(command.clipHi_.y, 90, 1);
+    EXPECT_EQ(command.origin_, ivec2(10, 20));
+    EXPECT_EQ(command.size_, ivec2(100, 40));
+
+    // Every pixel the turned box covers on the target is inside the clip.
+    for (int y = 0; y < target.y; ++y) {
+        for (int x = 0; x < 200; ++x) {
+            if (Draw::imageCovers(command, ivec2(x, y))) {
+                ASSERT_TRUE(
+                    x >= command.clipLo_.x && x < command.clipHi_.x && y >= command.clipLo_.y &&
+                    y < command.clipHi_.y
+                ) << x
+                  << "," << y;
+            }
+        }
+    }
+}
+
+TEST_F(FramebufferImageTest, ClipFollowsTheTurnAcrossTheTargetEdge) {
+    const ivec2 target(644, 362);
+    // A 300 x 20 strip whose left end is on the target. Turned 67.5 degrees
+    // about its centre, (790, 180), it reaches 66.6 pixels to either side and
+    // 142.4 up and down, so all of it is past the right edge.
+    IRRender::CanvasImageCommand strip;
+    strip.origin_ = ivec2(640, 170);
+    strip.size_ = ivec2(300, 20);
+    ASSERT_TRUE(Draw::clipFramebufferImage(strip, target));
+    strip.unrotate_ = Draw::imageUnrotation(0.75f * IRMath::kHalfPi, Draw::kFramebufferTexelPixels);
+    EXPECT_FALSE(Draw::clipFramebufferImage(strip, target));
+    // 100 pixels further left the same turn leaves its near corner on.
+    strip.origin_.x = 540;
+    ASSERT_TRUE(Draw::clipFramebufferImage(strip, target));
+    EXPECT_NEAR(strip.clipLo_.x, 623, 1);
+    EXPECT_EQ(strip.clipHi_.x, target.x);
+    EXPECT_NEAR(strip.clipLo_.y, 37, 1);
+    EXPECT_NEAR(strip.clipHi_.y, 323, 1);
+
+    // A strip along the top edge turned a quarter leaves the target sideways
+    // but still crosses it top to bottom.
+    IRRender::CanvasImageCommand tall;
+    tall.origin_ = ivec2(100, 0);
+    tall.size_ = ivec2(800, 10);
+    tall.unrotate_ = Draw::imageUnrotation(IRMath::kHalfPi, Draw::kFramebufferTexelPixels);
+    ASSERT_TRUE(Draw::clipFramebufferImage(tall, target));
+    EXPECT_NEAR(tall.clipLo_.x, 495, 1);
+    EXPECT_NEAR(tall.clipHi_.x, 505, 1);
+    EXPECT_EQ(tall.clipLo_.y, 0);
+    EXPECT_EQ(tall.clipHi_.y, target.y);
 }
 
 TEST_F(FramebufferImageTest, DrawsKeepTheirCallOrder) {

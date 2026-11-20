@@ -189,6 +189,37 @@ TEST_F(LuaFramebufferImageTest, ImageDefaultsToTheWholeImageUntouchedAtTheFrontD
     EXPECT_EQ(command.tintPacked_, 0xFFFFFFFFu);
     EXPECT_EQ(command.posterizeLevels_, 0);
     EXPECT_EQ(command.distance_, Draw::kDepthFront);
+    EXPECT_EQ(command.unrotate_, vec4(1.0f, 0.0f, 0.0f, 1.0f));
+}
+
+TEST_F(LuaFramebufferImageTest, RotationTurnsTheBoxInFramebufferPixels) {
+    EXPECT_TRUE(scriptSucceeds(R"lua(
+        local handle = IRCanvas.loadImage('probe.png')
+        IRCanvas.framebufferImage(handle, 10, 20, 100, 40, { rotation = math.pi / 2 })
+        IRCanvas.framebufferImage(handle, 10, 20, 100, 40, { rotation = -0.25, cell = 4 })
+        IRCanvas.framebufferImage(handle, 10, 20, 100, 40, { rotation = 0 })
+    )lua"));
+    ASSERT_EQ(draws().size(), 3u);
+    const IRRender::CanvasImageCommand &quarter = draws()[0].command_;
+    EXPECT_EQ(quarter.origin_, ivec2(10, 20));
+    EXPECT_EQ(quarter.size_, ivec2(100, 40));
+    EXPECT_EQ(
+        quarter.unrotate_,
+        Draw::imageUnrotation(IRMath::kHalfPi, Draw::kFramebufferTexelPixels)
+    );
+    // 100 x 40 about (60, 40) turned a quarter is 40 x 100.
+    EXPECT_NEAR(quarter.clipLo_.x, 40, 1);
+    EXPECT_NEAR(quarter.clipLo_.y, -10, 1);
+    EXPECT_NEAR(quarter.clipHi_.x, 80, 1);
+    EXPECT_NEAR(quarter.clipHi_.y, 90, 1);
+    EXPECT_EQ(
+        draws()[1].command_.unrotate_,
+        Draw::imageUnrotation(-0.25f, Draw::kFramebufferTexelPixels)
+    );
+    EXPECT_EQ(draws()[1].command_.cell_, 4);
+    EXPECT_EQ(draws()[2].command_.unrotate_, vec4(1.0f, 0.0f, 0.0f, 1.0f));
+    EXPECT_EQ(draws()[2].command_.clipLo_, ivec2(10, 20));
+    EXPECT_EQ(draws()[2].command_.clipHi_, ivec2(110, 60));
 }
 
 TEST_F(LuaFramebufferImageTest, DrawsKeepCallOrderBesideCanvasDraws) {
@@ -244,6 +275,11 @@ TEST_F(LuaFramebufferImageTest, RejectsBadHandlesKeysAndRanges) {
     rejects("IRCanvas.framebufferImage(handle, 0, 0, 8, 8, { levels = 65 })", "levels");
     rejects("IRCanvas.framebufferImage(handle, 0, 0, 8, 8, { distance = 70000 })", "distance");
     rejects("IRCanvas.framebufferImage(handle, 0, 0, 8, 8, { distance = 1.5 })", "distance");
+    rejects("IRCanvas.framebufferImage(handle, 0, 0, 8, 8, { rotation = 'a' })", "rotation");
+    rejects("IRCanvas.framebufferImage(handle, 0, 0, 8, 8, { rotation = { 1 } })", "rotation");
+    rejects("IRCanvas.framebufferImage(handle, 0, 0, 8, 8, { rotation = 0 / 0 })", "rotation");
+    rejects("IRCanvas.framebufferImage(handle, 0, 0, 8, 8, { rotation = math.huge })", "rotation");
+    rejects("IRCanvas.framebufferImage(handle, 0, 0, 8, 8, { rotate = 1 })", "unknown option");
     EXPECT_TRUE(draws().empty());
 }
 

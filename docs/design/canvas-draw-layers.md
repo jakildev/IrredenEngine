@@ -55,6 +55,7 @@ local pw, ph = IRCanvas.imageSize(photo)
 -- every frame; the crop is free to move, so this is a pan and zoom:
 IRCanvas.image("overlay", photo, 0, 0, w, h, { uv = { u0, v0, u1, v1 }, distance = IRCanvas.Depth.BEHIND })
 IRCanvas.image("overlay", photo, 20, 20, 96, 128, { cell = 6, levels = 4, tint = { 255, 170, 90 } })
+IRCanvas.image("overlay", photo, 140, 20, 96, 128, { rotation = math.rad(-4) })   -- turned about its centre
 IRCanvas.releaseImage(photo)                                  -- when the scene is done with it
 ```
 
@@ -66,6 +67,21 @@ quantises sampling to `cell` x `cell` blocks of texels counted from the box's
 top-left, each one the averaged colour of the source under it. `levels`
 posterizes each channel (0 = off, 2..64), then `tint` multiplies. Texels
 where the source is mostly transparent are left as the canvas had them.
+
+`rotation` turns the box about its centre by that many radians, clockwise on
+screen; 0, the default, leaves it axis-aligned and draws exactly what a draw
+without the key draws. The turn is rigid in framebuffer pixels: a canvas image
+turns as the rectangle it shows on screen, so `x, y, w, h` still describe the
+unturned box and a quarter turn of a `w` x `h` box covers `h / 2` x `2 * w`
+texels about the same centre. Mosaic blocks are counted in the unturned box
+and turn with it. A texel is drawn when its centre is inside the turned box,
+so the edge is a hard, stepped line; texels outside it keep what the canvas
+held. The distance written is the one an unturned draw writes. In the batch's
+painter order the draw reserves the turned box's bounds, so a draw that only
+meets a corner of those bounds still goes to the next dispatch.
+C++: `ImageOptions::rotation_`; `imageBounds`, `imageBoxPoint` and
+`imageCovers` in `canvas_draw.hpp` answer which texels a turned draw can and
+does cover.
 
 `LuaScript::bindLuaCanvasDraw()` installs `IRCanvas` (opt-in, like
 `IRFog`). A canvas is named as `IRRender.getCanvas` knows it; `createLayer`
@@ -126,7 +142,7 @@ one exception is an absolute path the user picked in `IRDialog.open`
    frame. `loadImage` decodes once, builds a mip pyramid on the CPU and
    uploads it as one texture (`IRRender::MipAtlas`: level 0 with the smaller
    levels in a column beside it, premultiplied). A draw then costs one
-   80-byte command upload and one dispatch of `c_canvas_image_to_trixel` over
+   96-byte command upload and one dispatch of `c_canvas_image_to_trixel` over
    its clipped box; moving the crop changes four floats. The kernel reads
    texels by integer coordinate and filters them itself (trilinear between
    the two levels matching the block's footprint, with up to four taps along
@@ -149,6 +165,21 @@ one exception is an absolute path the user picked in `IRDialog.open`
    box-filtered down once, at load) and costs up to 1.5 x 4 bytes per kept
    texel of GPU memory. There is no cap on loaded images or on image draws
    per frame beyond that memory and one dispatch per draw.
+9. **A turn is a matrix in the command, not new geometry.** The command
+   carries `unrotate_`, the 2x2 matrix taking a target texel centre's offset
+   from the box centre to its offset in the unturned box
+   (`imageUnrotation`). The CPU builds it in framebuffer pixels, where the
+   turn is rigid, and folds the target's texel shape into it (two pixels by
+   one on a canvas, one by one in the framebuffer), so neither shader knows
+   which target it draws. The clip becomes the turned box's bounds
+   (`imageBounds`), which is all the dispatch grid and the framebuffer quad
+   need; `ir_canvas_image_sample` maps each texel back, drops the ones
+   outside the box, and samples as before. Without a mosaic a texel samples
+   under its own centre, with a footprint of the box texels one target texel
+   spans, so a turned image is resampled rather than copied block by block.
+   An unturned draw's matrix is the identity and every term of the mapping
+   is a multiple of one half, so it lands on the same sample point bit for
+   bit.
 
 ## Framebuffer images
 
@@ -164,6 +195,7 @@ local fw, fh = IRCanvas.framebufferSize()
 IRCanvas.framebufferImage(photo, 0, 0, fw, fh, { uv = { u0, v0, u1, v1 }, distance = IRCanvas.Depth.BEHIND })
 IRCanvas.text("overlay", "TITLE", 14, 28, { distance = IRCanvas.Depth.BEHIND })   -- over the photo
 IRCanvas.framebufferImage(photo, 40, 40, 192, 256, { cell = 6, levels = 4, tint = { 255, 170, 90 } })
+IRCanvas.framebufferImage(photo, 280, 40, 192, 256, { rotation = math.rad(6) })   -- turned about its centre
 ```
 
 C++: `IRPrefab::CanvasDraw::queueFramebufferImage(handle, pos, size, options, distance)`
@@ -177,7 +209,9 @@ and `framebufferSize()`.
    edge, as it does for a layer canvas: with the camera at rest the screen's
    top-left pixel is framebuffer pixel `(2, 1)`. A box shows its crop
    undistorted when `w / h` equals the crop's pixel aspect. Every other option
-   means what it means to `IRCanvas.image`.
+   means what it means to `IRCanvas.image`: `rotation` turns the box about its
+   centre, clockwise, by the same angle on screen as it turns a canvas image,
+   and the pass clips the turned box's bounds to the framebuffer.
 2. **Depth.** The composite gives a canvas texel at distance `d` on a
    world-tier canvas (a layer canvas: no priority tier, no distance offset)
    the depth `(max(d, kDepthForegroundCeil + 1) - kMin) / (kMax - kMin)`. A
@@ -202,12 +236,13 @@ and `framebufferSize()`.
    `MipAtlas`, so a crop looks the same through either path apart from the
    texel it is resolved to. Pixels where the source is mostly transparent are
    discarded and keep the framebuffer's colour and depth.
-5. **Cost.** One 96-byte uniform upload and one quad draw per image; on Metal
+5. **Cost.** One 112-byte uniform upload and one quad draw per image; on Metal
    each draw is its own render encoder and a fresh uniform backing. The
    fragment writes its own depth, so every pixel of the clipped box is shaded
    before the depth test, hidden ones included: up to 32 atlas reads per pixel
    (four taps, two levels, four texels). A full-framebuffer image is that work
-   once over the framebuffer.
+   once over the framebuffer. A turned image's quad is its bounds, and the
+   pixels of it outside the turned box are discarded before any atlas read.
 6. **Limits.** The image is unlit and unfogged, casts and receives nothing,
    reports no hovered entity (a pick goes to what it covers) and has no
    translucency. It is part of the main framebuffer, so `FRAMEBUFFER_GLITCH`
@@ -232,4 +267,8 @@ and the mip atlas. What the kernel paints is captured by
 `test/script/lua_framebuffer_image_test.cpp` cover the framebuffer image
 queue, its clip and the two bindings; what the pass paints, and where it sits
 in depth, is captured by `IRShapeDebug --framebuffer-image-sample
---auto-screenshot`.
+--auto-screenshot`. The four image suites also cover `rotation`: the option's
+parsing through both bindings, the matrix on each target, and the turned
+box's bounds, coverage and clip (`CanvasImageRotation.*`). What a turned
+image looks like on both paths, mosaic and crop included, is captured by
+`IRShapeDebug --image-rotation-sample --auto-screenshot`.
