@@ -1,0 +1,18 @@
+"""Run run.py arms against the parent-of-#5115 scratch worktree; logs go to out/parent-<arm>.log.
+
+    python3 run_parent.py <arm> [<arm> ...]
+"""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+import run  # noqa: E402
+
+run.WT = "C:/msys64/tmp/p4865/wt"
+run.BUILD = run.WT + "/build"
+run.SHOTS = {k: v.replace("C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-2/build", run.BUILD)
+             for k, v in run.SHOTS.items()}
+run.ARMS = {"parent-" + k: v for k, v in run.ARMS.items()}
+
+for a in sys.argv[1:]:
+    run.run("parent-" + a)

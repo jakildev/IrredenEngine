@@ -1,0 +1,71 @@
+"""Collect the #4865 GL-host runs into results.json.
+
+    python3 collect.py <evidence-dir>
+
+Reads out/<arm>.log for every arm, keeps the command, exit code and verdict
+lines, hashes the kept rotation GUI frames, copies them to <evidence-dir>/frames/,
+and writes <evidence-dir>/results.json.
+"""
+import hashlib
+import json
+import re
+import shutil
+import struct
+import sys
+from pathlib import Path
+
+OUT = Path("C:/msys64/tmp/p4865/out")
+ARMS = [
+    "test", "rot_gui", "sweep", "cube", "cube_r2", "tie1", "tie2", "tie3",
+    "sd_gui", "sd_gui_r2", "sd_gui_r3", "sd_czoom", "cs_hover", "ve_default",
+    "ve_gizmo", "ve_gizmo_r2", "rv_sd", "rv_cs", "light",
+    "parent-cube", "parent-sweep", "parent-sd_gui", "parent-ve_gizmo", "parent-ve_gizmo_r2",
+]
+VERDICT = re.compile(
+    r"ROTATION-PICK (sweep|tie|cube)|ROTATION-PICK miss|GUI-ASSERT .*result=FAIL|"
+    r"\[gui-verify\] \d+/\d+|ir-run: RESULT=|\[  PASSED  \] \d+ tests|\[  FAILED  \] |"
+    r"\[  SKIPPED \] \d+ tests|\[render-verify\] (all|\d+ of)|\[light-verify\]|"
+    r"render-compare errored|^== exit|"
+    r"\[       OK \] (PositionUploadTest\.(OverflowSort|FramebufferEntityIds)|OverflowSortBound|PresentedPick|GpuReadbackRing)"
+)
+STAMP = re.compile(r"^\[[0-9-]+ [0-9:.]+\] \[\w+\] \[\w+\] ")
+
+
+def png_size(path):
+    with open(path, "rb") as f:
+        head = f.read(24)
+    return struct.unpack(">II", head[16:24])
+
+
+def main(dest):
+    dest = Path(dest)
+    results = {"arms": {}, "frames": {}}
+    for arm in ARMS:
+        text = (OUT / f"{arm}.log").read_text(encoding="utf-8", errors="replace")
+        lines = text.splitlines()
+        exit_line = [l for l in lines if l.startswith("== exit")][-1]
+        results["arms"][arm] = {
+            "command": lines[0][2:],
+            "exit": int(exit_line.split()[2]),
+            "verdict_lines": [STAMP.sub("", l).strip() for l in lines if VERDICT.search(l)],
+        }
+    frames = dest / "frames"
+    frames.mkdir(parents=True, exist_ok=True)
+    labels = ["rotation_20", "cardinal_0", "rotation_70", "cardinal_90",
+              "rotation_160", "cardinal_180", "rotation_250", "cardinal_270"]
+    for i, label in enumerate(labels, start=1):
+        src = OUT / "rot_gui-shots" / f"screenshot_{i:06d}.png"
+        name = f"rot_gui_{i}_{label}.png"
+        shutil.copyfile(src, frames / name)
+        results["frames"][name] = {
+            "sha256": hashlib.sha256(src.read_bytes()).hexdigest(),
+            "size": list(png_size(src)),
+        }
+    (dest / "results.json").write_text(json.dumps(results, indent=2) + "\n",
+                                       encoding="utf-8", newline="\n")
+    for arm, rec in results["arms"].items():
+        print(f"{arm:20s} exit={rec['exit']}  {len(rec['verdict_lines'])} verdict lines")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1])
