@@ -103,6 +103,7 @@ echo "== _acquire_label_on (end-to-end via gh stub) =="
 # Stateful gh stub. STUB_HOLDERS = labels already present on the target; live
 # reads return those plus the current candidate. Removal is a no-op success.
 STUB_HOLDERS=""
+STUB_POST_LOG=""
 gh() {
     case "${1:-}" in
         api)
@@ -113,6 +114,9 @@ gh() {
                     --slurp) slurp=1 ;;
                 esac
             done
+            if [[ -n "$posted" && -n "$STUB_POST_LOG" ]]; then
+                printf 'POST\n' >> "$STUB_POST_LOG"
+            fi
             local out='[' first=1 h
             for h in $STUB_HOLDERS ${posted:-$STUB_MINE}; do
                 [[ $first -eq 1 ]] || out+=','
@@ -154,9 +158,36 @@ assert_exit "$rc" 0 "sole holder → exit 0 (own the lock)"
 echo "T7: later lex-smaller claimant vs persistent holder → yield (exit 1)"
 STUB_HOLDERS="$LARGE"
 STUB_MINE="$SMALL"
+STUB_POST_LOG=$(mktemp "${TMPDIR:-/tmp}/fleet-claim-posts.XXXXXX")
+unset FLEET_CLAIM_NO_SLEEP
+export FLEET_CLAIM_ACQUIRE_SETTLE_SECS=1
 rc=0
 _acquire_label_on "owner/repo" 1 "$SMALL" "$P" >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 1 "persistent holder present → exit 1 (never a co-win)"
+post_count=$(wc -l < "$STUB_POST_LOG" | tr -d ' ')
+if [[ "$post_count" -le $((FLEET_CLAIM_ACQUIRE_RETRIES + 1)) ]]; then
+    PASS=$((PASS + 1))
+    echo "  ok: persistent holder stays within the per-pass POST ceiling"
+else
+    FAIL=$((FAIL + 1))
+    echo "  FAIL: persistent holder used $post_count POSTs; ceiling is $((FLEET_CLAIM_ACQUIRE_RETRIES + 1))"
+fi
+rm -f "$STUB_POST_LOG"
+STUB_POST_LOG=""
+unset FLEET_CLAIM_ACQUIRE_SETTLE_SECS
+export FLEET_CLAIM_NO_SLEEP=1
+
+# T7b: zero configured retries make no acquisition attempt.
+echo "T7b: zero retries reports zero attempts"
+STUB_HOLDERS="$LARGE"
+STUB_MINE="$SMALL"
+export FLEET_CLAIM_ACQUIRE_RETRIES=0
+rc=0
+output=$(_acquire_label_on "owner/repo" 1 "$SMALL" "$P" 2>&1) || rc=$?
+assert_exit "$rc" 1 "zero retries → exit 1"
+assert_eq "$([[ "$output" == *"gave up after 0 attempt(s)"* ]] && echo 1 || echo 0)" 1 \
+    "zero retries report no acquisition attempts"
+export FLEET_CLAIM_ACQUIRE_RETRIES=2
 
 # T8: persistent lex-SMALLER holder, I am lex-larger → immediate yield.
 echo "T8: lex-larger claimant vs lex-smaller holder → yield (exit 1)"

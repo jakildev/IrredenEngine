@@ -19,6 +19,7 @@
 # Test seams, honoured by race_stage inside the stub (space-separated lists):
 #   CLAIM_RACE_DELAY="<claimant>:<stage>:<secs>"   sleep before the first <stage>
 #   CLAIM_RACE_EXIT="<claimant>:<stage>"           exit 1 at <stage>
+# Stages are chosen by the suite; claim races use pre, post, and release.
 
 # --- stub side ---------------------------------------------------------------
 
@@ -77,27 +78,6 @@ race_await() {
         fi
         sleep 0.01
     done
-}
-
-# race_lock <lock-file> / race_unlock <lock-file>
-#   Exclusive-create mutex: bash's noclobber redirection opens the file
-#   O_CREAT|O_EXCL, so exactly one racer creates it. Not `mkdir`: the uutils
-#   coreutils mkdir (Ubuntu 26.04's /usr/bin/mkdir) reports success to both
-#   sides of a concurrent create. Holders never wait while holding it, so the
-#   wait ends unsuccessfully only when the schedule is abandoned (a holder
-#   killed mid-section).
-race_lock() {
-    until ( set -C; : > "$1" ) 2>/dev/null; do
-        if race_abandoned; then
-            echo "race: lock $1 aborted: $RACE_ABANDONED" >&2
-            return 1
-        fi
-        sleep 0.005
-    done
-}
-
-race_unlock() {
-    rm "$1"
 }
 
 # --- suite side --------------------------------------------------------------
@@ -235,9 +215,9 @@ race_live_count() {
 
 # race_report
 #   Each claimant's exit code, the markers it reached, and its captured
-#   output, preceded by the broken rendezvous if any.
+#   output, followed by the gh call log, final label set, and orphan sentinels.
 race_report() {
-    local name path markers
+    local name path markers details
     [[ -n "$RACE_BROKEN" ]] && echo "    rendezvous: $RACE_BROKEN"
     for name in $RACE_NAMES; do
         markers=""
@@ -249,6 +229,26 @@ race_report() {
             sed 's/^/      | /' "$CLAIM_RUN/$name.out"
         fi
     done
+    echo "    call log:"
+    if [[ -s "${CLAIM_LOG:-}" ]]; then
+        sed 's/^/      | /' "$CLAIM_LOG"
+    else
+        echo "      | (none)"
+    fi
+    details=""
+    if [[ -d "${CLAIM_STATE:-}" ]]; then
+        details=$(race_labels_list "$CLAIM_STATE" | awk 'NF { printf "%s%s", separator, $0; separator=", " }')
+    elif [[ -s "${CLAIM_STATE:-}" ]]; then
+        details=$(awk 'NF { printf "%s%s", separator, $0; separator=", " }' "$CLAIM_STATE")
+    fi
+    echo "    final labels: ${details:-(none)}"
+    details=""
+    if [[ -d "${FLEET_ORPHANS_DIR:-}" ]]; then
+        for path in "$FLEET_ORPHANS_DIR"/*; do
+            [[ -f "$path" ]] && details="${details}${details:+, }${path##*/}"
+        done
+    fi
+    echo "    orphan sentinels: ${details:-(none)}"
 }
 
 # race_report_if_failed <fail-count-before-the-schedule> <schedule-label>

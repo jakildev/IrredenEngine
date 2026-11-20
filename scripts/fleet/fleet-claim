@@ -1113,17 +1113,29 @@ _read_claim_decision() {
 #
 #   POST response contents never authorize work. Each attempt reads the live
 #   paginated set; a provisional win waits once and confirms with a second live
-#   read. Contention routes through _claim_decision. Before retrying or failing,
-#   the transient candidate must be removed; failed cleanup records an orphan
-#   and ends the attempt rather than issuing another POST.
+#   read. Contention routes through _claim_decision. The retry count is a floor;
+#   after that floor, a settle deadline allows a slow loser to finish yielding,
+#   with at most one extra POST beyond the retry-count floor per pass. Before retrying or
+#   failing, the transient candidate must be removed; failed cleanup records an
+#   orphan and ends the attempt rather than issuing another POST.
 _acquire_label_on() {
     local repo="$1" target="$2" label="$3" prefix="$4"
     local retries="${FLEET_CLAIM_ACQUIRE_RETRIES:-3}"
+    # The settle window is in whole seconds and defaults to five.
+    local settle_secs="${FLEET_CLAIM_ACQUIRE_SETTLE_SECS:-5}"
+    [[ "${FLEET_CLAIM_NO_SLEEP:-0}" == "1" ]] && settle_secs=0
+    if ! [[ "$settle_secs" =~ ^[0-9]+$ ]]; then
+        echo "fleet-claim: FLEET_CLAIM_ACQUIRE_SETTLE_SECS must be a non-negative integer" >&2
+        return 2
+    fi
+    local max_attempts=$((retries > 0 ? retries + 1 : 0))
     local force_swept=0 persistent_pr_owner=0
     [[ "$prefix" == "fleet:claim-" ]] && persistent_pr_owner=1
-    local attempt
+    local attempt=0 attempts_made=0 settle_deadline settle_remaining
     while :; do
-    for (( attempt = 1; attempt <= retries; attempt++ )); do
+    settle_deadline=0
+    for (( attempt = 1; attempt <= max_attempts; attempt++ )); do
+        attempts_made=$attempt
         local post_output
         if ! post_output=$(gh api "repos/${repo}/issues/${target}/labels" \
                 --method POST -f "labels[]=${label}" 2>&1); then
@@ -1131,6 +1143,7 @@ _acquire_label_on() {
             echo "$post_output" >&2
             return 1
         fi
+        [[ "$settle_deadline" -eq 0 ]] && settle_deadline=$((SECONDS + settle_secs))
 
         local decision="" read_rc=0
         decision=$(_read_claim_decision "$repo" "$target" "$label" "$prefix") || read_rc=$?
@@ -1159,8 +1172,14 @@ _acquire_label_on() {
                 fi
                 if (( attempt < retries )); then
                     _acquire_jitter_sleep
+                    continue
                 fi
-                continue
+                if (( attempt < max_attempts && SECONDS < settle_deadline )); then
+                    settle_remaining=$((settle_deadline - SECONDS))
+                    (( settle_remaining > 0 )) && sleep "$settle_remaining"
+                    continue
+                fi
+                break
                 ;;
             *)  # lose
                 echo "fleet-claim: lost tie-break on $repo#$target; yielding to an existing ${prefix}* holder" >&2
@@ -1182,7 +1201,7 @@ _acquire_label_on() {
         continue
     fi
 
-    echo "fleet-claim: gave up after ${retries} attempt(s); an earlier ${prefix}* holder persists on $repo#$target" >&2
+    echo "fleet-claim: gave up after ${attempts_made} attempt(s); an earlier ${prefix}* holder persists on $repo#$target" >&2
     return 1
     done
 }
