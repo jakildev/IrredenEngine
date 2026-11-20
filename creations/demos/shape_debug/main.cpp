@@ -4693,13 +4693,7 @@ void initSystems() {
                 IRSystem::createSystem<IRComponents::C_CanvasDrawLayer>(
                     "ShapeDebugFramebufferImageSample",
                     [](const IRComponents::C_CanvasDrawLayer &) {},
-                    []() {
-                        if (g_imageRotationSample) {
-                            queueImageRotationSample();
-                        } else {
-                            queueFramebufferImageSample();
-                        }
-                    }
+                    []() { queueFramebufferImageSample(); }
                 ),
                 IRSystem::createSystem<IRSystem::CANVAS_DRAW>(),
             }
@@ -6317,9 +6311,14 @@ void initFramebufferImageSampleScene() {
     );
 }
 
-// One frame of the --framebuffer-image-sample draws; re-issued every frame.
+// One frame of the --framebuffer-image-sample draws, or of the
+// --image-rotation-sample draws that take their place; re-issued every frame.
 void queueFramebufferImageSample() {
     namespace Draw = IRPrefab::CanvasDraw;
+    if (g_imageRotationSample) {
+        queueImageRotationSample();
+        return;
+    }
     constexpr int kGap = 12;
     constexpr int kLabelGap = 4;
     const ivec2 framebuffer = Draw::framebufferSize();
