@@ -205,6 +205,78 @@ inline IRMath::IsoBounds2D sunBakeFrustumUVBounds(
     );
 }
 
+constexpr float kSunShadowCascadeFitPad = 1.0f;
+
+struct SunShadowCascadeFit {
+    IRMath::IsoBounds2D paddedBounds_{};
+    IRMath::vec2 origin_{};
+    IRMath::vec2 texelSize_{};
+    IRMath::vec2 mapMax_{};
+};
+
+namespace detail {
+
+inline float sunShadowTexelLadderCeil(float size) {
+    constexpr float kStepsPerOctave = 4.0f;
+    return IRMath::pow(2.0f, IRMath::ceil(IRMath::log2(size) * kStepsPerOctave) / kStepsPerOctave);
+}
+
+} // namespace detail
+
+inline SunShadowCascadeFit fitSunShadowCascade(
+    const IRMath::IsoBounds2D &isoBounds,
+    float depthMin,
+    float depthMax,
+    const IRMath::vec3 &uHat,
+    const IRMath::vec3 &vHat,
+    const IRMath::vec3 &sunDir,
+    IRMath::CardinalIndex cardinalIndex,
+    const IRMath::vec3 &sweep,
+    const IRMath::vec4 *viewRotation = nullptr
+) {
+    const IRMath::IsoBounds2D positioned = sunBakeFrustumUVBounds(
+        isoBounds,
+        depthMin,
+        depthMax,
+        uHat,
+        vHat,
+        sunDir,
+        cardinalIndex,
+        sweep,
+        viewRotation
+    );
+    const IRMath::IsoBounds2D padded{
+        positioned.min_ - IRMath::vec2(kSunShadowCascadeFitPad),
+        positioned.max_ + IRMath::vec2(kSunShadowCascadeFitPad),
+    };
+
+    const IRMath::vec2 stableIsoExtent = IRMath::ceil(isoBounds.max_ - isoBounds.min_);
+    const IRMath::IsoBounds2D stable = sunBakeFrustumUVBounds(
+        {IRMath::vec2(0.0f), stableIsoExtent},
+        depthMin,
+        depthMax,
+        uHat,
+        vHat,
+        sunDir,
+        cardinalIndex,
+        sweep,
+        viewRotation
+    );
+    const IRMath::vec2 requiredExtent =
+        stable.max_ - stable.min_ + IRMath::vec2(2.0f * kSunShadowCascadeFitPad);
+    const float usableTexels = static_cast<float>(kSunShadowMapDim - 1);
+    const IRMath::vec2 texelSize{
+        detail::sunShadowTexelLadderCeil(requiredExtent.x / usableTexels),
+        detail::sunShadowTexelLadderCeil(requiredExtent.y / usableTexels),
+    };
+    const IRMath::vec2 origin{
+        IRMath::floor(padded.min_.x / texelSize.x) * texelSize.x,
+        IRMath::floor(padded.min_.y / texelSize.y) * texelSize.y,
+    };
+    const IRMath::vec2 mapMax = origin + texelSize * static_cast<float>(kSunShadowMapDim);
+    return {padded, origin, texelSize, mapMax};
+}
+
 constexpr int kFeederSunShadowMapDim = kSunShadowMapDim;
 constexpr int kFeederSunShadowCascadeCount = kSunShadowCascadeCount;
 constexpr float kFeederCascadeSplitRatio = kCascadeSplitRatio;
@@ -248,7 +320,7 @@ feederSubCap(const IRMath::vec3 &sunDir, IRMath::CardinalIndex cardinalIndex, in
 
     int cap = 1;
     for (const auto &range : kSunCascadeDepthRanges) {
-        const IRMath::IsoBounds2D uv = sunBakeFrustumUVBounds(
+        const SunShadowCascadeFit fit = fitSunShadowCascade(
             isoBounds,
             range.min_,
             range.max_,
@@ -259,14 +331,12 @@ feederSubCap(const IRMath::vec3 &sunDir, IRMath::CardinalIndex cardinalIndex, in
             sweep,
             spatialRotation
         );
-        const float extent = IRMath::max(uv.max_.x - uv.min_.x, uv.max_.y - uv.min_.y);
-        if (extent > 0.0f) {
-            const float texelsPerWorldUnit = static_cast<float>(kFeederSunShadowMapDim) / extent;
-            cap = IRMath::max(
-                cap,
-                static_cast<int>(IRMath::ceil(texelsPerWorldUnit * kFeederSubSafetyFactor))
-            );
-        }
+        const float texelSize = IRMath::max(fit.texelSize_.x, fit.texelSize_.y);
+        const float texelsPerWorldUnit = 1.0f / texelSize;
+        cap = IRMath::max(
+            cap,
+            static_cast<int>(IRMath::ceil(texelsPerWorldUnit * kFeederSubSafetyFactor))
+        );
     }
     return IRMath::clamp(cap, 1, cappedEffSub);
 }

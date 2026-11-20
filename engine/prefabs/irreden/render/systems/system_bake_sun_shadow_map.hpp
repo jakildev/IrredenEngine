@@ -1075,9 +1075,6 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         const auto &cascadeRanges = IRPrefab::SunShadow::kSunCascadeDepthRanges;
 
         const vec3 sweep = -sunDir * kSunShadowMaxDistance;
-        constexpr float kAABBPad = 1.0f;
-        const float dimF = static_cast<float>(kSunShadowMapDim);
-
         // isoPixelToPos3D returns corners in the rasterYaw-rotated canvas
         // frame; sunBakeFrustumUVBounds lifts them into world frame
         // (rotateCardinalZInv) before the per-cascade AABB sweep, so both sides
@@ -1086,43 +1083,27 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
 
         const vec4 cameraViewRotation = IRRender::getViewRotation();
         for (int ci = 0; ci < kSunShadowCascadeCount; ++ci) {
-            const IsoBounds2D sunUV = IRPrefab::SunShadow::sunBakeFrustumUVBounds(
-                isoBounds,
-                cascadeRanges[ci].min_,
-                cascadeRanges[ci].max_,
-                uHat,
-                vHat,
-                sunDir,
-                cardinalIndex,
-                sweep,
-                IRRender::isSpatialViewEnabled() ? &cameraViewRotation : nullptr
-            );
-            vec2 sunUVMin = sunUV.min_;
-            vec2 sunUVMax = sunUV.max_;
-
-            sunUVMin -= vec2(kAABBPad);
-            sunUVMax += vec2(kAABBPad);
-            vec2 extent = sunUVMax - sunUVMin;
-            vec2 texelSize = vec2(extent.x / dimF, extent.y / dimF);
-
-            // Snap both edges to the texel grid so bake and lookup share the
-            // same phase; recompute texelSize so the buffer covers the full
-            // snapped extent symmetrically (asymmetric snap eats high-side pad
-            // at texelSize > kAABBPad on wide viewports).
-            sunUVMin.x = IRMath::floor(sunUVMin.x / texelSize.x) * texelSize.x;
-            sunUVMin.y = IRMath::floor(sunUVMin.y / texelSize.y) * texelSize.y;
-            sunUVMax.x = IRMath::ceil(sunUVMax.x / texelSize.x) * texelSize.x;
-            sunUVMax.y = IRMath::ceil(sunUVMax.y / texelSize.y) * texelSize.y;
-            texelSize = vec2((sunUVMax.x - sunUVMin.x) / dimF, (sunUVMax.y - sunUVMin.y) / dimF);
+            const IRPrefab::SunShadow::SunShadowCascadeFit fit =
+                IRPrefab::SunShadow::fitSunShadowCascade(
+                    isoBounds,
+                    cascadeRanges[ci].min_,
+                    cascadeRanges[ci].max_,
+                    uHat,
+                    vHat,
+                    sunDir,
+                    cardinalIndex,
+                    sweep,
+                    IRRender::isSpatialViewEnabled() ? &cameraViewRotation : nullptr
+                );
 
             if (ci == 0) {
-                frameData_.cascadeOriginUV_0_ = sunUVMin;
-                frameData_.cascadeTexelSize_0_ = texelSize;
-                frameData_.sunBufferOriginUV_ = sunUVMin;
-                frameData_.sunBufferTexelSize_ = texelSize;
+                frameData_.cascadeOriginUV_0_ = fit.origin_;
+                frameData_.cascadeTexelSize_0_ = fit.texelSize_;
+                frameData_.sunBufferOriginUV_ = fit.origin_;
+                frameData_.sunBufferTexelSize_ = fit.texelSize_;
             } else {
-                frameData_.cascadeOriginUV_1_ = sunUVMin;
-                frameData_.cascadeTexelSize_1_ = texelSize;
+                frameData_.cascadeOriginUV_1_ = fit.origin_;
+                frameData_.cascadeTexelSize_1_ = fit.texelSize_;
             }
         }
         frameData_.cascadeSplitDepth_ = IRPrefab::SunShadow::kCascadeSplitDepth;
