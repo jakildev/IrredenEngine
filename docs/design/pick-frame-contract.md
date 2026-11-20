@@ -23,6 +23,12 @@ write.
 that id has since been destroyed or marked for deletion. Entity ids are monotonic, so a surviving
 record cannot alias a later entity.
 
+Each call serves the newest record completed at that call, so two calls in one frame can see
+different completions: on OpenGL a submission can retire between them. The result therefore carries
+`newestCompletedFrameId_`, the newest completed record's frame id in the same history state the
+served record came from. A consumer comparing the served pick with the newest completed frame reads
+both from one result, never from a second query.
+
 The result is stale when its recorded cursor and the current INPUT cursor occupy different
 main-framebuffer pixels. Staleness is reported without suppressing the entity: hover and click
 dispatch retain their existing behaviour while the profile report counts stale INPUT ticks once

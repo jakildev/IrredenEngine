@@ -248,8 +248,9 @@ void RenderManager::drainCompletedMouseTrixelPicks() {
 MouseTrixelPick RenderManager::mouseTrixelPick() {
     drainCompletedMouseTrixelPicks();
     const ivec2 currentCursor = IRRender::mouseMainFramebufferPixel();
-    MouseTrixelPick result = resolvePresentedPick(
-        m_presentedPickHistory.served(m_presentedPickPreviousCompletedFault),
+    MouseTrixelPick result = resolveServedPick(
+        m_presentedPickHistory,
+        m_presentedPickPreviousCompletedFault,
         currentCursor,
         [](IREntity::EntityId entity) {
             return IREntity::entityExists(entity) &&
