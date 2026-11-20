@@ -109,7 +109,8 @@ inline void bakeCascadeBox(
     device atomic_uint *sunDepthBuf, float3 sp,
     float2 origin, float2 texelSz, int cascadeOffset, int radius
 ) {
-    int2 base = int2(floor((sp.xy - origin) / texelSz));
+    const float2 originTexel = round(origin / texelSz);
+    int2 base = int2(floor(sp.xy / texelSz - originTexel));
     for (int dy = -radius; dy <= radius; ++dy) {
         for (int dx = -radius; dx <= radius; ++dx) {
             // Splat provenance: store the DISPLACEMENT VECTOR (dx, dy) of this box
@@ -140,7 +141,8 @@ inline void bakeCascadeCooperative(
     threadgroup_barrier(mem_flags::mem_threadgroup);
     int2 base = int2(0);
     if (caster) {
-        base = int2(floor((sp.xy - origin) / texelSz));
+        const float2 originTexel = round(origin / texelSz);
+        base = int2(floor(sp.xy / texelSz - originTexel));
         sunWindowReduceBase(window, base);
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
