@@ -28,6 +28,14 @@ main-framebuffer pixels. Staleness is reported without suppressing the entity: h
 dispatch retain their existing behaviour while the profile report counts stale INPUT ticks once
 per tick, regardless of how many consumers ask for the pick.
 
+## One result per comparison
+
+Each pick call drains completions again and serves the newest record completed at that call, so
+two calls in one frame can see different completions: an OpenGL timestamp fence can retire between
+them. `MouseTrixelPick::newestCompletedFrameId_` comes from the same history state as the served
+record. A consumer comparing the served pick with the newest completed frame reads both from one
+result, never from a second query.
+
 ## Backend boundary
 
 OpenGL and Metal share this contract through `submissionSerial()` and
