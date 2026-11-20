@@ -209,10 +209,6 @@ float sampleCascadeShadow(
     const uint capacity = sourceFaceCapacity(boundWords);
     const uint sourceFaceCount = sunDepthBuf[sourceFaceHeaderIndex(boundWords)];
     const bool hasSourceFaces = sourceFaceCount != 0u;
-    // The CPU fits the cascade origin to an integer texel coordinate.  Recover
-    // that coordinate before addressing the map: subtracting two world-space
-    // floats first makes the rounding error depend on the camera-selected
-    // origin, which can move a boundary by one texel during a pan.
     bool sourceQueryComplete = !hasSourceFaces;
     if (surfaceReceiver && hasSourceFaces) {
         const ivec2 tile = ivec2(floor((sunUV - origin) / (texelSz * float(kSourceFaceTileEdge))));
@@ -297,6 +293,10 @@ float sampleCascadeShadow(
     }
     // Finite footprints are rasterized at sun texel centers. Query their cell
     // without blending coverage across its boundary or moving the receiver.
+    // The CPU fits the cascade origin to an integer texel coordinate. Recover
+    // that coordinate before addressing the map: subtracting two world-space
+    // floats first makes the rounding error depend on the camera-selected
+    // origin, which can move a boundary by one texel during a pan.
     ivec2 nearestPixel =
         ivec2(floor(sunUV / texelSz - floor(origin / texelSz + vec2(0.5))));
     if (surfaceReceiver && nearestPixel.x >= 0 && nearestPixel.y >= 0 &&
