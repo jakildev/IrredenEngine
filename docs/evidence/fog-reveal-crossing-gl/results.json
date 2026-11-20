@@ -1,0 +1,671 @@
+{
+ "script": "scripts/render-yaw-crossing-metric.py at 7ed1e271f (byte-identical in the head tree)",
+ "arms": {
+  "head-fog-1x": {
+   "sha": "7ed1e271f",
+   "fog_reveal": 16,
+   "window": "1280x720",
+   "exit": 0,
+   "verdict": "RESULT=PASS",
+   "grade": {
+    "size": [
+     1280,
+     720
+    ],
+    "region": "receiver-top",
+    "output_scale": 1,
+    "region_px": 6188,
+    "min_shadow_px": 500,
+    "min_receiver_px": 5000,
+    "shadow_px": {
+     "-2": 826,
+     "-1": 826,
+     "+0": 832,
+     "+1": 832,
+     "+2": 836
+    },
+    "pairs": {
+     "rotated_before": {
+      "common_px": 6188,
+      "differing_px": 8
+     },
+     "cardinal_before": {
+      "common_px": 6188,
+      "differing_px": 6
+     },
+     "cardinal_after": {
+      "common_px": 6188,
+      "differing_px": 4
+     },
+     "rotated_after": {
+      "common_px": 6188,
+      "differing_px": 4
+     }
+    },
+    "rotated_differing_px": 8,
+    "cardinal_differing_px": 6,
+    "coverage_valid": true,
+    "pass": true,
+    "fog_routes": {
+     "-2": "compose",
+     "-1": "compose",
+     "+0": "compose",
+     "+1": "compose",
+     "+2": "compose"
+    }
+   },
+   "frames": {
+    "-2": {
+     "sha256": "0d1a4949db591c96ba2c23bc64aeeebe95b2e18eb70d79b0fa7b368f39fb655b",
+     "ihdr": [
+      1280,
+      720
+     ],
+     "yaw_arg": "6.274458661",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=1 fog=compose fogComposed=1",
+     "offscreen_target": "OpenGL offscreen screen target attached (1280x720).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "-1": {
+     "sha256": "59f4e8ac8c139f46524f0df424e79d53e7de64423004aa172a12e10c9f21641c",
+     "ihdr": [
+      1280,
+      720
+     ],
+     "yaw_arg": "6.278821984",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=1 fog=compose fogComposed=1",
+     "offscreen_target": "OpenGL offscreen screen target attached (1280x720).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+0": {
+     "sha256": "e9e0113500d776e49c2ea0399ea8d5517610dfc24e280e064e836eb1ce533abd",
+     "ihdr": [
+      1280,
+      720
+     ],
+     "yaw_arg": "0.000000000",
+     "surface_route": "SURFACE-ROUTE cardinal=1 perAxis=0 fog=compose fogComposed=1",
+     "offscreen_target": "OpenGL offscreen screen target attached (1280x720).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+1": {
+     "sha256": "ec92e01f0cd21d806dbff7eb05f00c26d0d2a9ae599239b6f93c6b8d68628bd6",
+     "ihdr": [
+      1280,
+      720
+     ],
+     "yaw_arg": "0.004363323",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=1 fog=compose fogComposed=1",
+     "offscreen_target": "OpenGL offscreen screen target attached (1280x720).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+2": {
+     "sha256": "ffd9ff761ac54bb58e64a346e0ac6efa8617f3e43db03e28aa81f8d65fa5212e",
+     "ihdr": [
+      1280,
+      720
+     ],
+     "yaw_arg": "0.008726646",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=1 fog=compose fogComposed=1",
+     "offscreen_target": "OpenGL offscreen screen target attached (1280x720).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    }
+   }
+  },
+  "parent-fog-1x": {
+   "sha": "6afc51320",
+   "fog_reveal": 16,
+   "window": "1280x720",
+   "exit": 1,
+   "verdict": "RESULT=FAIL",
+   "grade": {
+    "size": [
+     1280,
+     720
+    ],
+    "region": "receiver-top",
+    "output_scale": 1,
+    "region_px": 6188,
+    "min_shadow_px": 500,
+    "min_receiver_px": 5000,
+    "shadow_px": {
+     "-2": 1024,
+     "-1": 1024,
+     "+0": 832,
+     "+1": 1024,
+     "+2": 1024
+    },
+    "pairs": {
+     "rotated_before": {
+      "common_px": 6188,
+      "differing_px": 0
+     },
+     "cardinal_before": {
+      "common_px": 6188,
+      "differing_px": 242
+     },
+     "cardinal_after": {
+      "common_px": 6188,
+      "differing_px": 242
+     },
+     "rotated_after": {
+      "common_px": 6188,
+      "differing_px": 0
+     }
+    },
+    "rotated_differing_px": 0,
+    "cardinal_differing_px": 242,
+    "coverage_valid": true,
+    "pass": false,
+    "fog_routes": {
+     "-2": "fallback",
+     "-1": "fallback",
+     "+0": "fallback",
+     "+1": "fallback",
+     "+2": "fallback"
+    }
+   },
+   "frames": {
+    "-2": {
+     "sha256": "d73579c37501680bea7c48cc323975d3f8d6ee3fc55009c0b89d70d50139dfd9",
+     "ihdr": [
+      1280,
+      720
+     ],
+     "yaw_arg": "6.274458661",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=0 fog=fallback fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (1280x720).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "-1": {
+     "sha256": "0654a74eb7894144bfc6c72aa31a2b8df34bcc9ec7ee3f850cee0f683b2c1c6c",
+     "ihdr": [
+      1280,
+      720
+     ],
+     "yaw_arg": "6.278821984",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=0 fog=fallback fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (1280x720).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+0": {
+     "sha256": "69447cbfe5968e3da2f6882bfe0101e1b50e18b64acbfbbfdff562040d93a4bc",
+     "ihdr": [
+      1280,
+      720
+     ],
+     "yaw_arg": "0.000000000",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=0 fog=fallback fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (1280x720).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+1": {
+     "sha256": "15e338a4ecd66bf5e6bf31e2867160cebd8ca371eba3f534c57c124f0ccfcbf2",
+     "ihdr": [
+      1280,
+      720
+     ],
+     "yaw_arg": "0.004363323",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=0 fog=fallback fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (1280x720).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+2": {
+     "sha256": "18e6e09d548fcb37e320269887cbb80569362980b7aa8db3f6c19754cc87d47e",
+     "ihdr": [
+      1280,
+      720
+     ],
+     "yaw_arg": "0.008726646",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=0 fog=fallback fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (1280x720).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    }
+   }
+  },
+  "head-nofog-1x": {
+   "sha": "7ed1e271f",
+   "fog_reveal": null,
+   "window": "1280x720",
+   "exit": 0,
+   "verdict": "RESULT=PASS",
+   "grade": {
+    "size": [
+     1280,
+     720
+    ],
+    "region": "receiver-top",
+    "output_scale": 1,
+    "region_px": 6188,
+    "min_shadow_px": 500,
+    "min_receiver_px": 5000,
+    "shadow_px": {
+     "-2": 826,
+     "-1": 826,
+     "+0": 832,
+     "+1": 832,
+     "+2": 836
+    },
+    "pairs": {
+     "rotated_before": {
+      "common_px": 6188,
+      "differing_px": 8
+     },
+     "cardinal_before": {
+      "common_px": 6188,
+      "differing_px": 6
+     },
+     "cardinal_after": {
+      "common_px": 6188,
+      "differing_px": 4
+     },
+     "rotated_after": {
+      "common_px": 6188,
+      "differing_px": 4
+     }
+    },
+    "rotated_differing_px": 8,
+    "cardinal_differing_px": 6,
+    "coverage_valid": true,
+    "pass": true,
+    "fog_routes": {
+     "-2": "none",
+     "-1": "none",
+     "+0": "none",
+     "+1": "none",
+     "+2": "none"
+    }
+   },
+   "frames": {
+    "-2": {
+     "sha256": "a6d2dc6fa7b6da8edca9288160850f004a845e82bf2fa9b40ff2895d5bb40a03",
+     "ihdr": [
+      1280,
+      720
+     ],
+     "yaw_arg": "6.274458661",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=1 fog=none fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (1280x720).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "-1": {
+     "sha256": "023fe424cac7b151dce8509d093337ed1940647c1341179498b9e5e5a8a43203",
+     "ihdr": [
+      1280,
+      720
+     ],
+     "yaw_arg": "6.278821984",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=1 fog=none fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (1280x720).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+0": {
+     "sha256": "e745c998fa14384fffd42d38dc2762a4d382a13fa3f34a1a7318e85de6018476",
+     "ihdr": [
+      1280,
+      720
+     ],
+     "yaw_arg": "0.000000000",
+     "surface_route": "SURFACE-ROUTE cardinal=1 perAxis=0 fog=none fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (1280x720).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+1": {
+     "sha256": "db8c229ea6b88e72858ad031e9a6b4d715f5db24fafd7603d9c9bf36bc203fc1",
+     "ihdr": [
+      1280,
+      720
+     ],
+     "yaw_arg": "0.004363323",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=1 fog=none fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (1280x720).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+2": {
+     "sha256": "2f7490c6f4c678f4060de1ff1a8017e19d96bbb2f4ce1a60c182de3729d2c638",
+     "ihdr": [
+      1280,
+      720
+     ],
+     "yaw_arg": "0.008726646",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=1 fog=none fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (1280x720).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    }
+   }
+  },
+  "head-fog-2x": {
+   "sha": "7ed1e271f",
+   "fog_reveal": 16,
+   "window": "2560x1440",
+   "exit": 0,
+   "verdict": "RESULT=PASS",
+   "grade": {
+    "size": [
+     2560,
+     1440
+    ],
+    "region": "receiver-top",
+    "output_scale": 2,
+    "region_px": 24746,
+    "min_shadow_px": 2000,
+    "min_receiver_px": 20000,
+    "shadow_px": {
+     "-2": 3304,
+     "-1": 3304,
+     "+0": 3328,
+     "+1": 3328,
+     "+2": 3344
+    },
+    "pairs": {
+     "rotated_before": {
+      "common_px": 24746,
+      "differing_px": 32
+     },
+     "cardinal_before": {
+      "common_px": 24746,
+      "differing_px": 24
+     },
+     "cardinal_after": {
+      "common_px": 24746,
+      "differing_px": 16
+     },
+     "rotated_after": {
+      "common_px": 24746,
+      "differing_px": 16
+     }
+    },
+    "rotated_differing_px": 32,
+    "cardinal_differing_px": 24,
+    "coverage_valid": true,
+    "pass": true,
+    "fog_routes": {
+     "-2": "compose",
+     "-1": "compose",
+     "+0": "compose",
+     "+1": "compose",
+     "+2": "compose"
+    }
+   },
+   "frames": {
+    "-2": {
+     "sha256": "9f3529ec0f16c93634cbee954642adae9b377e0fc6ccbc0c01d9d339f9309b9c",
+     "ihdr": [
+      2560,
+      1440
+     ],
+     "yaw_arg": "6.274458661",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=1 fog=compose fogComposed=1",
+     "offscreen_target": "OpenGL offscreen screen target attached (2560x1440).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "-1": {
+     "sha256": "af86a2847d9670e4f3b8202fea832e3770b4f7cdd76e9038febbb853a401701d",
+     "ihdr": [
+      2560,
+      1440
+     ],
+     "yaw_arg": "6.278821984",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=1 fog=compose fogComposed=1",
+     "offscreen_target": "OpenGL offscreen screen target attached (2560x1440).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+0": {
+     "sha256": "1df4efcb87ce53f26e81482e1f560a4ca7249964c910e1f230a2f2acda4eba9e",
+     "ihdr": [
+      2560,
+      1440
+     ],
+     "yaw_arg": "0.000000000",
+     "surface_route": "SURFACE-ROUTE cardinal=1 perAxis=0 fog=compose fogComposed=1",
+     "offscreen_target": "OpenGL offscreen screen target attached (2560x1440).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+1": {
+     "sha256": "b844bca76ce4c99dd22d987bcd32e6c93b8b87094cd09e7043b689d44864410c",
+     "ihdr": [
+      2560,
+      1440
+     ],
+     "yaw_arg": "0.004363323",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=1 fog=compose fogComposed=1",
+     "offscreen_target": "OpenGL offscreen screen target attached (2560x1440).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+2": {
+     "sha256": "1178ece5ff18410f2d9e0c64b3a3a5764546fbaae4ca092158436cb76ee49e2e",
+     "ihdr": [
+      2560,
+      1440
+     ],
+     "yaw_arg": "0.008726646",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=1 fog=compose fogComposed=1",
+     "offscreen_target": "OpenGL offscreen screen target attached (2560x1440).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    }
+   }
+  },
+  "parent-fog-2x": {
+   "sha": "6afc51320",
+   "fog_reveal": 16,
+   "window": "2560x1440",
+   "exit": 1,
+   "verdict": "RESULT=FAIL",
+   "grade": {
+    "size": [
+     2560,
+     1440
+    ],
+    "region": "receiver-top",
+    "output_scale": 2,
+    "region_px": 24746,
+    "min_shadow_px": 2000,
+    "min_receiver_px": 20000,
+    "shadow_px": {
+     "-2": 4096,
+     "-1": 4096,
+     "+0": 3328,
+     "+1": 4096,
+     "+2": 4096
+    },
+    "pairs": {
+     "rotated_before": {
+      "common_px": 24746,
+      "differing_px": 0
+     },
+     "cardinal_before": {
+      "common_px": 24746,
+      "differing_px": 968
+     },
+     "cardinal_after": {
+      "common_px": 24746,
+      "differing_px": 968
+     },
+     "rotated_after": {
+      "common_px": 24746,
+      "differing_px": 0
+     }
+    },
+    "rotated_differing_px": 0,
+    "cardinal_differing_px": 968,
+    "coverage_valid": true,
+    "pass": false,
+    "fog_routes": {
+     "-2": "fallback",
+     "-1": "fallback",
+     "+0": "fallback",
+     "+1": "fallback",
+     "+2": "fallback"
+    }
+   },
+   "frames": {
+    "-2": {
+     "sha256": "9698133ba903742ec00cc5c3c224327fa76bd5d34f6d509ce2f1047779e5bf43",
+     "ihdr": [
+      2560,
+      1440
+     ],
+     "yaw_arg": "6.274458661",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=0 fog=fallback fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (2560x1440).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "-1": {
+     "sha256": "171f2c71585785d1fc622abadef1ded5db43515df28777c6ca568fcdc575d3d8",
+     "ihdr": [
+      2560,
+      1440
+     ],
+     "yaw_arg": "6.278821984",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=0 fog=fallback fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (2560x1440).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+0": {
+     "sha256": "3896d3b688380194cc6827441ed59681ce3bfb53002bf49ea4ae627a04c6c4c3",
+     "ihdr": [
+      2560,
+      1440
+     ],
+     "yaw_arg": "0.000000000",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=0 fog=fallback fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (2560x1440).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+1": {
+     "sha256": "7b2925bc0fc16adb42168fd8215ce26428b905572df1fc80b91621ce241d1542",
+     "ihdr": [
+      2560,
+      1440
+     ],
+     "yaw_arg": "0.004363323",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=0 fog=fallback fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (2560x1440).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+2": {
+     "sha256": "b81c4415b64d885c28b71605419eed8196777fa7470b6311ab2abac7278913c0",
+     "ihdr": [
+      2560,
+      1440
+     ],
+     "yaw_arg": "0.008726646",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=0 fog=fallback fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (2560x1440).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    }
+   }
+  },
+  "head-nofog-2x": {
+   "sha": "7ed1e271f",
+   "fog_reveal": null,
+   "window": "2560x1440",
+   "exit": 0,
+   "verdict": "RESULT=PASS",
+   "grade": {
+    "size": [
+     2560,
+     1440
+    ],
+    "region": "receiver-top",
+    "output_scale": 2,
+    "region_px": 24746,
+    "min_shadow_px": 2000,
+    "min_receiver_px": 20000,
+    "shadow_px": {
+     "-2": 3304,
+     "-1": 3304,
+     "+0": 3328,
+     "+1": 3328,
+     "+2": 3344
+    },
+    "pairs": {
+     "rotated_before": {
+      "common_px": 24746,
+      "differing_px": 32
+     },
+     "cardinal_before": {
+      "common_px": 24746,
+      "differing_px": 24
+     },
+     "cardinal_after": {
+      "common_px": 24746,
+      "differing_px": 16
+     },
+     "rotated_after": {
+      "common_px": 24746,
+      "differing_px": 16
+     }
+    },
+    "rotated_differing_px": 32,
+    "cardinal_differing_px": 24,
+    "coverage_valid": true,
+    "pass": true,
+    "fog_routes": {
+     "-2": "none",
+     "-1": "none",
+     "+0": "none",
+     "+1": "none",
+     "+2": "none"
+    }
+   },
+   "frames": {
+    "-2": {
+     "sha256": "df1fd41882e7ea9f29f1101018be8d6203ad53ee83b26cf220e589d06a7be55f",
+     "ihdr": [
+      2560,
+      1440
+     ],
+     "yaw_arg": "6.274458661",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=1 fog=none fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (2560x1440).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "-1": {
+     "sha256": "41c79af4b5ada156612175eec8f3178eb9accb86ebec17be72a3ce6d1e73ffa3",
+     "ihdr": [
+      2560,
+      1440
+     ],
+     "yaw_arg": "6.278821984",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=1 fog=none fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (2560x1440).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+0": {
+     "sha256": "41de9da05730ac7747d80adb863587c859459bf20ae94e6a53914eb55795d15a",
+     "ihdr": [
+      2560,
+      1440
+     ],
+     "yaw_arg": "0.000000000",
+     "surface_route": "SURFACE-ROUTE cardinal=1 perAxis=0 fog=none fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (2560x1440).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+1": {
+     "sha256": "f263501defd1f273ad599c4a46b939919f862343c05d711a5ac32899b65da5bf",
+     "ihdr": [
+      2560,
+      1440
+     ],
+     "yaw_arg": "0.004363323",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=1 fog=none fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (2560x1440).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    },
+    "+2": {
+     "sha256": "b3b78a59f72e01e0a20401ae87b74725260050f8b8405602c3e62e94cfdab79a",
+     "ihdr": [
+      2560,
+      1440
+     ],
+     "yaw_arg": "0.008726646",
+     "surface_route": "SURFACE-ROUTE cardinal=0 perAxis=1 fog=none fogComposed=0",
+     "offscreen_target": "OpenGL offscreen screen target attached (2560x1440).",
+     "ir_run": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    }
+   }
+  }
+ }
+}
