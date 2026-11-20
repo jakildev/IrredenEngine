@@ -344,10 +344,7 @@ feederSubCap(const IRMath::vec3 &sunDir, IRMath::CardinalIndex cardinalIndex, in
             spatialRotation
         );
         const float texelSize = IRMath::max(fit.texelSize_.x, fit.texelSize_.y);
-        cap = IRMath::max(
-            cap,
-            detail::feederSubCapForTexelSize(texelSize, cappedEffSub)
-        );
+        cap = IRMath::max(cap, detail::feederSubCapForTexelSize(texelSize, cappedEffSub));
     }
     return IRMath::clamp(cap, 1, cappedEffSub);
 }
