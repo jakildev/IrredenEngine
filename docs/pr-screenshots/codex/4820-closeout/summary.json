@@ -1,0 +1,35 @@
+{
+  "issue": 4820,
+  "base_pr": 5103,
+  "checked_commit": "6c4ecf30d986573ed76e25f34af5c1cd577e3ec7",
+  "runtime": "codex",
+  "model": "GPT-6",
+  "preset": "macos-debug",
+  "backend": "Metal",
+  "gpu": "Apple M4 Max",
+  "reference_updates": false,
+  "scope": "Remaining image-acceptance and documentation closeout; prior picking and performance evidence remains in PR 4894.",
+  "comparison_note": "PASS means the committed manifest thresholds. Nonzero pixel deltas are retained in the reports; this is not a claim of byte identity to every reference.",
+  "reports": [
+    {
+      "report": "shape-debug.txt",
+      "job": "20261120T011334Z-render-verify-db83d8",
+      "exit_code": 0,
+      "checks_passed": 186,
+      "image_comparisons": 179,
+      "exact_image_comparisons": 79,
+      "minimum_match_percent": 99.9018,
+      "maximum_byte_delta": 57
+    },
+    {
+      "report": "canvas-stress.txt",
+      "job": "20261120T013842Z-render-verify-4254bb",
+      "exit_code": 0,
+      "checks_passed": 59,
+      "image_comparisons": 36,
+      "exact_image_comparisons": 36,
+      "minimum_match_percent": 100.0,
+      "maximum_byte_delta": 0
+    }
+  ]
+}

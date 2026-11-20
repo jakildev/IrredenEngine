@@ -1,0 +1,206 @@
+Runtime: codex (OpenAI GPT-6)
+Checked commit: 6c4ecf30d986573ed76e25f34af5c1cd577e3ec7
+Preset/backend/GPU: macos-debug / Metal / Apple M4 Max
+Start: fleet-jobs start render-verify -- --target IRCanvasStress
+Terminal wait: fleet-jobs wait --timeout 40 20261120T013842Z-render-verify-4254bb
+Result: fleet-jobs: 20261120T013842Z-render-verify-4254bb succeeded exit=0
+
+[fleet-jobs] display: 1 online CoreGraphics display(s), awake=1, NSScreen=1
+[render-verify] target=IRCanvasStress demo=canvas_stress backend=macos-debug warmup=120
+[render-verify] 6 shots: so3_smooth_sweep, so3_offsnap_disc, so3_wide_parity, so3_grid_cross, so3_offsnap_wide, revoxelize_solids
+[render-verify] 15 extra run(s): modeswitch, sharedparts, detach, compare, impulse, floor_selfshadow, shadow_overlay_floor, world_placed_cast, gridspin_shadow_palette, grid_orbit_facing, grid_orbit_cardinals, grid_capacity_plate_normals, grid_capacity_plate_beauty, cylinder_receiver, cylinder_receiver_pitched
++ fleet-build --target IRCanvasStress
+[  0%] Built target luajit_build
+[  4%] Built target enkiTS
+[  9%] Built target rtaudio
+[  9%] Built target rtmidi
+[  9%] Built target IRCanvasStressAssets
+[ 14%] Built target easy_profiler
+[ 14%] Built target fmt
+[ 14%] Built target glm
+[ 28%] Built target meshoptimizer
+[ 38%] Built target glfw
+[ 42%] Built target spdlog
+[ 42%] Built target IrredenEngineMath
+[ 47%] Built target IrredenEngineProfile
+[ 52%] Built target IrredenEngineUtility
+[ 52%] Built target IrredenEngineJob
+[ 52%] Built target IrredenEngineTime
+[ 57%] Built target IrredenEngineAsset
+[ 61%] Built target IrredenEngineEntity
+[ 61%] Built target IrredenEngineCatalog
+[ 61%] Built target IrredenEngineSystem
+[ 66%] Built target IrredenEngineAudio
+[ 71%] Built target IrredenEngineWindow
+[ 71%] Built target IrredenEngineInput
+[ 80%] Built target IrredenEngineRendering
+[ 80%] Built target IrredenEngineVideo
+[ 85%] Built target IrredenEngineCommand
+[ 90%] Built target IrredenEngineWorld
+[ 95%] Built target IrredenEngineScripting
+[100%] Built target IrredenEngine
+[100%] Built target IRCanvasStress
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120
+    (default) ir-run: running debug tree <worktree>/build
+    (default) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 120 (timeout: 60s) (window mode: offscreen)
+    (default) ir-run: IRCanvasStress exited cleanly after 12s
+    (default) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+[render-verify] warning: captured 12 shots, manifest expects 6; ignoring extras
+[render-verify] extra run 'modeswitch': --only modeswitch --no-auto-rotate --no-spin
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 12 --only modeswitch --no-auto-rotate --no-spin
+    (modeswitch) ir-run: running debug tree <worktree>/build
+    (modeswitch) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 12 --only modeswitch --no-auto-rotate --no-spin (timeout: 60s) (window mode: offscreen)
+    (modeswitch) ir-run: queued on the gpu lock for 1s; the 60s run clock has not started (queue bound IR_QUEUE_TIMEOUT=600s)
+    (modeswitch) ir-run: gpu lock granted after 5s; run clock started
+    (modeswitch) ir-run: IRCanvasStress exited cleanly after 3s
+    (modeswitch) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+[render-verify] extra run 'sharedparts': --only sharedparts --no-auto-rotate
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 30 --only sharedparts --no-auto-rotate
+    (sharedparts) ir-run: running debug tree <worktree>/build
+    (sharedparts) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 30 --only sharedparts --no-auto-rotate (timeout: 60s) (window mode: offscreen)
+    (sharedparts) ir-run: IRCanvasStress exited cleanly after 4s
+    (sharedparts) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+[render-verify] extra run 'detach': --only detach --no-auto-rotate --no-spin
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 30 --only detach --no-auto-rotate --no-spin
+    (detach) ir-run: running debug tree <worktree>/build
+    (detach) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 30 --only detach --no-auto-rotate --no-spin (timeout: 60s) (window mode: offscreen)
+    (detach) ir-run: IRCanvasStress exited cleanly after 2s
+    (detach) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+[render-verify] extra run 'compare': --only compare
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only compare
+    (compare) ir-run: running debug tree <worktree>/build
+    (compare) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 120 --only compare (timeout: 60s) (window mode: offscreen)
+    (compare) ir-run: IRCanvasStress exited cleanly after 12s
+    (compare) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+[render-verify] extra run 'impulse': --only impulse --no-auto-rotate
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only impulse --no-auto-rotate
+    (impulse) ir-run: running debug tree <worktree>/build
+    (impulse) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 6 --only impulse --no-auto-rotate (timeout: 60s) (window mode: offscreen)
+    (impulse) ir-run: IRCanvasStress exited cleanly after 4s
+    (impulse) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+[render-verify] extra run 'floor_selfshadow': --only floor --debug-overlay shadow
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only floor --debug-overlay shadow
+    (floor_selfshadow) ir-run: running debug tree <worktree>/build
+    (floor_selfshadow) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 120 --only floor --debug-overlay shadow (timeout: 60s) (window mode: offscreen)
+    (floor_selfshadow) ir-run: IRCanvasStress exited cleanly after 10s
+    (floor_selfshadow) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+[render-verify] extra run 'shadow_overlay_floor': --only floor --no-auto-rotate --no-spin --debug-overlay shadow
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only floor --no-auto-rotate --no-spin --debug-overlay shadow
+    (shadow_overlay_floor) ir-run: running debug tree <worktree>/build
+    (shadow_overlay_floor) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 120 --only floor --no-auto-rotate --no-spin --debug-overlay shadow (timeout: 60s) (window mode: offscreen)
+    (shadow_overlay_floor) ir-run: queued on the gpu lock for 1s; the 60s run clock has not started (queue bound IR_QUEUE_TIMEOUT=600s)
+    (shadow_overlay_floor) ir-run: gpu lock granted after 11s; run clock started
+    (shadow_overlay_floor) ir-run: IRCanvasStress exited cleanly after 9s
+    (shadow_overlay_floor) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+[render-verify] extra run 'world_placed_cast': --only revox,floor --no-auto-rotate --no-spin --debug-overlay shadow
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only revox,floor --no-auto-rotate --no-spin --debug-overlay shadow
+    (world_placed_cast) ir-run: running debug tree <worktree>/build
+    (world_placed_cast) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 120 --only revox,floor --no-auto-rotate --no-spin --debug-overlay shadow (timeout: 60s) (window mode: offscreen)
+    (world_placed_cast) ir-run: IRCanvasStress exited cleanly after 10s
+    (world_placed_cast) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+[render-verify] extra run 'gridspin_shadow_palette': --only gridspin --frozen-pose 0.5235987756 --no-auto-rotate --no-ao --pivot-origin --zoom 4 --debug-overlay shadow --sweep-yaw 0.39269908 0.39269908 1
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only gridspin --frozen-pose 0.5235987756 --no-auto-rotate --no-ao --pivot-origin --zoom 4 --debug-overlay shadow --sweep-yaw 0.39269908 0.39269908 1
+    (gridspin_shadow_palette) ir-run: running debug tree <worktree>/build
+    (gridspin_shadow_palette) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 6 --only gridspin --frozen-pose 0.5235987756 --no-auto-rotate --no-ao --pivot-origin --zoom 4 --debug-overlay shadow --sweep-yaw 0.39269908 0.39269908 1 (timeout: 60s) (window mode: offscreen)
+    (gridspin_shadow_palette) ir-run: IRCanvasStress exited cleanly after 2s
+    (gridspin_shadow_palette) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+[render-verify] extra run 'grid_orbit_facing': --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 2.35619449 2.35619449 1
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 2.35619449 2.35619449 1
+    (grid_orbit_facing) ir-run: running debug tree <worktree>/build
+    (grid_orbit_facing) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 2.35619449 2.35619449 1 (timeout: 60s) (window mode: offscreen)
+    (grid_orbit_facing) ir-run: IRCanvasStress exited cleanly after 2s
+    (grid_orbit_facing) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+[render-verify] extra run 'grid_orbit_cardinals': --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 0 4.71238898 4
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 0 4.71238898 4
+    (grid_orbit_cardinals) ir-run: running debug tree <worktree>/build
+    (grid_orbit_cardinals) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 0 4.71238898 4 (timeout: 60s) (window mode: offscreen)
+    (grid_orbit_cardinals) ir-run: IRCanvasStress exited cleanly after 3s
+    (grid_orbit_cardinals) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+[render-verify] extra run 'grid_capacity_plate_normals': --only orbit --focus-orbit 6 --focus-exact-fit-plate --no-spin --no-auto-rotate --pivot-origin --no-ao --no-shadows --debug-overlay normals --zoom 8 --subdivisions 1 --sweep-yaw 0 4.71238898 4
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --focus-exact-fit-plate --no-spin --no-auto-rotate --pivot-origin --no-ao --no-shadows --debug-overlay normals --zoom 8 --subdivisions 1 --sweep-yaw 0 4.71238898 4
+    (grid_capacity_plate_normals) ir-run: running debug tree <worktree>/build
+    (grid_capacity_plate_normals) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --focus-exact-fit-plate --no-spin --no-auto-rotate --pivot-origin --no-ao --no-shadows --debug-overlay normals --zoom 8 --subdivisions 1 --sweep-yaw 0 4.71238898 4 (timeout: 60s) (window mode: offscreen)
+    (grid_capacity_plate_normals) ir-run: IRCanvasStress exited cleanly after 4s
+    (grid_capacity_plate_normals) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+[render-verify] extra run 'grid_capacity_plate_beauty': --only orbit --focus-orbit 6 --focus-exact-fit-plate --no-spin --no-auto-rotate --pivot-origin --zoom 8 --subdivisions 1 --sweep-yaw 0 4.71238898 4
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --focus-exact-fit-plate --no-spin --no-auto-rotate --pivot-origin --zoom 8 --subdivisions 1 --sweep-yaw 0 4.71238898 4
+    (grid_capacity_plate_beauty) ir-run: running debug tree <worktree>/build
+    (grid_capacity_plate_beauty) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --focus-exact-fit-plate --no-spin --no-auto-rotate --pivot-origin --zoom 8 --subdivisions 1 --sweep-yaw 0 4.71238898 4 (timeout: 60s) (window mode: offscreen)
+    (grid_capacity_plate_beauty) ir-run: IRCanvasStress exited cleanly after 4s
+    (grid_capacity_plate_beauty) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+[render-verify] extra run 'cylinder_receiver': --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source
+    (cylinder_receiver) ir-run: running debug tree <worktree>/build
+    (cylinder_receiver) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 6 --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source (timeout: 60s) (window mode: offscreen)
+    (cylinder_receiver) ir-run: IRCanvasStress exited cleanly after 7s
+    (cylinder_receiver) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+[render-verify] extra run 'cylinder_receiver_pitched': --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source --analytic-shape-tilt .45
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source --analytic-shape-tilt .45
+    (cylinder_receiver_pitched) ir-run: running debug tree <worktree>/build
+    (cylinder_receiver_pitched) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 6 --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source --analytic-shape-tilt .45 (timeout: 60s) (window mode: offscreen)
+    (cylinder_receiver_pitched) ir-run: IRCanvasStress exited cleanly after 7s
+    (cylinder_receiver_pitched) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+
+shot                                     result     match%  max_d     psnr
+----------------------------------------------------------------------------
+so3_smooth_sweep                         PASS        100.0      0      inf
+so3_offsnap_disc                         PASS        100.0      0      inf
+so3_wide_parity                          PASS        100.0      0      inf
+so3_grid_cross                           PASS        100.0      0      inf
+so3_offsnap_wide                         PASS        100.0      0      inf
+revoxelize_solids                        PASS        100.0      0      inf
+modeswitch:modeswitch_grid               PASS        100.0      0      inf
+modeswitch:modeswitch_detached           PASS        100.0      0      inf
+modeswitch:modeswitch_revox              PASS        100.0      0      inf
+modeswitch:modeswitch_grid_return        PASS        100.0      0      inf
+modeswitch:modeswitch_grid:shadow-speckle PASS     
+modeswitch:modeswitch_grid_return:shadow-speckle PASS     
+sharedparts:sharedparts_spin_a           PASS        100.0      0      inf
+sharedparts:sharedparts_spin_b           PASS        100.0      0      inf
+sharedparts:sharedparts_yaw              PASS        100.0      0      inf
+detach:detach_hosted                     PASS        100.0      0      inf
+detach:detach_own_canvas                 PASS        100.0      0      inf
+detach:detach_grid                       PASS        100.0      0      inf
+detach:detach_grid:shadow-speckle        PASS     
+compare:compare_yaw0                     PASS        100.0      0      inf
+compare:compare_yaw_q                    PASS        100.0      0      inf
+impulse:impulse_midspin                  PASS        100.0      0      inf
+impulse:impulse_settled                  PASS        100.0      0      inf
+impulse:impulse_midspin:shadow-speckle   PASS     
+impulse:impulse_settled:shadow-speckle   PASS     
+floor_selfshadow:floor_selfshadow_offwide:shadow PASS     
+shadow_overlay_floor:shadow_overlay_floor:shadow PASS     
+world_placed_cast:shadow_overlay_floor:shadow PASS     
+gridspin_shadow_palette:gridspin_shadow_palette:shadow PASS     
+grid_orbit_facing:grid_orbit_facing:normal-facing PASS     
+grid_orbit_facing:grid_orbit_facing:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_0:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_90:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_180:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_270:orbit-geometry PASS     
+grid_capacity_plate_normals:grid_capacity_plate_normals_0:grid-cell PASS     
+grid_capacity_plate_normals:grid_capacity_plate_normals_90:grid-cell PASS     
+grid_capacity_plate_normals:grid_capacity_plate_normals_180:grid-cell PASS     
+grid_capacity_plate_normals:grid_capacity_plate_normals_270:grid-cell PASS     
+grid_capacity_plate_beauty:grid_capacity_plate_beauty_0:grid-cell PASS     
+grid_capacity_plate_beauty:grid_capacity_plate_beauty_90:grid-cell PASS     
+grid_capacity_plate_beauty:grid_capacity_plate_beauty_180:grid-cell PASS     
+grid_capacity_plate_beauty:grid_capacity_plate_beauty_270:grid-cell PASS     
+cylinder_receiver:cylinder_receiver_000  PASS        100.0      0      inf
+cylinder_receiver:cylinder_receiver_045  PASS        100.0      0      inf
+cylinder_receiver:cylinder_receiver_090  PASS        100.0      0      inf
+cylinder_receiver:cylinder_receiver_135  PASS        100.0      0      inf
+cylinder_receiver:cylinder_receiver_180  PASS        100.0      0      inf
+cylinder_receiver:cylinder_receiver_225  PASS        100.0      0      inf
+cylinder_receiver:cylinder_receiver_270  PASS        100.0      0      inf
+cylinder_receiver:cylinder_receiver_315  PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_000 PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_045 PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_090 PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_135 PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_180 PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_225 PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_270 PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_315 PASS        100.0      0      inf
+
+[render-verify] all 59 checks PASS

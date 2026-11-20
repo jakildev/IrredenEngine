@@ -1,0 +1,662 @@
+Runtime: codex (OpenAI GPT-6)
+Checked commit: 6c4ecf30d986573ed76e25f34af5c1cd577e3ec7
+Preset/backend: macos-debug / Metal
+Start: fleet-jobs start render-verify -- --target IRShapeDebug
+Terminal wait: fleet-jobs wait --timeout 40 20261120T011334Z-render-verify-db83d8
+Result: fleet-jobs: 20261120T011334Z-render-verify-db83d8 succeeded exit=0
+
+[fleet-jobs] display: 1 online CoreGraphics display(s), awake=1, NSScreen=1
+[render-verify] target=IRShapeDebug demo=shape_debug backend=macos-debug warmup=10
+[render-verify] 21 shots: zoom1_origin, zoom2_origin, zoom4_origin, zoom1_odd_offset, zoom8_origin, zoom4_offset_3_5, zoom16_lod_fine_sphere, lod_swap_zoom1_cube, lod_swap_zoom2_cube, lod_swap_zoom4_cone, lod_swap_zoom8_cone, lod_swap_zoom16_sphere, zoom4_yaw90, zoom4_yaw180, zoom4_yaw270, zoom4_yaw45_inter_cardinal, zoom8_yaw180, zoom4_pan16_yaw0_pivot, zoom4_pan16_yaw90_pivot, zoom4_pan16_yaw180_pivot, zoom4_pan16_yaw45_pivot
+[render-verify] 56 extra run(s): sdf_baked_surface_parented, sdf_baked_pose_root, sdf_baked_pose_parented, lod_scene, moving_caster, pivot_focus_ctr_z4, lod_dense_swap, viewport_portrait, viewport_portrait_lod_swap, prefab_flower, editor_parts_z4, composite_proof, text_sizes, text_scale1_legibility, voxel_text, canvas_image, framebuffer_image, glitch_standard_off, glitch_off, glitch_tear, glitch_hold, glitch_split, glitch_bars, glitch_cells, glitch_depth_tear, glitch_depth_hold, glitch_hold_divisor2, glitch_subject_standard_off, glitch_subject_off, glitch_subject_tear, glitch_subject_hold, glitch_subject_split, glitch_subject_echo, glitch_subject_dissolve, glitch_subject_depth, glitch_subject_spill_far_off, glitch_subject_spill_far_on, glitch_subject_spill_near_off, glitch_subject_spill_near_on, glitch_subject_choreography, glitch_subject_yaw22_off, glitch_subject_yaw22_tear, glitch_subject_yaw22_hold, glitch_subject_yaw22_split, glitch_subject_yaw22_echo, glitch_subject_yaw22_dissolve, glitch_subject_yaw22_depth, glitch_subject_yaw22_spill_far_on, glitch_subject_yaw22_spill_near_on, glitch_subject_yaw22_all, post_effects_standard_off, post_effects_off, post_effects_blur, post_effects_bloom, post_effects_grade, post_effects_all
++ fleet-build --target IRShapeDebug
+[  0%] Built target luajit_build
+[  4%] Built target enkiTS
+[  9%] Built target rtaudio
+[  9%] Built target rtmidi
+[ 14%] Built target easy_profiler
+[ 14%] Built target fmt
+[ 14%] Built target IRShapeDebugAssets
+[ 14%] Built target glm
+[ 28%] Built target meshoptimizer
+[ 38%] Built target glfw
+[ 42%] Built target spdlog
+[ 42%] Building CXX object engine/math/CMakeFiles/IrredenEngineMath.dir/src/ir_math.cpp.o
+[ 42%] Building CXX object engine/profile/CMakeFiles/IrredenEngineProfile.dir/src/profile_report.cpp.o
+[ 42%] Linking CXX static library libIrredenEngineMath.a
+[ 42%] Built target IrredenEngineMath
+[ 42%] Linking CXX static library libIrredenEngineProfile.a
+[ 47%] Built target IrredenEngineProfile
+[ 52%] Built target IrredenEngineUtility
+[ 52%] Building CXX object engine/job/CMakeFiles/IrredenEngineJob.dir/src/job_manager.cpp.o
+[ 52%] Building CXX object engine/time/CMakeFiles/IrredenEngineTime.dir/src/time_manager.cpp.o
+[ 52%] Building CXX object engine/job/CMakeFiles/IrredenEngineJob.dir/src/ir_job.cpp.o
+[ 52%] Building CXX object engine/time/CMakeFiles/IrredenEngineTime.dir/src/ir_time.cpp.o
+[ 52%] Linking CXX static library libIrredenEngineTime.a
+[ 52%] Linking CXX static library libIrredenEngineJob.a
+[ 52%] Built target IrredenEngineTime
+[ 52%] Building CXX object engine/asset/CMakeFiles/IrredenEngineAsset.dir/src/ir_asset.cpp.o
+[ 52%] Built target IrredenEngineJob
+[ 52%] Building CXX object engine/asset/CMakeFiles/IrredenEngineAsset.dir/src/voxel_set_format.cpp.o
+[ 52%] Building CXX object engine/entity/CMakeFiles/IrredenEngineEntity.dir/src/ir_entity.cpp.o
+[ 52%] Building CXX object engine/asset/CMakeFiles/IrredenEngineAsset.dir/src/rig_format.cpp.o
+[ 52%] Building CXX object engine/entity/CMakeFiles/IrredenEngineEntity.dir/src/archetype_graph.cpp.o
+[ 52%] Linking CXX static library libIrredenEngineAsset.a
+[ 57%] Built target IrredenEngineAsset
+[ 57%] Building CXX object engine/entity/CMakeFiles/IrredenEngineEntity.dir/src/archetype_node.cpp.o
+[ 57%] Built target IrredenEngineCatalog
+[ 57%] Building CXX object engine/entity/CMakeFiles/IrredenEngineEntity.dir/src/entity_manager.cpp.o
+[ 57%] Building CXX object engine/entity/CMakeFiles/IrredenEngineEntity.dir/src/archetype.cpp.o
+[ 61%] Linking CXX static library libIrredenEngineEntity.a
+[ 61%] Built target IrredenEngineEntity
+[ 61%] Building CXX object engine/system/CMakeFiles/IrredenEngineSystem.dir/src/system_manager.cpp.o
+[ 61%] Building CXX object engine/audio/CMakeFiles/IrredenEngineAudio.dir/src/ir_audio.cpp.o
+[ 61%] Building CXX object engine/audio/CMakeFiles/IrredenEngineAudio.dir/src/audio_manager.cpp.o
+[ 61%] Building CXX object engine/system/CMakeFiles/IrredenEngineSystem.dir/src/ir_system.cpp.o
+[ 61%] Building CXX object engine/audio/CMakeFiles/IrredenEngineAudio.dir/src/audio.cpp.o
+[ 61%] Linking CXX static library libIrredenEngineSystem.a
+[ 61%] Built target IrredenEngineSystem
+[ 61%] Building CXX object engine/audio/CMakeFiles/IrredenEngineAudio.dir/src/synthetic_capture_source.cpp.o
+[ 61%] Building CXX object engine/window/CMakeFiles/IrredenEngineWindow.dir/src/file_dialog.cpp.o
+[ 61%] Linking CXX static library libIrredenEngineAudio.a
+[ 66%] Built target IrredenEngineAudio
+[ 66%] Building CXX object engine/window/CMakeFiles/IrredenEngineWindow.dir/src/ir_glfw_window.cpp.o
+[ 71%] Building CXX object engine/window/CMakeFiles/IrredenEngineWindow.dir/src/ir_window.cpp.o
+[ 71%] Building CXX object engine/window/CMakeFiles/IrredenEngineWindow.dir/src/ir_window_platform_cocoa.mm.o
+[ 71%] Building CXX object engine/window/CMakeFiles/IrredenEngineWindow.dir/src/file_dialog_cocoa.mm.o
+[ 71%] Linking CXX static library libIrredenEngineWindow.a
+[ 71%] Built target IrredenEngineWindow
+[ 71%] Building CXX object engine/input/CMakeFiles/IrredenEngineInput.dir/src/input_manager.cpp.o
+[ 71%] Building CXX object engine/input/CMakeFiles/IrredenEngineInput.dir/src/ir_input.cpp.o
+[ 71%] Linking CXX static library libIrredenEngineInput.a
+[ 71%] Built target IrredenEngineInput
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/async_texture.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/active_canvas.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/ir_render.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/framebuffer.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/render_manager.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/rendering_rm.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/texture.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/voxel_pool_config.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/image_data.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/metal/metal_render_impl.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/metal/metal_runtime.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/metal/metal_buffer.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/metal/metal_texture.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/metal/metal_framebuffer.cpp.o
+[ 71%] Linking CXX static library libIrredenEngineRendering.a
+[ 80%] Built target IrredenEngineRendering
+[ 80%] Building CXX object engine/video/CMakeFiles/IrredenEngineVideo.dir/src/ir_video.cpp.o
+[ 80%] Building CXX object engine/video/CMakeFiles/IrredenEngineVideo.dir/src/auto_screenshot.cpp.o
+[ 80%] Building CXX object engine/video/CMakeFiles/IrredenEngineVideo.dir/src/video_manager.cpp.o
+[ 80%] Building CXX object engine/video/CMakeFiles/IrredenEngineVideo.dir/src/video_recorder.cpp.o
+[ 80%] Building CXX object engine/video/CMakeFiles/IrredenEngineVideo.dir/src/metal/video_backend.cpp.o
+[ 80%] Linking CXX static library libIrredenEngineVideo.a
+[ 80%] Built target IrredenEngineVideo
+[ 80%] Building CXX object engine/command/CMakeFiles/IrredenEngineCommand.dir/src/ir_command.cpp.o
+[ 85%] Building CXX object engine/command/CMakeFiles/IrredenEngineCommand.dir/src/command_manager.cpp.o
+[ 85%] Building CXX object engine/command/CMakeFiles/IrredenEngineCommand.dir/src/action_registry.cpp.o
+[ 85%] Linking CXX static library libIrredenEngineCommand.a
+[ 85%] Built target IrredenEngineCommand
+[ 85%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/world.cpp.o
+[ 85%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/chunk_residency.cpp.o
+[ 85%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/chunk_persistence.cpp.o
+[ 85%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/field_chunk_persistence.cpp.o
+[ 85%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/world_snapshot.cpp.o
+[ 90%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/world_snapshot_relations.cpp.o
+[ 90%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/world_default_registry.cpp.o
+[ 90%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/hand_off.cpp.o
+[ 90%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/tool_spawn.cpp.o
+[ 90%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/__/process_spawn.cpp.o
+[ 90%] Linking CXX static library libIrredenEngineWorld.a
+[ 90%] Built target IrredenEngineWorld
+[ 95%] Building CXX object engine/script/CMakeFiles/IrredenEngineScripting.dir/src/prefab_api.cpp.o
+[ 95%] Building CXX object engine/script/CMakeFiles/IrredenEngineScripting.dir/src/lua_script.cpp.o
+[ 95%] Building CXX object engine/script/CMakeFiles/IrredenEngineScripting.dir/src/prefab_component_factory.cpp.o
+[ 95%] Building CXX object engine/script/CMakeFiles/IrredenEngineScripting.dir/src/lua_bindings_prefab.cpp.o
+[ 95%] Linking CXX static library libIrredenEngineScripting.a
+[ 95%] Built target IrredenEngineScripting
+[100%] Building CXX object engine/CMakeFiles/IrredenEngine.dir/hand_off_process.cpp.o
+[100%] Building CXX object engine/CMakeFiles/IrredenEngine.dir/engine.cpp.o
+[100%] Linking CXX static library libIrredenEngine.a
+[100%] Built target IrredenEngine
+[100%] Building CXX object creations/demos/shape_debug/CMakeFiles/IRShapeDebug.dir/main.cpp.o
+[100%] Linking CXX executable IRShapeDebug
+ld: warning: ignoring duplicate libraries: '../../../engine/script/libIrredenEngineScripting.a', '../../../engine/world/libIrredenEngineWorld.a'
+[100%] Built target IRShapeDebug
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10
+    (default) ir-run: running debug tree <worktree>/build
+    (default) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 (timeout: 60s) (window mode: offscreen)
+    (default) ir-run: IRShapeDebug exited cleanly after 5s
+    (default) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'sdf_baked_surface_parented': --sdf-voxel-scene baked --sdf-voxel-pose parented --sdf-voxel-blockers --surface-lighting --no-local-lights --no-ao
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --sdf-voxel-scene baked --sdf-voxel-pose parented --sdf-voxel-blockers --surface-lighting --no-local-lights --no-ao
+    (sdf_baked_surface_parented) ir-run: running debug tree <worktree>/build
+    (sdf_baked_surface_parented) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --sdf-voxel-scene baked --sdf-voxel-pose parented --sdf-voxel-blockers --surface-lighting --no-local-lights --no-ao (timeout: 60s) (window mode: offscreen)
+    (sdf_baked_surface_parented) ir-run: IRShapeDebug exited cleanly after 2s
+    (sdf_baked_surface_parented) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'sdf_baked_pose_root': --sdf-voxel-scene baked --sdf-voxel-pose root --sdf-voxel-blockers
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --sdf-voxel-scene baked --sdf-voxel-pose root --sdf-voxel-blockers
+    (sdf_baked_pose_root) ir-run: running debug tree <worktree>/build
+    (sdf_baked_pose_root) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --sdf-voxel-scene baked --sdf-voxel-pose root --sdf-voxel-blockers (timeout: 60s) (window mode: offscreen)
+    (sdf_baked_pose_root) ir-run: IRShapeDebug exited cleanly after 3s
+    (sdf_baked_pose_root) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'sdf_baked_pose_parented': --sdf-voxel-scene baked --sdf-voxel-pose parented --sdf-voxel-blockers
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --sdf-voxel-scene baked --sdf-voxel-pose parented --sdf-voxel-blockers
+    (sdf_baked_pose_parented) ir-run: running debug tree <worktree>/build
+    (sdf_baked_pose_parented) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --sdf-voxel-scene baked --sdf-voxel-pose parented --sdf-voxel-blockers (timeout: 60s) (window mode: offscreen)
+    (sdf_baked_pose_parented) ir-run: IRShapeDebug exited cleanly after 3s
+    (sdf_baked_pose_parented) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'lod_scene': --lod-scene --pivot-origin
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 20 --lod-scene --pivot-origin
+    (lod_scene) ir-run: running debug tree <worktree>/build
+    (lod_scene) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 20 --lod-scene --pivot-origin (timeout: 60s) (window mode: offscreen)
+    (lod_scene) ir-run: IRShapeDebug exited cleanly after 3s
+    (lod_scene) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'moving_caster': --moving-caster
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --moving-caster
+    (moving_caster) ir-run: running debug tree <worktree>/build
+    (moving_caster) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --moving-caster (timeout: 60s) (window mode: offscreen)
+    (moving_caster) ir-run: IRShapeDebug exited cleanly after 3s
+    (moving_caster) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'pivot_focus_ctr_z4': --pivot-verify focus-ctr --zoom 4
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 12 --pivot-verify focus-ctr --zoom 4
+    (pivot_focus_ctr_z4) ir-run: running debug tree <worktree>/build
+    (pivot_focus_ctr_z4) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 12 --pivot-verify focus-ctr --zoom 4 (timeout: 60s) (window mode: offscreen)
+    (pivot_focus_ctr_z4) ir-run: IRShapeDebug exited cleanly after 3s
+    (pivot_focus_ctr_z4) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'lod_dense_swap': --lod-dense-swap
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --lod-dense-swap
+    (lod_dense_swap) ir-run: running debug tree <worktree>/build
+    (lod_dense_swap) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --lod-dense-swap (timeout: 60s) (window mode: offscreen)
+    (lod_dense_swap) ir-run: IRShapeDebug exited cleanly after 2s
+    (lod_dense_swap) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'viewport_portrait': --viewport-portrait --no-ao --no-shadows
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --viewport-portrait --no-ao --no-shadows
+    (viewport_portrait) ir-run: running debug tree <worktree>/build
+    (viewport_portrait) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --viewport-portrait --no-ao --no-shadows (timeout: 60s) (window mode: offscreen)
+    (viewport_portrait) ir-run: IRShapeDebug exited cleanly after 2s
+    (viewport_portrait) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'viewport_portrait_lod_swap': --viewport-portrait --viewport-lod-swap --no-ao --no-shadows
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --viewport-portrait --viewport-lod-swap --no-ao --no-shadows
+    (viewport_portrait_lod_swap) ir-run: running debug tree <worktree>/build
+    (viewport_portrait_lod_swap) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --viewport-portrait --viewport-lod-swap --no-ao --no-shadows (timeout: 60s) (window mode: offscreen)
+    (viewport_portrait_lod_swap) ir-run: IRShapeDebug exited cleanly after 2s
+    (viewport_portrait_lod_swap) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'prefab_flower': --load-prefab assets/prefabs/flower.prefab.lua
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --load-prefab assets/prefabs/flower.prefab.lua
+    (prefab_flower) ir-run: running debug tree <worktree>/build
+    (prefab_flower) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --load-prefab assets/prefabs/flower.prefab.lua (timeout: 60s) (window mode: offscreen)
+    (prefab_flower) ir-run: IRShapeDebug exited cleanly after 5s
+    (prefab_flower) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'editor_parts_z4': --load-prefab assets/prefabs/editor_parts/editor_parts.prefab.lua --zoom 4
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --load-prefab assets/prefabs/editor_parts/editor_parts.prefab.lua --zoom 4
+    (editor_parts_z4) ir-run: running debug tree <worktree>/build
+    (editor_parts_z4) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --load-prefab assets/prefabs/editor_parts/editor_parts.prefab.lua --zoom 4 (timeout: 60s) (window mode: offscreen)
+    (editor_parts_z4) ir-run: IRShapeDebug exited cleanly after 2s
+    (editor_parts_z4) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'composite_proof': --load-prefab assets/voxel/entities/composite_proof/composite_proof.prefab.lua
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --load-prefab assets/voxel/entities/composite_proof/composite_proof.prefab.lua
+    (composite_proof) ir-run: running debug tree <worktree>/build
+    (composite_proof) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --load-prefab assets/voxel/entities/composite_proof/composite_proof.prefab.lua (timeout: 60s) (window mode: offscreen)
+    (composite_proof) ir-run: IRShapeDebug exited cleanly after 6s
+    (composite_proof) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'text_sizes': --text-size-sample
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --text-size-sample
+    (text_sizes) ir-run: running debug tree <worktree>/build
+    (text_sizes) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --text-size-sample (timeout: 60s) (window mode: offscreen)
+    (text_sizes) ir-run: IRShapeDebug exited cleanly after 2s
+    (text_sizes) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'text_scale1_legibility': --config-preset configs/gui_text_scale1.lua --framebuffer-size 1280 960 --text-size-sample
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --config-preset configs/gui_text_scale1.lua --framebuffer-size 1280 960 --text-size-sample
+    (text_scale1_legibility) ir-run: running debug tree <worktree>/build
+    (text_scale1_legibility) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --config-preset configs/gui_text_scale1.lua --framebuffer-size 1280 960 --text-size-sample (timeout: 60s) (window mode: offscreen)
+    (text_scale1_legibility) ir-run: IRShapeDebug exited cleanly after 3s
+    (text_scale1_legibility) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'voxel_text': --voxel-text-sample
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --voxel-text-sample
+    (voxel_text) ir-run: running debug tree <worktree>/build
+    (voxel_text) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --voxel-text-sample (timeout: 60s) (window mode: offscreen)
+    (voxel_text) ir-run: IRShapeDebug exited cleanly after 1s
+    (voxel_text) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'canvas_image': --canvas-image-sample
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --canvas-image-sample
+    (canvas_image) ir-run: running debug tree <worktree>/build
+    (canvas_image) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --canvas-image-sample (timeout: 60s) (window mode: offscreen)
+    (canvas_image) ir-run: IRShapeDebug exited cleanly after 3s
+    (canvas_image) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'framebuffer_image': --framebuffer-image-sample
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --framebuffer-image-sample
+    (framebuffer_image) ir-run: running debug tree <worktree>/build
+    (framebuffer_image) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --framebuffer-image-sample (timeout: 60s) (window mode: offscreen)
+    (framebuffer_image) ir-run: IRShapeDebug exited cleanly after 5s
+    (framebuffer_image) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_standard_off': --glitch-test standard-off
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --glitch-test standard-off
+    (glitch_standard_off) ir-run: running debug tree <worktree>/build
+    (glitch_standard_off) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --glitch-test standard-off (timeout: 60s) (window mode: offscreen)
+    (glitch_standard_off) ir-run: IRShapeDebug exited cleanly after 8s
+    (glitch_standard_off) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_off': --glitch-test off
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-test off
+    (glitch_off) ir-run: running debug tree <worktree>/build
+    (glitch_off) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-test off (timeout: 60s) (window mode: offscreen)
+    (glitch_off) ir-run: IRShapeDebug exited cleanly after 2s
+    (glitch_off) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_tear': --glitch-test tear
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-test tear
+    (glitch_tear) ir-run: running debug tree <worktree>/build
+    (glitch_tear) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-test tear (timeout: 60s) (window mode: offscreen)
+    (glitch_tear) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_tear) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_hold': --glitch-test hold
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-test hold
+    (glitch_hold) ir-run: running debug tree <worktree>/build
+    (glitch_hold) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-test hold (timeout: 60s) (window mode: offscreen)
+    (glitch_hold) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_hold) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_split': --glitch-test split
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-test split
+    (glitch_split) ir-run: running debug tree <worktree>/build
+    (glitch_split) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-test split (timeout: 60s) (window mode: offscreen)
+    (glitch_split) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_split) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_bars': --glitch-test bars
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-test bars
+    (glitch_bars) ir-run: running debug tree <worktree>/build
+    (glitch_bars) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-test bars (timeout: 60s) (window mode: offscreen)
+    (glitch_bars) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_bars) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_cells': --glitch-test cells
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-test cells
+    (glitch_cells) ir-run: running debug tree <worktree>/build
+    (glitch_cells) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-test cells (timeout: 60s) (window mode: offscreen)
+    (glitch_cells) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_cells) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_depth_tear': --glitch-test depth-tear
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-test depth-tear
+    (glitch_depth_tear) ir-run: running debug tree <worktree>/build
+    (glitch_depth_tear) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-test depth-tear (timeout: 60s) (window mode: offscreen)
+    (glitch_depth_tear) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_depth_tear) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_depth_hold': --glitch-test depth-hold
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-test depth-hold
+    (glitch_depth_hold) ir-run: running debug tree <worktree>/build
+    (glitch_depth_hold) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-test depth-hold (timeout: 60s) (window mode: offscreen)
+    (glitch_depth_hold) ir-run: queued on the gpu lock for 1s; the 60s run clock has not started (queue bound IR_QUEUE_TIMEOUT=600s)
+    (glitch_depth_hold) ir-run: gpu lock granted after 11s; run clock started
+    (glitch_depth_hold) ir-run: IRShapeDebug exited cleanly after 1s
+    (glitch_depth_hold) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_hold_divisor2': --glitch-test hold-divisor
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-test hold-divisor
+    (glitch_hold_divisor2) ir-run: running debug tree <worktree>/build
+    (glitch_hold_divisor2) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-test hold-divisor (timeout: 60s) (window mode: offscreen)
+    (glitch_hold_divisor2) ir-run: IRShapeDebug exited cleanly after 2s
+    (glitch_hold_divisor2) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_standard_off': --glitch-subject-test standard-off
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --glitch-subject-test standard-off
+    (glitch_subject_standard_off) ir-run: running debug tree <worktree>/build
+    (glitch_subject_standard_off) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --glitch-subject-test standard-off (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_standard_off) ir-run: IRShapeDebug exited cleanly after 8s
+    (glitch_subject_standard_off) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_off': --glitch-subject-test off
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test off
+    (glitch_subject_off) ir-run: running debug tree <worktree>/build
+    (glitch_subject_off) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test off (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_off) ir-run: IRShapeDebug exited cleanly after 2s
+    (glitch_subject_off) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_tear': --glitch-subject-test tear
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test tear
+    (glitch_subject_tear) ir-run: running debug tree <worktree>/build
+    (glitch_subject_tear) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test tear (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_tear) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_tear) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_hold': --glitch-subject-test hold
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test hold
+    (glitch_subject_hold) ir-run: running debug tree <worktree>/build
+    (glitch_subject_hold) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test hold (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_hold) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_hold) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_split': --glitch-subject-test split
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test split
+    (glitch_subject_split) ir-run: running debug tree <worktree>/build
+    (glitch_subject_split) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test split (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_split) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_split) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_echo': --glitch-subject-test echo
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test echo
+    (glitch_subject_echo) ir-run: running debug tree <worktree>/build
+    (glitch_subject_echo) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test echo (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_echo) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_echo) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_dissolve': --glitch-subject-test dissolve
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test dissolve
+    (glitch_subject_dissolve) ir-run: running debug tree <worktree>/build
+    (glitch_subject_dissolve) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test dissolve (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_dissolve) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_dissolve) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_depth': --glitch-subject-test depth
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test depth
+    (glitch_subject_depth) ir-run: running debug tree <worktree>/build
+    (glitch_subject_depth) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test depth (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_depth) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_depth) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_spill_far_off': --glitch-subject-test spill-far-off
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test spill-far-off
+    (glitch_subject_spill_far_off) ir-run: running debug tree <worktree>/build
+    (glitch_subject_spill_far_off) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test spill-far-off (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_spill_far_off) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_spill_far_off) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_spill_far_on': --glitch-subject-test spill-far-on
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test spill-far-on
+    (glitch_subject_spill_far_on) ir-run: running debug tree <worktree>/build
+    (glitch_subject_spill_far_on) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test spill-far-on (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_spill_far_on) ir-run: IRShapeDebug exited cleanly after 4s
+    (glitch_subject_spill_far_on) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_spill_near_off': --glitch-subject-test spill-near-off
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test spill-near-off
+    (glitch_subject_spill_near_off) ir-run: running debug tree <worktree>/build
+    (glitch_subject_spill_near_off) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test spill-near-off (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_spill_near_off) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_spill_near_off) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_spill_near_on': --glitch-subject-test spill-near-on
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test spill-near-on
+    (glitch_subject_spill_near_on) ir-run: running debug tree <worktree>/build
+    (glitch_subject_spill_near_on) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test spill-near-on (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_spill_near_on) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_spill_near_on) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_choreography': --glitch-subject-test choreography
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test choreography
+    (glitch_subject_choreography) ir-run: running debug tree <worktree>/build
+    (glitch_subject_choreography) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test choreography (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_choreography) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_choreography) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_yaw22_off': --glitch-subject-test off --glitch-subject-yaw 22.5
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test off --glitch-subject-yaw 22.5
+    (glitch_subject_yaw22_off) ir-run: running debug tree <worktree>/build
+    (glitch_subject_yaw22_off) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test off --glitch-subject-yaw 22.5 (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_yaw22_off) ir-run: queued on the gpu lock for 1s; the 60s run clock has not started (queue bound IR_QUEUE_TIMEOUT=600s)
+    (glitch_subject_yaw22_off) ir-run: gpu lock granted after 4s; run clock started
+    (glitch_subject_yaw22_off) ir-run: IRShapeDebug exited cleanly after 2s
+    (glitch_subject_yaw22_off) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_yaw22_tear': --glitch-subject-test tear --glitch-subject-yaw 22.5
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test tear --glitch-subject-yaw 22.5
+    (glitch_subject_yaw22_tear) ir-run: running debug tree <worktree>/build
+    (glitch_subject_yaw22_tear) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test tear --glitch-subject-yaw 22.5 (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_yaw22_tear) ir-run: IRShapeDebug exited cleanly after 3s
+    (glitch_subject_yaw22_tear) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_yaw22_hold': --glitch-subject-test hold --glitch-subject-yaw 22.5
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test hold --glitch-subject-yaw 22.5
+    (glitch_subject_yaw22_hold) ir-run: running debug tree <worktree>/build
+    (glitch_subject_yaw22_hold) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test hold --glitch-subject-yaw 22.5 (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_yaw22_hold) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_yaw22_hold) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_yaw22_split': --glitch-subject-test split --glitch-subject-yaw 22.5
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test split --glitch-subject-yaw 22.5
+    (glitch_subject_yaw22_split) ir-run: running debug tree <worktree>/build
+    (glitch_subject_yaw22_split) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test split --glitch-subject-yaw 22.5 (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_yaw22_split) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_yaw22_split) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_yaw22_echo': --glitch-subject-test echo --glitch-subject-yaw 22.5
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test echo --glitch-subject-yaw 22.5
+    (glitch_subject_yaw22_echo) ir-run: running debug tree <worktree>/build
+    (glitch_subject_yaw22_echo) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test echo --glitch-subject-yaw 22.5 (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_yaw22_echo) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_yaw22_echo) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_yaw22_dissolve': --glitch-subject-test dissolve --glitch-subject-yaw 22.5
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test dissolve --glitch-subject-yaw 22.5
+    (glitch_subject_yaw22_dissolve) ir-run: running debug tree <worktree>/build
+    (glitch_subject_yaw22_dissolve) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test dissolve --glitch-subject-yaw 22.5 (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_yaw22_dissolve) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_yaw22_dissolve) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_yaw22_depth': --glitch-subject-test depth --glitch-subject-yaw 22.5
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test depth --glitch-subject-yaw 22.5
+    (glitch_subject_yaw22_depth) ir-run: running debug tree <worktree>/build
+    (glitch_subject_yaw22_depth) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test depth --glitch-subject-yaw 22.5 (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_yaw22_depth) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_yaw22_depth) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_yaw22_spill_far_on': --glitch-subject-test spill-far-on --glitch-subject-yaw 22.5
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test spill-far-on --glitch-subject-yaw 22.5
+    (glitch_subject_yaw22_spill_far_on) ir-run: running debug tree <worktree>/build
+    (glitch_subject_yaw22_spill_far_on) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test spill-far-on --glitch-subject-yaw 22.5 (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_yaw22_spill_far_on) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_yaw22_spill_far_on) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_yaw22_spill_near_on': --glitch-subject-test spill-near-on --glitch-subject-yaw 22.5
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test spill-near-on --glitch-subject-yaw 22.5
+    (glitch_subject_yaw22_spill_near_on) ir-run: running debug tree <worktree>/build
+    (glitch_subject_yaw22_spill_near_on) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test spill-near-on --glitch-subject-yaw 22.5 (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_yaw22_spill_near_on) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_yaw22_spill_near_on) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'glitch_subject_yaw22_all': --glitch-subject-test all --glitch-subject-yaw 22.5
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --glitch-subject-test all --glitch-subject-yaw 22.5
+    (glitch_subject_yaw22_all) ir-run: running debug tree <worktree>/build
+    (glitch_subject_yaw22_all) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --glitch-subject-test all --glitch-subject-yaw 22.5 (timeout: 60s) (window mode: offscreen)
+    (glitch_subject_yaw22_all) ir-run: IRShapeDebug exited cleanly after 5s
+    (glitch_subject_yaw22_all) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'post_effects_standard_off': --post-effects-test standard-off
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10 --post-effects-test standard-off
+    (post_effects_standard_off) ir-run: running debug tree <worktree>/build
+    (post_effects_standard_off) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 10 --post-effects-test standard-off (timeout: 60s) (window mode: offscreen)
+    (post_effects_standard_off) ir-run: IRShapeDebug exited cleanly after 6s
+    (post_effects_standard_off) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'post_effects_off': --post-effects-test off
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --post-effects-test off
+    (post_effects_off) ir-run: running debug tree <worktree>/build
+    (post_effects_off) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --post-effects-test off (timeout: 60s) (window mode: offscreen)
+    (post_effects_off) ir-run: IRShapeDebug exited cleanly after 2s
+    (post_effects_off) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'post_effects_blur': --post-effects-test blur
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --post-effects-test blur
+    (post_effects_blur) ir-run: running debug tree <worktree>/build
+    (post_effects_blur) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --post-effects-test blur (timeout: 60s) (window mode: offscreen)
+    (post_effects_blur) ir-run: IRShapeDebug exited cleanly after 5s
+    (post_effects_blur) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'post_effects_bloom': --post-effects-test bloom
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --post-effects-test bloom
+    (post_effects_bloom) ir-run: running debug tree <worktree>/build
+    (post_effects_bloom) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --post-effects-test bloom (timeout: 60s) (window mode: offscreen)
+    (post_effects_bloom) ir-run: IRShapeDebug exited cleanly after 5s
+    (post_effects_bloom) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'post_effects_grade': --post-effects-test grade
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --post-effects-test grade
+    (post_effects_grade) ir-run: running debug tree <worktree>/build
+    (post_effects_grade) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --post-effects-test grade (timeout: 60s) (window mode: offscreen)
+    (post_effects_grade) ir-run: IRShapeDebug exited cleanly after 5s
+    (post_effects_grade) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[render-verify] extra run 'post_effects_all': --post-effects-test all
++ fleet-run --timeout 60 IRShapeDebug --auto-screenshot 40 --post-effects-test all
+    (post_effects_all) ir-run: running debug tree <worktree>/build
+    (post_effects_all) ir-run: <HOME>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --auto-screenshot 40 --post-effects-test all (timeout: 60s) (window mode: offscreen)
+    (post_effects_all) ir-run: IRShapeDebug exited cleanly after 5s
+    (post_effects_all) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+
+shot                                     result     match%  max_d     psnr
+----------------------------------------------------------------------------
+zoom1_origin                             PASS      99.9955     53    59.36
+zoom2_origin                             PASS      99.9635     53    53.04
+zoom4_origin                             PASS      99.9018     53    50.92
+zoom1_odd_offset                         PASS      99.9954     53    59.36
+zoom8_origin                             PASS      99.9905     53    53.12
+zoom4_offset_3_5                         PASS      99.9999     52    76.62
+zoom16_lod_fine_sphere                   PASS      99.9906     53    53.45
+lod_swap_zoom1_cube                      PASS      99.9954     53    59.36
+lod_swap_zoom2_cube                      PASS      99.9635     53    53.04
+lod_swap_zoom4_cone                      PASS      99.9071     53    51.94
+lod_swap_zoom8_cone                      PASS      99.9912     53     54.6
+lod_swap_zoom16_sphere                   PASS        100.0      6    57.73
+zoom4_yaw90                              PASS      99.9752     53    52.55
+zoom4_yaw180                             PASS        100.0      0      inf
+zoom4_yaw270                             PASS        100.0      0      inf
+zoom4_yaw45_inter_cardinal               PASS        100.0      0      inf
+zoom8_yaw180                             PASS        100.0      0      inf
+zoom4_pan16_yaw0_pivot                   PASS      99.9025     53    50.91
+zoom4_pan16_yaw90_pivot                  PASS        99.97     53    51.79
+zoom4_pan16_yaw180_pivot                 PASS        100.0      0      inf
+zoom4_pan16_yaw45_pivot                  PASS        100.0      0      inf
+zoom4_origin:coverage                    PASS     
+zoom16_lod_fine_sphere:silhouette        PASS     
+zoom1_origin:clip                        PASS     
+sdf_baked_surface_parented:sdf_voxel_surface_yaw0 PASS      99.9088     56    47.52
+sdf_baked_surface_parented:sdf_voxel_surface_yaw45 PASS      99.9994      9    65.31
+sdf_baked_surface_parented:sdf_voxel_surface_yaw90 PASS      99.9927     56    58.36
+sdf_baked_surface_parented:sdf_voxel_surface_yaw180 PASS        100.0      0      inf
+sdf_baked_surface_parented:sdf_voxel_surface_yaw270 PASS        100.0      0      inf
+sdf_baked_surface_parented:sdf_voxel_surface_zoom2 PASS      99.9998      9    71.68
+sdf_baked_pose_root:sdf_voxel_pose_yaw0  PASS      99.9088     57    47.53
+sdf_baked_pose_root:sdf_voxel_pose_yaw45 PASS        100.0      0      inf
+sdf_baked_pose_root:sdf_voxel_pose_yaw90 PASS      99.9927     56    58.36
+sdf_baked_pose_root:sdf_voxel_pose_yaw180 PASS        100.0      0      inf
+sdf_baked_pose_root:sdf_voxel_pose_yaw270 PASS        100.0      0      inf
+sdf_baked_pose_root:sdf_voxel_pose_zoom2 PASS        100.0      0      inf
+sdf_baked_pose_parented:sdf_voxel_pose_yaw0 PASS      99.9088     57    47.53
+sdf_baked_pose_parented:sdf_voxel_pose_yaw45 PASS        100.0      0      inf
+sdf_baked_pose_parented:sdf_voxel_pose_yaw90 PASS      99.9927     56    58.36
+sdf_baked_pose_parented:sdf_voxel_pose_yaw180 PASS        100.0      0      inf
+sdf_baked_pose_parented:sdf_voxel_pose_yaw270 PASS        100.0      0      inf
+sdf_baked_pose_parented:sdf_voxel_pose_zoom2 PASS        100.0      0      inf
+lod_scene:lod_scene_coarse               PASS      99.9993     35    70.17
+lod_scene:lod_scene_medium_yaw45         PASS      99.9682     26    59.08
+lod_scene:lod_scene_fine_yaw90           PASS      99.9999      9    84.01
+lod_scene:lod_scene_return_yaw180        PASS        100.0      0      inf
+lod_scene:lod_scene_coarse_yaw270        PASS       99.999     35     68.8
+lod_scene:lod_scene_restored             PASS      99.9993     35    70.17
+moving_caster:moving_caster_0            PASS      99.9985     48    63.21
+moving_caster:moving_caster_1            PASS      99.9978     48    61.45
+moving_caster:moving_caster_2            PASS      99.9977     48    61.29
+moving_caster:moving_caster_3            PASS      99.9977     48    61.29
+moving_caster:moving_caster_4            PASS      99.9978     48    61.45
+moving_caster:moving_caster_5            PASS      99.9985     48    63.21
+moving_caster:moving_caster_6            PASS      99.9978     48    61.45
+moving_caster:moving_caster_7            PASS      99.9977     48    61.29
+moving_caster:moving_caster_8            PASS      99.9977     48    61.29
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_000 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_001 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_002 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_003 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_004 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_005 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_006 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_007 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_008 PASS        100.0      0      inf
+lod_dense_swap:lod_dense_swap_z2         PASS        100.0      0      inf
+lod_dense_swap:lod_dense_swap_z8         PASS      99.9867     55    54.78
+viewport_portrait:portrait_world_z1      PASS        100.0      0      inf
+viewport_portrait:portrait_world_z1_world_yaw90 PASS        100.0      0      inf
+viewport_portrait:portrait_world_z1:clip PASS     
+viewport_portrait:portrait_world_z1_world_yaw90:clip PASS     
+viewport_portrait_lod_swap:portrait_lod_swap_z1 PASS        100.0      0      inf
+prefab_flower:prefab_flower_z1           PASS        100.0      0      inf
+prefab_flower:prefab_flower_z4           PASS      99.9989     34    71.93
+prefab_flower:prefab_flower_z16          PASS      99.9563     36    54.86
+editor_parts_z4:prefab_editor_parts_z4   PASS       99.995     53    60.44
+composite_proof:composite_proof_z1       PASS      99.9996     48    71.68
+composite_proof:composite_proof_z4       PASS        100.0      0      inf
+composite_proof:composite_proof_z16      PASS        100.0      0      inf
+text_sizes:text_size_sample              PASS        100.0      0      inf
+text_sizes:text_size_sample:text-size-ratio PASS     
+text_scale1_legibility:text_size_sample:text-stroke-contrast PASS     
+voxel_text:voxel_text_sample             PASS        100.0      0      inf
+canvas_image:canvas_image_sample         PASS        100.0      0      inf
+framebuffer_image:framebuffer_image_sample PASS        100.0      0      inf
+glitch_standard_off:zoom1_origin         PASS      99.9955     53    59.36
+glitch_standard_off:zoom2_origin         PASS      99.9635     53    53.04
+glitch_standard_off:zoom4_origin         PASS      99.9018     53    50.92
+glitch_standard_off:zoom1_odd_offset     PASS      99.9954     53    59.36
+glitch_standard_off:zoom8_origin         PASS      99.9905     53    53.12
+glitch_standard_off:zoom4_offset_3_5     PASS      99.9999     52    76.62
+glitch_standard_off:zoom16_lod_fine_sphere PASS      99.9906     53    53.45
+glitch_standard_off:lod_swap_zoom1_cube  PASS      99.9954     53    59.36
+glitch_standard_off:lod_swap_zoom2_cube  PASS      99.9635     53    53.04
+glitch_standard_off:lod_swap_zoom4_cone  PASS      99.9071     53    51.94
+glitch_standard_off:lod_swap_zoom8_cone  PASS      99.9912     53     54.6
+glitch_standard_off:lod_swap_zoom16_sphere PASS        100.0      6    57.73
+glitch_standard_off:zoom4_yaw90          PASS      99.9752     53    52.55
+glitch_standard_off:zoom4_yaw180         PASS        100.0      0      inf
+glitch_standard_off:zoom4_yaw270         PASS        100.0      0      inf
+glitch_standard_off:zoom4_yaw45_inter_cardinal PASS        100.0      0      inf
+glitch_standard_off:zoom8_yaw180         PASS        100.0      0      inf
+glitch_standard_off:zoom4_pan16_yaw0_pivot PASS      99.9025     53    50.91
+glitch_standard_off:zoom4_pan16_yaw90_pivot PASS        99.97     53    51.79
+glitch_standard_off:zoom4_pan16_yaw180_pivot PASS        100.0      0      inf
+glitch_standard_off:zoom4_pan16_yaw45_pivot PASS        100.0      0      inf
+glitch_off:glitch_off                    PASS      99.9865     53    54.25
+glitch_tear:glitch_tear                  PASS      99.9865     53    54.25
+glitch_hold:glitch_hold                  PASS      99.9848     53    53.78
+glitch_split:glitch_split                PASS      99.9865     53    54.25
+glitch_bars:glitch_bars                  PASS      99.9865     53    54.25
+glitch_cells:glitch_cells                PASS       99.997     53    60.67
+glitch_depth_tear:glitch_depth_tear      PASS      99.9865     53    54.25
+glitch_depth_hold:glitch_depth_hold      PASS      99.9865     53    54.25
+glitch_hold_divisor2:glitch_hold_divisor2 PASS      99.9848     53    53.78
+glitch_subject_standard_off:zoom1_origin PASS      99.9955     53    59.36
+glitch_subject_standard_off:zoom2_origin PASS      99.9635     53    53.04
+glitch_subject_standard_off:zoom4_origin PASS      99.9018     53    50.92
+glitch_subject_standard_off:zoom1_odd_offset PASS      99.9954     53    59.36
+glitch_subject_standard_off:zoom8_origin PASS      99.9905     53    53.12
+glitch_subject_standard_off:zoom4_offset_3_5 PASS      99.9999     52    76.62
+glitch_subject_standard_off:zoom16_lod_fine_sphere PASS      99.9906     53    53.45
+glitch_subject_standard_off:lod_swap_zoom1_cube PASS      99.9954     53    59.36
+glitch_subject_standard_off:lod_swap_zoom2_cube PASS      99.9635     53    53.04
+glitch_subject_standard_off:lod_swap_zoom4_cone PASS      99.9071     53    51.94
+glitch_subject_standard_off:lod_swap_zoom8_cone PASS      99.9912     53     54.6
+glitch_subject_standard_off:lod_swap_zoom16_sphere PASS        100.0      6    57.73
+glitch_subject_standard_off:zoom4_yaw90  PASS      99.9752     53    52.55
+glitch_subject_standard_off:zoom4_yaw180 PASS        100.0      0      inf
+glitch_subject_standard_off:zoom4_yaw270 PASS        100.0      0      inf
+glitch_subject_standard_off:zoom4_yaw45_inter_cardinal PASS        100.0      0      inf
+glitch_subject_standard_off:zoom8_yaw180 PASS        100.0      0      inf
+glitch_subject_standard_off:zoom4_pan16_yaw0_pivot PASS      99.9025     53    50.91
+glitch_subject_standard_off:zoom4_pan16_yaw90_pivot PASS        99.97     53    51.79
+glitch_subject_standard_off:zoom4_pan16_yaw180_pivot PASS        100.0      0      inf
+glitch_subject_standard_off:zoom4_pan16_yaw45_pivot PASS        100.0      0      inf
+glitch_subject_off:glitch_subject_off    PASS      99.9892     53    55.27
+glitch_subject_tear:glitch_subject_tear  PASS        100.0      0      inf
+glitch_subject_hold:glitch_subject_hold  PASS        100.0      0      inf
+glitch_subject_split:glitch_subject_split PASS        100.0      0      inf
+glitch_subject_echo:glitch_subject_echo  PASS        100.0      0      inf
+glitch_subject_dissolve:glitch_subject_dissolve PASS        100.0      0      inf
+glitch_subject_depth:glitch_subject_depth PASS        100.0      0      inf
+glitch_subject_spill_far_off:glitch_subject_spill_far_off PASS      99.9892     53    55.27
+glitch_subject_spill_far_on:glitch_subject_spill_far_on PASS        100.0      0      inf
+glitch_subject_spill_near_off:glitch_subject_spill_near_off PASS      99.9892     53    55.27
+glitch_subject_spill_near_on:glitch_subject_spill_near_on PASS        100.0      0      inf
+glitch_subject_choreography:glitch_subject_choreo_tick_n PASS        100.0      0      inf
+glitch_subject_choreography:glitch_subject_choreo_tick_n1 PASS      99.9892     53    55.27
+glitch_subject_yaw22_off:glitch_subject_yaw22_off PASS        100.0      0      inf
+glitch_subject_yaw22_tear:glitch_subject_yaw22_tear PASS        100.0      0      inf
+glitch_subject_yaw22_hold:glitch_subject_yaw22_hold PASS        100.0      0      inf
+glitch_subject_yaw22_split:glitch_subject_yaw22_split PASS        100.0      0      inf
+glitch_subject_yaw22_echo:glitch_subject_yaw22_echo PASS        100.0      0      inf
+glitch_subject_yaw22_dissolve:glitch_subject_yaw22_dissolve PASS        100.0      0      inf
+glitch_subject_yaw22_depth:glitch_subject_yaw22_depth PASS        100.0      0      inf
+glitch_subject_yaw22_spill_far_on:glitch_subject_yaw22_spill_far_on PASS        100.0      0      inf
+glitch_subject_yaw22_spill_near_on:glitch_subject_yaw22_spill_near_on PASS        100.0      0      inf
+glitch_subject_yaw22_all:glitch_subject_yaw22_all PASS        100.0      0      inf
+post_effects_standard_off:zoom1_origin   PASS      99.9955     53    59.36
+post_effects_standard_off:zoom2_origin   PASS      99.9635     53    53.04
+post_effects_standard_off:zoom4_origin   PASS      99.9018     53    50.92
+post_effects_standard_off:zoom1_odd_offset PASS      99.9954     53    59.36
+post_effects_standard_off:zoom8_origin   PASS      99.9905     53    53.12
+post_effects_standard_off:zoom4_offset_3_5 PASS      99.9999     52    76.62
+post_effects_standard_off:zoom16_lod_fine_sphere PASS      99.9906     53    53.45
+post_effects_standard_off:lod_swap_zoom1_cube PASS      99.9954     53    59.36
+post_effects_standard_off:lod_swap_zoom2_cube PASS      99.9635     53    53.04
+post_effects_standard_off:lod_swap_zoom4_cone PASS      99.9071     53    51.94
+post_effects_standard_off:lod_swap_zoom8_cone PASS      99.9912     53     54.6
+post_effects_standard_off:lod_swap_zoom16_sphere PASS        100.0      6    57.73
+post_effects_standard_off:zoom4_yaw90    PASS      99.9752     53    52.55
+post_effects_standard_off:zoom4_yaw180   PASS        100.0      0      inf
+post_effects_standard_off:zoom4_yaw270   PASS        100.0      0      inf
+post_effects_standard_off:zoom4_yaw45_inter_cardinal PASS        100.0      0      inf
+post_effects_standard_off:zoom8_yaw180   PASS        100.0      0      inf
+post_effects_standard_off:zoom4_pan16_yaw0_pivot PASS      99.9025     53    50.91
+post_effects_standard_off:zoom4_pan16_yaw90_pivot PASS        99.97     53    51.79
+post_effects_standard_off:zoom4_pan16_yaw180_pivot PASS        100.0      0      inf
+post_effects_standard_off:zoom4_pan16_yaw45_pivot PASS        100.0      0      inf
+post_effects_off:post_effects_off        PASS        100.0      0      inf
+post_effects_blur:post_effects_blur      PASS        100.0      0      inf
+post_effects_bloom:post_effects_bloom    PASS        100.0      0      inf
+post_effects_grade:post_effects_grade    PASS        100.0      0      inf
+post_effects_all:post_effects_all        PASS        100.0      0      inf
+
+[render-verify] all 186 checks PASS
