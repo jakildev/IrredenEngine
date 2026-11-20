@@ -215,8 +215,11 @@ anchor, the store frame, the yaw, the visible triplet, the view rotation and
 the depth scale) is computed by `IRPrefab::PerAxisCanvas::scatterPlacement`.
 `VOXEL_TO_TRIXEL_STAGE_1::beginTick` derives it for the main canvas, with the
 continuous-zoom sample `TRIXEL_TO_FRAMEBUFFER` is about to publish
-(`IRPrefab::Camera::upcomingZoomFrame`), and stores it on the component.
-`TRIXEL_TO_FRAMEBUFFER` derives it again from the camera as it stands then.
+(`IRPrefab::Camera::upcomingZoomFrame`), and stores it on the component. The
+verdict is taken in the same place: `resolveOverflowRejection` sets
+`C_PerAxisTrixelCanvases::scatterPlacementTested_` only when this frame's
+append will reject at that placement. `TRIXEL_TO_FRAMEBUFFER` derives the
+placement again from the camera as it stands then, in `drawPerAxisScatter`.
 
 **The ordering contract.** The invariant is: a rejected lane face cannot pass
 the final depth test anywhere in its finite projected footprint at the
@@ -238,33 +241,45 @@ preview that advances nothing.
 `--continuous-zoom-gui-test` and `--rotation-pick-test gui` splice the GUI-test
 cycler ahead of the composite, because the hover readback has to precede
 `TRIXEL_TO_FRAMEBUFFER`'s reset of it, so each shot's pose is written between
-the two systems. Those modes call
-`IRPrefab::PerAxisCanvas::setOverflowRejectionEnabled(false)` once the voxel
-system exists and before the first render pass, and keep the full lane for the
-whole run; the frame a pose lands on then draws as it would without rejection.
-The setter returns false and changes nothing before the system is created, and
-the demo asserts on that. The `sweep`, `tie` and `cube` picking modes write
-the pose ahead of the voxel stage and keep rejection. A pipeline that writes
-the camera in that slot on purpose opts out the same way.
+the two systems. Each of those three registration branches calls
+`keepFullOverflowLaneForGuiCycler` (`creations/demos/shape_debug/main.cpp`),
+which calls `IRPrefab::PerAxisCanvas::setOverflowRejectionEnabled(false)`,
+once the voxel system exists and before the first render pass. They keep the
+full lane for the whole run, and the cycler stays in the slot where it reads
+the completed hover. The frame a pose lands on then draws as it would without
+rejection. The setter returns false and changes nothing before the system
+is created, and the helper asserts on that. The `sweep`, `tie` and `cube`
+picking modes and normal rendering write the pose ahead of the voxel stage and
+keep rejection. A pipeline that writes the camera in that slot on purpose
+opts out the same way, before the first rotating frame; the recovery below is
+not a substitute.
 
 **Recovery from an unexpected late write.** If the camera is written between
-the two systems anyway, the composite finds its placement differs from stage
-1's, and two things follow:
+the two systems anyway, `drawPerAxisScatter` finds its placement differs from
+stage 1's, and two things follow:
 
-- On that frame, if the append rejected, the composite draws the scatter at
-  stage 1's placement, the one the faces were tested at and the store was
-  keyed in. That keeps the rejection proof. It does not reproduce the image
-  the full lane would draw, and the other passes may already show the new
-  pose.
-- The append keeps every candidate for the next `kRejectionStandDownFrames`
-  rotating frames, and the composite draws at its own placement. Each further
-  mismatch refills the count, and a mismatch after it has run out latches
-  again.
+- On that frame, if the append rejected (`scatterPlacementTested_`), the
+  composite draws the scatter at stage 1's placement, the one the faces were
+  tested at and the store was keyed in. That keeps the rejection proof. It
+  does not reproduce the image the full lane would draw, and the other passes
+  may already show the new pose.
+- The composite sets `rejectionStandDownFrames_` to
+  `kRejectionStandDownFrames` (8), so the append keeps every candidate for the
+  next eight rotating frames, and the composite draws at its own placement.
+  Each further mismatch refills the count, and a mismatch after it has run out
+  latches again.
 
-This recovers from a broken ordering contract; it is not a supported way to
-drive camera animation. `IRShapeDebug --late-camera-write-test` writes the yaw
-in that slot on scheduled frames and checks the latch, a refill inside the
-window and a second latch after it expires.
+The first frame draws the tested pose because the faces rejected at it are no
+longer in the lane. Drawing the late pose would need those records to have
+been kept in advance, or the lane and every pass that reads it to be rebuilt
+after the write. The stand-down is a backstop after a mismatch: it says
+nothing about whether the camera will be written late again, so a pipeline
+that writes late on purpose opts out before rejection runs (above). This
+recovers from a broken ordering contract; it is not a supported way to drive
+camera animation. `IRShapeDebug --late-camera-write-test` writes the yaw in
+that slot on scheduled frames (`writeLateCamera`) and checks the latch, a
+refill inside the window and a second latch after it expires
+(`probeLateCamera`).
 
 **When the append keeps every candidate.** Rejection stands down, and the
 lane is the full cardinal-loser set, when any of these holds:
@@ -304,13 +319,43 @@ are still bounded by three records per admitted voxel; its GPU-authored grids
 are sized from the surviving count, so the stages past it are empty
 dispatches.
 
-**Validation.** `scripts/tests/test_render_overflow_occlusion.py` runs the
-production pyramid and test from both backends against a brute-force
-reference, and `scripts/tests/test_render_overflow_append.py` pins how the
-verdict routes a candidate. The image gates are byte identity between a run
-with rejection and a run with the kill switch, at the nine-yaw
-`IRCanvasStress` set and on frozen-wave `IRPerfGrid` frames mid-sweep and
-after a yaw jump, paired with the witness's rejected count as the fire gate.
+**Provenance.** The ordering contract, the fixture opt-out and the recovery
+rule were adopted in the architect answer on #4952 (its options 4 and 5) and
+landed with #5084. #4954's motion, positive-fire, tie-order, capacity/drop and
+backend requirements are unchanged by them.
+
+**Validation.** A change to the rejection test, the placement or the camera
+ordering reruns these gates:
+
+- `scripts/tests/test_render_overflow_occlusion.py` runs the production
+  pyramid and test from both backends' sources against a brute-force
+  reference, and `scripts/tests/test_render_overflow_append.py` pins how the
+  verdict routes a candidate.
+- Image: byte identity between a run with rejection and a run with the kill
+  switch, at the nine-yaw `IRCanvasStress` set and on frozen-wave
+  `IRPerfGrid` frames mid-sweep and after a yaw jump.
+- Positive fire: the witness's rejected count, from a normally ordered
+  rotating run (the `IRPerfGrid` million control). An opted-out GUI mode is
+  never evidence that rejection ran.
+- First late write: each opted-out mode run with `--capture-pose-write-frame`,
+  base against head, every pair through `render-compare.py --per-pixel-tol 0
+  --threshold-max-delta 0` with the GUI assertions kept. The perf HUD's
+  frame-time graph plots wall-clock time and differs between two runs of the
+  same build, so its rectangle is masked in both images.
+- Opt-out effective: the run's first-rotating-frame verdict line reads
+  `off (disabled)` in each opted-out mode that reaches a rotating frame, and a
+  control build with the opt-out calls removed reads `on`.
+- Recovery: `IRShapeDebug --late-camera-write-test` reports the latch, the
+  refill and the re-latch. It is not graded for base identity.
+
+A settled GUI capture is not evidence for the frame a pose is written on; only
+the pose-write captures are.
+
+What #5084 completed, on Metal only, is recorded in
+[`docs/perf/overflow-lane-rejection.md`](../perf/overflow-lane-rejection.md)
+(§ "The image is unchanged", § "Fixtures that write the pose late"). The
+OpenGL runtime run of every gate above is still required: the kernels have
+GLSL twins, and no GL host has run them.
 
 ### Store reset over the occupied-cell list
 
