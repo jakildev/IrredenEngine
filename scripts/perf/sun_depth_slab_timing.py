@@ -4,8 +4,8 @@
 Each pair profiles every arm once, reversing the order on alternate pairs,
 through scripts/perf/repeat_profile.py (which owns benchmark resource
 coordination and records the tree it ran). Cells: the raster-route
-CanvasStress control and distant-stack scenes, the default CanvasStress scene
-on the raster route, and IRPerfGrid at zoom 1 and 4. The base arm is the
+CanvasStress control and distant-stack scenes, the default CanvasStress scene,
+IRPerfGrid at zoom 1 and 4, and the million-entity control. The base arm is the
 zero-slot build of the same source revision; extra arms (--arm name=tree)
 attribute the cost per path.
 
@@ -58,6 +58,9 @@ CELLS = {
                                        "--subdivision-mode", "full", "--base-subdivisions", "1"]),
     "perf-grid-zoom4": ("IRPerfGrid", ["--auto-profile", "60", "--zoom", "4",
                                        "--subdivision-mode", "full", "--base-subdivisions", "1"]),
+    "perf-grid-million": ("IRPerfGrid", ["--config-preset", "configs/perf/million.lua",
+                                         "--wave-freeze", "--no-overlay", "--pivot-origin",
+                                         "--yaw", "0", "--auto-profile", "300"]),
 }
 SUN_SYSTEMS = ("BakeSunShadowMap", "ComputeSunShadow", "LightingToTrixel", "CanvasToFramebuffer",
                "SingleVoxelToCanvasFirst")

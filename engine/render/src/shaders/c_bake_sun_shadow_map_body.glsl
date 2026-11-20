@@ -143,7 +143,8 @@ void writeSunTexel(int cascadeOffset, ivec2 px, uint packedDepth) {
 // point-scatter, not a 1D silhouette line, so a directional walk under-covers
 // (docs/design/sun-shadow-bake-coverage.md).
 void bakeCascadeBox(vec3 sp, vec2 origin, vec2 texelSz, int cascadeOffset, int radius) {
-    ivec2 base = ivec2(floor((sp.xy - origin) / texelSz));
+    const vec2 originTexel = round(origin / texelSz);
+    ivec2 base = ivec2(floor(sp.xy / texelSz - originTexel));
     for (int dy = -radius; dy <= radius; ++dy) {
         for (int dx = -radius; dx <= radius; ++dx) {
             // Splat provenance: store the DISPLACEMENT VECTOR (dx, dy) of this box
@@ -176,7 +177,8 @@ void bakeCascadeCooperative(
     barrier();
     ivec2 base = ivec2(0);
     if (caster) {
-        base = ivec2(floor((sp.xy - origin) / texelSz));
+        const vec2 originTexel = round(origin / texelSz);
+        base = ivec2(floor(sp.xy / texelSz - originTexel));
         sunWindowReduceBase(base);
     }
     memoryBarrierShared();

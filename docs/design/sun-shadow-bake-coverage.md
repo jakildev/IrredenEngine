@@ -362,3 +362,21 @@ acne-free, splat-off-referenced gates, all evaluable on macOS/Metal
 See also `engine/render/CLAUDE.md` § "Sun shadow bake AABB sweep" and
 § "Lighting culling invariants" for the AABB-sweep coverage of off-screen
 casters, which is orthogonal to this in-map coverage model.
+
+## World-stable cascade lattice
+
+The cascade fit is translation-invariant at a fixed viewport, zoom, sun and
+raster cardinal.  It removes camera translation before choosing each axis's
+texel size, rounds that size up on a quarter-octave ladder, and floors the
+positioned padded minimum to the resulting lattice.  The size is never
+recomputed after that snap.  One texel of fit slack preserves high-side
+coverage when the origin consumes the fractional part of a texel.
+
+The shader address calculation preserves the same contract in finite
+precision.  Bake and sample first recover the nearest integer lattice origin,
+then subtract that integer from the world UV
+already divided by `texelSize`.  Subtracting the two world-space floats before
+division lets the multiplication rounding in a camera-dependent origin move an
+otherwise exact boundary by one texel.  Tile and nearest/filtered sample
+addresses therefore use lattice coordinates, while reconstructed world UVs
+multiply the integer texel coordinate by the fixed size.
