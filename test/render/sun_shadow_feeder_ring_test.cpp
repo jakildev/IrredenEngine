@@ -106,6 +106,16 @@ TEST(SunShadowCascadePolicy, StableFitCoversEveryFractionalCameraPosition) {
     }
 }
 
+TEST(SunShadowCascadePolicy, FeederCapUsesLadderTexelDensity) {
+    constexpr float maxTexelSize = 0.3f;
+    constexpr int cappedEffSub = 16;
+
+    EXPECT_EQ(
+        IRPrefab::SunShadow::detail::feederSubCapForTexelSize(maxTexelSize, cappedEffSub),
+        static_cast<int>(IRMath::ceil(IRPrefab::SunShadow::kFeederSubSafetyFactor / maxTexelSize))
+    );
+}
+
 namespace {
 
 // A representative visible cull box. Deliberately NOT integer-aligned:

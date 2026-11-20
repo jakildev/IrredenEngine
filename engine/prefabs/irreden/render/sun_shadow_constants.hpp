@@ -287,6 +287,18 @@ constexpr float kFeederIsoDepthMax = kIsoDepthMax;
 // 1.0 only if validation shows shadow holes at an off-screen-caster boundary.
 constexpr float kFeederSubSafetyFactor = 1.0f;
 
+namespace detail {
+
+inline int feederSubCapForTexelSize(float texelSize, int cappedEffSub) {
+    return IRMath::clamp(
+        static_cast<int>(IRMath::ceil(kFeederSubSafetyFactor / texelSize)),
+        1,
+        cappedEffSub
+    );
+}
+
+} // namespace detail
+
 // Per-face-edge micro-grid cap for the shadow-feeder dispatch. An
 // off-screen shadow caster only feeds the sun-shadow bake, so its stage-1
 // trixel depth can raster a coarser strided micro-grid than the on-screen
@@ -332,10 +344,9 @@ feederSubCap(const IRMath::vec3 &sunDir, IRMath::CardinalIndex cardinalIndex, in
             spatialRotation
         );
         const float texelSize = IRMath::max(fit.texelSize_.x, fit.texelSize_.y);
-        const float texelsPerWorldUnit = 1.0f / texelSize;
         cap = IRMath::max(
             cap,
-            static_cast<int>(IRMath::ceil(texelsPerWorldUnit * kFeederSubSafetyFactor))
+            detail::feederSubCapForTexelSize(texelSize, cappedEffSub)
         );
     }
     return IRMath::clamp(cap, 1, cappedEffSub);

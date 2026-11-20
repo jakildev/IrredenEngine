@@ -377,6 +377,6 @@ precision.  Bake and sample first recover the nearest integer lattice origin,
 then subtract that integer from the world UV
 already divided by `texelSize`.  Subtracting the two world-space floats before
 division lets the multiplication rounding in a camera-dependent origin move an
-otherwise exact boundary by one texel.  Tile and nearest/filtered sample
-addresses therefore use lattice coordinates, while reconstructed world UVs
+otherwise exact boundary by one texel.  Nearest/filtered sample addresses
+therefore use lattice coordinates, while reconstructed world UVs
 multiply the integer texel coordinate by the fixed size.
