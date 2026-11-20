@@ -1,0 +1,410 @@
+{
+  "arms": {
+    "test": {
+      "command": "fleet-run --timeout 3000 IrredenEngineTest",
+      "exit": 1,
+      "verdict_lines": [
+        "[  FAILED  ] ToolSpawnTest.UsesRootAsCwdAndSuppliesBuildDirectory (31 ms)",
+        "[  FAILED  ] ToolSpawnTest.SelectedWorktreeIsTheBuildCwdAndBuildDirectory (98 ms)",
+        "[       OK ] GpuReadbackRing.SameSubmissionSlotsStayPendingUntilItCompletes (0 ms)",
+        "[       OK ] GpuReadbackRing.EachCompletedSlotIsReadOnce (0 ms)",
+        "[       OK ] GpuReadbackRing.PartialCompletionReleasesOnlyFinishedSubmissions (0 ms)",
+        "[       OK ] GpuReadbackRing.GrowsToTheWritesInFlightThenReusesDrainedSlots (0 ms)",
+        "[       OK ] GpuReadbackRing.AtCapacityTheOldestPendingSampleIsDropped (0 ms)",
+        "[       OK ] PresentedPick.NewestCompletedFrameWinsEvenWhenSlotsDrainOutOfFrameOrder (0 ms)",
+        "[       OK ] PresentedPick.PendingSlotIsNotServedAndFullRingDropsItsOldestPendingFrame (0 ms)",
+        "[       OK ] PresentedPick.DestroyedEntityIsFilteredWithoutDiscardingFrameOrCursorState (0 ms)",
+        "[       OK ] PositionUploadTest.FramebufferEntityIdsAllocateLazilyAndClearIndependently (83 ms)",
+        "[       OK ] PositionUploadTest.OverflowSortHandlesFirstPopulationAndCountTransitions (288 ms)",
+        "[       OK ] OverflowSortBoundTest.UsesAdmittedVoxelSlotsAndClampsToLiveCountAndCapacity (0 ms)",
+        "[  FAILED  ] FontMakerSource.SavedHeadersCompile (30 ms)",
+        "[  PASSED  ] 4142 tests.",
+        "[  SKIPPED ] 24 tests, listed below:",
+        "[  FAILED  ] 3 tests, listed below:",
+        "[  FAILED  ] ToolSpawnTest.UsesRootAsCwdAndSuppliesBuildDirectory",
+        "[  FAILED  ] ToolSpawnTest.SelectedWorktreeIsTheBuildCwdAndBuildDirectory",
+        "[  FAILED  ] FontMakerSource.SavedHeadersCompile",
+        "ir-run: RESULT=CRASH exe=IrredenEngineTest exit=1 signal=none",
+        "== exit 1 after 35s"
+      ]
+    },
+    "rot_gui": {
+      "command": "python3 scripts/gui-verify.py IRShapeDebug --no-build --timeout 600 -- --rotation-pick-test gui",
+      "exit": 0,
+      "verdict_lines": [
+        "ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "[gui-verify] 8/8 assertions passed",
+        "== exit 0 after 6s"
+      ]
+    },
+    "sweep": {
+      "command": "fleet-run --timeout 180 IRShapeDebug --rotation-pick-test sweep",
+      "exit": 0,
+      "verdict_lines": [
+        "ROTATION-PICK sweep frames=360 hits=360 misses=0 result=PASS",
+        "ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "== exit 0 after 6s"
+      ]
+    },
+    "cube": {
+      "command": "fleet-run --timeout 180 IRShapeDebug --rotation-pick-test cube",
+      "exit": 1,
+      "verdict_lines": [
+        "ROTATION-PICK miss sample=0 expected=456 actual=0",
+        "ROTATION-PICK miss sample=1 expected=457 actual=456",
+        "ROTATION-PICK miss sample=2 expected=458 actual=457",
+        "ROTATION-PICK miss sample=3 expected=459 actual=458",
+        "ROTATION-PICK miss sample=4 expected=460 actual=459",
+        "ROTATION-PICK miss sample=5 expected=461 actual=460",
+        "ROTATION-PICK miss sample=6 expected=462 actual=461",
+        "ROTATION-PICK miss sample=7 expected=463 actual=462",
+        "ROTATION-PICK miss sample=8 expected=464 actual=463",
+        "ROTATION-PICK miss sample=9 expected=465 actual=464",
+        "ROTATION-PICK miss sample=10 expected=466 actual=465",
+        "ROTATION-PICK miss sample=11 expected=467 actual=466",
+        "ROTATION-PICK cube frames=288 hits=140 misses=148 result=FAIL",
+        "ir-run: RESULT=CRASH exe=IRShapeDebug exit=2 signal=none",
+        "== exit 1 after 9s"
+      ]
+    },
+    "cube_r2": {
+      "command": "fleet-run --timeout 180 IRShapeDebug --rotation-pick-test cube",
+      "exit": 1,
+      "verdict_lines": [
+        "ROTATION-PICK miss sample=1 expected=457 actual=456",
+        "ROTATION-PICK miss sample=2 expected=458 actual=457",
+        "ROTATION-PICK miss sample=3 expected=459 actual=458",
+        "ROTATION-PICK miss sample=4 expected=460 actual=459",
+        "ROTATION-PICK miss sample=5 expected=461 actual=460",
+        "ROTATION-PICK miss sample=6 expected=462 actual=461",
+        "ROTATION-PICK miss sample=7 expected=463 actual=462",
+        "ROTATION-PICK miss sample=8 expected=464 actual=463",
+        "ROTATION-PICK miss sample=9 expected=465 actual=464",
+        "ROTATION-PICK miss sample=10 expected=466 actual=465",
+        "ROTATION-PICK miss sample=11 expected=467 actual=466",
+        "ROTATION-PICK miss sample=12 expected=468 actual=467",
+        "ROTATION-PICK cube frames=288 hits=141 misses=147 result=FAIL",
+        "ir-run: RESULT=CRASH exe=IRShapeDebug exit=2 signal=none",
+        "== exit 1 after 9s"
+      ]
+    },
+    "tie1": {
+      "command": "fleet-run --timeout 180 IRShapeDebug --rotation-pick-test tie",
+      "exit": 0,
+      "verdict_lines": [
+        "ROTATION-PICK tie yaw=20 nearer=2018 farther=1259 background=566",
+        "ROTATION-PICK tie yaw=70 nearer=1908 farther=1288 background=647",
+        "ROTATION-PICK tie yaw=160 nearer=1900 farther=1289 background=654",
+        "ROTATION-PICK tie yaw=250 nearer=1894 farther=1254 background=695",
+        "ROTATION-PICK tie frames=15372 hits=15372 misses=0 result=PASS",
+        "ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "== exit 0 after 32s"
+      ]
+    },
+    "tie2": {
+      "command": "fleet-run --timeout 180 IRShapeDebug --rotation-pick-test tie",
+      "exit": 0,
+      "verdict_lines": [
+        "ROTATION-PICK tie yaw=20 nearer=2018 farther=1259 background=566",
+        "ROTATION-PICK tie yaw=70 nearer=1908 farther=1288 background=647",
+        "ROTATION-PICK tie yaw=160 nearer=1900 farther=1289 background=654",
+        "ROTATION-PICK tie yaw=250 nearer=1894 farther=1254 background=695",
+        "ROTATION-PICK tie frames=15372 hits=15372 misses=0 result=PASS",
+        "ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "== exit 0 after 31s"
+      ]
+    },
+    "tie3": {
+      "command": "fleet-run --timeout 180 IRShapeDebug --rotation-pick-test tie",
+      "exit": 0,
+      "verdict_lines": [
+        "ROTATION-PICK tie yaw=20 nearer=2018 farther=1259 background=566",
+        "ROTATION-PICK tie yaw=70 nearer=1908 farther=1288 background=647",
+        "ROTATION-PICK tie yaw=160 nearer=1900 farther=1289 background=654",
+        "ROTATION-PICK tie yaw=250 nearer=1894 farther=1254 background=695",
+        "ROTATION-PICK tie frames=15372 hits=15372 misses=0 result=PASS",
+        "ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "== exit 0 after 31s"
+      ]
+    },
+    "sd_gui": {
+      "command": "python3 scripts/gui-verify.py IRShapeDebug --no-build --timeout 600 -- --gui-test",
+      "exit": 1,
+      "verdict_lines": [
+        "GUI-ASSERT shot=3 label=presented_pick_current_30_frames kind=PICK_FRAME_CURRENT target=0 name=newest_completed_pick_frame result=FAIL actual=current=0/30",
+        "ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "[gui-verify] 48/49 assertions passed",
+        "== exit 1 after 10s"
+      ]
+    },
+    "sd_gui_r2": {
+      "command": "python3 scripts/gui-verify.py IRShapeDebug --no-build --timeout 600 -- --gui-test",
+      "exit": 1,
+      "verdict_lines": [
+        "GUI-ASSERT shot=3 label=presented_pick_current_30_frames kind=PICK_FRAME_CURRENT target=0 name=newest_completed_pick_frame result=FAIL actual=current=0/30",
+        "ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "[gui-verify] 48/49 assertions passed",
+        "== exit 1 after 9s"
+      ]
+    },
+    "sd_gui_r3": {
+      "command": "python3 scripts/gui-verify.py IRShapeDebug --no-build --timeout 600 -- --gui-test",
+      "exit": 1,
+      "verdict_lines": [
+        "GUI-ASSERT shot=3 label=presented_pick_current_30_frames kind=PICK_FRAME_CURRENT target=0 name=newest_completed_pick_frame result=FAIL actual=current=0/30",
+        "ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "[gui-verify] 48/49 assertions passed",
+        "== exit 1 after 19s"
+      ]
+    },
+    "sd_czoom": {
+      "command": "python3 scripts/gui-verify.py IRShapeDebug --no-build --timeout 600 -- --continuous-zoom-gui-test",
+      "exit": 0,
+      "verdict_lines": [
+        "ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "[gui-verify] 5/5 assertions passed",
+        "== exit 0 after 5s"
+      ]
+    },
+    "cs_hover": {
+      "command": "python3 scripts/gui-verify.py IRCanvasStress --no-build --timeout 600 -- --gui-session hover_canary",
+      "exit": 0,
+      "verdict_lines": [
+        "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+        "[gui-verify] 1/1 assertions passed",
+        "== exit 0 after 123s"
+      ]
+    },
+    "ve_default": {
+      "command": "python3 scripts/gui-verify.py IRVoxelEditor --no-build --timeout 600",
+      "exit": 0,
+      "verdict_lines": [
+        "ir-run: RESULT=CLEAN exe=IRVoxelEditor exit=0",
+        "[gui-verify] 51/51 assertions passed",
+        "== exit 0 after 255s"
+      ]
+    },
+    "ve_gizmo": {
+      "command": "python3 scripts/gui-verify.py IRVoxelEditor --no-build --timeout 600 -- --gui-session part_gizmo_reach",
+      "exit": 1,
+      "verdict_lines": [
+        "GUI-ASSERT shot=1 label=part_gizmo_reach_drag_x kind=PREDICATE target=0 name=baked_part_moved_by_x_arrow result=FAIL actual=translation=(-0.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=3 label=part_gizmo_reach_redo_x_drag kind=PREDICATE target=0 name=one_redo_restores_whole_x_drag result=FAIL actual=translation=(-0.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=4 label=part_gizmo_reach_drag_x_turned kind=PREDICATE target=0 name=baked_part_moved_at_a_turn result=FAIL actual=translation=(-0.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=5 label=part_gizmo_reach_array kind=PREDICATE target=0 name=last_copy_at_its_pivot result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=6 label=part_gizmo_reach_drag_z_turned_part kind=PREDICATE target=0 name=turned_copy_moved_by_z_arrow result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=7 label=part_gizmo_reach_hold_z_for_cancel kind=PREDICATE target=0 name=cancel_probe_moved_before_escape result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=8 label=part_gizmo_reach_cancel_z_drag kind=PREDICATE target=0 name=escape_restores_transform_press_pose result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=9 label=part_gizmo_reach_release_cancelled_z_drag kind=PREDICATE target=0 name=release_does_not_commit_cancelled_drag result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=10 label=part_gizmo_reach_undo_z_after_cancel kind=PREDICATE target=0 name=cancel_added_no_transform_history_entry result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=11 label=part_gizmo_reach_redo_z_after_cancel kind=PREDICATE target=0 name=redo_restores_committed_drag_after_cancel result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "ir-run: RESULT=CLEAN exe=IRVoxelEditor exit=0",
+        "[gui-verify] 14/24 assertions passed",
+        "== exit 1 after 10s"
+      ]
+    },
+    "ve_gizmo_r2": {
+      "command": "python3 scripts/gui-verify.py IRVoxelEditor --no-build --timeout 600 -- --gui-session part_gizmo_reach",
+      "exit": 1,
+      "verdict_lines": [
+        "GUI-ASSERT shot=1 label=part_gizmo_reach_drag_x kind=PREDICATE target=0 name=baked_part_moved_by_x_arrow result=FAIL actual=translation=(-0.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=3 label=part_gizmo_reach_redo_x_drag kind=PREDICATE target=0 name=one_redo_restores_whole_x_drag result=FAIL actual=translation=(-0.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=4 label=part_gizmo_reach_drag_x_turned kind=PREDICATE target=0 name=baked_part_moved_at_a_turn result=FAIL actual=translation=(-0.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=5 label=part_gizmo_reach_array kind=PREDICATE target=0 name=last_copy_at_its_pivot result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=6 label=part_gizmo_reach_drag_z_turned_part kind=PREDICATE target=0 name=turned_copy_moved_by_z_arrow result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=7 label=part_gizmo_reach_hold_z_for_cancel kind=PREDICATE target=0 name=cancel_probe_moved_before_escape result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=8 label=part_gizmo_reach_cancel_z_drag kind=PREDICATE target=0 name=escape_restores_transform_press_pose result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=9 label=part_gizmo_reach_release_cancelled_z_drag kind=PREDICATE target=0 name=release_does_not_commit_cancelled_drag result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=10 label=part_gizmo_reach_undo_z_after_cancel kind=PREDICATE target=0 name=cancel_added_no_transform_history_entry result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=11 label=part_gizmo_reach_redo_z_after_cancel kind=PREDICATE target=0 name=redo_restores_committed_drag_after_cancel result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "ir-run: RESULT=CLEAN exe=IRVoxelEditor exit=0",
+        "[gui-verify] 14/24 assertions passed",
+        "== exit 1 after 8s"
+      ]
+    },
+    "rv_sd": {
+      "command": "python3 scripts/render-verify.py --target IRShapeDebug --no-build --timeout 600 --json-out /c/msys64/tmp/p4865/out/rv_sd.json",
+      "exit": 0,
+      "verdict_lines": [
+        "(default) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "(pivot_focus_ctr_z4) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "(viewport_portrait) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "(viewport_portrait_lod_swap) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "(text_sizes) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "(text_scale1_legibility) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "(glitch_standard_off) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "(glitch_subject_standard_off) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "(post_effects_standard_off) ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "[render-verify] all 103 checks PASS (83 skipped \u2014 references pending)",
+        "== exit 0 after 352s"
+      ]
+    },
+    "rv_cs": {
+      "command": "python3 scripts/render-verify.py --target IRCanvasStress --no-build --timeout 600 --json-out /c/msys64/tmp/p4865/out/rv_cs.json",
+      "exit": 0,
+      "verdict_lines": [
+        "(default) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+        "(modeswitch) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+        "(detach) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+        "(compare) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+        "(impulse) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+        "(floor_selfshadow) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+        "(shadow_overlay_floor) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+        "(world_placed_cast) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+        "(gridspin_shadow_palette) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+        "(grid_orbit_facing) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+        "(grid_orbit_cardinals) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+        "(grid_capacity_plate_normals) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+        "(grid_capacity_plate_beauty) ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+        "[render-verify] all 31 checks PASS (28 skipped \u2014 references pending)",
+        "== exit 0 after 342s"
+      ]
+    },
+    "light": {
+      "command": "python3 scripts/light-verify.py --if-changed",
+      "exit": 0,
+      "verdict_lines": [
+        "[light-verify] --if-changed: 0 of 34 changed path(s) in the trigger surface; not required",
+        "== exit 0 after 1s"
+      ]
+    },
+    "parent-cube": {
+      "command": "fleet-run --timeout 180 IRShapeDebug --rotation-pick-test cube",
+      "exit": 1,
+      "verdict_lines": [
+        "ROTATION-PICK miss sample=1 expected=457 actual=456",
+        "ROTATION-PICK miss sample=2 expected=458 actual=456",
+        "ROTATION-PICK miss sample=3 expected=459 actual=457",
+        "ROTATION-PICK miss sample=4 expected=460 actual=459",
+        "ROTATION-PICK miss sample=5 expected=461 actual=460",
+        "ROTATION-PICK miss sample=6 expected=462 actual=460",
+        "ROTATION-PICK miss sample=7 expected=463 actual=461",
+        "ROTATION-PICK miss sample=8 expected=464 actual=463",
+        "ROTATION-PICK miss sample=9 expected=465 actual=464",
+        "ROTATION-PICK miss sample=10 expected=466 actual=464",
+        "ROTATION-PICK miss sample=11 expected=467 actual=465",
+        "ROTATION-PICK miss sample=12 expected=468 actual=466",
+        "ROTATION-PICK cube frames=288 hits=135 misses=153 result=FAIL",
+        "ir-run: RESULT=CRASH exe=IRShapeDebug exit=2 signal=none",
+        "== exit 1 after 19s"
+      ]
+    },
+    "parent-sweep": {
+      "command": "fleet-run --timeout 180 IRShapeDebug --rotation-pick-test sweep",
+      "exit": 1,
+      "verdict_lines": [
+        "ROTATION-PICK miss sample=1 expected=456 actual=0",
+        "ROTATION-PICK miss sample=5 expected=456 actual=0",
+        "ROTATION-PICK miss sample=57 expected=456 actual=0",
+        "ROTATION-PICK sweep frames=360 hits=357 misses=3 result=FAIL",
+        "ir-run: RESULT=CRASH exe=IRShapeDebug exit=2 signal=none",
+        "== exit 1 after 9s"
+      ]
+    },
+    "parent-sd_gui": {
+      "command": "python3 scripts/gui-verify.py IRShapeDebug --no-build --timeout 600 -- --gui-test",
+      "exit": 0,
+      "verdict_lines": [
+        "ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0",
+        "[gui-verify] 45/45 assertions passed",
+        "== exit 0 after 7s"
+      ]
+    },
+    "parent-ve_gizmo": {
+      "command": "python3 scripts/gui-verify.py IRVoxelEditor --no-build --timeout 600 -- --gui-session part_gizmo_reach",
+      "exit": 1,
+      "verdict_lines": [
+        "GUI-ASSERT shot=1 label=part_gizmo_reach_drag_x kind=PREDICATE target=0 name=baked_part_moved_by_x_arrow result=FAIL actual=translation=(-0.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=3 label=part_gizmo_reach_redo_x_drag kind=PREDICATE target=0 name=one_redo_restores_whole_x_drag result=FAIL actual=translation=(-0.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=4 label=part_gizmo_reach_drag_x_turned kind=PREDICATE target=0 name=baked_part_moved_at_a_turn result=FAIL actual=translation=(-0.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=5 label=part_gizmo_reach_array kind=PREDICATE target=0 name=last_copy_at_its_pivot result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=6 label=part_gizmo_reach_drag_z_turned_part kind=PREDICATE target=0 name=turned_copy_moved_by_z_arrow result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=7 label=part_gizmo_reach_hold_z_for_cancel kind=PREDICATE target=0 name=cancel_probe_moved_before_escape result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=8 label=part_gizmo_reach_cancel_z_drag kind=PREDICATE target=0 name=escape_restores_transform_press_pose result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=9 label=part_gizmo_reach_release_cancelled_z_drag kind=PREDICATE target=0 name=release_does_not_commit_cancelled_drag result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=10 label=part_gizmo_reach_undo_z_after_cancel kind=PREDICATE target=0 name=cancel_added_no_transform_history_entry result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=11 label=part_gizmo_reach_redo_z_after_cancel kind=PREDICATE target=0 name=redo_restores_committed_drag_after_cancel result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "ir-run: RESULT=CLEAN exe=IRVoxelEditor exit=0",
+        "[gui-verify] 14/24 assertions passed",
+        "== exit 1 after 183s"
+      ]
+    },
+    "parent-ve_gizmo_r2": {
+      "command": "python3 scripts/gui-verify.py IRVoxelEditor --no-build --timeout 600 -- --gui-session part_gizmo_reach",
+      "exit": 1,
+      "verdict_lines": [
+        "GUI-ASSERT shot=1 label=part_gizmo_reach_drag_x kind=PREDICATE target=0 name=baked_part_moved_by_x_arrow result=FAIL actual=translation=(-0.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=3 label=part_gizmo_reach_redo_x_drag kind=PREDICATE target=0 name=one_redo_restores_whole_x_drag result=FAIL actual=translation=(-0.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=4 label=part_gizmo_reach_drag_x_turned kind=PREDICATE target=0 name=baked_part_moved_at_a_turn result=FAIL actual=translation=(-0.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=5 label=part_gizmo_reach_array kind=PREDICATE target=0 name=last_copy_at_its_pivot result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=6 label=part_gizmo_reach_drag_z_turned_part kind=PREDICATE target=0 name=turned_copy_moved_by_z_arrow result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=7 label=part_gizmo_reach_hold_z_for_cancel kind=PREDICATE target=0 name=cancel_probe_moved_before_escape result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=8 label=part_gizmo_reach_cancel_z_drag kind=PREDICATE target=0 name=escape_restores_transform_press_pose result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=9 label=part_gizmo_reach_release_cancelled_z_drag kind=PREDICATE target=0 name=release_does_not_commit_cancelled_drag result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=10 label=part_gizmo_reach_undo_z_after_cancel kind=PREDICATE target=0 name=cancel_added_no_transform_history_entry result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "GUI-ASSERT shot=11 label=part_gizmo_reach_redo_z_after_cancel kind=PREDICATE target=0 name=redo_restores_committed_drag_after_cancel result=FAIL actual=translation=(-4.500000,-0.500000,-4.500000)",
+        "ir-run: RESULT=CLEAN exe=IRVoxelEditor exit=0",
+        "[gui-verify] 14/24 assertions passed",
+        "== exit 1 after 8s"
+      ]
+    }
+  },
+  "frames": {
+    "rot_gui_1_rotation_20.png": {
+      "sha256": "8157100b3637b42d18a9c784b2fee952f7d6d9c296797e00042030be8ae5c540",
+      "size": [
+        1280,
+        720
+      ]
+    },
+    "rot_gui_2_cardinal_0.png": {
+      "sha256": "836bcb0cc17747fe5ea9aaff75d24a523edafa1e5b1844123f1cba1c3e326d11",
+      "size": [
+        1280,
+        720
+      ]
+    },
+    "rot_gui_3_rotation_70.png": {
+      "sha256": "9a772141f4c3181f16fecda85d9d2cf930d4ff018662ceaa558207cac83b7b61",
+      "size": [
+        1280,
+        720
+      ]
+    },
+    "rot_gui_4_cardinal_90.png": {
+      "sha256": "8d05eb806586b4b7b4305353684a0b29841badddf4a09d832f4e217eecc875b3",
+      "size": [
+        1280,
+        720
+      ]
+    },
+    "rot_gui_5_rotation_160.png": {
+      "sha256": "48a697f092d6f94b34b77bdaa1ccbf28759b2aa0020195b443f01732d0b51c20",
+      "size": [
+        1280,
+        720
+      ]
+    },
+    "rot_gui_6_cardinal_180.png": {
+      "sha256": "836bcb0cc17747fe5ea9aaff75d24a523edafa1e5b1844123f1cba1c3e326d11",
+      "size": [
+        1280,
+        720
+      ]
+    },
+    "rot_gui_7_rotation_250.png": {
+      "sha256": "6c1dc47469fe3d745f5f79c683e037db2af572c9ac4608833e9f23e41cdf7c18",
+      "size": [
+        1280,
+        720
+      ]
+    },
+    "rot_gui_8_cardinal_270.png": {
+      "sha256": "8d05eb806586b4b7b4305353684a0b29841badddf4a09d832f4e217eecc875b3",
+      "size": [
+        1280,
+        720
+      ]
+    }
+  }
+}

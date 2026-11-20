@@ -1,0 +1,89 @@
+"""#4865 GL-host rotation-picking acceptance driver (pool-2, Windows/OpenGL).
+
+    python3 run.py <arm> [<arm> ...]
+
+Each arm runs one command through msys64 bash (the bash whose /tmp holds the
+gpu lock) from the pool-2 worktree, saves the full combined output to
+out/<arm>.log, moves any auto-screenshots into out/<arm>-shots/, and prints the
+verdict lines. IR_QUEUE_TIMEOUT is raised so a gpu-lock wait behind other panes
+does not abort the run.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+WT = "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-2"
+BUILD = WT + "/build"
+OUT = Path("C:/msys64/tmp/p4865/out")
+BASH = r"C:\msys64\usr\bin\bash.exe"
+
+SHOTS = {
+    "IRShapeDebug": BUILD + "/creations/demos/shape_debug/save_files/screenshots",
+    "IRCanvasStress": BUILD + "/creations/demos/canvas_stress/save_files/screenshots",
+    "IRVoxelEditor": BUILD + "/creations/editors/voxel_editor/save_files/screenshots",
+}
+
+GV = "python3 scripts/gui-verify.py"
+ARMS = {
+    "test": (None, "fleet-run --timeout 3000 IrredenEngineTest"),
+    "rot_gui": ("IRShapeDebug", GV + " IRShapeDebug --no-build --timeout 600 -- --rotation-pick-test gui"),
+    "sweep": ("IRShapeDebug", "fleet-run --timeout 180 IRShapeDebug --rotation-pick-test sweep"),
+    "cube": ("IRShapeDebug", "fleet-run --timeout 180 IRShapeDebug --rotation-pick-test cube"),
+    "tie1": ("IRShapeDebug", "fleet-run --timeout 180 IRShapeDebug --rotation-pick-test tie"),
+    "tie2": ("IRShapeDebug", "fleet-run --timeout 180 IRShapeDebug --rotation-pick-test tie"),
+    "tie3": ("IRShapeDebug", "fleet-run --timeout 180 IRShapeDebug --rotation-pick-test tie"),
+    "sd_gui": ("IRShapeDebug", GV + " IRShapeDebug --no-build --timeout 600 -- --gui-test"),
+    "sd_czoom": ("IRShapeDebug", GV + " IRShapeDebug --no-build --timeout 600 -- --continuous-zoom-gui-test"),
+    "cs_hover": ("IRCanvasStress", GV + " IRCanvasStress --no-build --timeout 600 -- --gui-session hover_canary"),
+    "ve_default": ("IRVoxelEditor", GV + " IRVoxelEditor --no-build --timeout 600"),
+    "ve_gizmo": ("IRVoxelEditor", GV + " IRVoxelEditor --no-build --timeout 600 -- --gui-session part_gizmo_reach"),
+    "rv_sd": (None, "python3 scripts/render-verify.py --target IRShapeDebug --no-build --timeout 600 --json-out /c/msys64/tmp/p4865/out/rv_sd.json"),
+    "rv_cs": (None, "python3 scripts/render-verify.py --target IRCanvasStress --no-build --timeout 600 --json-out /c/msys64/tmp/p4865/out/rv_cs.json"),
+    "light": (None, "python3 scripts/light-verify.py --if-changed"),
+}
+
+KEEP = re.compile(
+    r"ROTATION-PICK|GUI-ASSERT .*result=FAIL|\[gui-verify\]|RESULT=|ir-run: |"
+    r"tests ran|^\[  (PASSED|FAILED|SKIPPED) |PASS|FAIL|light-verify|render-verify"
+)
+
+
+def run(arm):
+    base = re.sub(r"_r\d+$", "", arm)
+    target, cmd = ARMS[base] if base in ARMS else ARMS[arm]
+    OUT.mkdir(parents=True, exist_ok=True)
+    shots = Path(SHOTS[target]) if target else None
+    if shots and shots.exists():
+        shutil.move(str(shots), str(OUT / f"{arm}-stale-shots-{int(time.time())}"))
+    log = OUT / f"{arm}.log"
+    env = dict(os.environ, IR_QUEUE_TIMEOUT="6600")
+    start = time.time()
+    with open(log, "w", encoding="utf-8", errors="replace") as out:
+        out.write(f"$ {cmd}\n")
+        out.flush()
+        p = subprocess.run([BASH, "-lc", cmd], stdout=out, stderr=subprocess.STDOUT,
+                           stdin=subprocess.DEVNULL, cwd=WT, env=env)
+    elapsed = time.time() - start
+    with open(log, "a", encoding="utf-8") as out:
+        out.write(f"== exit {p.returncode} after {elapsed:.0f}s\n")
+    if shots and shots.exists():
+        shutil.move(str(shots), str(OUT / f"{arm}-shots"))
+    text = log.read_text(encoding="utf-8", errors="replace")
+    lines = [l for l in text.splitlines() if KEEP.search(l)]
+    print(f"=== {arm}: exit {p.returncode} ({elapsed:.0f}s)", flush=True)
+    for l in lines[-40:]:
+        print("   ", l[:300], flush=True)
+    rec = {"arm": arm, "cmd": cmd, "exit": p.returncode, "seconds": round(elapsed)}
+    with open(OUT / "runs.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec) + "\n")
+    return p.returncode
+
+
+if __name__ == "__main__":
+    for a in sys.argv[1:]:
+        run(a)
