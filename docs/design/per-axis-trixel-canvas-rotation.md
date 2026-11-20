@@ -733,6 +733,11 @@ The tie fixture moves A to `P + rotateCardinalZInvI(ivec3(-1), k)` for each
 yaw group's raster cardinal k, asserts the common-cell premise and waits for
 the world transform before grading the group's first rendered sample. A
 hidden private canvas uploads different IDs to exercise the retained snapshot.
+Each `sweep`, `tie` and `cube` sample is graded on the first completed pick
+record whose frame id is at least that of the frame that wrote its pose. The
+probe holds the pose until that record arrives, so a backend that keeps frames
+in flight grades the same pose as one that does not. A record that is stale, or
+one that does not arrive within a fixed render budget, counts as a miss.
 
 ### Draw order is canonical — but only on flagged pools (#2479)
 
