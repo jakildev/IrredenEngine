@@ -293,7 +293,12 @@ float sampleCascadeShadow(
     }
     // Finite footprints are rasterized at sun texel centers. Query their cell
     // without blending coverage across its boundary or moving the receiver.
-    ivec2 nearestPixel = ivec2(floor((sunUV - origin) / texelSz));
+    // The CPU fits the cascade origin to an integer texel coordinate. Recover
+    // that coordinate before addressing the map: subtracting two world-space
+    // floats first makes the rounding error depend on the camera-selected
+    // origin, which can move a boundary by one texel during a pan.
+    ivec2 nearestPixel =
+        ivec2(floor(sunUV / texelSz - floor(origin / texelSz + vec2(0.5))));
     if (surfaceReceiver && nearestPixel.x >= 0 && nearestPixel.y >= 0 &&
         nearestPixel.x < kSunShadowMapDim && nearestPixel.y < kSunShadowMapDim) {
         // Indexed and other casters retain independent depths: rejecting an indexed
@@ -313,7 +318,9 @@ float sampleCascadeShadow(
                         planeNormal = rotateByQuat(planeNormal, casterViewToWorld);
                 }
                 vec2 gradient = vec2(dot(planeNormal, uHat), dot(planeNormal, vHat)) / dot(planeNormal, sunDir);
-                vec2 tapUV = origin + (vec2(nearestPixel) + 0.5) * texelSz;
+                vec2 tapUV =
+                    (floor(origin / texelSz + vec2(0.5)) + vec2(nearestPixel) + 0.5) *
+                    texelSz;
                 float casterZ = unpackSunDepth(nearest) + dot(gradient, sunUV - tapUV);
                 const vec2 receiverGradient = vec2(dot(normal, uHat), dot(normal, vHat)) / facing;
                 const float receiverSeparation = sunZ + dot(receiverGradient, tapUV - sunUV) - unpackSunDepth(nearest);
@@ -348,7 +355,7 @@ float sampleCascadeShadow(
     sunZ += pcfOffset.z;
 
     // Map samples lie at texel centers; integer coordinates address those samples.
-    vec2 sunPxF = (sunUV - origin) / texelSz - 0.5;
+    vec2 sunPxF = sunUV / texelSz - floor(origin / texelSz + vec2(0.5)) - 0.5;
     ivec2 base = ivec2(floor(sunPxF));
     vec2 frac = sunPxF - vec2(base);
     float shadowAccum = 0.0;
