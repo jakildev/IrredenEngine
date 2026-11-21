@@ -169,4 +169,63 @@ TEST(PresentedPick, DestroyedEntityIsFilteredWithoutDiscardingFrameOrCursorState
     EXPECT_TRUE(pick.stale_);
 }
 
+bool anyEntityLive(IREntity::EntityId) {
+    return true;
+}
+
+IRRender::PresentedPickHistory historyOfFrames11And12() {
+    IRRender::PresentedPickHistory history;
+    IRRender::PresentedPickRecord frame11;
+    frame11.frameId_ = 11;
+    IRRender::PresentedPickRecord frame12;
+    frame12.frameId_ = 12;
+    history.accept(frame11);
+    history.accept(frame12);
+    return history;
+}
+
+TEST(PresentedPick, ServedNewestPairsWithItsOwnFrameId) {
+    const IRRender::PresentedPickHistory history = historyOfFrames11And12();
+
+    const IRRender::MouseTrixelPick pick =
+        IRRender::resolveServedPick(history, false, IRMath::ivec2(0, 0), anyEntityLive);
+
+    EXPECT_EQ(pick.frameId_, 12u);
+    EXPECT_EQ(pick.newestCompletedFrameId_, 12u);
+}
+
+TEST(PresentedPick, ServedPreviousPairsBelowTheNewestCompletedFrame) {
+    const IRRender::PresentedPickHistory history = historyOfFrames11And12();
+
+    const IRRender::MouseTrixelPick pick =
+        IRRender::resolveServedPick(history, true, IRMath::ivec2(0, 0), anyEntityLive);
+
+    EXPECT_EQ(pick.frameId_, 11u);
+    EXPECT_EQ(pick.newestCompletedFrameId_, 12u);
+}
+
+TEST(PresentedPick, EmptyHistoryPairsZeroWithZero) {
+    const IRRender::PresentedPickHistory history;
+
+    const IRRender::MouseTrixelPick pick =
+        IRRender::resolveServedPick(history, false, IRMath::ivec2(0, 0), anyEntityLive);
+
+    EXPECT_EQ(pick.frameId_, 0u);
+    EXPECT_EQ(pick.newestCompletedFrameId_, 0u);
+}
+
+TEST(PresentedPick, RecordAcceptedAfterResolutionLeavesTheResolvedPairUnchanged) {
+    IRRender::PresentedPickHistory history = historyOfFrames11And12();
+    const IRRender::MouseTrixelPick pick =
+        IRRender::resolveServedPick(history, false, IRMath::ivec2(0, 0), anyEntityLive);
+
+    IRRender::PresentedPickRecord frame13;
+    frame13.frameId_ = 13;
+    history.accept(frame13);
+
+    EXPECT_EQ(history.newestFrameId(), 13u);
+    EXPECT_EQ(pick.frameId_, 12u);
+    EXPECT_EQ(pick.newestCompletedFrameId_, 12u);
+}
+
 } // namespace

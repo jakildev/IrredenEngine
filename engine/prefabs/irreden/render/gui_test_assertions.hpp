@@ -12,6 +12,7 @@
 #include <irreden/render/picking.hpp>
 #include <irreden/render/widgets.hpp>
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <unordered_set>
@@ -221,6 +222,17 @@ inline Assertion predicate(
     return assertion;
 }
 
+// One frame's served pick frame id and the newest completed frame id, both
+// from the same pick result.
+struct PickFrameIds {
+    std::uint64_t served_ = 0;
+    std::uint64_t newestCompleted_ = 0;
+
+    bool current() const {
+        return served_ != 0 && served_ == newestCompleted_;
+    }
+};
+
 // Caller-owned latch. CLICK_FIRES needs it: C_WidgetState::fireAction_ is a
 // single-frame pulse on click-release, gone by the post-settle capture frame,
 // so we accumulate which widgets fired across the shot window; HOVERED_ENTITY_ID
@@ -231,7 +243,7 @@ inline Assertion predicate(
 struct LatchState {
     std::unordered_set<IREntity::EntityId> firedWidgets_;
     std::vector<IREntity::EntityId> hoveredIds_; // one entry per live frame, oldest first
-    std::vector<bool> pickFramesCurrent_;
+    std::vector<PickFrameIds> pickFrameIds_;
     std::vector<bool> pickStale_;
     bool pickStaleSeen_ = false;
     // Logs the GUI layout audit (`GuiAudit::logReport`) on every capture
@@ -287,13 +299,13 @@ inline bool firedThisShot(const LatchState &latch, IREntity::EntityId widget) {
 }
 
 // Record this frame's GPU hover readback (the previous frame's completed
-// write — see hoveredEntityId's phase contract).
+// write — see hoveredEntityId's phase contract). One pick call only: a second
+// draining query can see a submission that completed after the pick's own
+// drain, which on OpenGL makes the newest pick look out of date.
 inline void latchHoveredId(LatchState &latch) {
     const IRRender::MouseTrixelPick pick = IRRender::getMouseTrixelPick();
     latch.hoveredIds_.push_back(pick.entity_);
-    latch.pickFramesCurrent_.push_back(
-        pick.frameId_ != 0 && pick.frameId_ == IRRender::newestCompletedMouseTrixelPickFrameId()
-    );
+    latch.pickFrameIds_.push_back({pick.frameId_, pick.newestCompletedFrameId_});
     latch.pickStale_.push_back(pick.stale_);
     latch.pickStaleSeen_ = latch.pickStaleSeen_ || pick.stale_;
 }
@@ -369,15 +381,25 @@ inline bool evaluateOne(const Assertion &assertion, const LatchState &latch, std
         return pass;
     }
     case AssertKind::PICK_FRAME_CURRENT: {
-        const int have = static_cast<int>(latch.pickFramesCurrent_.size());
+        const int have = static_cast<int>(latch.pickFrameIds_.size());
         const int want = IRMath::max(assertion.frames_, 1);
         const int first = IRMath::max(have - want, 0);
-        bool pass = have >= want;
+        int current = 0;
+        const PickFrameIds *firstMiss = nullptr;
         for (int i = first; i < have; ++i) {
-            pass = pass && latch.pickFramesCurrent_[i];
+            const PickFrameIds &ids = latch.pickFrameIds_[i];
+            if (ids.current()) {
+                ++current;
+            } else if (firstMiss == nullptr) {
+                firstMiss = &ids;
+            }
         }
-        actual = "current=" + std::to_string(pass ? want : 0) + "/" + std::to_string(want);
-        return pass;
+        actual = "current=" + std::to_string(current) + "/" + std::to_string(want);
+        if (firstMiss != nullptr) {
+            actual += " first_miss=served:" + std::to_string(firstMiss->served_) +
+                      ",newest:" + std::to_string(firstMiss->newestCompleted_);
+        }
+        return current == want;
     }
     case AssertKind::PICK_ENTITY_EMPTY:
         actual = latch.hoveredIds_.empty() ? "no-frame"
@@ -387,12 +409,12 @@ inline bool evaluateOne(const Assertion &assertion, const LatchState &latch, std
         const int have = static_cast<int>(latch.pickStale_.size());
         const int want = IRMath::max(assertion.frames_, 1);
         const int first = IRMath::max(have - want, 0);
-        bool pass = have >= want;
+        int current = 0;
         for (int i = first; i < have; ++i) {
-            pass = pass && !latch.pickStale_[i];
+            current += latch.pickStale_[i] ? 0 : 1;
         }
-        actual = "current=" + std::to_string(pass ? want : 0) + "/" + std::to_string(want);
-        return pass;
+        actual = "current=" + std::to_string(current) + "/" + std::to_string(want);
+        return current == want;
     }
     case AssertKind::PICK_STALE_SEEN:
         actual = latch.pickStaleSeen_ ? "stale" : "current-only";
@@ -473,7 +495,7 @@ inline void onFrame(
         GuiAudit::logReport(shotIndex, shotLabel);
     latch.firedWidgets_.clear();
     latch.hoveredIds_.clear();
-    latch.pickFramesCurrent_.clear();
+    latch.pickFrameIds_.clear();
     latch.pickStale_.clear();
     latch.pickStaleSeen_ = false;
 }

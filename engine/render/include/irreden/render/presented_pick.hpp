@@ -14,6 +14,10 @@ struct MouseTrixelPick {
     int priority_ = 0;
     int isoDepth_ = 0;
     std::uint64_t frameId_ = 0;
+    // Newest completed record's frame id in the same history state the served
+    // record came from; frameId_ is below it only while the test-only
+    // previous-record fault is armed. 0 when nothing has completed.
+    std::uint64_t newestCompletedFrameId_ = 0;
     IRMath::ivec2 renderedCursorPixel_{};
     bool stale_ = false;
 };
@@ -88,6 +92,21 @@ MouseTrixelPick resolvePresentedPick(
     result.entity_ = entity;
     result.priority_ = depth.tier_;
     result.isoDepth_ = depth.iso_;
+    return result;
+}
+
+// Resolves the served record and pairs it with the history's newest frame id
+// in one read, so no completion can land between the two.
+template <typename IsEntityLive>
+MouseTrixelPick resolveServedPick(
+    const PresentedPickHistory &history,
+    bool servePrevious,
+    IRMath::ivec2 currentCursorPixel,
+    IsEntityLive isEntityLive
+) {
+    MouseTrixelPick result =
+        resolvePresentedPick(history.served(servePrevious), currentCursorPixel, isEntityLive);
+    result.newestCompletedFrameId_ = history.newestFrameId();
     return result;
 }
 

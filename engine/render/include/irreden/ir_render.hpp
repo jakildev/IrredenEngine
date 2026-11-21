@@ -404,10 +404,13 @@ vec2 cameraRasterCorrectionFramebufferPx();
 vec3 windowPointsToDisplayedWorldPos3DAtViewDepth(vec2 windowPoint, float depth);
 /// Newest completed-frame pick and its rendered cursor. The entity is empty
 /// when it has died since that frame; stale_ reports a different current
-/// input cursor without suppressing a live entity.
+/// input cursor without suppressing a live entity. newestCompletedFrameId_ is
+/// read in the same call, so comparing it with frameId_ is race-free.
 MouseTrixelPick getMouseTrixelPick();
 /// Frame id of the newest completed pick record, including when the test-only
-/// fault makes getMouseTrixelPick serve the preceding record.
+/// fault makes getMouseTrixelPick serve the preceding record. Each call drains
+/// completions again, so a pick fetched separately can be older than this on
+/// OpenGL; compare against MouseTrixelPick::newestCompletedFrameId_ instead.
 std::uint64_t newestCompletedMouseTrixelPickFrameId();
 /// GPU-timeline copy of the current hover buffer, tagged with this frame's id
 /// and render-time cursor. Called after the final hover writer.
