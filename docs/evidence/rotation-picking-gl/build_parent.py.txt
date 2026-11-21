@@ -1,0 +1,14 @@
+"""Build IRShapeDebug in the parent-of-#5115 scratch worktree (C:/msys64/tmp/p4865/wt)."""
+import subprocess
+import sys
+
+WT = "C:/msys64/tmp/p4865/wt"
+target = sys.argv[1] if len(sys.argv) > 1 else "IRShapeDebug"
+log = f"C:/msys64/tmp/p4865/out/parent-build-{target}.log"
+with open(log, "w", encoding="utf-8", errors="replace") as out:
+    p = subprocess.run([r"C:\msys64\usr\bin\bash.exe", "-lc", f"fleet-build --target {target}"],
+                       stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, cwd=WT)
+print("build exit", p.returncode)
+lines = open(log, encoding="utf-8", errors="replace").read().splitlines()
+for l in lines[-15:]:
+    print("  ", l[:300])
