@@ -17,14 +17,7 @@ project(luajit LANGUAGES C)
 # `buildvm`).
 include(FetchContent)
 
-# The pinned commit stays out of the cache: a cached default would hold an
-# existing build directory on the revision it was first configured with.
-set(IR_LUAJIT_GIT_REF "" CACHE STRING
-    "LuaJIT commit, branch or tag to build instead of the pinned v2.1 commit")
-set(_luajit_git_tag 96f7b297326e9fd454b7186c6858b2773f94a0dc)
-if(IR_LUAJIT_GIT_REF)
-    set(_luajit_git_tag "${IR_LUAJIT_GIT_REF}")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/resolve_git_ref.cmake")
 
 FetchContent_Declare(
     luajit_src
