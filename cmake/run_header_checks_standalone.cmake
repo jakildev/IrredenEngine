@@ -2,9 +2,9 @@
 #
 # The `header-checks` and `lint` targets only exist after a full CMake
 # *configure*, which pulls the whole FetchContent dependency graph and needs a
-# compiler. The checks themselves need neither: irreden_collect_quality_files is
-# a pure file(GLOB_RECURSE) and run_header_convention_checks.cmake only reads
-# text. This wrapper is what lets CI run them on their own:
+# compiler. The checks themselves need neither: irreden_collect_quality_files
+# only asks git for a file listing and run_header_convention_checks.cmake only
+# reads text. This wrapper is what lets CI run them on their own:
 #
 #   cmake -DPROJECT_ROOT=<repo-root> -P cmake/run_header_checks_standalone.cmake
 #
@@ -37,8 +37,8 @@ if(NOT EXISTS "${PROJECT_ROOT}/cmake/ir_quality_tools.cmake")
         "PROJECT_ROOT does not look like the engine repo root: ${PROJECT_ROOT}")
 endif()
 
-# irreden_collect_quality_files globs relative to PROJECT_SOURCE_DIR, which
-# script mode never sets for us.
+# irreden_collect_quality_files resolves its search roots against
+# PROJECT_SOURCE_DIR, which script mode never sets for us.
 set(PROJECT_SOURCE_DIR "${PROJECT_ROOT}")
 include("${PROJECT_ROOT}/cmake/ir_quality_tools.cmake")
 
@@ -53,11 +53,7 @@ set(quality_file_list "${CMAKE_CURRENT_LIST_DIR}/../.header-checks-files.cmake")
 if(DEFINED OUTPUT_FILE_LIST AND NOT OUTPUT_FILE_LIST STREQUAL "")
     set(quality_file_list "${OUTPUT_FILE_LIST}")
 endif()
-file(WRITE "${quality_file_list}" "set(QUALITY_FILES\n")
-foreach(file_path IN LISTS quality_files)
-    file(APPEND "${quality_file_list}" "    \"${file_path}\"\n")
-endforeach()
-file(APPEND "${quality_file_list}" ")\n")
+_irreden_write_quality_file_list("${quality_file_list}" ${quality_files})
 
 set(QUALITY_FILE_LIST "${quality_file_list}")
 include("${PROJECT_ROOT}/cmake/run_header_convention_checks.cmake")

@@ -2,10 +2,11 @@ cmake_minimum_required(VERSION 3.15)
 
 project(luajit LANGUAGES C)
 
-# LuaJIT 2.1 rolling branch — a fresh configure fetches the current
-# v2.1 tip. Override IR_LUAJIT_GIT_TAG to a commit SHA for a
-# reproducible build. Sol2 detects LuaJIT via LUAJIT_VERSION in lua.h
-# and adapts its bindings accordingly, so the C++ surface in
+# LuaJIT 2.1 has no release tags — upstream ships the v2.1 branch as a
+# rolling release — so the default is a pinned commit on that branch.
+# Set IR_LUAJIT_GIT_REF to another commit, or to a branch or tag name,
+# to build a different revision. Sol2 detects LuaJIT via LUAJIT_VERSION
+# in lua.h and adapts its bindings accordingly, so the C++ surface in
 # engine/script/ does not change with this swap.
 #
 # Vendoring strategy: FetchContent populates the upstream source tree;
@@ -16,14 +17,19 @@ project(luajit LANGUAGES C)
 # `buildvm`).
 include(FetchContent)
 
-set(IR_LUAJIT_GIT_TAG "v2.1" CACHE STRING
-    "LuaJIT git ref (branch, tag, or commit) to fetch and build")
+# The pinned commit stays out of the cache: a cached default would hold an
+# existing build directory on the revision it was first configured with.
+set(IR_LUAJIT_GIT_REF "" CACHE STRING
+    "LuaJIT commit, branch or tag to build instead of the pinned v2.1 commit")
+set(_luajit_git_tag 96f7b297326e9fd454b7186c6858b2773f94a0dc)
+if(IR_LUAJIT_GIT_REF)
+    set(_luajit_git_tag "${IR_LUAJIT_GIT_REF}")
+endif()
 
 FetchContent_Declare(
     luajit_src
     GIT_REPOSITORY https://github.com/LuaJIT/LuaJIT.git
-    GIT_TAG        ${IR_LUAJIT_GIT_TAG}
-    GIT_SHALLOW    TRUE
+    GIT_TAG        ${_luajit_git_tag}
 )
 
 # LuaJIT does not ship a root CMakeLists.txt, so FetchContent_MakeAvailable

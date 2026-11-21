@@ -20,8 +20,8 @@ name: Header Checks
 # (#2718). This workflow is therefore the sole CI path for these checks. See
 # #2794.
 #
-# Runs the checks through cmake/run_header_checks_standalone.cmake, which globs
-# the source tree directly — no configure, no FetchContent, no compiler, so this
+# Runs the checks through cmake/run_header_checks_standalone.cmake, which lists
+# the source tree itself — no configure, no FetchContent, no compiler, so this
 # stays a fast job on a bare runner with cmake.
 #
 # Path-filtered to the C/C++ surface the checks scan plus the cmake files that

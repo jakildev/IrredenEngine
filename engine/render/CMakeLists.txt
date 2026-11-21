@@ -98,8 +98,7 @@ target_compile_options(
 FetchContent_Declare(
     meshoptimizer
     GIT_REPOSITORY https://github.com/zeux/meshoptimizer
-    GIT_TAG master
-    GIT_SHALLOW TRUE
+    GIT_TAG 8547fc321b782a2235dfc14c65a346a640544cd8
 )
 FetchContent_MakeAvailable(
     meshoptimizer
@@ -109,15 +108,7 @@ target_include_directories(
     ${meshoptimizer_SOURCE_DIR}/src/
 )
 # StbImage
-FetchContent_Declare(
-    stbimage
-    GIT_REPOSITORY https://github.com/nothings/stb/
-    GIT_TAG master
-    GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(
-    stbimage
-)
+include(${PROJECT_SOURCE_DIR}/cmake/ir_fetch_stb.cmake)
 target_include_directories(
     IrredenEngineRendering PUBLIC
     ${stbimage_SOURCE_DIR}

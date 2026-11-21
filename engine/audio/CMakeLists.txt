@@ -29,6 +29,12 @@ if(IR_isDarwin)
     set(RTAUDIO_API_OSS OFF CACHE BOOL "" FORCE)
 endif()
 
+# RtAudio and RtMidi are the exception to the pin policy in the root
+# CMakeLists.txt. Both are patched in place, and UPDATE_DISCONNECTED keeps the
+# update step off the patched checkout, so a branch name cannot hit the
+# re-configure failure that policy guards against. Pinning them has the
+# opposite hazard: under UPDATE_DISCONNECTED, a GIT_TAG the existing checkout
+# does not hold is a fatal configure error in every existing build directory.
 FetchContent_Declare(
     rtaudio
     GIT_REPOSITORY https://github.com/thestk/rtaudio.git
