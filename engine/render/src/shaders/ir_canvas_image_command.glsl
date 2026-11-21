@@ -15,4 +15,5 @@ struct CanvasImageCommand {
     int posterizeLevels;   // 0 = off
     int distance;
     int pad;
+    vec4 unrotate;         // row-major 2x2: target offset from the box centre -> unturned box
 };

@@ -19,6 +19,7 @@ struct CanvasImageCommand {
     int posterizeLevels;   // 0 = off
     int distance;
     int pad;
+    float4 unrotate;       // row-major 2x2: target offset from the box centre -> unturned box
 };
 
 #endif // IR_CANVAS_IMAGE_COMMAND_METAL_INCLUDED

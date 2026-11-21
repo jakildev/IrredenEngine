@@ -19,10 +19,11 @@
 //   local w, h = IRCanvas.imageSize(handle)        -- the file's pixel size
 //   IRCanvas.releaseImage(handle)
 //   IRCanvas.image(name, handle, x, y, w, h, { uv = { u0, v0, u1, v1 }, cell, tint, levels,
-//                                              distance })
+//                                              rotation, distance })
 //   local w, h = IRCanvas.framebufferSize()        -- the main framebuffer, in pixels
-//   IRCanvas.framebufferImage(handle, x, y, w, h, { uv, cell, tint, levels, distance })
-//                                                  -- the box and cell in framebuffer pixels
+//   IRCanvas.framebufferImage(handle, x, y, w, h, { uv, cell, tint, levels, rotation, distance })
+//                                                  -- the box and cell in framebuffer pixels;
+//                                                  -- rotation in radians, clockwise
 //   IRCanvas.Depth.{BEHIND, WORLD_NEAR, WORLD_FAR, FRONT}  -- composite depths
 //   IRCanvas.AlignH.{LEFT, CENTER, RIGHT}, IRCanvas.AlignV.{TOP, CENTER, BOTTOM}
 //
@@ -222,12 +223,31 @@ inline constexpr std::array<std::string_view, 7> kCanvasDrawVoxelRunKeys{
 inline constexpr std::array<std::string_view, 3> kCanvasDrawRunMeasureKeys{
     "count", "voxelSize", "axis"
 };
-inline constexpr std::array<std::string_view, 5> kCanvasDrawImageKeys{
-    "uv", "cell", "tint", "levels", "distance"
+inline constexpr std::array<std::string_view, 6> kCanvasDrawImageKeys{
+    "uv", "cell", "tint", "levels", "rotation", "distance"
 };
 
-// The crop, mosaic cell, posterize count and tint of an image draw from
-// `options`, whose keys the caller has already checked.
+// The `rotation` of an image draw: radians clockwise about the box's centre,
+// none when absent.
+inline float canvasDrawRotation(const sol::table &options, const char *caller) {
+    const sol::object value = options["rotation"];
+    if (!value.valid() || value.get_type() == sol::type::lua_nil) {
+        return 0.0f;
+    }
+    const std::string message =
+        std::string(caller) + ": rotation must be a finite number of radians";
+    if (value.get_type() != sol::type::number) {
+        throw sol::error{message};
+    }
+    const float radians = static_cast<float>(value.as<double>());
+    if (!IRMath::isFinite(radians)) {
+        throw sol::error{message};
+    }
+    return radians;
+}
+
+// The crop, mosaic cell, posterize count, tint and rotation of an image draw
+// from `options`, whose keys the caller has already checked.
 inline IRPrefab::CanvasDraw::ImageOptions
 canvasDrawImageOptions(const sol::table &options, const char *caller) {
     IRPrefab::CanvasDraw::ImageOptions imageOptions;
@@ -249,6 +269,7 @@ canvasDrawImageOptions(const sol::table &options, const char *caller) {
             std::to_string(IRPrefab::CanvasDraw::kMaxImagePosterizeLevels) + "]"
         };
     }
+    imageOptions.rotation_ = canvasDrawRotation(options, caller);
     return imageOptions;
 }
 
