@@ -2872,9 +2872,18 @@ struct RotationPickFixture {
     int hits_ = 0;
     int misses_ = 0;
     int tieGroup_ = -1;
+    std::uint64_t sampleFrameId_ = 0;
+    int sampleWait_ = 0;
+    int maxWait_ = 0;
+    int totalWait_ = 0;
+    int timeouts_ = 0;
     bool samplePending_ = false;
 };
 RotationPickFixture g_rotationPick;
+// Renders a sample may wait for its own pick record before it counts as a
+// miss. A run where no record ever arrives must still FAIL inside fleet-run's
+// 180 s timeout: 288 cube samples x this budget renders.
+constexpr int kRotationPickWaitBudget = 16;
 
 // The voxel raster is centered on its authored cell; +Z points down.
 // Continuous-yaw probes use an independent forward projection, so this
@@ -3140,13 +3149,27 @@ void tickRotationPickSweep() {
     const bool tie = g_rotationPickMode == RotationPickMode::TIE;
     const int count = sweep ? 360 : static_cast<int>(g_rotationPick.samples_.size());
     if (g_rotationPick.samplePending_) {
+        // One read serves both the completion test and the grade: each read
+        // drains the readback ring, so a second read may see a newer record.
+        const IRRender::MouseTrixelPick pick = IRRender::getMouseTrixelPick();
+        const bool completed = pick.frameId_ >= g_rotationPick.sampleFrameId_;
+        // The pose is held while waiting: every frame from the sample's own
+        // frame on renders it, so any record at or after that frame grades it.
+        if (!completed && g_rotationPick.sampleWait_ < kRotationPickWaitBudget) {
+            ++g_rotationPick.sampleWait_;
+            return;
+        }
         g_rotationPick.samplePending_ = false;
+        g_rotationPick.maxWait_ = IRMath::max(g_rotationPick.maxWait_, g_rotationPick.sampleWait_);
+        g_rotationPick.totalWait_ += g_rotationPick.sampleWait_;
+        g_rotationPick.sampleWait_ = 0;
         const int previous = g_rotationPick.frame_ - 1;
-        const auto actual = IRRender::getEntityIdAtMouseTrixel();
+        const auto actual = pick.entity_;
         const auto expected =
             sweep ? g_rotationPick.entity_ : g_rotationPick.samples_[previous].expected_;
-        bool hit = actual == expected;
-        if (tie) {
+        const bool graded = completed && !pick.stale_;
+        bool hit = graded && actual == expected;
+        if (tie && graded) {
             const int group = g_rotationPick.samples_[previous].group_;
             if (actual == g_rotationPick.nearer_)
                 ++g_rotationPick.nearerHits_[group];
@@ -3156,16 +3179,37 @@ void tickRotationPickSweep() {
                 ++g_rotationPick.backgroundHits_[group];
             hit = actual == IREntity::kNullEntity || actual == g_rotationPick.nearer_ || hit;
         }
+        if (!completed)
+            ++g_rotationPick.timeouts_;
         if (hit) {
             ++g_rotationPick.hits_;
         } else {
             if (g_rotationPick.misses_ < 12) {
-                IR_LOG_ERROR(
-                    "ROTATION-PICK miss sample={} expected={} actual={}",
-                    previous,
-                    expected,
-                    actual
-                );
+                if (!completed) {
+                    IR_LOG_ERROR(
+                        "ROTATION-PICK timeout sample={} expected={} sample_frame={} "
+                        "newest_frame={}",
+                        previous,
+                        expected,
+                        g_rotationPick.sampleFrameId_,
+                        pick.frameId_
+                    );
+                } else if (pick.stale_) {
+                    IR_LOG_ERROR(
+                        "ROTATION-PICK stale sample={} expected={} actual={} frame={}",
+                        previous,
+                        expected,
+                        actual,
+                        pick.frameId_
+                    );
+                } else {
+                    IR_LOG_ERROR(
+                        "ROTATION-PICK miss sample={} expected={} actual={}",
+                        previous,
+                        expected,
+                        actual
+                    );
+                }
             }
             ++g_rotationPick.misses_;
         }
@@ -3186,6 +3230,12 @@ void tickRotationPickSweep() {
                                        g_rotationPick.fartherHits_[group] > 0;
             }
         }
+        IR_LOG_INFO(
+            "ROTATION-PICK waits max={} total={} timeouts={}",
+            g_rotationPick.maxWait_,
+            g_rotationPick.totalWait_,
+            g_rotationPick.timeouts_
+        );
         IR_LOG_INFO(
             "ROTATION-PICK {} frames={} hits={} misses={} result={}",
             sweep ? "sweep"
@@ -3222,6 +3272,7 @@ void tickRotationPickSweep() {
     // Samples advance per render, independently of the fixed INPUT cadence.
     IRInput::getInputManager().tick();
     IRInput::getInputManager().advanceInputState(IRTime::Events::RENDER);
+    g_rotationPick.sampleFrameId_ = IRRender::device()->presentingFrameId();
     g_rotationPick.samplePending_ = true;
     ++g_rotationPick.frame_;
 }
