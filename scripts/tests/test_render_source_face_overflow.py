@@ -35,6 +35,7 @@ struct vec2 {
     vec2()=default;
     vec2(float a,float b):x(a),y(b){}
     explicit vec2(float a):x(a),y(a){}
+    explicit vec2(double a):x(float(a)),y(float(a)){}
     template<class T> explicit vec2(T a):x(a.x),y(a.y){}
 };
 struct ivec2 {
