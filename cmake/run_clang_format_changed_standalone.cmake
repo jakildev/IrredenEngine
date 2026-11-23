@@ -5,13 +5,13 @@
 #         -P cmake/run_clang_format_changed_standalone.cmake
 #
 # run_clang_format_changed.cmake hard-requires QUALITY_FILE_LIST — a
-# CONFIGURE-time artifact (${PROJECT_BINARY_DIR}/irreden_quality_files.cmake,
-# written by irreden_add_quality_targets). Supplying that list without a
+# build-tree artifact (${PROJECT_BINARY_DIR}/irreden_quality_files.cmake,
+# written by irreden_write_quality_file_lists). Supplying that list without a
 # configure is this wrapper's whole job: it is what lets CI run the executor
 # without pulling the FetchContent graph and a compiler. Same shape, and same
 # reason, as cmake/run_header_checks_standalone.cmake —
-# irreden_collect_quality_files is a pure file(GLOB_RECURSE) and the executor
-# only reads git and rewrites text, so neither needs a configure.
+# irreden_collect_quality_files only asks git for a file listing and the
+# executor only reads git and rewrites text, so neither needs a configure.
 #
 # ONE DELIBERATE DIFFERENCE from that sibling: this call is BARE — no
 # INCLUDE_RENDER_BACKENDS. Copying the header shim verbatim is the natural
@@ -42,8 +42,8 @@ if(NOT EXISTS "${PROJECT_ROOT}/cmake/ir_quality_tools.cmake")
         "PROJECT_ROOT does not look like the engine repo root: ${PROJECT_ROOT}")
 endif()
 
-# irreden_collect_quality_files globs relative to PROJECT_SOURCE_DIR, which
-# script mode never sets for us.
+# irreden_collect_quality_files resolves its search roots against
+# PROJECT_SOURCE_DIR, which script mode never sets for us.
 set(PROJECT_SOURCE_DIR "${PROJECT_ROOT}")
 include("${PROJECT_ROOT}/cmake/ir_quality_tools.cmake")
 
@@ -77,11 +77,7 @@ set(quality_file_list "${PROJECT_ROOT}/.format-changed-files.cmake")
 if(DEFINED OUTPUT_FILE_LIST AND NOT OUTPUT_FILE_LIST STREQUAL "")
     set(quality_file_list "${OUTPUT_FILE_LIST}")
 endif()
-file(WRITE "${quality_file_list}" "set(QUALITY_FILES\n")
-foreach(file_path IN LISTS quality_files)
-    file(APPEND "${quality_file_list}" "    \"${file_path}\"\n")
-endforeach()
-file(APPEND "${quality_file_list}" ")\n")
+_irreden_write_quality_file_list("${quality_file_list}" ${quality_files})
 
 set(QUALITY_FILE_LIST "${quality_file_list}")
 # The executor keys every git query and path reconstruction on FORMAT_ROOT,

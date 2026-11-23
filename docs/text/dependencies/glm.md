@@ -4,7 +4,7 @@
 -   **Found in modules:** IRMath
 -   **Package type:** Header only
 -   **Precompiled:** No
--   **Version:** master
+-   **Version:** commit `6f14f47` (upstream `master`)
 -   **License:** Happy Bunny License (modified MIT) or MIT
 -   **Url:** https://glm.g-truc.net/0.9.8/index.html
 -   **Source:** https://github.com/g-truc/glm

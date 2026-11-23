@@ -4,7 +4,7 @@
 -   **Found in modules:** IRRender
 -   **Package type:** Header-only
 -   **Precompiled:** No
--   **Version:** master
+-   **Version:** commit `6b5799b` (upstream `master`)
 -   **License:** Public domain or MIT
 -   **Url:** https://github.com/nothings/stb
 -   **Source:** https://github.com/nothings/stb

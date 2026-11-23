@@ -8,6 +8,18 @@ project(BuildCreation VERSION 0.1.0)
 set(CMAKE_EXPORT_NO_PACKAGE_REGISTRY ON)
 set(CMAKE_FIND_USE_PACKAGE_REGISTRY OFF)
 
+# Pin policy for every FetchContent_Declare in this tree: GIT_TAG is a release
+# tag or a full commit hash, never a branch name.
+#   - A branch makes each re-configure of an existing build directory run the
+#     update step (fetch, then rebase the checkout onto the new tip), which
+#     fails outright once upstream has moved under a shallow checkout. A tag
+#     or hash already checked out is a no-op that never contacts the remote.
+#   - A commit hash goes without GIT_SHALLOW: a shallow clone holds only the
+#     branch and tag tips, so the checkout breaks on the first upstream commit
+#     after the pin.
+# RtAudio and RtMidi are the one exception; engine/audio/CMakeLists.txt says
+# why.
+
 option(IRREDEN_BUILD_CREATIONS "Build creations present in this tree (engine-owned creations/ and nested private checkouts)" ${PROJECT_IS_TOP_LEVEL})
 option(IRREDEN_BUILD_TESTS "Build engine test targets" ${PROJECT_IS_TOP_LEVEL})
 option(IRREDEN_BUILD_QUALITY_TARGETS "Build engine quality targets" ${PROJECT_IS_TOP_LEVEL})

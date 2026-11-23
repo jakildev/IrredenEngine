@@ -57,6 +57,8 @@ jobs:
               - 'cmake/run_clang_format_changed.cmake'
               - 'cmake/run_clang_format_changed_standalone.cmake'
               - 'cmake/ir_quality_tools.cmake'
+              - 'cmake/write_quality_file_lists.cmake'
+              - 'engine/script/third_party/luajit/resolve_git_ref.cmake'
               - 'engine/tools/bin/ir-perf-grid'
               - 'engine/tools/lib/concurrency_helpers.sh'
               - 'engine/tools/lib/quiet_window.py'

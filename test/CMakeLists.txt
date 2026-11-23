@@ -356,8 +356,7 @@ endif()
 FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG        main
-    GIT_SHALLOW    TRUE
+    GIT_TAG        a46a6012a133c7c0929fdae55b321c2fe65f3c5f
 )
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)

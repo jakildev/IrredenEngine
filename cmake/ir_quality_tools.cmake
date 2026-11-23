@@ -8,78 +8,59 @@ if(APPLE)
     )
 endif()
 
-# Drop candidate paths the collected repo's own .gitignore excludes. The glob
-# in irreden_collect_quality_files walks the filesystem, not the repository,
-# so a gitignored nested checkout under a search root (e.g. a private
-# creation's own repo, or an agent worktree inside one) is on disk and would
-# otherwise be swept in — untracked content with no owner able to fix a
-# header-convention violation reported against it, and a `format` run would
-# rewrite files live in another agent's in-progress worktree.
+# Lists the files under `root` matching one of the `*.<ext>` patterns in ARGN,
+# as absolute paths.
 #
-# `repo_root` is the tree the candidates were globbed from, so the query runs
-# in the repository that actually owns them: a downstream creation root is its
-# own git repo, and asking the engine about paths outside the engine's
-# worktree answers about nothing.
+# The listing is the owning repository's — tracked files plus untracked files
+# git does not ignore — and not a walk of the filesystem. A walk descends into
+# everything .gitignore excludes: a build tree, a Python virtual environment,
+# a nested checkout or agent worktree of another repository. That content has
+# no owner able to fix a violation reported against it, and a `format` run
+# would rewrite it in place. `git -C <root>` resolves the repository from
+# `root` itself, so a downstream creation root that is its own repository is
+# listed by that repository, not by the engine's.
 #
-# Batches the whole candidate list through one `git check-ignore --stdin`
-# call rather than a per-file execute_process (cheap for the ~2k-entry list
-# this function produces; per-file would be ~2k process spawns per configure).
-function(_irreden_drop_gitignored_files file_list_var repo_root)
+# A recursive glob is the fallback when `root` is not in a git work tree (a
+# source archive) or git cannot answer; there is no ignore list to honour
+# there.
+function(_irreden_list_source_files out_var root)
+    set(listed_files "")
+    set(listed_by_git FALSE)
+
     find_program(IRREDEN_GIT_EXECUTABLE NAMES git)
-    if(NOT IRREDEN_GIT_EXECUTABLE)
-        # No git at configure time — leave the candidate list unfiltered
-        # (fail open; never over-filter). git is required to obtain this
-        # source tree in the first place, so an absent git at configure
-        # time is not a realistic case on any supported host; there is no
-        # reject-chain regex fallback here on purpose — a path-substring
-        # match can't distinguish a nested checkout under a search root
-        # from the engine's own enclosing worktree path also matching the
-        # same substring (an agent worktree's own root is
-        # ".../.claude/worktrees/<name>", so a "/.claude/worktrees/" test
-        # against the *absolute* path matches every file in the tree, not
-        # just nested ones).
-        return()
+    if(IRREDEN_GIT_EXECUTABLE)
+        # core.quotePath=false: a non-ASCII path otherwise comes back
+        # C-quoted, a spelling that names no file on disk.
+        execute_process(
+            COMMAND "${IRREDEN_GIT_EXECUTABLE}" -C "${root}"
+                    -c core.quotePath=false
+                    ls-files --cached --others --exclude-standard -- ${ARGN}
+            OUTPUT_VARIABLE git_out
+            RESULT_VARIABLE git_rc
+            ERROR_QUIET
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        if(git_rc EQUAL 0)
+            set(listed_by_git TRUE)
+            string(REPLACE "\n" ";" relative_files "${git_out}")
+            foreach(relative_file IN LISTS relative_files)
+                # The index still lists a tracked file deleted from the work
+                # tree, and an untracked nested repository as a bare directory.
+                if(EXISTS "${root}/${relative_file}"
+                   AND NOT IS_DIRECTORY "${root}/${relative_file}")
+                    list(APPEND listed_files "${root}/${relative_file}")
+                endif()
+            endforeach()
+        endif()
     endif()
 
-    set(candidates "${${file_list_var}}")
-    list(LENGTH candidates candidate_count)
-    if(candidate_count EQUAL 0)
-        return()
+    if(NOT listed_by_git)
+        set(glob_patterns ${ARGN})
+        list(TRANSFORM glob_patterns PREPEND "${root}/")
+        file(GLOB_RECURSE listed_files ${glob_patterns})
     endif()
 
-    set(stdin_file "${CMAKE_BINARY_DIR}/irreden_quality_files_check_ignore_input.txt")
-    string(REPLACE ";" "\n" stdin_contents "${candidates}")
-    # Not file(WRITE): on Windows it emits CRLF, check-ignore then reads each
-    # path with a trailing `\r`, still matches it, and echoes it C-quoted
-    # (`"<path>\r"`) — a string REMOVE_ITEM never matches, so the filter
-    # silently drops nothing. @ONLY keeps `${...}` in a path literal.
-    file(CONFIGURE OUTPUT "${stdin_file}" CONTENT "${stdin_contents}\n"
-         @ONLY NEWLINE_STYLE UNIX)
-
-    execute_process(
-        COMMAND "${IRREDEN_GIT_EXECUTABLE}" -C "${repo_root}" check-ignore --stdin
-        INPUT_FILE "${stdin_file}"
-        OUTPUT_VARIABLE ignored_out
-        RESULT_VARIABLE ignored_rc
-        ERROR_QUIET
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-    file(REMOVE "${stdin_file}")
-
-    # check-ignore exits 0 (some input matched) or 1 (none matched) on a
-    # normal run; anything higher means it errored (e.g. repo_root isn't a
-    # git repository) — leave the candidate list untouched rather than trust
-    # a failed query's (empty) output.
-    if(ignored_rc GREATER 1)
-        return()
-    endif()
-    if(ignored_out STREQUAL "")
-        return()
-    endif()
-
-    string(REPLACE "\n" ";" ignored_list "${ignored_out}")
-    list(REMOVE_ITEM candidates ${ignored_list})
-    set(${file_list_var} "${candidates}" PARENT_SCOPE)
+    set(${out_var} "${listed_files}" PARENT_SCOPE)
 endfunction()
 
 # `INCLUDE_RENDER_BACKENDS` keeps the generated / vendored graphics sources that
@@ -88,8 +69,8 @@ endfunction()
 # `ROOT <dir>` collects from a tree other than the engine source root — the
 # format-changed target passes the downstream creation worktree a build was
 # configured against. Only the engine root has the engine's named
-# subtree layout, so any other root is swept whole and leans on the reject
-# chain plus the gitignore drop for its exclusions.
+# subtree layout, so any other root is listed whole and leans on the reject
+# chain plus its repository's ignore rules for its exclusions.
 function(irreden_collect_quality_files out_var)
     cmake_parse_arguments(arg "INCLUDE_RENDER_BACKENDS" "ROOT" "" ${ARGN})
 
@@ -114,33 +95,17 @@ function(irreden_collect_quality_files out_var)
         set(search_roots "${collect_root}")
     endif()
 
-    # CONFIGURE_DEPENDS re-runs the glob on rebuild, but CMake rejects it
-    # outside configure mode. run_header_checks_standalone.cmake calls this same
-    # function under `cmake -P` so CI can check headers with no configure, so
-    # the flag has to drop out there.
-    set(glob_mode CONFIGURE_DEPENDS)
-    if(CMAKE_SCRIPT_MODE_FILE)
-        set(glob_mode "")
-    endif()
-
-    set(globbed_files "")
+    set(listed_files "")
     foreach(root IN LISTS search_roots)
         if(EXISTS "${root}")
-            file(GLOB_RECURSE root_files ${glob_mode}
-                "${root}/*.h"
-                "${root}/*.hpp"
-                "${root}/*.c"
-                "${root}/*.cc"
-                "${root}/*.cxx"
-                "${root}/*.cpp"
-                "${root}/*.inl"
-            )
-            list(APPEND globbed_files ${root_files})
+            _irreden_list_source_files(root_files "${root}"
+                "*.h" "*.hpp" "*.c" "*.cc" "*.cxx" "*.cpp" "*.inl")
+            list(APPEND listed_files ${root_files})
         endif()
     endforeach()
 
     set(filtered_files "")
-    foreach(file_path IN LISTS globbed_files)
+    foreach(file_path IN LISTS listed_files)
         file(TO_CMAKE_PATH "${file_path}" normalized_path)
         if(normalized_path MATCHES "/(build|_deps|third_party)/")
             continue()
@@ -172,7 +137,7 @@ function(irreden_collect_quality_files out_var)
     endforeach()
 
     list(REMOVE_DUPLICATES filtered_files)
-    _irreden_drop_gitignored_files(filtered_files "${collect_root}")
+    list(SORT filtered_files)
     set(${out_var} "${filtered_files}" PARENT_SCOPE)
 endfunction()
 
@@ -229,21 +194,16 @@ function(irreden_collect_shader_files out_var)
         "${PROJECT_SOURCE_DIR}/tools"
     )
 
-    set(glob_mode CONFIGURE_DEPENDS)
-    if(CMAKE_SCRIPT_MODE_FILE)
-        set(glob_mode "")
-    endif()
-
-    set(globbed_files "")
+    set(listed_files "")
     foreach(root IN LISTS search_roots)
         if(EXISTS "${root}")
-            file(GLOB_RECURSE root_files ${glob_mode} "${root}/*.glsl")
-            list(APPEND globbed_files ${root_files})
+            _irreden_list_source_files(root_files "${root}" "*.glsl")
+            list(APPEND listed_files ${root_files})
         endif()
     endforeach()
 
     set(filtered_files "")
-    foreach(file_path IN LISTS globbed_files)
+    foreach(file_path IN LISTS listed_files)
         file(TO_CMAKE_PATH "${file_path}" normalized_path)
         if(normalized_path MATCHES "/(build|_deps|third_party)/")
             continue()
@@ -252,8 +212,54 @@ function(irreden_collect_shader_files out_var)
     endforeach()
 
     list(REMOVE_DUPLICATES filtered_files)
-    _irreden_drop_gitignored_files(filtered_files "${PROJECT_SOURCE_DIR}")
+    list(SORT filtered_files)
     set(${out_var} "${filtered_files}" PARENT_SCOPE)
+endfunction()
+
+# Writes `list_path` as an includable script defining QUALITY_FILES — the form
+# every run_*.cmake executor takes its file list in. ARGN is the file list.
+function(_irreden_write_quality_file_list list_path)
+    set(list_contents "set(QUALITY_FILES\n")
+    foreach(file_path IN LISTS ARGN)
+        string(APPEND list_contents "    \"${file_path}\"\n")
+    endforeach()
+    string(APPEND list_contents ")\n")
+    file(WRITE "${list_path}" "${list_contents}")
+endfunction()
+
+# Writes the three lists the quality targets consume into `out_dir`, and
+# returns the size of the style-tool list in `style_file_count_var`.
+#
+#   irreden_quality_files.cmake         format, format-check, clang-tidy
+#   irreden_header_check_files.cmake    the header-convention checks; wider,
+#                                       it keeps the render backends in scope
+#   irreden_format_changed_files.cmake  format-changed, and only when
+#                                       `format_root` is a user project: the
+#                                       diff-scoped formatter follows the tree
+#                                       the build was configured against. With
+#                                       no user project that tree is the
+#                                       engine's and the style-tool list
+#                                       serves.
+#
+# Called at configure time and again by the quality-file-lists target, so the
+# two cannot write different lists.
+function(irreden_write_quality_file_lists out_dir format_root style_file_count_var)
+    irreden_collect_quality_files(style_files)
+    _irreden_write_quality_file_list(
+        "${out_dir}/irreden_quality_files.cmake" ${style_files})
+
+    irreden_collect_quality_files(header_check_files INCLUDE_RENDER_BACKENDS)
+    _irreden_write_quality_file_list(
+        "${out_dir}/irreden_header_check_files.cmake" ${header_check_files})
+
+    if(NOT format_root STREQUAL "${PROJECT_SOURCE_DIR}")
+        irreden_collect_quality_files(format_changed_files ROOT "${format_root}")
+        _irreden_write_quality_file_list(
+            "${out_dir}/irreden_format_changed_files.cmake" ${format_changed_files})
+    endif()
+
+    list(LENGTH style_files style_file_count)
+    set(${style_file_count_var} "${style_file_count}" PARENT_SCOPE)
 endfunction()
 
 function(irreden_add_quality_targets)
@@ -261,50 +267,40 @@ function(irreden_add_quality_targets)
         return()
     endif()
 
-    irreden_collect_quality_files(irreden_quality_files)
-    if(irreden_quality_files STREQUAL "")
+    _irreden_resolve_format_root(irreden_format_root)
+    irreden_write_quality_file_lists(
+        "${PROJECT_BINARY_DIR}" "${irreden_format_root}" irreden_style_file_count)
+    if(irreden_style_file_count EQUAL 0)
         message(WARNING "No files found for quality targets.")
         return()
     endif()
 
     set(irreden_quality_file_list "${PROJECT_BINARY_DIR}/irreden_quality_files.cmake")
-    file(WRITE "${irreden_quality_file_list}" "set(QUALITY_FILES\n")
-    foreach(file_path IN LISTS irreden_quality_files)
-        file(APPEND "${irreden_quality_file_list}" "    \"${file_path}\"\n")
-    endforeach()
-    file(APPEND "${irreden_quality_file_list}" ")\n")
-
-    # Second, wider list for the header-convention checks only.
-    irreden_collect_quality_files(irreden_header_check_files INCLUDE_RENDER_BACKENDS)
     set(irreden_header_check_file_list
         "${PROJECT_BINARY_DIR}/irreden_header_check_files.cmake")
-    file(WRITE "${irreden_header_check_file_list}" "set(QUALITY_FILES\n")
-    foreach(file_path IN LISTS irreden_header_check_files)
-        file(APPEND "${irreden_header_check_file_list}" "    \"${file_path}\"\n")
-    endforeach()
-    file(APPEND "${irreden_header_check_file_list}" ")\n")
-
-    # Third list, for format-changed only: the diff-scoped formatter follows
-    # the tree the build was configured against, which on a downstream-creation
-    # build is not the engine tree the other two lists are collected from. When
-    # the build has no user project that root IS the engine's, and this list is
-    # then the style-tool list — reuse it rather than glob the tree twice.
-    _irreden_resolve_format_root(irreden_format_root)
-    if(irreden_format_root STREQUAL "${PROJECT_SOURCE_DIR}")
-        set(irreden_format_changed_file_list "${irreden_quality_file_list}")
-    else()
+    set(irreden_format_changed_file_list "${irreden_quality_file_list}")
+    if(NOT irreden_format_root STREQUAL "${PROJECT_SOURCE_DIR}")
         message(STATUS
             "format-changed diff root: ${irreden_format_root} (user project)")
-        irreden_collect_quality_files(irreden_format_changed_files
-            ROOT "${irreden_format_root}")
         set(irreden_format_changed_file_list
             "${PROJECT_BINARY_DIR}/irreden_format_changed_files.cmake")
-        file(WRITE "${irreden_format_changed_file_list}" "set(QUALITY_FILES\n")
-        foreach(file_path IN LISTS irreden_format_changed_files)
-            file(APPEND "${irreden_format_changed_file_list}" "    \"${file_path}\"\n")
-        endforeach()
-        file(APPEND "${irreden_format_changed_file_list}" ")\n")
     endif()
+
+    # Every quality target depends on this one, so each run reads lists
+    # collected at that moment: a source file added since the last configure
+    # is already on them. Tying the lists to the configure instead (a
+    # CONFIGURE_DEPENDS glob) re-configures the whole build whenever a
+    # matching file appears anywhere under a search root, ignored
+    # directories included.
+    add_custom_target(quality-file-lists
+        COMMAND ${CMAKE_COMMAND}
+            -DPROJECT_ROOT="${PROJECT_SOURCE_DIR}"
+            -DOUTPUT_DIR="${PROJECT_BINARY_DIR}"
+            -DFORMAT_ROOT="${irreden_format_root}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/write_quality_file_lists.cmake"
+        COMMENT "Collecting the quality targets' source file lists"
+        VERBATIM
+    )
 
     find_program(IRREDEN_CLANG_FORMAT_BIN NAMES clang-format HINTS ${IRREDEN_CLANG_TOOL_HINTS})
     if(IRREDEN_CLANG_FORMAT_BIN)
@@ -424,4 +420,8 @@ function(irreden_add_quality_targets)
             VERBATIM
         )
     endif()
+
+    foreach(quality_target IN ITEMS format format-check format-changed header-checks lint)
+        add_dependencies(${quality_target} quality-file-lists)
+    endforeach()
 endfunction()

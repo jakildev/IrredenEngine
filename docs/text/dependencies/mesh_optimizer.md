@@ -4,7 +4,7 @@
 -   **Found in modules:** IRRender
 -   **Package type:** Dynamic library
 -   **Precompiled:** No
--   **Version:** master
+-   **Version:** commit `8547fc3` (upstream `master`)
 -   **License:** MIT
 -   **Url:** https://github.com/zeux/meshoptimizer
 -   **Source:** https://github.com/zeux/meshoptimizer
