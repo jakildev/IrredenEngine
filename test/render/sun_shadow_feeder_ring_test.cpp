@@ -52,6 +52,70 @@ TEST(SunShadowCascadePolicy, FractionalViewportKeepsBakeCornerQuantization) {
     EXPECT_EQ(bounds.max_, vec2(8, 11));
 }
 
+TEST(SunShadowCascadePolicy, StableFitCoversEveryFractionalCameraPosition) {
+    using namespace IRPrefab::SunShadow;
+    constexpr vec3 sunDirection{-0.4585579f, -0.65508276f, -0.60049254f};
+    vec3 uHat, vHat;
+    IRMath::buildOrthonormalBasis(sunDirection, uHat, vHat);
+    const vec3 sweep = -sunDirection * kSunShadowMaxDistance;
+    const IsoBounds2D baseViewport{vec2(-320.25f, -180.75f), vec2(319.75f, 179.25f)};
+
+    const auto first = fitSunShadowCascade(
+        baseViewport,
+        kSunCascadeDepthRanges[0].min_,
+        kSunCascadeDepthRanges[0].max_,
+        uHat,
+        vHat,
+        sunDirection,
+        IRMath::CardinalIndex::k0,
+        sweep
+    );
+    for (const vec2 camera : {
+             vec2(0.0f),
+             vec2(0.125f, 0.875f),
+             vec2(1.5f, -2.25f),
+             vec2(63.999f, 17.001f),
+             vec2(256.0f, -128.0f),
+         }) {
+        const IsoBounds2D viewport{baseViewport.min_ + camera, baseViewport.max_ + camera};
+        const auto fit = fitSunShadowCascade(
+            viewport,
+            kSunCascadeDepthRanges[0].min_,
+            kSunCascadeDepthRanges[0].max_,
+            uHat,
+            vHat,
+            sunDirection,
+            IRMath::CardinalIndex::k0,
+            sweep
+        );
+        EXPECT_EQ(fit.texelSize_, first.texelSize_);
+        EXPECT_LE(fit.origin_.x, fit.paddedBounds_.min_.x);
+        EXPECT_LE(fit.origin_.y, fit.paddedBounds_.min_.y);
+        EXPECT_GE(fit.mapMax_.x, fit.paddedBounds_.max_.x);
+        EXPECT_GE(fit.mapMax_.y, fit.paddedBounds_.max_.y);
+        EXPECT_NEAR(
+            fit.origin_.x / fit.texelSize_.x,
+            IRMath::round(fit.origin_.x / fit.texelSize_.x),
+            1.0e-4f
+        );
+        EXPECT_NEAR(
+            fit.origin_.y / fit.texelSize_.y,
+            IRMath::round(fit.origin_.y / fit.texelSize_.y),
+            1.0e-4f
+        );
+    }
+}
+
+TEST(SunShadowCascadePolicy, FeederCapUsesLadderTexelDensity) {
+    constexpr float maxTexelSize = 0.3f;
+    constexpr int cappedEffSub = 16;
+
+    EXPECT_EQ(
+        IRPrefab::SunShadow::detail::feederSubCapForTexelSize(maxTexelSize, cappedEffSub),
+        static_cast<int>(IRMath::ceil(IRPrefab::SunShadow::kFeederSubSafetyFactor / maxTexelSize))
+    );
+}
+
 namespace {
 
 // A representative visible cull box. Deliberately NOT integer-aligned:
