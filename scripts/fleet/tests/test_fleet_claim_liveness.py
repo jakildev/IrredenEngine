@@ -1,5 +1,6 @@
 """Table tests for fleet_claim_liveness.verdict — the one keep/reap predicate
-every sweep of a fleet:amending-* / fleet:claim-* label consults.
+every sweep of a fleet:amending-*, fleet:claim-*, or fleet:planning-* label
+consults.
 
 Every arm is driven from temp directories and an injected ``now``, so no case
 depends on the wall clock or the live ~/.fleet. Each keep case is paired with
@@ -72,10 +73,12 @@ class _Fixture:
 
 
 class ParseLabel(unittest.TestCase):
-    def test_parses_both_kinds_and_dashed_agents(self):
+    def test_parses_all_kinds_and_dashed_agents(self):
         self.assertEqual(lv.parse_claim_label("fleet:claim-mac-pool-1"), ("claim", "mac", "pool-1"))
         self.assertEqual(lv.parse_claim_label("fleet:amending-windows-opus-worker-2"),
                          ("amending", "windows", "opus-worker-2"))
+        self.assertEqual(lv.parse_claim_label("fleet:planning-linux-opus-worker-3"),
+                         ("planning", "linux", "opus-worker-3"))
 
     def test_rejects_other_prefixes_and_unknown_hosts(self):
         for label in ("fleet:reviewing-mac-pool-1", "fleet:claim-bsd-pool-1",
@@ -205,6 +208,42 @@ class ClaimVerdicts(unittest.TestCase):
 
     def test_unparsable_label_cannot_vouch(self):
         self.assertEqual(self.fx.verdict("fleet:reviewing-mac-pool-9", 500)[0], lv.CANNOT_VOUCH)
+
+
+class PlanningVerdicts(unittest.TestCase):
+    """fleet:planning-* is vouched for by its exact dispatch record only."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.fx = _Fixture(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_exact_engine_and_game_plan_dispatches_are_live(self):
+        self.fx.dispatch(2, "opus-worker-2", "plan:engine:500")
+        code, detail = self.fx.verdict("fleet:planning-mac-opus-worker-2", 500)
+        self.assertEqual((code, detail["arm"], detail["target"]),
+                         (lv.LIVE, "dispatch", "plan:engine:500"))
+
+        self.fx.dispatch(3, "pool-7", "plan:game:45")
+        self.assertEqual(
+            self.fx.verdict("fleet:planning-mac-pool-7", 45, ns="game")[0],
+            lv.LIVE)
+
+    def test_wrong_dispatch_target_cannot_vouch(self):
+        for pane, target in enumerate(("plan:engine:501", "plan:game:500",
+                                       "task:engine:500"), start=1):
+            self.fx.dispatch(pane, "pool-9", target)
+        code, detail = self.fx.verdict("fleet:planning-mac-pool-9", 500)
+        self.assertEqual((code, detail["arm"]), (lv.CANNOT_VOUCH, "no-dispatch"))
+
+    def test_fresh_heartbeat_without_exact_dispatch_cannot_vouch(self):
+        self.fx.heartbeat("pool-9", 5)
+        self.fx.current("pool-9", "D1")
+        self.fx.claim_lock("500", "pool-9", "D1")
+        code, detail = self.fx.verdict("fleet:planning-mac-pool-9", 500)
+        self.assertEqual((code, detail["arm"]), (lv.CANNOT_VOUCH, "no-dispatch"))
 
 
 class AmendingVerdicts(unittest.TestCase):

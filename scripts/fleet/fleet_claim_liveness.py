@@ -1,10 +1,11 @@
 """fleet_claim_liveness.py — keep/reap verdict for the owner of a claim label.
 
-Every sweep that removes a ``fleet:amending-<host>-<agent>`` or
-``fleet:claim-<host>-<agent>`` label asks this one predicate whether the
-owner is still working: ``fleet-claim cleanup --gh`` (PR-label and issue-claim
-passes), ``_acquire_label_on``'s force-sweep, and ``reconcile`` R1. Bash
-reaches it through the CLI arm (``verdict``); reconcile's heredoc imports it.
+Every sweep that removes a ``fleet:amending-<host>-<agent>``,
+``fleet:claim-<host>-<agent>``, or ``fleet:planning-<host>-<agent>`` label
+asks this one predicate whether the owner is still working: ``fleet-claim
+cleanup --gh`` (PR-label, issue-claim, and planning passes),
+``_acquire_label_on``'s force-sweep, and ``reconcile`` R1. Bash reaches it
+through the CLI arm (``verdict``); reconcile's heredoc imports it.
 
 Verdicts are data, not errors:
 
@@ -26,7 +27,9 @@ Arms, first match wins:
         within the pre-claim grace                           → 0
   (iii) a live dispatch record names this owner and item
         (``task|stack:<ns>:<N>`` for a claim,
-        ``feedback:<ns>:<N>`` for an amend)                   → 0
+        ``feedback:<ns>:<N>`` for an amend,
+        ``plan:<ns>:<N>`` for planning)                      → 0
+  (iii-p) planning without that exact dispatch record         → 1
   (iii′) the owner's abandon pin names this item: the dispatcher
         holds the pane for one resume of it                  → 0
   (iv)  amending: the stamped dispatch id has been superseded
@@ -65,16 +68,20 @@ DEFAULT_PRECLAIM_ID = "preclaim"
 DEFAULT_PRECLAIM_GRACE_SECS = 300
 
 # Dispatch-target kinds that mean "this pane is working the item" per label kind.
-_DISPATCH_KINDS = {"claim": ("task", "stack"), "amending": ("feedback",)}
+_DISPATCH_KINDS = {
+    "claim": ("task", "stack"),
+    "amending": ("feedback",),
+    "planning": ("plan",),
+}
 
 _TARGET_RE = re.compile(r"^([a-z]+):([a-z]+):(\d+)(?::|$)")
 
 
 def parse_claim_label(label):
-    """``(kind, host, agent)`` for a ``fleet:amending-*`` / ``fleet:claim-*``
-    label, else None. The host is one of HOSTS; the agent is everything after
-    it and may itself contain dashes."""
-    for kind in ("amending", "claim"):
+    """``(kind, host, agent)`` for a claim label understood by this
+    predicate, else None. The host is one of HOSTS; the agent is everything
+    after it and may itself contain dashes."""
+    for kind in ("amending", "claim", "planning"):
         prefix = f"fleet:{kind}-"
         if not label.startswith(prefix):
             continue
@@ -190,15 +197,22 @@ def verdict(label, ns, number, *, this_host, ttl, now, dirs,
         return CANNOT_VOUCH, {"arm": "cross-host", "host": host}
     number = int(number)
 
-    stamped, stamped_epoch = _stamped_identity(kind, agent, ns, number, dirs)
-    if (kind == "amending" and stamped == preclaim_id
-            and stamped_epoch > 0 and now - stamped_epoch < preclaim_grace):
-        return LIVE, {"arm": "preclaim"}
+    stamped = ""
+    if kind == "amending":
+        stamped, stamped_epoch = _stamped_identity(kind, agent, ns, number, dirs)
+        if (stamped == preclaim_id and stamped_epoch > 0
+                and now - stamped_epoch < preclaim_grace):
+            return LIVE, {"arm": "preclaim"}
 
     target = live_dispatch_target(os.path.join(dirs["state"], "dispatch"),
                                   agent, _DISPATCH_KINDS[kind], ns, number)
     if target:
         return LIVE, {"arm": "dispatch", "target": target, "agent": agent}
+    if kind == "planning":
+        return CANNOT_VOUCH, {"arm": "no-dispatch", "agent": agent}
+
+    if kind == "claim":
+        stamped, _ = _stamped_identity(kind, agent, ns, number, dirs)
     target = pinned_target(dirs["state"], agent, _DISPATCH_KINDS[kind], ns, number)
     if target:
         return LIVE, {"arm": "abandon-pin", "target": target, "agent": agent}
