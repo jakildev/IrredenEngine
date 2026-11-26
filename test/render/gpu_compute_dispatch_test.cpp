@@ -2473,14 +2473,11 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
         std::vector<Record> observed;
         observed.reserve(count);
         for (std::uint32_t i = 0; i < count; ++i) {
-            observed.push_back(
-                Record{
-                    actual[entries + i * kFaceSortRecordWords],
-                    actual[entries + i * kFaceSortRecordWords + 1],
-                    actual[entries + i * kFaceSortRecordWords + 2],
-                    actual[entries + i * kFaceSortRecordWords + 3]
-                }
-            );
+            Record record{};
+            for (std::uint32_t word = 0; word < kFaceSortRecordWords; ++word) {
+                record[word] = actual[entries + i * kFaceSortRecordWords + word];
+            }
+            observed.push_back(record);
         }
         EXPECT_EQ(observed, expected);
         for (std::uint32_t i = 0; i < static_cast<std::uint32_t>(entries - ctrl); ++i)

@@ -24,7 +24,7 @@ constant int kCensusMaxTexels = 4096;
 constant float kCensusEdgeSlack = 0.0625f;
 
 // overflowLane is the overflow scratch from its control block on: word 1 is the
-// settled record count and the four-word records start
+// settled record count and the kFaceSortRecordWords-word records start
 // kCensusOverflowControlUints in. censusCounters: [0] records examined,
 // [1] owners, [2] records whose footprint holds no sample of the raster target,
 // [3] owners with an owned sample inside the quad proper.
@@ -47,7 +47,7 @@ kernel void c_per_axis_overflow_census(
     }
     atomic_fetch_add_explicit(&censusCounters[0], 1u, memory_order_relaxed);
 
-    const uint entryBase = kCensusOverflowControlUints + gid * 4u;
+    const uint entryBase = kCensusOverflowControlUints + gid * kFaceSortRecordWords;
     const uint packedCell = overflowEntryCell(overflowLane[entryBase + 0u]);
     const int2 cell = int2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
     const int rawDist = int(overflowLane[entryBase + 2u]);

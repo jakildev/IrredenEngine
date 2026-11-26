@@ -19,6 +19,8 @@ OVERFLOW_WIDTH_SITES = {
          r"gid \* kFaceSortRecordWords", 1),
         ("light reader", "c_light_overflow_faces.glsl",
          r"gid \* kFaceSortRecordWords", 1),
+        ("census reader", "c_per_axis_overflow_census.glsl",
+         r"gid \* kFaceSortRecordWords", 1),
     ),
     "metal": (
         ("stage-1 append", "c_voxel_to_trixel_stage_1_body.metal",
@@ -28,6 +30,8 @@ OVERFLOW_WIDTH_SITES = {
         ("fog reader", "c_fog_overflow_faces.metal",
          r"gid \* kFaceSortRecordWords", 1),
         ("light reader", "c_light_overflow_faces.metal",
+         r"gid \* kFaceSortRecordWords", 1),
+        ("census reader", "c_per_axis_overflow_census.metal",
          r"gid \* kFaceSortRecordWords", 1),
     ),
 }
@@ -39,9 +43,12 @@ CPU_WIDTH_SITES = (
     ("scratch allocation", ROOT / "engine/prefabs/irreden/render/components/"
      "component_per_axis_trixel_canvases.hpp",
      r"overflowCap_\) \* kFaceSortRecordWords", 1),
+    ("census binding", ROOT / "engine/prefabs/irreden/render/systems/"
+     "system_trixel_to_framebuffer.hpp",
+     r"static_cast<std::size_t>\(axes\.overflowCap_\) \* kFaceSortRecordWords", 1),
     ("composite binding", ROOT / "engine/prefabs/irreden/render/systems/"
      "system_trixel_to_framebuffer.hpp",
-     r"overflowCap_\) \* kFaceSortRecordWords", 1),
+     r"static_cast<size_t>\(axes\.overflowCap_\) \* kFaceSortRecordWords", 1),
 )
 
 
@@ -154,11 +161,21 @@ class SourceFaceOrderTest(unittest.TestCase):
                 print(f"{dialect}: overflow_records=PASS shared_width=PASS")
 
     def test_face_family_three_word_mutation_control(self):
-        source = adapter("glsl")
-        before = "index * kFaceSortRecordWords"
-        self.assertIn(before, source)
-        mutant = run_host(source.replace(before, "index * 3u"))
-        self.assertNotEqual(mutant.returncode, 0, "face-family three-word mutation escaped")
+        sites = (
+            ("emitter", "index * kFaceSortRecordWords", "index * 3u"),
+            ("reader", "instanceId * kFaceSortRecordWords", "instanceId * 3u"),
+        )
+        for dialect in ("glsl", "metal"):
+            source = adapter(dialect)
+            for name, before, after in sites:
+                with self.subTest(backend=dialect, site=name):
+                    self.assertIn(before, source)
+                    mutant = run_host(source.replace(before, after, 1))
+                    self.assertNotEqual(
+                        mutant.returncode,
+                        0,
+                        f"{dialect} face-family {name} three-word mutation escaped",
+                    )
 
     def test_overflow_family_literal_width_mutation_control(self):
         path = SHADERS / "c_voxel_to_trixel_stage_1_body.glsl"

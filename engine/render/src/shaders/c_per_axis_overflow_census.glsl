@@ -19,7 +19,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "ir_per_axis_face_footprint.glsl"
 
 // The overflow scratch from its control block on: word 1 is the settled record
-// count and the four-word records start kOverflowControlUints in.
+// count and the kFaceSortRecordWords-word records start kOverflowControlUints in.
 layout(std430, binding = 28) readonly buffer OverflowLane {
     uint overflowLane[];
 };
@@ -51,7 +51,7 @@ void main() {
     }
     atomicAdd(censusCounters[0u], 1u);
 
-    const uint entryBase = kOverflowControlUints + gid * 4u;
+    const uint entryBase = kOverflowControlUints + gid * kFaceSortRecordWords;
     const uint packedCell = overflowEntryCell(overflowLane[entryBase + 0u]);
     const ivec2 cell = ivec2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
     const int rawDist = int(overflowLane[entryBase + 2u]);

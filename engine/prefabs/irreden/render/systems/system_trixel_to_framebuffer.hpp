@@ -234,7 +234,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             kBufferIndex_PerAxisResolveScratch,
             axes.ctrlOffsetBytes(),
             (C_PerAxisTrixelCanvases::kOverflowControlUints +
-             static_cast<std::size_t>(axes.overflowCap_) * 4u) *
+             static_cast<std::size_t>(axes.overflowCap_) * kFaceSortRecordWords) *
                 sizeof(std::uint32_t)
         );
         overflowCensusBuffer_->bindBase(
