@@ -17,7 +17,9 @@ per repo, and prints:
   untriaged  issues with no fleet:/human: label (judge with fleet-triage-sweep)
 
 A *ghost* is a queued task with a current worker decline marked as delivered
-by a merged PR at the same issue version.
+by a merged PR at the same issue version. `fleet-claim reconcile` (R13) closes
+it on the host that recorded the decline; a hand close is for one reconcile
+reports as not closed.
 
 Read-only: never writes a label, never closes, never claims. The judgment
 layer (verdicts, staging, filing, the human checklist) is the skill's.
@@ -271,7 +273,7 @@ def parks_section(key, listings):
         elif not verdicts:
             row["verdict"] = "lifted: every named issue closed; waits on reconcile R8"
         elif "ghost" in verdicts:
-            row["verdict"] = "parked on a delivered issue; close the ghost to lift it"
+            row["verdict"] = "parked on a delivered issue; reconcile R13 closes it, R8 lifts this"
         elif "needs-human" in verdicts:
             row["verdict"] = "waits on a human decision"
         elif set(verdicts) == {"open-pr"}:
@@ -459,7 +461,8 @@ def render(report):
             for r in rows:
                 extra = ""
                 if bucket == "ghost":
-                    extra = f"  <- merged PR #{r['shadow_pr']}; declined: {r['reason']}"
+                    extra = (f"  <- merged PR #{r['shadow_pr']}; declined: {r['reason']}"
+                             "; fleet-claim reconcile R13 closes it")
                 elif bucket == "pinned_away":
                     extra = f"  needs {r['needs']}"
                     if r.get("claimable_on") == "no host":

@@ -35,6 +35,9 @@
 #     survives out-of-order and same-second stamps, leaves a scoped-out
 #     repo's stamps unread, waits on an unterminated line and restarts on a
 #     replaced log
+#   - auto-closed ledger: each issue reconcile R13 closed renders once under
+#     its own heading with its PR, reason and residuals; a failed comment is
+#     named; a scoped run leaves the other repo's offset unmoved
 #   - CI gate holds per approved PR, keyed on (head sha, workflow path): a
 #     replay of a recorded head whose runs predate one gate (a
 #     no-completed-run hold) and failed another (a failed-on-head hold naming
@@ -1215,6 +1218,47 @@ EOF
 run_decisions --repo=engine > /dev/null
 assert_contains "$(cat "$TMP/out.txt")" "## Agent-approved since last digest (1)" "a replaced log renders from its start"
 assert_contains "$(stamp_section "$(cat "$TMP/out.txt")")" "#211" "the replaced log's stamp renders"
+
+# --- auto-closed ledger: each reconcile R13 close seen once ------------------
+# Same seen-marker mechanism as the stamps, over its own log and marker.
+
+mkdir -p "$TMP/fleet-home/reconcile"
+CLOSED="$TMP/fleet-home/reconcile/closed-delivered.jsonl"
+CLOSED_SEEN="$TMP/fleet-home/reconcile/.decisions-seen"
+closed_section() {
+    printf '%s\n' "$1" | awk '/^## Auto-closed as delivered since last digest/{p=1; next} /^## /{p=0} p'
+}
+closed_offset() {
+    python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get(sys.argv[2], "none"))' "$CLOSED_SEEN" "$1"
+}
+cat > "$CLOSED" << 'EOF'
+{"ts":"2026-11-22T12:00:00Z","repo":"jakildev/IrredenEngine","issue":7204,"title":"task: delivered","pr":7900,"merge_sha":"abc","reason":"shipped whole by the PR","residuals":["#7300"],"commented":true,"host":"mac"}
+{"ts":"2026-11-22T12:01:00Z","repo":"jakildev/irreden","issue":88,"title":"game task","pr":89,"merge_sha":"def","reason":"shipped","residuals":[],"commented":false,"host":"mac"}
+EOF
+status=$(run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+section=$(closed_section "$out")
+assert_eq "$status" "0" "digest with an auto-closed issue exits 0"
+assert_contains "$out" "## Auto-closed as delivered since last digest (1)" "an auto-close renders under its own heading"
+assert_contains "$section" "engine issue #7204  task: delivered  [delivered by PR #7900, 2026-11-22T12:00:00Z]" \
+    "the close names its issue, title, PR and time"
+assert_contains "$section" "declined: shipped whole by the PR" "the close carries the decline reason"
+assert_contains "$section" "decline also names: #7300" "the close carries the residual"
+assert_absent "$section" "closing comment failed" "a posted comment prints no warning"
+assert_absent "$section" "#88 " "a game close stays out of an engine-only digest"
+assert_eq "$(closed_offset engine)" "$(wc -c < "$CLOSED" | tr -d ' ')" "the engine cursor advances to the end of the ledger"
+assert_eq "$(closed_offset game)" "none" "an engine-only digest leaves the game offset unmoved"
+assert_eq "$(seen_offset engine)" "$(log_size)" "the stamps cursor is its own, unmoved by the closes"
+
+run_decisions --repo=engine > /dev/null
+assert_absent "$(cat "$TMP/out.txt")" "Auto-closed as delivered" "a close already seen never renders again"
+
+GH_STUB_GAME_PRS="$TMP/game-prs.json" GH_STUB_GAME_ISSUES="$TMP/game-issues.json" \
+    run_decisions --repo=game > /dev/null
+section=$(closed_section "$(cat "$TMP/out.txt")")
+assert_contains "$section" "game issue #88 " "the close the engine digests skipped renders in its own repo's digest"
+assert_contains "$section" "warn: the closing comment failed to post" "a failed comment is named"
+assert_absent "$section" "#7204" "a game digest renders no engine close"
 
 # --- auto-merge ledger: rendered from the digest-tick cursor, never moved here --
 

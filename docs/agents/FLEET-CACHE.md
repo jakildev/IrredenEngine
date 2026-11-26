@@ -113,9 +113,10 @@ a `Ref` merge may be partial, so the task remains claimable.
 When the same task also has a current worker decline marked
 `--delivered-by <PR>` at its current `updatedAt`, it is a **shadowed
 close-out**: terminal for dispatch and reported by `fleet-queue-list`,
-`fleet-survey`, and `fleet-decisions` for a human to close or revise. The
-marker names the evidence PR and holds for seven days. Reports are read-only
-and never infer completion from a merge alone.
+`fleet-survey`, and `fleet-decisions`. The marker names the evidence PR and
+holds for seven days. `fleet-claim reconcile --apply` (R13) closes it on the
+host that recorded the decline, when the marker's PR is also the issue's branch
+match. Reports are read-only and never infer completion from a merge alone.
 
 `blocked` remains the ingest-owned label round-trip. `has_open_blocker` is the
 scout's separate same-repo resolution fact, and worker election treats either

@@ -147,7 +147,7 @@ unset _fleet_claim_self
 # python3's ModuleNotFoundError propagating through a pipefail command substitution.
 # A missing module would otherwise fail OPEN in the --stackable-on guard below
 # (empty reason -> claim proceeds), so fail loud here instead.
-for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py fleet_model_field.py fleet_claim_liveness.py fleet_checks_red.py fleet_checks_aggregate.py fleet_public_text.py fleet_github.py fleet-common.sh; do
+for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py fleet_model_field.py fleet_claim_liveness.py fleet_checks_red.py fleet_checks_aggregate.py fleet_close_delivered.py fleet_public_text.py fleet_github.py fleet-common.sh; do
     if [[ ! -f "$FLEET_LIB_DIR/$_fleet_lib" ]]; then
         echo "fleet-claim: $_fleet_lib not found in FLEET_LIB_DIR=$FLEET_LIB_DIR" >&2
         echo "             Ensure fleet-claim's real script dir is scripts/fleet/ in the engine repo." >&2
@@ -4331,7 +4331,8 @@ cmd_check_stale() {
 # whose owner is provably gone or unvouched past the TTL; R11 flags a queued
 # task whose same-repo Blocked-by ref 404s; R12 adds and removes the
 # informational fleet:checks-red on an approved PR whose head failed a check
-# of its own. The periodic scout spawn lives in fleet-state-scout.
+# of its own; R13 closes a queued issue a merged PR delivered and a worker
+# declined as delivered by that PR. The periodic scout spawn lives in fleet-state-scout.
 
 # reconcile_fs_claims_json
 #   Emit the host-local FS claim set as a JSON array, one object per claim
@@ -4400,8 +4401,8 @@ cmd_reconcile() {
     # Usage: fleet-claim reconcile [--apply] [--repo <owner/repo>] ...
     # Report-only by default (detect + report, mutate nothing). With --apply,
     # perform only the host-local, TTL/corroboration-gated auto-fixes
-    # (R1/R3/R4/R5/R7-R10) and R12's live-confirmed label write; R2, R6 and
-    # R11 stay report-only.
+    # (R1/R3/R4/R5/R7-R10), R12's live-confirmed label write and R13's
+    # live-confirmed close; R2, R6 and R11 stay report-only.
     local do_apply=0
     local -a repos=()
     while [[ $# -gt 0 ]]; do
@@ -4449,6 +4450,7 @@ cmd_reconcile() {
                 > "$work/issues-$safe.json" 2>/dev/null; then
             echo "[]" > "$work/issues-$safe.json"
             source_failures=$((source_failures + 1))
+            : > "$work/failed-$safe"
             echo "fleet-claim reconcile: $repo issue fetch failed; drift decay frozen this tick" >&2
         fi
         if ! gh pr list --repo "$repo" --state open \
@@ -4456,6 +4458,7 @@ cmd_reconcile() {
                 > "$work/prs-$safe.json" 2>/dev/null; then
             echo "[]" > "$work/prs-$safe.json"
             source_failures=$((source_failures + 1))
+            : > "$work/failed-$safe"
             echo "fleet-claim reconcile: $repo PR fetch failed; drift decay frozen this tick" >&2
         fi
     done
@@ -5133,6 +5136,45 @@ if (isinstance(snapshot, dict) and snapshot.get("repos")
                 apply={"type": "checks_red", "op": op, "repo": repo, "pr": n,
                        "sig": json.dumps(sig, sort_keys=True)})
 
+# ---- R13: a queued issue a merged PR delivered ----
+# The predicates and the live re-checks are fleet_close_delivered.py's. A
+# failed listing reads as an empty one and a full one may be cut off; neither
+# can show that no open PR resolves an issue, so that repo is skipped.
+import fleet_close_delivered as close_delivered
+os.environ["FLEET_STATE_DIR"] = state_dir
+if (isinstance(snapshot, dict) and snapshot.get("repos")
+        and topology.state_age_seconds(snapshot.get("generated_at"), 0,
+                                       now=now) <= STATE_MAX_AGE_S):
+    for repo in repos:
+        ns = REPO_NS.get(repo)
+        if ns is None:
+            continue
+        d = repo_data[repo]
+        ghosts = list(close_delivered.candidates(snapshot, ns))
+        if not ghosts:
+            continue
+        if (os.path.exists(os.path.join(work, "failed-" + repo.replace("/", "_")))
+                or max(len(d["issue_labels"]), len(d["prs"])) >= close_delivered.LIST_LIMIT):
+            print("fleet-claim reconcile: R13 skipped %s this pass (its issue or PR "
+                  "listing is incomplete)" % repo, file=sys.stderr)
+            continue
+        for n, task, meta in ghosts:
+            why = close_delivered.refusal(task, meta, d["issue_labels"].get(n),
+                                          has_open_pr(repo, n))
+            if why is not None:
+                add("R13", repo, n, "issue", ["label", "pr"],
+                    "declined as delivered by PR #%d, not closed: %s"
+                    % (meta["delivered_pr"], why), "flag-only (R13)", escalate=False)
+                continue
+            add("R13", repo, n, "issue", ["label", "pr"],
+                "delivered by merged PR #%d and declined as delivered; close it"
+                % meta["delivered_pr"],
+                "decline current at %s, branch match agrees, no open PR"
+                % meta["updated_at"],
+                apply={"type": "close_delivered", "repo": repo, "issue": n,
+                       "pr": meta["delivered_pr"], "stamp": meta["updated_at"],
+                       "reason": meta["reason"]})
+
 for f in findings:
     print(json.dumps(f))
 PYEOF
@@ -5299,6 +5341,15 @@ PYEOF
                             echo "  reconcile --apply: R12 could not $k_op fleet:checks-red on $k_repo PR#$k_pr (not retried; a missing label is created by fleet-labels): ${k_err//$'\n'/ }"
                         fi
                     fi
+                    ;;
+                close_delivered)
+                    # R13: the module re-reads the issue, the PR and the open
+                    # PRs before its one close.
+                    local v_line
+                    v_line=$(printf '%s' "$line" | FLEET_ENGINE_ROOT="$FLEET_ENGINE_ROOT" \
+                        python3 "$FLEET_LIB_DIR/fleet_close_delivered.py" apply "$host" 2>&1 \
+                        | tr -d '\r') || true
+                    echo "  reconcile --apply: $v_line"
                     ;;
                 # heal_design_unblock (R7) is deliberately NOT applied here — it
                 # is persistence-gated, handled by reconcile_heal_design_unblock
@@ -7301,7 +7352,16 @@ commands:
                                         failure; remove it when that stops
                                         being true. Live-confirmed before
                                         each write; engine repo only, on the
-                                        host whose master-CI watch is fresh.
+                                        host whose master-CI watch is fresh;
+                                  R13   queued issue whose current worker
+                                        decline names a merged PR
+                                        (--delivered-by) that is also its
+                                        branch match, with no open PR and no
+                                        human/epic/blocked label → close it
+                                        with one citing comment and a ledger
+                                        line fleet-decisions lists once.
+                                        Live-confirmed; only on the host that
+                                        recorded the decline.
                                 R2 (orphaned WIP/feedback PR with no claim,
                                 read as R7 reads it for a WIP PR;
                                 fleet:design-blocked / fleet:design-proposed /

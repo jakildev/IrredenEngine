@@ -50,7 +50,7 @@ points here and answers the delta keys below
 
 | Finding | The session does | The human does |
 |---|---|---|
-| Ghost: a queued issue with no PR in flight and a current worker decline marked `--delivered-by <PR>` | closes it: `gh issue close <N> --comment "Delivered by PR #<M>; <residual owner if any>"` | nothing |
+| Ghost: a queued issue with no PR in flight and a current worker decline marked `--delivered-by <PR>` | nothing: `fleet-claim reconcile` R13 closes it on the host that recorded the decline, and the close shows once in the **decisions tool**. Only for a ghost reconcile reports as not closed: `gh issue close <N> --comment "Delivered by PR #<M>; <residual owner if any>"` | nothing |
 | Unapproved `fleet:task` that is defect-shaped with verifiable forensics, an epic child under a `human:approved` umbrella, or filed by the human with a structured body | stamps `human:approved` plus the body's model label | nothing |
 | Unapproved `fleet:task` that is direction-shaped: a new capability, a public API addition, a Non-goal crossing, a design choice | asks the human in the session, one-line recommendation first; stamps the labels an approve answer names | answers |
 | Untriaged issue | judges per `triage-protocol.md`, writes the staging file, confirms the granted-class entries itself, asks the human the rest (Step 4), writes the answers into the file, runs `fleet-triage-sweep apply` and closes each confirmed recommend-close entry | answers one question per entry |
@@ -61,14 +61,14 @@ points here and answers the delta keys below
 | Untriaged issue in the `objective-row` class: an objective Done-means row filed by the architect or the steward, with the row verbatim and runnable criteria | the same | nothing |
 | `fleet:needs-human` whose open question is factual: does X hold on master, did Y merge, what does the measurement read | gathers the evidence, posts it, removes the label, takes the resulting action (close, approve, unpark) | nothing |
 | `fleet:needs-human` whose question is a product or design call | asks the human in the session, recommendation first; posts the answer on the thread and takes the resulting action | answers |
-| `fleet:awaiting-infra` park whose named blocker is a ghost | closes the ghost; reconcile R8 lifts the park | nothing |
+| `fleet:awaiting-infra` park whose named blocker is a ghost | nothing: reconcile R13 closes the ghost and R8 lifts the park; a ghost R13 skipped is the ghost row's fallback | nothing |
 | Park whose blocker PR merged but whose issue stays open for a check | the factual needs-human row above | nothing |
 | Park with no parsable `Parked-until:` line | repairs the line when the park comment makes the blocker unambiguous, and says so | nothing |
 | Issue (untriaged, approved, or parked) whose fix lands in files an open PR edits, or whose planner asked for a dependency it could verify | adds `**Blocked by:** #<that PR's backing issue>` (one per line; never removes a line, never retitles or re-scopes) and comments the citation | nothing |
 | Stranded `fleet:wip` PR with no owner label | leaves it to reconcile R7; when it is a chain head and conflicts, posts the land order on it | nothing |
 | `fleet:design-blocked` PR | `architect-protocol.md` § Handling `fleet:design-blocked` PRs | nothing |
 | Orphan claim labels, a stack whose base merged | `architect-protocol.md` self-heal step | nothing |
-| Epic whose only remaining children are ghosts or closed | closes the ghosts; the steward closes the umbrella | nothing |
+| Epic whose only remaining children are ghosts or closed | nothing: reconcile R13 closes the ghosts (ghost-row fallback for a skipped one) and the steward closes the umbrella | nothing |
 | `fleet:approved` PR in the merge queue | nothing | merges |
 | `fleet:approved` PR labeled `fleet:checks-red` | nothing: a check failed on its head, so it is not listed as ready to merge | nothing until the head is green |
 | Human-filed issue that should close as not planned, fleet self-config, an objective amendment | asks; closes, files or edits on the answer | answers |
@@ -92,7 +92,7 @@ One line per cause, from the queue partition:
 
 | bucket | what it means | what unblocks it |
 |---|---|---|
-| `ghost` | a queued task with a delivered-marked worker decline | the ghost close (authority table) |
+| `ghost` | a queued task with a delivered-marked worker decline | reconcile R13 on its next `--apply` pass; a skipped one, the ghost-row fallback |
 | `pinned_away` | `**Host:**` or `fleet:needs-gl-host` for another OS | a satellite host, or a wrong pin corrected in the body |
 | `pinned_away`, `needs mac + gl-host — claimable on no host` | contradictory pins: every host refuses it (the scout also writes a `state-scout-host-pin-conflict-*` alert) | a filing defect, never a satellite-host item: correct the body's Host line or GL wording |
 | `in_flight` | an open PR exists | that PR's own state |
@@ -107,14 +107,14 @@ a decline loop (`idle ticks` high while `claimable_here` is non-empty).
 
 Work the parks, the stranded list, the design-blocked set and every PR
 the **decisions tool** parks on a human label, each against its row in the
-authority table. Order: ghost closes first (they lift parks and epics for
-free), then factual needs-human items, then state repairs. Post what you
+authority table. Order: ghosts reconcile skipped first (a close lifts parks
+and epics for free), then factual needs-human items, then state repairs. Post what you
 did on the PR in one comment; the labels move through the named
 transitions (`fleet-transition`), never two separate edits.
 
 ## Step 4 — Unblock issues
 
-Then the issue side: ghosts, the approval gap (epic children first), the
+Then the issue side: skipped ghosts, the approval gap (epic children first), the
 needs-human items, and the untriaged set through the triage sweep. Each
 executed row gets its citation; each non-granted row gets its one-line
 recommendation and command in the report.
@@ -175,8 +175,8 @@ session's snags to the **feedback file**.
 ## Anti-patterns
 
 - Reporting the queue count as available work without the partition.
-- Closing a ghost without citing the PR that delivered it, or stripping
-  `fleet:queued` instead of closing.
+- Closing a ghost reconcile has not skipped, or any ghost without citing the
+  PR that delivered it, or stripping `fleet:queued` instead of closing.
 - Approving direction-shaped work because it is well written.
 - Treating `fleet:awaiting-infra` as always legitimate; the park's reason
   can lapse while the label stays (the stalled sweep exempts it).
