@@ -3,8 +3,10 @@
 This candidate does **not** satisfy the acceptance contract of issue 5000.
 The pre-rebase 30-run matrix is retained below, including the failing
 million-entity 0° block. The rebased continuation has one clean 0° signal
-pair, not the required five interleaved pairs, and no valid full render
-control/head pair. Do not use either passing subset to claim the task is
+pair, not the required five interleaved pairs. It now has a valid exact-base
+full render control/head pair, but the required Release offscreen matrix is
+blocked by the inherited macOS launch-domain failure tracked in #5159. Do not
+use the passing subset or a normal-window diagnostic to claim the task is
 complete.
 
 ## 2026-11-26 rebased continuation
@@ -41,11 +43,23 @@ The remaining interleaved 0°, 45° and CPU-bound runs therefore remain undone.
 
 The display was online and awake for this continuation. The normal ShapeDebug
 GUI suite passed 49/49; the presented-pick fault control failed only
-`newest_completed_pick_frame` at `current=0/30`, as required. A full exact-base
-render control job was invalidated by shared GPU-lock timeouts before some
-executables launched and was stopped; no head comparison was run against that
-invalid control. The historical exact-parent capture evidence below remains
-useful, but does not replace the required current full control/head pair.
+`newest_completed_pick_frame` at `current=0/30`, as required. A fresh full
+control at exact base `f6d489ad6` recorded 376 checks. Its five failures are
+the #4904 baseline drift in LightingSdfBlocker, LuaPerfGrid and VoxelEditor.
+The head comparison reproduced all five as inherited and moved no row, so its
+control grade passed. CanvasStress passed 59/59, PerfGrid 35/35, ShapeDebug
+187/187 and MetalClear 3/3 with maximum delta zero on the PR-critical rows.
+
+The five-pair Release matrix could not start in the required unattended
+offscreen mode. Two head launches and one separately rebuilt exact-base launch
+all remained alive for 120 seconds without reaching engine logging or writing
+a fresh profile. Each printed `Connection Invalid` for
+`com.apple.hiservices-xpcservice` and `_LSModifyNotification` error `-50`.
+The same head binary completed a five-frame offscreen probe and a 300-frame
+normal-window probe with `QUIET=guarded` and `RESULT=CLEAN`; normal-window data
+is not substituted for the commands-as-written offscreen acceptance method.
+This exact awake-display launch-domain failure is tracked by #5159. Invalid
+timeout outputs are not graded data.
 
 Current functional verification:
 
@@ -56,6 +70,8 @@ Current functional verification:
 | `fleet-jobs start light-verify -- --if-changed` | `20261126T050714Z-light-verify-80a732` succeeded, exit 0 |
 | Normal ShapeDebug GUI verification | `20261126T071354Z-gui-verify-9bb526` succeeded, 49/49 |
 | Presented-pick fault control | `20261126T071605Z-gui-verify-41bb2b` failed as expected, 48/49 |
+| Exact-base full render control | `20261126T095840Z-render-verify-c221b4` recorded 376 checks; five #4904 baseline failures |
+| Full head comparison | `20261126T112019Z-render-verify-21fbcd` succeeded; control grade PASS, five inherited, zero moved |
 | `fleet-build --target format-changed` and header checks | succeeded; no new globals |
 | `IRMetalClearTest --auto-screenshot 2` | CLEAN |
 
@@ -239,13 +255,14 @@ This is not a valid complete parent control. A head `--against-control` run
 was not launched. The earlier attempt on a pre-rebase tree also failed with
 NO-DISPLAY; neither attempt is counted as passing render evidence.
 
-That display blocker is resolved: this continuation observed
-`online=1 awake=1 NSScreen=1`. The current blockers are the invalidated
-exact-base render job described above and the repeated Release launch-service
-failure after the first clean pair. Continue with a fresh exact-base render
-control/head comparison and the complete interleaved performance blocks. Fix
-any remaining performance failure before removing WIP. The existing ShapeDebug
-reference tracker is issue 4904; it does not excuse an incomplete control.
+The sleeping-display blocker is resolved: this continuation observed
+`online=1 awake=1 NSScreen=1`. The exact-base render control/head comparison is
+also complete and passes its control grade. The remaining blocker is #5159:
+both the PR head and exact base hang before engine logging when the required
+300-frame Release profile uses the unattended offscreen path. Resume the full
+interleaved performance blocks after that issue lands, and fix any remaining
+performance failure before removing WIP. The existing ShapeDebug reference
+tracker is issue 4904; it does not excuse an incomplete performance matrix.
 
 Blocked operations recorded for the completion contract:
 
@@ -260,5 +277,5 @@ The two older blocked-operation rows above are retained as historical records.
 The current permission-blocked commands are recorded in the rebased
 continuation section.
 
-Runtime/model for the rebased continuation: Codex / GPT-5.6 Sol. No merge or
+Runtime/model for the rebased continuation: Codex / GPT-5. No merge or
 review approval is claimed.
