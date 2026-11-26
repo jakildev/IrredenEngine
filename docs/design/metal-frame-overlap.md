@@ -1,10 +1,13 @@
 # Metal frame overlap
 
 This implementation is WIP. The [complete measurement record](../perf/metal-frame-overlap/README.md)
-passes the CPU-bound latency check and the million-entity 45° checks, but
-fails latency and overlap coverage in the later million-entity 0° runs.
-The full render comparison is blocked by a sleeping display. It must not be
-treated as a demonstrated latency improvement or an accepted default.
+retains the failing pre-rebase matrix. After rebasing over render-pass batching,
+one fresh million-entity 0° pair has correct overlap coverage and latency
+within the established noise bound, but it is not the required five-pair
+matrix. The display is now awake; the attempted exact-base render control was
+invalidated by shared GPU-lock timeouts, and the remaining Release matrix was
+blocked by repeated macOS launch-service failures. This must not be treated as
+a demonstrated latency improvement or an accepted default.
 
 ## Mechanism
 

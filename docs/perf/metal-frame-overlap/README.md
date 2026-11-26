@@ -1,10 +1,72 @@
 # Metal overlap: WIP measurements
 
 This candidate does **not** satisfy the acceptance contract of issue 5000.
-The complete final matrix is retained, including the failing million-entity
-0° block. The full render comparison is also incomplete because the display
-went to sleep during the parent control. Do not use the passing subsets to
-claim the task is complete.
+The pre-rebase 30-run matrix is retained below, including the failing
+million-entity 0° block. The rebased continuation has one clean 0° signal
+pair, not the required five interleaved pairs, and no valid full render
+control/head pair. Do not use either passing subset to claim the task is
+complete.
+
+## 2026-11-26 rebased continuation
+
+The candidate was rebased onto `f6d489ad6`, after render-pass batching from
+PR 5100 merged. The conflict resolution preserves that batching while keeping
+the overlap submission/resource-set lifetime rules. The current candidate is
+`4d9947bf5`.
+
+One fresh Release pair used the final binary and the million-entity 0°
+commands below. It is a useful signal only:
+
+| Reading | Blocking | Overlap |
+|---|---:|---:|
+| Steady frame mean | 18.888 ms | 18.677 ms |
+| Steady frame p99 | 19.412 ms | 19.073 ms |
+| `input_to_present` mean | 18.716 ms | 18.773 ms |
+| `input_to_present` p99 | 19.182 ms | 19.314 ms |
+| Steady samples | 225 | 225 |
+| Frames starting with GPU work | 0 | 224 |
+| Maximum frames in flight | 0 | 1 |
+| Mid-frame waits | 0 | 0 |
+| Render passes per frame | 3 | 3 |
+
+Both arms recorded 300 valid GPU frames, no invalid samples, no command-buffer
+errors and no skipped frames. The overlap arm's mean and p99 latency deltas
+are within the 0.118 ms and 0.361 ms noise bounds. A second blocking Release
+launch repeatedly failed before engine logging or a fresh profile, with macOS
+launch services reporting `Connection Invalid` for
+`com.apple.hiservices-xpcservice` and `_LSModifyNotification` error `-50`.
+The same exact scene completed cleanly for 300 frames in Debug, and the first
+Release pair completed cleanly. Failed launch outputs are not graded data.
+The remaining interleaved 0°, 45° and CPU-bound runs therefore remain undone.
+
+The display was online and awake for this continuation. The normal ShapeDebug
+GUI suite passed 49/49; the presented-pick fault control failed only
+`newest_completed_pick_frame` at `current=0/30`, as required. A full exact-base
+render control job was invalidated by shared GPU-lock timeouts before some
+executables launched and was stopped; no head comparison was run against that
+invalid control. The historical exact-parent capture evidence below remains
+useful, but does not replace the required current full control/head pair.
+
+Current functional verification:
+
+| Check | Result |
+|---|---|
+| `fleet-build --target IrredenEngineTest` | succeeded |
+| Focused Metal, presented-pick, input-latency, world-config, GPU-submission and render-pass tests | 103 tests in 15 suites passed; CLEAN |
+| `fleet-jobs start light-verify -- --if-changed` | `20261126T050714Z-light-verify-80a732` succeeded, exit 0 |
+| Normal ShapeDebug GUI verification | `20261126T071354Z-gui-verify-9bb526` succeeded, 49/49 |
+| Presented-pick fault control | `20261126T071605Z-gui-verify-41bb2b` failed as expected, 48/49 |
+| `fleet-build --target format-changed` and header checks | succeeded; no new globals |
+| `IRMetalClearTest --auto-screenshot 2` | CLEAN |
+
+Permission-blocked diagnostics were recorded once and not retried:
+
+- `ps -Ao pcpu,pid,etime,command | sort -nr | head -25` returned
+  `zsh:1: operation not permitted: ps`.
+- `sample IRPerfGrid 5 -file
+  /private/tmp/fleet-pool-3/IRPerfGrid-release-hang.sample.txt` returned
+  `Failure calling sysctl to get process list buffer size: Operation not
+  permitted`; the process was not accessible to `sample`.
 
 ## Provenance and method
 
@@ -59,7 +121,7 @@ python3 scripts/perf/repeat_profile.py --release --target IRPerfGrid --repeats 1
 python3 scripts/perf/repeat_profile.py --release --target IRPerfGrid --repeats 1 --output <output> -- --auto-profile 300 --config-preset configs/perf/profiling-off.lua --yaw 0 --no-overlay --pivot-origin --worker-threads 0
 ```
 
-## Final matrix
+## Historical pre-rebase matrix
 
 All time values are milliseconds. The ratio is frame / max(CPU, GPU).
 
@@ -177,11 +239,12 @@ This is not a valid complete parent control. A head `--against-control` run
 was not launched. The earlier attempt on a pre-rebase tree also failed with
 NO-DISPLAY; neither attempt is counted as passing render evidence.
 
-The host must be awake in its logged-in Aqua session before continuing.
-Then rebase/sequence the overlapping render-pass PR as required by the fleet
-overlap gate, rebuild, obtain the exact merge-base render control, run the
-head comparison, and repeat complete interleaved performance blocks. Fix any
-remaining performance failure before removing WIP. The existing ShapeDebug
+That display blocker is resolved: this continuation observed
+`online=1 awake=1 NSScreen=1`. The current blockers are the invalidated
+exact-base render job described above and the repeated Release launch-service
+failure after the first clean pair. Continue with a fresh exact-base render
+control/head comparison and the complete interleaved performance blocks. Fix
+any remaining performance failure before removing WIP. The existing ShapeDebug
 reference tracker is issue 4904; it does not excuse an incomplete control.
 
 Blocked operations recorded for the completion contract:
@@ -193,4 +256,9 @@ Blocked operations recorded for the completion contract:
   returned exit 2: the `--json-out` value is not allowed. The documented
   `build/` destination was used instead, producing the failed job above.
 
-Runtime/model: Codex / GPT-6. No merge or review approval is claimed.
+The two older blocked-operation rows above are retained as historical records.
+The current permission-blocked commands are recorded in the rebased
+continuation section.
+
+Runtime/model for the rebased continuation: Codex / GPT-5.6 Sol. No merge or
+review approval is claimed.
