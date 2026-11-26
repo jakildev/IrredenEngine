@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import shlex
@@ -11,7 +12,7 @@ import sys
 import tempfile
 import time
 import unittest
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext, redirect_stderr
 from pathlib import Path
 from unittest.mock import patch
 
@@ -138,10 +139,29 @@ class WatchRun(unittest.TestCase):
         self.state = self.root / "state"
         self.worktree = self.root / "worktree"
         self.worktree.mkdir()
+        self.build_calls = self.root / "build-calls.log"
+        self.build_wrapper()
         self.record_rows = [{
             "demo": "shape_debug", "shot": "yaw0", "kind": "image",
             "verdict": "FAIL", "metrics": {"max_delta": 9},
         }]
+
+    def build_wrapper(self, fail=False):
+        """Stub the worktree's own build wrapper: record argv, then configure or fail."""
+        wrapper = self.worktree / "scripts" / "fleet" / "fleet-build"
+        wrapper.parent.mkdir(parents=True, exist_ok=True)
+        action = ('echo "CMake Error: preset macos-debug not found" >&2\nexit 2\n' if fail else
+                  'mkdir -p "$IRREDEN_BUILD_DIR"\n: > "$IRREDEN_BUILD_DIR/CMakeCache.txt"\n')
+        wrapper.write_text(
+            "#!/usr/bin/env bash\n"
+            f'printf "%s\\n" "$*" >> {shlex.quote(str(self.build_calls))}\n' + action,
+            encoding="utf-8",
+        )
+
+    def build_call_lines(self):
+        if not self.build_calls.exists():
+            return []
+        return self.build_calls.read_text(encoding="utf-8").splitlines()
 
     def result(self, rows=None):
         return {"version": 1, "commit": COMMIT, "preset": "macos-debug",
@@ -157,20 +177,75 @@ class WatchRun(unittest.TestCase):
         return run
 
     @contextmanager
-    def patched(self, gh, sweep):
+    def patched(self, gh, sweep=None):
+        sweep_patch = (patch.object(watch, "_run_sweep", side_effect=sweep) if sweep
+                       else nullcontext())
         with environment(FLEET_DIR=self.root, FLEET_STATE_DIR=self.state,
                          FLEET_RENDER_WATCH_ROOT=self.root / "watch"), \
              patch.object(watch, "_prepare_worktree", return_value=self.worktree), \
-             patch.object(watch, "_run_sweep", side_effect=sweep), \
+             sweep_patch, \
              patch.object(watch, "_public_text_check"), \
              patch.object(watch.fleet_github, "run", side_effect=gh):
             yield
+
+    def checking_sweep_command(self):
+        """A sweep command that fails unless the build directory was configured first."""
+        script = self.root / "sweep.py"
+        script.write_text(
+            "import json, os, pathlib, sys\n"
+            "cache = pathlib.Path(os.environ['IRREDEN_BUILD_DIR']) / 'CMakeCache.txt'\n"
+            "if not cache.is_file():\n"
+            "    sys.exit(f'no CMakeCache.txt at {cache}')\n"
+            "out = pathlib.Path(sys.argv[sys.argv.index('--json-out') + 1])\n"
+            f"out.write_text(json.dumps({self.result(rows=[])!r}))\n",
+            encoding="utf-8",
+        )
+        return f"{shlex.quote(sys.executable)} {shlex.quote(str(script))}"
 
     def control(self):
         return self.state / "render-verify-controls" / "macos-debug" / f"{COMMIT}.json"
 
     def status(self):
         return self.state / "render-watch-status.json"
+
+    def test_unconfigured_tree_is_configured_through_its_build_wrapper_before_the_sweep(self):
+        gh = RecordingGh()
+        with environment(FLEET_RENDER_WATCH_SWEEP_COMMAND=self.checking_sweep_command()), \
+             self.patched(gh):
+            self.assertEqual(watch.run_watch(COMMIT), 0)
+        self.assertEqual(self.build_call_lines(), ["--target help"])
+        self.assertTrue((self.root / "watch" / "build" / "CMakeCache.txt").is_file())
+        self.assertEqual(json.loads(self.status().read_text())["outcome"], "green")
+
+    def test_configured_tree_is_not_reconfigured_on_a_second_sweep(self):
+        with environment(FLEET_RENDER_WATCH_SWEEP_COMMAND=self.checking_sweep_command()), \
+             self.patched(RecordingGh()):
+            self.assertEqual(watch.run_watch(COMMIT), 0)
+            self.control().unlink()
+            self.assertEqual(watch.run_watch(COMMIT), 0)
+        self.assertEqual(self.build_call_lines(), ["--target help"])
+
+    def test_configure_failure_is_its_own_outcome_and_leaves_tracker_untouched(self):
+        self.build_wrapper(fail=True)
+        gh = RecordingGh()
+        stderr = io.StringIO()
+        with self.patched(gh, self.sweep()), redirect_stderr(stderr):
+            self.assertEqual(watch.run_watch(COMMIT), 1)
+        self.assertEqual(gh.calls, [])
+        self.assertFalse(self.control().exists())
+        status = json.loads(self.status().read_text())
+        self.assertEqual(status["outcome"], "build-failed")
+        self.assertIn("exit 2", status["reason"])
+        self.assertIn("CMake Error: preset macos-debug not found", status["reason"])
+        self.assertIn(status["reason"], stderr.getvalue())
+
+    def test_sweep_failure_reason_is_printed_to_stderr(self):
+        stderr = io.StringIO()
+        with self.patched(RecordingGh(), self.sweep(False, rc=1)), redirect_stderr(stderr):
+            self.assertEqual(watch.run_watch(COMMIT), 1)
+        reason = json.loads(self.status().read_text())["reason"]
+        self.assertIn("render sweep produced no record (exit 1)", reason)
+        self.assertIn(f"fleet-render-watch: {reason}", stderr.getvalue())
 
     def test_red_without_tracker_files_once_and_caches_the_tracker_number(self):
         gh = RecordingGh()

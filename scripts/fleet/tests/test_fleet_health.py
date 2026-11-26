@@ -869,11 +869,14 @@ class RenderWatchHealth(Env):
 
     def test_failed_latest_sweep_warns(self):
         self.enable()
-        (self.root / "state" / "render-watch-status.json").write_text(json.dumps({
-            "commit": "b" * 40, "outcome": "failed", "reason": "no display",
-        }))
-        _, report = self.run_report_at("2026-09-09T04:06:00Z")
-        self.assertIn("render watch failed at bbbbbbbbb: no display", report["warnings"])
+        for outcome, label in (("failed", "failed"), ("build-failed", "build failed")):
+            with self.subTest(outcome=outcome):
+                (self.root / "state" / "render-watch-status.json").write_text(json.dumps({
+                    "commit": "b" * 40, "outcome": outcome, "reason": "no display",
+                }))
+                _, report = self.run_report_at("2026-09-09T04:06:00Z")
+                self.assertIn(f"render watch {label} at bbbbbbbbb: no display",
+                              report["warnings"])
 
 
 class WorktreeLeaks(Env):

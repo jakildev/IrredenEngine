@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -24,6 +25,7 @@ TRACKER_PREFIX = "render watch: macOS master reference sweep"
 TRACKER_MARKER = "<!-- fleet-render-watch preset={preset} -->"
 DEFAULT_PRESET = "macos-debug"
 DEFAULT_TIMEOUT_SECONDS = 3 * 60 * 60
+FAILURE_TAIL_CHARS = 500
 
 
 class WatchError(RuntimeError):
@@ -194,18 +196,43 @@ def _prepare_worktree(commit: str) -> Path:
     return worktree
 
 
+def _timeout_seconds() -> int:
+    return int(os.environ.get("FLEET_RENDER_WATCH_TIMEOUT_SECS") or DEFAULT_TIMEOUT_SECONDS)
+
+
+def _build_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["IRREDEN_BUILD_DIR"] = str(_build_dir())
+    return env
+
+
+def _output_tail(result: subprocess.CompletedProcess[str]) -> str:
+    return ((result.stdout or "") + (result.stderr or "")).strip()[-FAILURE_TAIL_CHARS:]
+
+
+def _configure_build(worktree: Path) -> subprocess.CompletedProcess[str] | None:
+    """Configure the build tree through the worktree's own build wrapper.
+
+    Returns None when the tree is already configured. The wrapper configures an
+    unconfigured tree before building; the Makefile generator's `help` target
+    builds nothing, so the call costs only the configure.
+    """
+    if (_build_dir() / "CMakeCache.txt").is_file():
+        return None
+    wrapper = worktree / "scripts" / "fleet" / "fleet-build"
+    argv = [shutil.which("bash") or "bash", str(wrapper), "--target", "help"]
+    return _run(argv, cwd=worktree, env=_build_env(), timeout=_timeout_seconds())
+
+
 def _run_sweep(worktree: Path, result_path: Path) -> subprocess.CompletedProcess[str]:
     override = os.environ.get("FLEET_RENDER_WATCH_SWEEP_COMMAND")
     if override:
         argv = shlex.split(override)
     else:
-        argv = [sys.executable, str(worktree / "scripts" / "render-verify.py"), "--all"]
+        argv = [sys.executable, str(worktree / "scripts" / "render-verify.py"), "--all",
+                "--build-dir", str(_build_dir())]
     argv += ["--json-out", str(result_path)]
-    env = os.environ.copy()
-    env["IRREDEN_BUILD_DIR"] = str(_build_dir())
-    timeout = int(os.environ.get("FLEET_RENDER_WATCH_TIMEOUT_SECS")
-                  or DEFAULT_TIMEOUT_SECONDS)
-    return _run(argv, cwd=worktree, env=env, timeout=timeout)
+    return _run(argv, cwd=worktree, env=_build_env(), timeout=_timeout_seconds())
 
 
 def _red_rows(record: dict) -> list[dict]:
@@ -374,33 +401,43 @@ def _status(*, commit: str, outcome: str, started: float,
     _write_json_atomic(_status_path(), value)
 
 
+def _fail(*, commit: str, started: float, reason: str, outcome: str = "failed") -> int:
+    _status(commit=commit, outcome=outcome, started=started, reason=reason)
+    print(f"fleet-render-watch: {reason}", file=sys.stderr)
+    return 1
+
+
 def run_watch(commit: str) -> int:
     started = time.monotonic()
     result_path = _watch_root() / "latest-result.json"
     with _single_sweep_lock():
         worktree = _prepare_worktree(commit)
+        try:
+            configure = _configure_build(worktree)
+        except subprocess.TimeoutExpired:
+            return _fail(commit=commit, started=started, outcome="build-failed",
+                         reason="build configure timed out")
+        if configure is not None and configure.returncode != 0:
+            return _fail(commit=commit, started=started, outcome="build-failed",
+                         reason=f"build configure failed (exit {configure.returncode}): "
+                                f"{_output_tail(configure)}")
         result_path.unlink(missing_ok=True)
         try:
             sweep = _run_sweep(worktree, result_path)
         except subprocess.TimeoutExpired:
-            _status(commit=commit, outcome="failed", started=started,
-                    reason="render sweep timed out")
-            return 1
+            return _fail(commit=commit, started=started, reason="render sweep timed out")
         if not result_path.is_file():
-            detail = (sweep.stdout + sweep.stderr).strip()[-500:]
-            _status(commit=commit, outcome="failed", started=started,
-                    reason=f"render sweep produced no record (exit {sweep.returncode}): {detail}")
-            return 1
+            return _fail(commit=commit, started=started,
+                         reason=f"render sweep produced no record (exit {sweep.returncode}): "
+                                f"{_output_tail(sweep)}")
         try:
             record = json.loads(result_path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
-            _status(commit=commit, outcome="failed", started=started,
-                    reason=f"render sweep record unreadable: {exc}")
-            return 1
+            return _fail(commit=commit, started=started,
+                         reason=f"render sweep record unreadable: {exc}")
         if record.get("commit") != commit or record.get("preset") != _preset():
-            _status(commit=commit, outcome="failed", started=started,
-                    reason="render sweep record identity did not match the request")
-            return 1
+            return _fail(commit=commit, started=started,
+                         reason="render sweep record identity did not match the request")
 
         red_rows = _red_rows(record)
         tracker = _tracker_lookup(record["preset"])
@@ -436,9 +473,7 @@ def main(argv=None) -> int:
         print(f"fleet-render-watch: {exc}", file=sys.stderr)
         return 1
     except WatchError as exc:
-        _status(commit=args.commit, outcome="failed", started=started, reason=str(exc))
-        print(f"fleet-render-watch: {exc}", file=sys.stderr)
-        return 1
+        return _fail(commit=args.commit, started=started, reason=str(exc))
 
 
 if __name__ == "__main__":

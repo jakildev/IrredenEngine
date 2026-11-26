@@ -835,8 +835,10 @@ def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts, worktree
         w.append(f"fleet-worktree-sweep failed: {worktrees['error']}")
     if render_watch and render_watch["enabled"]:
         status = render_watch.get("status") or {}
-        if status.get("outcome") == "failed":
-            w.append(f"render watch failed at {status.get('commit', 'unknown')[:9]}: "
+        outcome = status.get("outcome")
+        if outcome in ("failed", "build-failed"):
+            w.append(f"render watch {outcome.replace('-', ' ')} at "
+                     f"{status.get('commit', 'unknown')[:9]}: "
                      f"{status.get('reason', 'unknown failure')}")
         newest = render_watch.get("newest")
         if newest:
