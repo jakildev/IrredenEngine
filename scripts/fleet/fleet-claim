@@ -760,11 +760,13 @@ _write_amend_ownership() {
 }
 
 # _claim_owner_live <label> <ns> <number> <ttl-secs>
-#   The one keep/reap predicate for a fleet:amending-* or fleet:claim-* label's
-#   owner, shared by every sweep that removes one: fleet_claim_liveness.py
-#   (its docstring holds the arms and why a heartbeat never vouches alone).
-#   <ns> is engine|game, <number> the PR (amending) or issue (claim), and
-#   <ttl-secs> the CALLING sweep's TTL — the window the heartbeat must fall in.
+#   The one keep/reap predicate for a fleet:amending-*, fleet:claim-*, or
+#   fleet:planning-* label's owner, shared by every sweep that removes one:
+#   fleet_claim_liveness.py (its docstring holds the arms and why a heartbeat
+#   never vouches alone). <ns> is engine|game, <number> the PR (amending) or
+#   issue (claim/planning), and <ttl-secs> the CALLING sweep's TTL — the window
+#   the heartbeat must fall in. Planning is vouched for only by its exact live
+#   dispatch record.
 #
 #     0  LIVE          — the owner is working; never sweep.
 #     1  CANNOT VOUCH  — fall through to the caller's age rule. Also what a
@@ -3951,6 +3953,14 @@ for issue in issues:
             if (( planning_orphan )); then
                 [[ $age -lt $_planning_grace ]] && continue
             elif [[ $age -lt $planning_stale_secs ]]; then
+                continue
+            fi
+
+            local _planning_live_rc=0
+            _claim_owner_live "$label_name" "$(_ns_of_repo "$repo")" \
+                "$issue_num" "$planning_stale_secs" || _planning_live_rc=$?
+            if [[ "$_planning_live_rc" -eq 0 ]]; then
+                echo "cleanup --gh: kept live '$label_name' on $repo issue#$issue_num (arm: ${_OWNER_LIVE_ARM:-unknown}, target: ${_OWNER_LIVE_TARGET:-unknown})"
                 continue
             fi
 
@@ -7203,7 +7213,9 @@ commands:
                                 (4) stale fleet:planning-* labels off
                                     open fleet:needs-plan issues (age >
                                     FLEET_CLAIM_STALE_SECS_PLANNING,
-                                    default 3600s),
+                                    default 3600s), unless an exact live
+                                    plan:<repo>:<issue> dispatch record
+                                    vouches for the owner,
                                 (5) orphan fleet:(reviewing|resolving|
                                     amending|stewarding)-<host>---*
                                     catalog labels off every issue/PR
@@ -7282,7 +7294,8 @@ commands:
                                 when a ## Plan comment already exists;
                                 swept by cleanup --gh after
                                 FLEET_CLAIM_STALE_SECS_PLANNING, aged
-                                from the newest labeled event). A
+                                from the newest labeled event, unless its
+                                exact plan dispatch is live). A
                                 claim that finds its own label already
                                 on the issue removes it and re-adds it,
                                 so the sweep ages the live claim, not

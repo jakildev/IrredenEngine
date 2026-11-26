@@ -32,6 +32,7 @@ trap cleanup EXIT
 # Hermetic: an unset FLEET_CLAIMS_DIR would read the host's live markers.
 export FLEET_ORPHANS_DIR="$TMPROOT/orphans"
 export FLEET_CLAIMS_DIR="$TMPROOT/claims"
+export FLEET_STATE_DIR="$TMPROOT/fleet-state"
 export FLEET_TEST_HOST="mac"
 export FLEET_CLAIM_NO_SLEEP=1
 export FLEET_CLAIM_ACQUIRE_RETRIES=2
@@ -52,8 +53,8 @@ iso_ago() {
 
 # reset_state — empty every issue, the call log, markers and sentinels.
 reset_state() {
-    rm -rf "$STATE" "$FLEET_CLAIMS_DIR" "$FLEET_ORPHANS_DIR"
-    mkdir -p "$STATE" "$FLEET_CLAIMS_DIR" "$FLEET_ORPHANS_DIR"
+    rm -rf "$STATE" "$FLEET_CLAIMS_DIR" "$FLEET_ORPHANS_DIR" "$FLEET_STATE_DIR"
+    mkdir -p "$STATE" "$FLEET_CLAIMS_DIR" "$FLEET_ORPHANS_DIR" "$FLEET_STATE_DIR/dispatch"
     : > "$CALLS"
     STUB_STATE=OPEN; STUB_PLAN_COMMENTS=0; STUB_PROBE_FAIL=0; STUB_REMOVE_FAIL=0
 }
@@ -66,6 +67,10 @@ seed_issue() {
 # seed_event <N> <label> <age-secs> — a `labeled` event <age-secs> ago.
 seed_event() {
     printf '%s\t%s\n' "$(iso_ago "$3")" "$2" >> "$STATE/events.$1"
+}
+seed_dispatch() {
+    printf '{"agent":"%s","target":"%s"}\n' "$2" "$3" \
+        > "$FLEET_STATE_DIR/dispatch/pane-$1.json"
 }
 event_count() {
     awk -F'\t' -v l="$2" '$2 == l' "$STATE/events.$1" | wc -l | tr -d ' '
@@ -211,7 +216,19 @@ fi
 assert_eq "$(sentinel_count)" "0" "no orphan sentinel written"
 assert_modelled "T1"
 
-echo "T2: control — the same 14h-old label vouched by a fresh marker alone is still swept"
+echo "T2: an aged label with an exact live plan dispatch is kept"
+reset_state
+seed_issue 90 "fleet:needs-plan" "$MINE"
+seed_event 90 "$MINE" "$HOURS14"
+printf '90\n' > "$MARKER"
+seed_dispatch 3 worker "plan:engine:90"
+out=$(cmd_cleanup_gh "$REPO" 2>&1)
+assert_absent "$(cat "$CALLS")" "remove 90 $MINE" "live dispatch prevents remove-label"
+if has_label 90 "$MINE"; then ok "live dispatch keeps the aged planning label"; else bad "live dispatch label was removed"; fi
+assert_contains "$out" "arm: dispatch, target: plan:engine:90" "skip diagnostic names the deciding arm and target"
+assert_modelled "T2"
+
+echo "T3: control — the same 14h-old label vouched by a fresh marker alone is still swept"
 # Pins the sweep's clock (newest labeled event, not the marker) and proves
 # the fixture can fire.
 reset_state
@@ -228,9 +245,9 @@ else
     bad "control did not fire (log: $(tr '\n' ';' < "$CALLS"); out: $out)"
 fi
 assert_contains "$out" "age: 840m" "the sweep aged it from the 14h-old event"
-assert_modelled "T2"
+assert_modelled "T3"
 
-echo "T3: both existing sweeps keep firing"
+echo "T4: both existing sweeps keep firing, including a wrong-dispatch control"
 reset_state
 seed_issue 91 "fleet:needs-plan" "$MINE"
 seed_event 91 "$MINE" 7200
@@ -239,13 +256,14 @@ seed_issue 92 "fleet:needs-plan" "fleet:planning-mac-ghost"
 seed_event 92 "fleet:planning-mac-ghost" 600
 seed_issue 93 "fleet:needs-plan" "fleet:planning-mac-fresh"
 seed_event 93 "fleet:planning-mac-fresh" 30
+seed_dispatch 4 worker "plan:engine:999"
 cmd_cleanup_gh "$REPO" >/dev/null 2>&1
 if [[ -n "$(call_line "remove 91 $MINE")" ]]; then ok "crashed planner: 2h-old label with a leftover marker swept on the TTL"; else bad "crashed planner's label survived (log: $(tr '\n' ';' < "$CALLS"))"; fi
 if [[ -n "$(call_line "remove 92 fleet:planning-mac-ghost")" ]]; then ok "same-host label with no marker past the grace swept"; else bad "no-marker orphan survived (log: $(tr '\n' ';' < "$CALLS"))"; fi
 if [[ -z "$(call_line "remove 93 fleet:planning-mac-fresh")" ]]; then ok "same-host label with no marker inside the grace kept"; else bad "fresh no-marker label reaped inside the grace"; fi
-assert_modelled "T3"
+assert_modelled "T4"
 
-echo "T4: --replan re-stamps the same way"
+echo "T5: --replan re-stamps the same way"
 reset_state
 STUB_PLAN_COMMENTS=1
 seed_issue 94 "fleet:needs-plan" "$MINE"
@@ -255,18 +273,18 @@ assert_eq "$rc" "0" "--replan acquires"
 rm_at=$(call_line "remove 94 $MINE"); post_at=$(call_line "post 94 $MINE")
 if [[ "${rm_at:-0}" -gt 0 && "${post_at:-0}" -gt "${rm_at:-0}" ]]; then ok "--replan removed its own label before the POST"; else bad "--replan did not re-stamp (log: $(tr '\n' ';' < "$CALLS"))"; fi
 assert_eq "$(event_count 94 "$MINE")" "2" "--replan minted a fresh labeled event"
-assert_modelled "T4"
+assert_modelled "T5"
 
-echo "T5: a first-time claim (own label absent) issues no removal"
+echo "T6: a first-time claim (own label absent) issues no removal"
 reset_state
 seed_issue 95 "fleet:needs-plan"
 rc=0; cmd_planning_claim 95 worker >/dev/null 2>&1 || rc=$?
 assert_eq "$rc" "0" "first-time claim acquires"
 assert_eq "$(grep -c '^remove' "$CALLS" || true)" "0" "no removal on a first-time claim"
 assert_eq "$(event_count 95 "$MINE")" "1" "one labeled event from the POST"
-assert_modelled "T5"
+assert_modelled "T6"
 
-echo "T6: every refusal gate issues no removal"
+echo "T7: every refusal gate issues no removal"
 # refuse_arm <name> <expected-rc> <claim args...> — the own label is on the
 # issue in every arm, so a removal here would be the re-stamp firing early.
 refuse_arm() {
@@ -291,17 +309,17 @@ refuse_arm "## Plan dedup" 3 96 worker
 reset_state; STUB_PLAN_COMMENTS=1
 seed_issue 96 "$MINE"; seed_event 96 "$MINE" "$HOURS14"
 refuse_arm "--replan without fleet:needs-plan" 2 96 worker --replan
-assert_modelled "T6"
+assert_modelled "T7"
 
-echo "T7: a failed label probe fails open to the plain acquire, with no removal"
+echo "T8: a failed label probe fails open to the plain acquire, with no removal"
 reset_state; STUB_PROBE_FAIL=1
 seed_issue 97 "fleet:needs-plan" "$MINE"; seed_event 97 "$MINE" "$HOURS14"
 rc=0; cmd_planning_claim 97 worker >/dev/null 2>&1 || rc=$?
 assert_eq "$rc" "0" "probe unknown → claim still acquires"
 assert_eq "$(grep -c '^remove' "$CALLS" || true)" "0" "probe unknown → no removal"
-assert_modelled "T7"
+assert_modelled "T8"
 
-echo "T8: a failing re-stamp removal still acquires and writes no orphan sentinel"
+echo "T9: a failing re-stamp removal still acquires and writes no orphan sentinel"
 # A sentinel would be replayed by replay_orphans after the POST succeeded,
 # stripping the live claim.
 reset_state; STUB_REMOVE_FAIL=1
@@ -310,6 +328,6 @@ rc=0; cmd_planning_claim 98 worker >/dev/null 2>&1 || rc=$?
 assert_eq "$rc" "0" "failed removal → claim still acquires"
 assert_eq "$(grep -c "^remove 98 $MINE" "$CALLS" || true)" "1" "removal attempted exactly once (no retry)"
 assert_eq "$(sentinel_count)" "0" "failed removal left no orphan sentinel"
-assert_modelled "T8"
+assert_modelled "T9"
 
 summarize "fleet-claim planning re-stamp"
