@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Export the attribution sessions: runs.json plus per-session arm means and steps.
+
+usage: export.py <out-dir> <session-dir>...
+Sessions s9 and s10 ran configs/perf/million.lua (stage timing on); the rest ran
+configs/perf/million-profiling-off.lua.
+"""
+import json
+import statistics
+import sys
+from pathlib import Path
+
+ARMS = {
+    "A": "44955ae9f", "A1": "c843416b7", "A2": "bd65be606", "B": "3187960e3", "C": "4c35a9da0", "C1": "66df15022",
+    "C2": "6317f75ff", "C3": "473953323", "C4": "6afc51320", "D": "7ed1e271f",
+    "D1": "1bff5ea9d", "E": "34bdd153d", "E1": "edb922734", "E2": "850084148",
+    "E3": "b3ab5c8fe", "F": "f6d489ad6", "L": "f6d489ad6+lazy-predicate",
+}
+ORDER = list(ARMS)
+WITNESS_EDGE = "the report witnessed 299 frames; --auto-profile asked for 300"
+
+
+def verdict(session: Path, r: dict) -> tuple[bool, str]:
+    if r.get("frame") is None:
+        return False, "no report"
+    if r.get("quiet") != "guarded":
+        return False, f"quiet={r.get('quiet')}"
+    attempt = r.get("attempt", 1)
+    leaf = f"round-{r['round']}" + ("" if attempt == 1 else f"-try{attempt}")
+    manifest = session / r["case"] / r["arm"] / leaf / "manifest.json"
+    run = json.loads(manifest.read_text())["runs"][-1]
+    if not run.get("clean"):
+        return False, "not clean"
+    reasons = [run.get(k) for k in ("yaw_pose_mismatch", "pivot_mismatch", "overflow_failure",
+                                     "device_error_failure", "measurement_failure")]
+    reasons = [x for x in reasons if x]
+    if reasons and (reasons != [WITNESS_EDGE] or r["case"] == "sweep"):
+        return False, "; ".join(reasons)
+    if r["case"] != "sweep" and r.get("chunk_max", 0) > 1.15 * r.get("chunk_min", 1e9):
+        return False, "contaminated: a 30-frame chunk mean > 1.15x another"
+    return True, "299-frame witness edge (pre-#5207 exe)" if reasons else ""
+
+
+def main() -> None:
+    out = Path(sys.argv[1])
+    out.mkdir(parents=True, exist_ok=True)
+    runs, summary = [], {}
+    for session in map(Path, sys.argv[2:]):
+        rows = [json.loads(line) for line in (session / "runs.jsonl").read_text().splitlines()]
+        means = {}
+        for r in rows:
+            ok, note = verdict(session, r)
+            runs.append({
+                "session": session.name, "case": r["case"], "arm": r["arm"],
+                "commit": ARMS[r["arm"]], "round": r["round"],
+                "attempt": r.get("attempt", 1), "accepted": ok, "note": note,
+                "quiet": r.get("quiet"), "load_1m": r.get("load"), "battery": r.get("battery"),
+                "power": r.get("power"), "frame_mean_ms": r.get("frame"),
+                "frame_p50_ms": r.get("p50"), "gpu_envelope_ms": r.get("gpu_envelope"),
+                **({"gpu_stages_ms": r["gpu_stages"]} if r.get("gpu_stages") else {}),
+            })
+            if ok:
+                means.setdefault(r["case"], {}).setdefault(r["arm"], []).append(
+                    (r["frame"], r["gpu_envelope"]))
+        table = {}
+        for case, arms in means.items():
+            present = [a for a in ORDER if a in arms]
+            table[case] = [{
+                "arm": a, "commit": ARMS[a], "n": len(arms[a]),
+                "frame_mean_ms": round(statistics.mean(f for f, _ in arms[a]), 3),
+                "gpu_envelope_mean_ms": round(statistics.mean(g for _, g in arms[a]), 3),
+            } for a in present]
+        summary[session.name] = table
+    (out / "runs.json").write_text(json.dumps(runs, indent=1) + "\n")
+    (out / "arm-means.json").write_text(json.dumps(summary, indent=1) + "\n")
+    for name, table in summary.items():
+        for case, arms in table.items():
+            print(f"## {name} {case}")
+            prev = None
+            for a in arms:
+                step = "" if prev is None else (
+                    f"  step {a['frame_mean_ms'] - prev['frame_mean_ms']:+.3f} frame "
+                    f"{a['gpu_envelope_mean_ms'] - prev['gpu_envelope_mean_ms']:+.3f} gpu")
+                print(f"{a['arm']:3} {a['commit']:26} n={a['n']} {a['frame_mean_ms']:.3f} "
+                      f"{a['gpu_envelope_mean_ms']:.3f}{step}")
+                prev = a
+
+
+if __name__ == "__main__":
+    main()
