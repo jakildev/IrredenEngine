@@ -264,6 +264,12 @@ class DisplaySessionTest(unittest.TestCase):
             self.assertFalse(hold.ready)
             self.assertEqual(hold.condition, "asleep")
             self.assertIn("waiting 5.0s", hold.lines[-1])
+            # The fake holder reads its log path from the injected env only.
+            deadline = time.monotonic() + 10
+            while not display.invocations() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertEqual([pid for pid, _ in display.invocations()], [hold.holder_pid])
+            self.assertIsNone(hold.holder.poll(), "the holder exited before release")
             hold.release()
             self.assertTrue(wait_gone(hold.holder_pid))
 

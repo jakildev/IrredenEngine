@@ -166,7 +166,7 @@ def hold_display(owner_pid, env=os.environ, clock=time.monotonic, sleep=time.sle
     argv = [caffeinate, "-d", "-u", "-w", str(owner_pid)]
     try:
         holder = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                  stderr=subprocess.DEVNULL)
+                                  stderr=subprocess.DEVNULL, env=dict(env))
     except OSError as exc:
         lines.append(f"display wake not requested: cannot start {caffeinate}: {exc}")
         return Hold(state == "ok", state, lines)
