@@ -3,7 +3,8 @@
 
 usage: export.py <out-dir> <session-dir>...
 Sessions s9 and s10 ran configs/perf/million.lua (stage timing on); the rest ran
-configs/perf/million-profiling-off.lua.
+configs/perf/million-profiling-off.lua. Session s11 runs every runtime commit from
+A to C1 as its own arm.
 """
 import json
 import statistics
@@ -11,7 +12,9 @@ import sys
 from pathlib import Path
 
 ARMS = {
-    "A": "44955ae9f", "A1": "c843416b7", "A2": "bd65be606", "B": "3187960e3", "C": "4c35a9da0", "C1": "66df15022",
+    "A": "44955ae9f", "Aa": "40cb99890", "Ab": "eeeca3ef3", "A1": "c843416b7", "A2": "bd65be606",
+    "B": "3187960e3", "Ba": "c9644ed7d", "Bb": "374596fe3", "Bc": "8e8d309f1", "Bd": "0cc7cc701",
+    "Be": "e347275aa", "C": "4c35a9da0", "Ca": "12783754c", "C1": "66df15022",
     "C2": "6317f75ff", "C3": "473953323", "C4": "6afc51320", "D": "7ed1e271f",
     "D1": "1bff5ea9d", "E": "34bdd153d", "E1": "edb922734", "E2": "850084148",
     "E3": "b3ab5c8fe", "F": "f6d489ad6", "L": "f6d489ad6+lazy-predicate",
