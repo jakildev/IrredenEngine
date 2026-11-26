@@ -9,15 +9,17 @@ mechanism is in
 § "Current contract", "Per-axis kernels".
 
 Host for every number: Apple M4 Max, Metal, macOS, Release, AC power, with
-other fleet panes live. Base is master `4303d18ae`; head is this change on top
-of it. Every run is a 300-frame `repeat_profile.py` run under the benchmark
-lease; a pair counts only when both runs read `QUIET=guarded`. Base and head
-alternate, reversed on even rounds. OpenGL was not measured.
+other fleet panes live. Base is master `f6d489ad6`, which carries #5101's
+store sizing and drop counter and #5121's cross-axis AO; head is this change
+rebased onto it. Every run is a 300-frame `repeat_profile.py` run under the
+benchmark lease; a pair counts only when both runs read `QUIET=guarded`. Base
+and head alternate, reversed on even rounds. OpenGL was not measured.
 
 ## Launched invocations
 
 `IRPerfGrid --wave-freeze --pivot-origin --no-overlay --yaw 0.785398163`
-(64³, Debug), one indirect-args readback per axis on a rotating frame:
+(64³, Debug), one indirect-args readback per axis on a rotating frame, taken
+on base `4303d18ae` before the rebase (the rebase changed no dispatch code):
 
 | Arm | Entries per axis | Groups per axis | Threads per group | Invocations per entry |
 |---|---:|---:|---:|---:|
@@ -34,23 +36,14 @@ Million control: `IRPerfGrid --wave-freeze --no-overlay --pivot-origin
 
 | Case | Pairs | Base envelope ms | Head envelope ms | Mean reduction ms | One-sided 95% lower bound ms |
 |---|---:|---:|---:|---:|---:|
-| million, 45° | 5 | 10.611 | 8.868 | 1.743 | 1.461 |
-| million, 0° | 5 | 18.391 | 18.060 | 0.331 | 0.318 |
-| 64³ default, zoom 1, 45° | 5 | 8.495 | 8.815 | −0.320 | −0.877 |
+| million, 45° | 5 | 9.943 | 7.689 | 2.254 | 2.182 |
+| million, 0° | 5 | 17.890 | 17.505 | 0.385 | 0.358 |
+| 64³ default, zoom 1, 45° | 5 | 7.497 | 6.947 | 0.550 | 0.521 |
 
-A sixth 45° pair lost its head run to a quiet breach. The cardinal 0° frame
-gains because the general kernels now compile with no per-axis code.
-
-The 64³ zoom-1 frame is light (about half the 16.7 ms vsync budget) and its
-envelope spread is wide (7.65 to 9.54 ms on base, 8.15 to 9.89 on head). Its `frame avg`
-row is 16.67 ms on both arms and the envelope ratio is 1.04x. Rows this change
-does not touch moved with it in all five pairs (`trixelToFb` +0.63 ms,
-`computeSunShadow` +0.29, `perAxisScatter` +0.17), while the same rows are
-flat on the GPU-bound million control (within 0.01 ms; `trixelToFb` fell
-0.10); the touched rows fell (`voxelPerAxisStore` −0.18, `voxelPerAxisFinalize`
-−0.50). The likeliest reading of the 64³ envelope is host and GPU clock
-state rather than added work, but these runs do not prove it; they are not
-evidence of a saving there either.
+One 45° base run lost its quiet guard and was re-run in the same round. The
+cardinal 0° frame gains because the general kernels now compile with no
+per-axis code. Every pair moved the same way in all three cases (per-pair
+readings in the PR's evidence table).
 
 ## Stage rows, million control at 45°
 
@@ -58,12 +51,13 @@ evidence of a saving there either.
 
 | Row | Base ms | Head ms | Delta ms |
 |---|---:|---:|---:|
-| `voxelPerAxisStore` | 0.733 | 0.251 | −0.482 |
-| `voxelPerAxisFinalize` | 1.337 | 0.490 | −0.847 |
-| `voxelPerAxisOverflow` | 2.386 | 2.307 | −0.079 |
-| `perAxisCellCompact` | 0.073 | 0.072 | −0.001 |
-| GPU frame envelope | 10.932 | 9.549 | −1.383 |
+| `voxelPerAxisStore` | 0.846 | 0.257 | −0.589 |
+| `voxelPerAxisFinalize` | 1.396 | 0.570 | −0.826 |
+| `voxelPerAxisOverflow` | 2.447 | 2.274 | −0.173 |
+| `perAxisCellCompact` | 0.170 | 0.163 | −0.007 |
+| GPU frame envelope | 10.463 | 8.890 | −1.574 |
 
 The rows are not additive with the envelope; they bound where the saving lands.
-The overflow witness is the same on both arms at 45°: candidates 2,364,165,
-unsampled 668,580, hidden 1,643,866, surviving 51,719, `maxDropped=0`.
+The overflow witness is the same in all eleven counted 45° runs, base and
+head: candidates 2,364,165, unsampled 668,580, hidden 1,643,866, surviving
+51,719, overflow `maxDropped=0`, store `maxDropped=0`.
