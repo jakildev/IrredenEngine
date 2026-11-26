@@ -504,7 +504,7 @@ class MetalRenderDevice final : public RenderDevice {
         } else if (m_submittedFrame != nullptr && m_submitToEndSeconds > m_cpuSeconds &&
                    m_cpuSeconds > 0.0) {
             const double cpuLead =
-                std::min(kCpuOverlapFraction * m_cpuSeconds, kMaxCpuLeadSeconds);
+                IRMath::min(kCpuOverlapFraction * m_cpuSeconds, kMaxCpuLeadSeconds);
             const double deadline = m_submitSeconds + m_submitToEndSeconds - cpuLead;
             const double delay = deadline - steadyClockSeconds();
             // Coalesced sleeps can overshoot a sub-millisecond CPU frame.
