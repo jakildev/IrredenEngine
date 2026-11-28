@@ -1,0 +1,594 @@
+{
+ "s2": {
+  "yaw45": [
+   {
+    "arm": "A",
+    "commit": "44955ae9f",
+    "n": 3,
+    "frame_mean_ms": 10.447,
+    "gpu_envelope_mean_ms": 9.409
+   },
+   {
+    "arm": "B",
+    "commit": "3187960e3",
+    "n": 3,
+    "frame_mean_ms": 10.43,
+    "gpu_envelope_mean_ms": 9.462
+   },
+   {
+    "arm": "C",
+    "commit": "4c35a9da0",
+    "n": 3,
+    "frame_mean_ms": 10.397,
+    "gpu_envelope_mean_ms": 9.45
+   },
+   {
+    "arm": "D",
+    "commit": "7ed1e271f",
+    "n": 2,
+    "frame_mean_ms": 10.9,
+    "gpu_envelope_mean_ms": 9.988
+   },
+   {
+    "arm": "E",
+    "commit": "34bdd153d",
+    "n": 3,
+    "frame_mean_ms": 11.177,
+    "gpu_envelope_mean_ms": 10.208
+   },
+   {
+    "arm": "F",
+    "commit": "f6d489ad6",
+    "n": 3,
+    "frame_mean_ms": 10.967,
+    "gpu_envelope_mean_ms": 10.009
+   }
+  ],
+  "sweep": [
+   {
+    "arm": "A",
+    "commit": "44955ae9f",
+    "n": 1,
+    "frame_mean_ms": 11.37,
+    "gpu_envelope_mean_ms": 10.305
+   },
+   {
+    "arm": "B",
+    "commit": "3187960e3",
+    "n": 3,
+    "frame_mean_ms": 11.43,
+    "gpu_envelope_mean_ms": 10.408
+   },
+   {
+    "arm": "D",
+    "commit": "7ed1e271f",
+    "n": 1,
+    "frame_mean_ms": 12.4,
+    "gpu_envelope_mean_ms": 11.378
+   },
+   {
+    "arm": "E",
+    "commit": "34bdd153d",
+    "n": 3,
+    "frame_mean_ms": 12.533,
+    "gpu_envelope_mean_ms": 11.437
+   },
+   {
+    "arm": "F",
+    "commit": "f6d489ad6",
+    "n": 3,
+    "frame_mean_ms": 12.117,
+    "gpu_envelope_mean_ms": 11.109
+   }
+  ]
+ },
+ "s3": {
+  "yaw45": [
+   {
+    "arm": "C",
+    "commit": "4c35a9da0",
+    "n": 2,
+    "frame_mean_ms": 10.395,
+    "gpu_envelope_mean_ms": 9.431
+   },
+   {
+    "arm": "C1",
+    "commit": "66df15022",
+    "n": 3,
+    "frame_mean_ms": 10.493,
+    "gpu_envelope_mean_ms": 9.473
+   },
+   {
+    "arm": "C2",
+    "commit": "6317f75ff",
+    "n": 3,
+    "frame_mean_ms": 10.367,
+    "gpu_envelope_mean_ms": 9.451
+   },
+   {
+    "arm": "C3",
+    "commit": "473953323",
+    "n": 3,
+    "frame_mean_ms": 10.417,
+    "gpu_envelope_mean_ms": 9.447
+   },
+   {
+    "arm": "C4",
+    "commit": "6afc51320",
+    "n": 3,
+    "frame_mean_ms": 10.41,
+    "gpu_envelope_mean_ms": 9.431
+   },
+   {
+    "arm": "D",
+    "commit": "7ed1e271f",
+    "n": 3,
+    "frame_mean_ms": 10.96,
+    "gpu_envelope_mean_ms": 9.99
+   },
+   {
+    "arm": "D1",
+    "commit": "1bff5ea9d",
+    "n": 1,
+    "frame_mean_ms": 10.9,
+    "gpu_envelope_mean_ms": 9.988
+   },
+   {
+    "arm": "E",
+    "commit": "34bdd153d",
+    "n": 2,
+    "frame_mean_ms": 11.31,
+    "gpu_envelope_mean_ms": 10.285
+   },
+   {
+    "arm": "E1",
+    "commit": "edb922734",
+    "n": 3,
+    "frame_mean_ms": 11.157,
+    "gpu_envelope_mean_ms": 10.244
+   },
+   {
+    "arm": "E2",
+    "commit": "850084148",
+    "n": 3,
+    "frame_mean_ms": 11.173,
+    "gpu_envelope_mean_ms": 10.219
+   },
+   {
+    "arm": "E3",
+    "commit": "b3ab5c8fe",
+    "n": 2,
+    "frame_mean_ms": 11.12,
+    "gpu_envelope_mean_ms": 10.105
+   },
+   {
+    "arm": "F",
+    "commit": "f6d489ad6",
+    "n": 3,
+    "frame_mean_ms": 11.02,
+    "gpu_envelope_mean_ms": 10.112
+   }
+  ]
+ },
+ "s4": {
+  "yaw45": [
+   {
+    "arm": "D",
+    "commit": "7ed1e271f",
+    "n": 5,
+    "frame_mean_ms": 11.104,
+    "gpu_envelope_mean_ms": 10.174
+   },
+   {
+    "arm": "D1",
+    "commit": "1bff5ea9d",
+    "n": 5,
+    "frame_mean_ms": 11.13,
+    "gpu_envelope_mean_ms": 10.181
+   },
+   {
+    "arm": "E",
+    "commit": "34bdd153d",
+    "n": 5,
+    "frame_mean_ms": 11.292,
+    "gpu_envelope_mean_ms": 10.336
+   },
+   {
+    "arm": "E1",
+    "commit": "edb922734",
+    "n": 5,
+    "frame_mean_ms": 11.294,
+    "gpu_envelope_mean_ms": 10.337
+   },
+   {
+    "arm": "E2",
+    "commit": "850084148",
+    "n": 5,
+    "frame_mean_ms": 11.214,
+    "gpu_envelope_mean_ms": 10.312
+   },
+   {
+    "arm": "E3",
+    "commit": "b3ab5c8fe",
+    "n": 5,
+    "frame_mean_ms": 11.11,
+    "gpu_envelope_mean_ms": 10.159
+   },
+   {
+    "arm": "F",
+    "commit": "f6d489ad6",
+    "n": 5,
+    "frame_mean_ms": 11.112,
+    "gpu_envelope_mean_ms": 10.208
+   }
+  ]
+ },
+ "s5": {
+  "sweep": [
+   {
+    "arm": "D",
+    "commit": "7ed1e271f",
+    "n": 3,
+    "frame_mean_ms": 12.53,
+    "gpu_envelope_mean_ms": 11.483
+   },
+   {
+    "arm": "D1",
+    "commit": "1bff5ea9d",
+    "n": 3,
+    "frame_mean_ms": 12.45,
+    "gpu_envelope_mean_ms": 11.468
+   },
+   {
+    "arm": "E",
+    "commit": "34bdd153d",
+    "n": 3,
+    "frame_mean_ms": 12.65,
+    "gpu_envelope_mean_ms": 11.635
+   },
+   {
+    "arm": "E1",
+    "commit": "edb922734",
+    "n": 3,
+    "frame_mean_ms": 12.667,
+    "gpu_envelope_mean_ms": 11.64
+   },
+   {
+    "arm": "E2",
+    "commit": "850084148",
+    "n": 3,
+    "frame_mean_ms": 12.673,
+    "gpu_envelope_mean_ms": 11.653
+   },
+   {
+    "arm": "E3",
+    "commit": "b3ab5c8fe",
+    "n": 3,
+    "frame_mean_ms": 12.317,
+    "gpu_envelope_mean_ms": 11.328
+   },
+   {
+    "arm": "F",
+    "commit": "f6d489ad6",
+    "n": 3,
+    "frame_mean_ms": 12.307,
+    "gpu_envelope_mean_ms": 11.322
+   },
+   {
+    "arm": "L",
+    "commit": "f6d489ad6+lazy-predicate",
+    "n": 3,
+    "frame_mean_ms": 12.267,
+    "gpu_envelope_mean_ms": 11.238
+   }
+  ]
+ },
+ "s6": {
+  "yaw45": [
+   {
+    "arm": "F",
+    "commit": "f6d489ad6",
+    "n": 5,
+    "frame_mean_ms": 11.12,
+    "gpu_envelope_mean_ms": 10.18
+   },
+   {
+    "arm": "L",
+    "commit": "f6d489ad6+lazy-predicate",
+    "n": 4,
+    "frame_mean_ms": 10.945,
+    "gpu_envelope_mean_ms": 10.032
+   }
+  ]
+ },
+ "s7": {
+  "yaw45": [
+   {
+    "arm": "F",
+    "commit": "f6d489ad6",
+    "n": 6,
+    "frame_mean_ms": 11.012,
+    "gpu_envelope_mean_ms": 10.087
+   },
+   {
+    "arm": "L",
+    "commit": "f6d489ad6+lazy-predicate",
+    "n": 6,
+    "frame_mean_ms": 10.977,
+    "gpu_envelope_mean_ms": 10.012
+   }
+  ],
+  "sweep": [
+   {
+    "arm": "F",
+    "commit": "f6d489ad6",
+    "n": 6,
+    "frame_mean_ms": 12.382,
+    "gpu_envelope_mean_ms": 11.357
+   },
+   {
+    "arm": "L",
+    "commit": "f6d489ad6+lazy-predicate",
+    "n": 6,
+    "frame_mean_ms": 12.343,
+    "gpu_envelope_mean_ms": 11.274
+   }
+  ]
+ },
+ "s8": {
+  "yaw45": [
+   {
+    "arm": "A",
+    "commit": "44955ae9f",
+    "n": 4,
+    "frame_mean_ms": 10.435,
+    "gpu_envelope_mean_ms": 9.428
+   },
+   {
+    "arm": "C4",
+    "commit": "6afc51320",
+    "n": 4,
+    "frame_mean_ms": 10.377,
+    "gpu_envelope_mean_ms": 9.455
+   },
+   {
+    "arm": "D",
+    "commit": "7ed1e271f",
+    "n": 4,
+    "frame_mean_ms": 11.105,
+    "gpu_envelope_mean_ms": 10.172
+   },
+   {
+    "arm": "F",
+    "commit": "f6d489ad6",
+    "n": 4,
+    "frame_mean_ms": 11.12,
+    "gpu_envelope_mean_ms": 10.179
+   }
+  ],
+  "sweep": [
+   {
+    "arm": "A",
+    "commit": "44955ae9f",
+    "n": 4,
+    "frame_mean_ms": 11.533,
+    "gpu_envelope_mean_ms": 10.412
+   },
+   {
+    "arm": "C4",
+    "commit": "6afc51320",
+    "n": 4,
+    "frame_mean_ms": 11.543,
+    "gpu_envelope_mean_ms": 10.48
+   },
+   {
+    "arm": "D",
+    "commit": "7ed1e271f",
+    "n": 4,
+    "frame_mean_ms": 12.532,
+    "gpu_envelope_mean_ms": 11.518
+   },
+   {
+    "arm": "F",
+    "commit": "f6d489ad6",
+    "n": 4,
+    "frame_mean_ms": 12.34,
+    "gpu_envelope_mean_ms": 11.341
+   }
+  ]
+ },
+ "s9": {
+  "yaw45": [
+   {
+    "arm": "A",
+    "commit": "44955ae9f",
+    "n": 2,
+    "frame_mean_ms": 11.115,
+    "gpu_envelope_mean_ms": 10.014
+   },
+   {
+    "arm": "B",
+    "commit": "3187960e3",
+    "n": 2,
+    "frame_mean_ms": 11.21,
+    "gpu_envelope_mean_ms": 10.069
+   },
+   {
+    "arm": "C",
+    "commit": "4c35a9da0",
+    "n": 2,
+    "frame_mean_ms": 11.21,
+    "gpu_envelope_mean_ms": 10.06
+   },
+   {
+    "arm": "C4",
+    "commit": "6afc51320",
+    "n": 2,
+    "frame_mean_ms": 11.21,
+    "gpu_envelope_mean_ms": 10.047
+   },
+   {
+    "arm": "D",
+    "commit": "7ed1e271f",
+    "n": 2,
+    "frame_mean_ms": 11.765,
+    "gpu_envelope_mean_ms": 10.608
+   },
+   {
+    "arm": "F",
+    "commit": "f6d489ad6",
+    "n": 2,
+    "frame_mean_ms": 12.02,
+    "gpu_envelope_mean_ms": 10.654
+   }
+  ]
+ },
+ "s10": {
+  "yaw45": [
+   {
+    "arm": "A",
+    "commit": "44955ae9f",
+    "n": 2,
+    "frame_mean_ms": 11.06,
+    "gpu_envelope_mean_ms": 9.961
+   },
+   {
+    "arm": "A1",
+    "commit": "c843416b7",
+    "n": 2,
+    "frame_mean_ms": 11.115,
+    "gpu_envelope_mean_ms": 10.014
+   },
+   {
+    "arm": "A2",
+    "commit": "bd65be606",
+    "n": 2,
+    "frame_mean_ms": 11.15,
+    "gpu_envelope_mean_ms": 10.046
+   },
+   {
+    "arm": "B",
+    "commit": "3187960e3",
+    "n": 2,
+    "frame_mean_ms": 11.14,
+    "gpu_envelope_mean_ms": 10.049
+   },
+   {
+    "arm": "E2",
+    "commit": "850084148",
+    "n": 2,
+    "frame_mean_ms": 12.065,
+    "gpu_envelope_mean_ms": 10.802
+   },
+   {
+    "arm": "E3",
+    "commit": "b3ab5c8fe",
+    "n": 2,
+    "frame_mean_ms": 11.665,
+    "gpu_envelope_mean_ms": 10.571
+   }
+  ]
+ },
+ "s11": {
+  "yaw45": [
+   {
+    "arm": "A",
+    "commit": "44955ae9f",
+    "n": 4,
+    "frame_mean_ms": 10.575,
+    "gpu_envelope_mean_ms": 9.454
+   },
+   {
+    "arm": "Aa",
+    "commit": "40cb99890",
+    "n": 4,
+    "frame_mean_ms": 10.438,
+    "gpu_envelope_mean_ms": 9.456
+   },
+   {
+    "arm": "Ab",
+    "commit": "eeeca3ef3",
+    "n": 4,
+    "frame_mean_ms": 10.453,
+    "gpu_envelope_mean_ms": 9.452
+   },
+   {
+    "arm": "A1",
+    "commit": "c843416b7",
+    "n": 4,
+    "frame_mean_ms": 10.47,
+    "gpu_envelope_mean_ms": 9.45
+   },
+   {
+    "arm": "A2",
+    "commit": "bd65be606",
+    "n": 4,
+    "frame_mean_ms": 10.48,
+    "gpu_envelope_mean_ms": 9.512
+   },
+   {
+    "arm": "B",
+    "commit": "3187960e3",
+    "n": 4,
+    "frame_mean_ms": 10.485,
+    "gpu_envelope_mean_ms": 9.475
+   },
+   {
+    "arm": "Ba",
+    "commit": "c9644ed7d",
+    "n": 4,
+    "frame_mean_ms": 10.485,
+    "gpu_envelope_mean_ms": 9.476
+   },
+   {
+    "arm": "Bb",
+    "commit": "374596fe3",
+    "n": 4,
+    "frame_mean_ms": 10.413,
+    "gpu_envelope_mean_ms": 9.472
+   },
+   {
+    "arm": "Bc",
+    "commit": "8e8d309f1",
+    "n": 4,
+    "frame_mean_ms": 10.495,
+    "gpu_envelope_mean_ms": 9.474
+   },
+   {
+    "arm": "Bd",
+    "commit": "0cc7cc701",
+    "n": 4,
+    "frame_mean_ms": 10.412,
+    "gpu_envelope_mean_ms": 9.473
+   },
+   {
+    "arm": "Be",
+    "commit": "e347275aa",
+    "n": 4,
+    "frame_mean_ms": 10.467,
+    "gpu_envelope_mean_ms": 9.502
+   },
+   {
+    "arm": "C",
+    "commit": "4c35a9da0",
+    "n": 4,
+    "frame_mean_ms": 10.523,
+    "gpu_envelope_mean_ms": 9.483
+   },
+   {
+    "arm": "Ca",
+    "commit": "12783754c",
+    "n": 4,
+    "frame_mean_ms": 10.402,
+    "gpu_envelope_mean_ms": 9.471
+   },
+   {
+    "arm": "C1",
+    "commit": "66df15022",
+    "n": 4,
+    "frame_mean_ms": 10.438,
+    "gpu_envelope_mean_ms": 9.51
+   }
+  ]
+ }
+}

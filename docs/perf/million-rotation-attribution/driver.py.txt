@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""Interleaved IRPerfGrid million-control A/B across arm build trees.
+
+usage: driver.py <out-dir> <rounds> <case,...> <label=build_dir>...
+IR5236_PRESET selects the config preset (default million-profiling-off.lua).
+Rounds alternate arm order (forward odd, reverse even). Each run goes through
+repeat_profile.py --repeats 1 (fleet-run, QUIET lease); results append to
+<out-dir>/runs.jsonl.
+"""
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]  # the engine checkout
+sys.path.insert(0, str(ROOT / "scripts/perf"))
+from compare_perf_runs import parse_report  # noqa: E402
+
+import os
+PRESET = os.environ.get("IR5236_PRESET", "configs/perf/million-profiling-off.lua")
+COMMON = ["--config-preset", PRESET, "--wave-freeze",
+          "--no-overlay", "--pivot-origin", "--auto-profile", "300"]
+CASES = {
+    "yaw45": ["--yaw", "0.785398163"],
+    "sweep": ["--yaw", "0", "--yaw-step", "0.020943951"],
+    "yaw0": ["--yaw", "0"],
+}
+
+
+def verifiers_running() -> bool:
+    r = subprocess.run(["pgrep", "-f", r"scripts/(render|light|gui)-verify\.py"],
+                       capture_output=True, text=True)
+    return bool(r.stdout.strip())
+
+
+def main() -> int:
+    out = Path(sys.argv[1])
+    rounds = int(sys.argv[2])
+    cases = sys.argv[3].split(",")
+    arms = [a.split("=", 1) for a in sys.argv[4:]]
+    out.mkdir(parents=True, exist_ok=True)
+    log = out / "runs.jsonl"
+    for rnd in range(1, rounds + 1):
+        order = arms if rnd % 2 else list(reversed(arms))
+        case_order = cases if rnd % 2 else list(reversed(cases))
+        for case in case_order:
+            for label, build in order:
+                for attempt in range(1, 5):
+                    waited = 0
+                    while verifiers_running() and waited < 45:
+                        time.sleep(15)
+                        waited += 15
+                    dest = out / case / label / (f"round-{rnd}" if attempt == 1 else f"round-{rnd}-try{attempt}")
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    t0 = time.time()
+                    proc = subprocess.run(
+                        [sys.executable, str(ROOT / "scripts/perf/repeat_profile.py"),
+                         "--target", "IRPerfGrid", "--build-dir", build,
+                         "--output", str(dest), "--repeats", "1", "--",
+                         *COMMON, *CASES[case]],
+                        capture_output=True, text=True)
+                    rec = {"attempt": attempt, "round": rnd, "case": case, "arm": label, "rc": proc.returncode,
+                           "secs": round(time.time() - t0, 1), "verifier_wait": waited,
+                           "tail": proc.stdout.strip().splitlines()[-1:] }
+                    manifest = dest / "manifest.json"
+                    if manifest.exists():
+                        m = json.loads(manifest.read_text())
+                        run = m["runs"][-1] if m["runs"] else {}
+                        rec.update(head=m["head"][:9], quiet=run.get("quiet"),
+                                   clean=run.get("clean"), load=run.get("host_load_1m"),
+                                   battery=run.get("host_battery_percent"),
+                                   power=m.get("host_power"))
+                    report = dest / "run-1.txt"
+                    if report.exists():
+                        r = parse_report(report, "run")
+                        rec["gpu_stages"] = {g.name: g.avg_ms for g in r.gpu_stages}
+                        env = [x.avg_ms for x in r.gpu_frame.metrics if x.name == "envelope"]
+                        rec.update(frame=r.frame.avg, p50=r.frame.p50,
+                                   steady=r.steady_frame.avg if r.steady_frame else None,
+                                   gpu_envelope=env[0] if env else None,
+                                   gpu_metrics={x.name: x.avg_ms for x in r.gpu_frame.metrics})
+                        series = r.steady_frame_times_ms() or []
+                        chunks = [sum(series[i:i + 30]) / len(series[i:i + 30])
+                                  for i in range(0, len(series), 30) if len(series[i:i + 30]) >= 15]
+                        if chunks:
+                            rec["chunk_min"] = round(min(chunks), 3)
+                            rec["chunk_max"] = round(max(chunks), 3)
+                    with log.open("a") as f:
+                        f.write(json.dumps(rec) + "\n")
+                    print(json.dumps({k: rec.get(k) for k in
+                                      ("round", "case", "arm", "rc", "quiet", "frame", "gpu_envelope", "load", "secs")}),
+                          flush=True)
+                    edge = "witnessed 299 frames" in " ".join(rec.get("tail") or [])
+                    if rec["rc"] == 0 or (case != "sweep" and rec["rc"] == 1 and edge
+                                          and rec.get("quiet") == "guarded"):
+                        break
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
