@@ -96,9 +96,9 @@ layout(r32i, binding = 6) readonly uniform iimage2D perAxisDistancesZ;
 // Slot 28 is held by the sun-depth map this pass samples, so the scratch is
 // bound here at kBufferIndex_OverflowLightingScratch (a buffer slot dead during
 // LIGHTING_TO_TRIXEL). Whole-buffer bind; region offsets come from
-// overflowScratchLayout (all in uints). Entry i: 4 uints at
-// overflowScratchLayout.z + i*4 = {packedCardCell, colorPacked, encodedDist,
-// packed voxel index and AO};
+// overflowScratchLayout (all in uints). Entry i starts at
+// overflowScratchLayout.z + i*kFaceSortRecordWords and contains
+// {packedCardCell, colorPacked, encodedDist, packed voxel index and AO};
 // live entry count = scratch[overflowScratchLayout.y + 1] (ctrl instanceCount).
 layout(std430, binding = 8) buffer OverflowLightingScratch {
     uint overflowScratch[];
@@ -154,7 +154,7 @@ void main() {
         return;
     }
 
-    const uint entryBase = uint(overflowScratchLayout.z) + gid * 4u;
+    const uint entryBase = uint(overflowScratchLayout.z) + gid * kFaceSortRecordWords;
     const uint packedCell = overflowEntryCell(overflowScratch[entryBase + 0u]);
     const uint colorPacked = overflowScratch[entryBase + 1u];
     const int  rawDist = int(overflowScratch[entryBase + 2u]);

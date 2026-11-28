@@ -162,7 +162,7 @@ void main() {
         // encoded distance) pair the store would have written, plus its packed
         // color. The rest of the vertex path is
         // bit-identical to the cell path; only the data source differs.
-        const uint entryBase = uint(gl_InstanceID) * 4u;
+        const uint entryBase = uint(gl_InstanceID) * kFaceSortRecordWords;
         const uint voxelAO = compactedCells[entryBase + 3u];
         vOverflowEntityId = entityIds[overflowVoxelIndex(voxelAO)];
         vOverflowAO = overflowAO(voxelAO);
@@ -178,8 +178,9 @@ void main() {
         rawDist = texelFetch(triangleDistances, ij, 0).r;
     }
     vFogCarrier = overflowMode != 0
-        ? scatterOverflowFogCarrier(compactedCells[uint(gl_InstanceID) * 4u],
-                                    compactedCells[uint(gl_InstanceID) * 4u + 1u])
+        ? scatterOverflowFogCarrier(
+              compactedCells[uint(gl_InstanceID) * kFaceSortRecordWords],
+              compactedCells[uint(gl_InstanceID) * kFaceSortRecordWords + 1u])
         : 0u;
     // Empty cell — kColorClear alpha is 0 (matches the gather's discard test).
     // Degenerate the whole instance off-screen so it produces no fragments.

@@ -353,6 +353,11 @@ def shader_block(source, condition):
 
 def overflow_overlay_harness(suffix, directory, old_gate=False):
     root = ROOT / "engine/render/src/shaders" / directory
+    common = (root / f"ir_iso_common.{suffix}").read_text()
+    width = re.search(
+        r"(?:const|constant) uint kFaceSortRecordWords = [^;]+;", common
+    )[0]
+    width = host(width)
     source = host((root / f"c_light_overflow_faces.{suffix}").read_text())
     source = source.replace("frameData.", "").replace("voxelFrameData.", "")
     source = source.replace("sunFrameData.shadowsEnabled", "shadowsEnabled")
@@ -412,7 +417,7 @@ float perAxisSunShadowFactor(vec3 position,int faceId){
 float perAxisSunShadowFactor(vec3 position,int faceId,FrameDataSun,const uint*){
     return perAxisSunShadowFactor(position,faceId);
 }
-""" + lighting + r"""
+""" + width + "\n" + lighting + r"""
 uint overflowScratch[16]={};
 struct Layout {int x,y,z,w;};
 Layout layout{0,0,3,0};

@@ -169,7 +169,8 @@ def adapter(source, metal):
     common = (folder / ("ir_iso_common.metal" if metal else "ir_iso_common.glsl")).read_text()
     constants = "\n".join(re.search(
         r"(?:const|constant) uint " + name + r" = [^;]+;", common).group()
-        for name in ("kOverflowCutFaceBit", "kOverflowVoxelIndexMask"))
+        for name in ("kFaceSortRecordWords", "kOverflowCutFaceBit",
+                     "kOverflowVoxelIndexMask"))
     constants = constants.replace("constant", "const")
     key = "\n".join(functions(common, name) for name in (
         "packOverflowEntryCell", "overflowEntryCell", "overflowEntryIsCutFace",

@@ -287,7 +287,8 @@ struct vec4 {
         "overflowVoxelIndex", "overflowAO"))
     constants = "\n".join(re.search(
         r"(?:const|constant) uint " + name + r" = [^;]+;", common).group()
-        for name in ("kOverflowCutFaceBit", "kOverflowVoxelIndexMask"))
+        for name in ("kFaceSortRecordWords", "kOverflowCutFaceBit",
+                     "kOverflowVoxelIndexMask"))
     helpers = constants.replace("constant", "const") + "\n" + helpers
     entry = host(functions(sampler, "worldSurfaceSunShadowFactor"))
     controls = surface_controls(host(functions(surface, "perAxisFaceSurfacePoint")))

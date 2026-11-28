@@ -12,6 +12,7 @@ from shader_contract_helpers import extract_block
 ROOT = Path(__file__).resolve().parents[2]
 COMPILER = shutil.which("c++")
 SOURCE = ROOT / "engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp"
+RENDER_TYPES = ROOT / "engine/render/include/irreden/render/ir_render_types.hpp"
 
 
 PREAMBLE = r"""
@@ -256,6 +257,7 @@ int main(){
 
 def harness():
     source = SOURCE.read_text()
+    render_types = RENDER_TYPES.read_text()
     scatter = extract_block(source, "    void drawPerAxisScatter(")
     gate = re.search(r"const bool visibilityPrepass\s*=\s*[^;]+;", scatter)[0]
     extent = re.search(r"frameData\.frameData_\.scatterFbResolution_\s*=\s*vec4\(.*?\);",
@@ -269,6 +271,9 @@ def harness():
     constants = "\n".join(re.search(
         rf"static constexpr std::size_t {name}\s*=.*?;", source, re.DOTALL)[0]
         for name in ("kVisibilityCounterCount", "kSunQueryCounterCount", "kVisibilityProbeWords"))
+    constants += "\n" + re.search(
+        r"constexpr std::uint32_t kFaceSortRecordWords\s*=.*?;", render_types
+    )[0].replace("constexpr", "static constexpr", 1)
     return (PREAMBLE + constants + extract_block(source, "    void ensurePerAxisVisibilityBuffer(")
             + extract_block(source, "    void drawPerAxisFaces(")
             + "void readFlags(const char* visibilityPrepass,const char* visibilityStats){"

@@ -1079,7 +1079,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
     }
 
-    // Three-word records sort lexicographically by words (0, 2, 1).
+    // Records sort by masked word 0, then words 2 and 1, the cut flag, and word 3.
     // The caller owns capacity and the settled count at layout.y + 1.
     // Mode 3 writes the step grids into overflowSortArgsBuf_, bound on
     // kBufferIndex_IndirectDispatchParams for that dispatch only; 26 then

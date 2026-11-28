@@ -126,7 +126,7 @@ vertex VertexOut v_peraxis_scatter(
         // encoded distance) pair the store would have written, plus its packed
         // color. Everything below is bit-identical to
         // the cell path; only the data source differs.
-        const uint entryBase = instanceId * 4u;
+        const uint entryBase = instanceId * kFaceSortRecordWords;
         const uint voxelAO = compactedCells[entryBase + 3u];
         out.overflowEntityId = entityIds[overflowVoxelIndex(voxelAO)];
         out.overflowAO = overflowAO(voxelAO);
@@ -142,8 +142,8 @@ vertex VertexOut v_peraxis_scatter(
         rawDist = triangleDistances.read(uint2(ij)).r;
     }
     out.fogCarrier = frameData.overflowMode != 0
-        ? scatterOverflowFogCarrier(compactedCells[instanceId * 4u],
-                                    compactedCells[instanceId * 4u + 1u])
+        ? scatterOverflowFogCarrier(compactedCells[instanceId * kFaceSortRecordWords],
+                                    compactedCells[instanceId * kFaceSortRecordWords + 1u])
         : 0u;
     if (color.a < 0.1f) {
         out.position = float4(2.0, 2.0, 2.0, 1.0);

@@ -2358,8 +2358,8 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
     const auto layout = Axes::scratchLayoutFor(64, static_cast<int>(cap));
     const std::uint32_t ctrl = static_cast<std::uint32_t>(layout.y);
     const std::uint32_t entries = static_cast<std::uint32_t>(layout.z);
-    using Record = std::array<std::uint32_t, 4>;
-    std::vector<std::uint32_t> words(entries + cap * 4, 0xA5A5A5A5u);
+    using Record = std::array<std::uint32_t, kFaceSortRecordWords>;
+    std::vector<std::uint32_t> words(entries + cap * kFaceSortRecordWords, 0xA5A5A5A5u);
     Buffer scratch(words.data(), words.size() * sizeof(std::uint32_t), BUFFER_STORAGE_DYNAMIC);
     FrameDataVoxelToCanvas frame{};
     frame.overflowScratchLayout_ = layout;
@@ -2410,8 +2410,8 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
                 count - i
             };
             expected.push_back(record);
-            for (int word = 0; word < 4; ++word)
-                words[entries + i * 4 + word] = record[word];
+            for (std::uint32_t word = 0; word < kFaceSortRecordWords; ++word)
+                words[entries + i * kFaceSortRecordWords + word] = record[word];
         }
         std::sort(expected.begin(), expected.end(), recordLess);
         scratch.subData(0, words.size() * sizeof(std::uint32_t), words.data());
@@ -2473,14 +2473,11 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
         std::vector<Record> observed;
         observed.reserve(count);
         for (std::uint32_t i = 0; i < count; ++i) {
-            observed.push_back(
-                Record{
-                    actual[entries + i * 4],
-                    actual[entries + i * 4 + 1],
-                    actual[entries + i * 4 + 2],
-                    actual[entries + i * 4 + 3]
-                }
-            );
+            Record record{};
+            for (std::uint32_t word = 0; word < kFaceSortRecordWords; ++word) {
+                record[word] = actual[entries + i * kFaceSortRecordWords + word];
+            }
+            observed.push_back(record);
         }
         EXPECT_EQ(observed, expected);
         for (std::uint32_t i = 0; i < static_cast<std::uint32_t>(entries - ctrl); ++i)

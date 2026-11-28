@@ -200,7 +200,8 @@ inline void overflowAppendTap(
         atomic_fetch_add_explicit(&scratch[ctrlBase + 5u], 1u, memory_order_relaxed);
         return;
     }
-    const uint entryBase = uint(frameData.overflowScratchLayout.z) + idx * 4u;
+    const uint entryBase =
+        uint(frameData.overflowScratchLayout.z) + idx * kFaceSortRecordWords;
     atomic_store_explicit(
         &scratch[entryBase + 0u],
         packOverflowEntryCell(cardPix, isCutFace),
