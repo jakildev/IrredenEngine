@@ -803,21 +803,12 @@ struct FrameDataVoxelToCanvas {
     // after detachedWorldReceive_ (offset 176) so every prior offset is
     // unchanged and the gather shaders that read only the prefix need no update.
     ivec4 visibleIsoBounds_ = ivec4(0, 0, 0, 0);
-    // Per-axis deterministic-winner resolve mode. 0 = the normal distance store
-    // (the only value any non-per-axis dispatch uploads). 1 =
-    // the winner-resolve dispatch dispatchPerAxisCanvases inserts between
-    // stage 1 and stage 2 on each axis canvas: stage 1 re-runs the identical
-    // per-axis geometry and, for each face whose encoded distance ties the
-    // settled per-cell atomicMin winner, atomicMins the face's run-stable
-    // voxel pool index into the per-cell winner scratch
-    // (kBufferIndex_PerAxisResolveScratch). Stage 2's per-axis color tap then
-    // admits exactly one of the tied faces (the minimum index), so the
-    // color/entity-id planes are byte-identical run-to-run at a fixed pose —
-    // matching the distance plane, whose atomicMin was always
-    // order-independent. Read only by c_voxel_to_trixel_stage_1;
-    // std140-appended after visibleIsoBounds_ (offset 192) so every prior
-    // offset is unchanged. The tail lanes pack the shadow-feeder dispatch
-    // partition into the 192..208 16-byte std140 stride for full-struct uploads.
+    // Reserved; no shader reads it and nothing uploads a non-zero value. Which
+    // per-axis pass (store, winner election, colour, overflow append) a dispatch
+    // runs is its compiled stage variant. Kept at offset 192 because every
+    // binding-7 shader mirrors this std140 layout. The tail lanes pack the
+    // shadow-feeder dispatch partition into the 192..208 16-byte std140 stride
+    // for full-struct uploads.
     int resolveMode_ = 0;
     // Per-voxel Hi-Z occlusion-cull gate, refining the per-chunk cull. 0 skips
     // the compact's per-voxel test, so the default pipeline is byte-identical.
@@ -1318,8 +1309,8 @@ static_assert(
 static_assert(
     offsetof(FrameDataVoxelToCanvas, resolveMode_) == 192,
     "FrameDataVoxelToCanvas::resolveMode_ must land at offset 192 "
-    "(visibleIsoBounds_ at 176 + 16 B). Appended after the prior last field so "
-    "every existing offset — and the resolveMode==0 store path — stays unchanged"
+    "(visibleIsoBounds_ at 176 + 16 B); every binding-7 shader mirrors the "
+    "reserved lane at that std140 offset"
 );
 static_assert(
     offsetof(FrameDataVoxelToCanvas, occlusionCullMipCount_) == 196,

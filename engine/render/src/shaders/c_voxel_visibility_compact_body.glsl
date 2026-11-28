@@ -240,6 +240,15 @@ void writeDispatchDims(uint base, uint microSliceCount) {
         uint(kStageMicroSlicesPerGroup);
 }
 
+// Per-axis list grid: one invocation per entry (perAxisDispatchDims). The count
+// is read atomically for the same reason.
+void writePerAxisDispatchDims(uint base) {
+    const uvec3 dims = perAxisDispatchDims(atomicAdd(params[base + 3u], 0u));
+    params[base + 0u] = dims.x;
+    params[base + 1u] = dims.y;
+    params[base + 2u] = dims.z;
+}
+
 // Per-voxel Hi-Z occlusion refine, layered on top of the per-chunk pre-pass
 // (coarse -> fine hierarchical occlusion). Drops a voxel that is
 // locally-exposed + in-frustum but globally occluded by closer geometry, which
@@ -336,7 +345,7 @@ shared uint groupUniqueSurvivors[64];
 
 void finalizeDispatchDims() {
     const uint visibleSlices = uint(voxelDispatchMicroSliceCount(
-        voxelRenderOptions.x, voxelRenderOptions.y, 0
+        voxelRenderOptions.x, voxelRenderOptions.y
     ));
     if (perAxisSplitStride == 0) {
         writeDispatchDims(0u, visibleSlices);
@@ -345,7 +354,7 @@ void finalizeDispatchDims() {
         // Empty when no survivor was classified feeder (shadows off / all
         // on-screen) ⇒ its stage-1 dispatch early-returns every workgroup.
         const uint feederSlices = uint(voxelDispatchMicroSliceCount(
-            voxelRenderOptions.x, feederSubCap, 0
+            voxelRenderOptions.x, feederSubCap
         ));
         writeDispatchDims(kPerAxisIndirectStrideUints, feederSlices);
     } else {
@@ -355,11 +364,11 @@ void finalizeDispatchDims() {
         // with the constant-base call sites in the single-list branch;
         // constant bases at every call site keep the inlined stores
         // foldable.
-        // Face-local stores carry one sample; the scatter reconstructs
-        // their footprint independently of presentation subdivisions.
-        writeDispatchDims(0u, 1u);
-        writeDispatchDims(kPerAxisIndirectStrideUints, 1u);
-        writeDispatchDims(2u * kPerAxisIndirectStrideUints, 1u);
+        // Face-local stores carry one sample per face; the scatter
+        // reconstructs the footprint independently of presentation subdivisions.
+        writePerAxisDispatchDims(0u);
+        writePerAxisDispatchDims(kPerAxisIndirectStrideUints);
+        writePerAxisDispatchDims(2u * kPerAxisIndirectStrideUints);
     }
 }
 
