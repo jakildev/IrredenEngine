@@ -1,0 +1,24 @@
+Job: 20261117T093415Z-gui-verify-6e7400
+[fleet-jobs] display: 1 online CoreGraphics display(s), awake=1, NSScreen=1
++ fleet-run --timeout 120 IRVoxelEditor --auto-screenshot 10 --gui-session face_pick
+[2026-11-17 01:34:20.796] [ClientLog] [info] GUI-ASSERT shot=0 label=face_pick_zoom2_anchor kind=PREDICATE target=0 name=zoom2_anchor_placed result=PASS actual=cell=(5,8,14) occupied=yes want=yes
+[2026-11-17 01:34:20.796] [ClientLog] [info] GUI-ASSERT shot=0 label=face_pick_zoom2_anchor kind=PREDICATE target=0 name=face_pick_zoom2_anchor_scene_press_clear_of_ui result=PASS actual=1 scene press(es) clear of editor UI
+[2026-11-17 01:34:20.796] [ClientLog] [info] CaptureCamera: label=face_pick_zoom2_anchor yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1600,900)
+[2026-11-17 01:34:21.118] [ClientLog] [info] GUI-ASSERT shot=1 label=face_pick_zoom2_faces kind=PREDICATE target=0 name=zoom2_minus_x_neighbour_placed result=PASS actual=cell=(4,8,14) occupied=yes want=yes
+[2026-11-17 01:34:21.118] [ClientLog] [info] GUI-ASSERT shot=1 label=face_pick_zoom2_faces kind=PREDICATE target=0 name=zoom2_minus_y_neighbour_placed result=PASS actual=cell=(5,7,14) occupied=yes want=yes
+[2026-11-17 01:34:21.119] [ClientLog] [info] GUI-ASSERT shot=1 label=face_pick_zoom2_faces kind=PREDICATE target=0 name=zoom2_minus_z_neighbour_placed result=PASS actual=cell=(5,8,13) occupied=yes want=yes
+[2026-11-17 01:34:21.120] [ClientLog] [info] GUI-ASSERT shot=1 label=face_pick_zoom2_faces kind=PREDICATE target=0 name=zoom2_pick_matches_render result=FAIL actual=texels=0 agree=0 worstDepthError=0.000000
+[2026-11-17 01:34:21.120] [ClientLog] [info] GUI-ASSERT shot=1 label=face_pick_zoom2_faces kind=PREDICATE target=0 name=face_pick_zoom2_faces_scene_press_clear_of_ui result=PASS actual=3 scene press(es) clear of editor UI
+[2026-11-17 01:34:21.120] [ClientLog] [info] CaptureCamera: label=face_pick_zoom2_faces yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1600,900)
+[2026-11-17 01:34:21.394] [ClientLog] [info] GUI-ASSERT shot=2 label=face_pick_zoom4_anchor kind=PREDICATE target=0 name=zoom4_anchor_placed result=PASS actual=cell=(11,8,14) occupied=yes want=yes
+[2026-11-17 01:34:21.394] [ClientLog] [info] GUI-ASSERT shot=2 label=face_pick_zoom4_anchor kind=PREDICATE target=0 name=face_pick_zoom4_anchor_scene_press_clear_of_ui result=PASS actual=1 scene press(es) clear of editor UI
+[2026-11-17 01:34:21.394] [ClientLog] [info] CaptureCamera: label=face_pick_zoom4_anchor yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1600,900)
+[2026-11-17 01:34:21.711] [ClientLog] [info] GUI-ASSERT shot=3 label=face_pick_zoom4_faces kind=PREDICATE target=0 name=zoom4_minus_x_neighbour_placed result=PASS actual=cell=(10,8,14) occupied=yes want=yes
+[2026-11-17 01:34:21.711] [ClientLog] [info] GUI-ASSERT shot=3 label=face_pick_zoom4_faces kind=PREDICATE target=0 name=zoom4_minus_y_neighbour_placed result=PASS actual=cell=(11,7,14) occupied=yes want=yes
+[2026-11-17 01:34:21.711] [ClientLog] [info] GUI-ASSERT shot=3 label=face_pick_zoom4_faces kind=PREDICATE target=0 name=zoom4_minus_z_neighbour_placed result=PASS actual=cell=(11,8,13) occupied=yes want=yes
+[2026-11-17 01:34:21.712] [ClientLog] [info] GUI-ASSERT shot=3 label=face_pick_zoom4_faces kind=PREDICATE target=0 name=zoom4_pick_matches_render result=FAIL actual=texels=0 agree=0 worstDepthError=0.000000
+[2026-11-17 01:34:21.712] [ClientLog] [info] GUI-ASSERT shot=3 label=face_pick_zoom4_faces kind=PREDICATE target=0 name=face_pick_zoom4_faces_scene_press_clear_of_ui result=PASS actual=3 scene press(es) clear of editor UI
+[2026-11-17 01:34:21.712] [ClientLog] [info] CaptureCamera: label=face_pick_zoom4_faces yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1600,900)
+ir-run: RESULT=CLEAN exe=IRVoxelEditor exit=0
+[gui-verify] 12/14 assertions passed
+fleet-jobs: 20261117T093415Z-gui-verify-6e7400 failed exit=1

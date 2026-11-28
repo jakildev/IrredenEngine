@@ -72,6 +72,7 @@
 #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
 #include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
+#include <irreden/input/systems/system_entity_hover_detect.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_update_voxel_positions_gpu.hpp>
 #include <irreden/render/systems/system_update_joint_matrices.hpp>
@@ -720,6 +721,7 @@ constexpr IRVideo::AutoScreenshotShot kImageRotationSampleShots[] = {
 // Lua state, which the binding registration in main() hands over at init.
 std::string g_loadPrefabPath;
 IRScript::LuaScript *g_prefabLua = nullptr;
+void bindEventCursorPickProbe(IRScript::LuaScript &lua);
 std::vector<IRVideo::AutoScreenshotShot> g_loadPrefabShots;
 std::vector<std::array<char, 40>> g_loadPrefabShotLabels;
 // cursor-latch runs the same poses through the GUI-test cycler; its shots wrap
@@ -2251,6 +2253,9 @@ int main(int argc, char **argv) {
     }
 
     IREngine::registerLuaBindings([](IRScript::LuaScript &lua) {
+        if (g_guiTest) {
+            bindEventCursorPickProbe(lua);
+        }
         if (IREngine::args().wasProvided("--load-prefab") || g_lodScene) {
             lua.bindLuaDrivenEcs();
             // The engine components a manifest's `components` may name.
@@ -2645,18 +2650,21 @@ HoverParityFixture g_hoverParity;
 
 constexpr int kPresentedPickCurrentShotIndex = kNumHoverParityShots;
 constexpr int kPresentedPickStaleShotIndex = kPresentedPickCurrentShotIndex + 1;
-constexpr int kHelpDragPanShotIndex = kPresentedPickStaleShotIndex + 1;
+constexpr int kEventCursorRotatedShotIndex = kPresentedPickStaleShotIndex + 1;
+constexpr int kPresentedPickAfterRotationShotIndex = kEventCursorRotatedShotIndex + 1;
+constexpr int kHelpDragPanShotIndex = kPresentedPickAfterRotationShotIndex + 1;
 constexpr int kPresentedPickDestroyedShotIndex = kHelpDragPanShotIndex + 1;
 
 struct PresentedPickFixture {
-    IRVideo::GuiInputEvent staleEvents_[3]{
+    IRVideo::GuiInputEvent staleEvents_[4]{
         {1, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
-        {1,
+        {4, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+        {4,
          IRVideo::GuiInputEvent::Type::PRESS,
          IRMath::ivec2(0),
          vec2(0.0f),
          IRInput::kMouseButtonLeft},
-        {2,
+        {5,
          IRVideo::GuiInputEvent::Type::RELEASE,
          IRMath::ivec2(0),
          vec2(0.0f),
@@ -2666,14 +2674,61 @@ struct PresentedPickFixture {
         {1, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
     };
     IRPrefab::GuiTest::Assertion currentAssertions_[2];
-    IRPrefab::GuiTest::Assertion staleAssertions_[1];
+    IRPrefab::GuiTest::Assertion staleAssertions_[3];
     IRPrefab::GuiTest::Assertion destroyedAssertions_[1];
-    bool aimed_ = false;
     bool destroyAimed_ = false;
     bool destroyArmed_ = false;
     bool destroyIssued_ = false;
+    IREntity::EntityId target_ = IREntity::kNullEntity;
+    IREntity::EntityId clicked_ = IREntity::kNullEntity;
+    IREntity::EntityId hovered_ = IREntity::kNullEntity;
+    IREntity::EntityId hoveredAtClick_ = IREntity::kNullEntity;
+    std::uint64_t staleTicksAtStart_ = 0;
+    std::uint64_t clickFrame_ = 0;
+    bool staleAtClick_ = false;
+    int activeShot_ = -1;
 };
 PresentedPickFixture g_presentedPick;
+constexpr vec3 kEventCursorTargetWorld = kHoverParityVoxelWorld + vec3(4.0f, 0.0f, 0.0f);
+
+bool eventCursorPickPredicate(const void *, std::string &actual) {
+    actual = fmt::format(
+        "clicked={} hover-at-click={} expected={} frame={} stale={}",
+        g_presentedPick.clicked_,
+        g_presentedPick.hoveredAtClick_,
+        g_presentedPick.target_,
+        g_presentedPick.clickFrame_,
+        g_presentedPick.staleAtClick_
+    );
+    return g_presentedPick.clicked_ == g_presentedPick.target_ &&
+           g_presentedPick.hoveredAtClick_ == g_presentedPick.target_ &&
+           g_presentedPick.clickFrame_ != 0 && !g_presentedPick.staleAtClick_;
+}
+
+bool eventCursorStaleTicksPredicate(const void *, std::string &actual) {
+    const auto count = IRRender::getRenderManager().staleMouseTrixelPickInputTicks() -
+                       g_presentedPick.staleTicksAtStart_;
+    actual = fmt::format("stale-input-ticks={}", count);
+    return count == 0;
+}
+
+void bindEventCursorPickProbe(IRScript::LuaScript &lua) {
+    lua.lua().set_function("eventCursorHovered", [](IREntity::EntityId entity) {
+        g_presentedPick.hovered_ = entity;
+    });
+    lua.lua().set_function("eventCursorClicked", [](IREntity::EntityId entity, int button) {
+        if (button != static_cast<int>(IRComponents::EntityClickButton::LEFT))
+            return;
+        g_presentedPick.clicked_ = entity;
+        g_presentedPick.hoveredAtClick_ = g_presentedPick.hovered_;
+        const auto pick = IRRender::getMouseTrixelPick();
+        g_presentedPick.clickFrame_ = pick.frameId_;
+        g_presentedPick.staleAtClick_ = pick.stale_;
+    });
+    auto &handlers = IRSystem::getEntityEventHandlers();
+    handlers.addOnHovered(lua.lua()["eventCursorHovered"]);
+    handlers.addOnClicked(lua.lua()["eventCursorClicked"]);
+}
 
 // ---------------------------------------------------------------------------
 // Drag-pan tracking fixture (--gui-test)
@@ -2750,6 +2805,10 @@ void initHoverParityFixture() {
         kHoverParityStackedVoxelWorld + kHoverParityNeighbourOffset,
         kHoverParityNeighbourColor
     );
+    if (g_guiTest) {
+        g_presentedPick.target_ =
+            createCornerVoxel(kEventCursorTargetWorld, kHoverParityNeighbourColor);
+    }
     g_hoverParity.shots_[0].assertions_[0] = IRPrefab::GuiTest::hoveredEntityId(
         g_hoverParity.voxelEntity_,
         "hover_id_above_diagonal_is_raw_texel"
@@ -2773,7 +2832,17 @@ void initHoverParityFixture() {
     g_presentedPick.currentAssertions_[1] =
         IRPrefab::GuiTest::pickStaleClear(30, "settled_cursor_is_current");
     g_presentedPick.staleAssertions_[0] =
-        IRPrefab::GuiTest::pickStaleSeen("same_batch_move_press_is_stale");
+        IRPrefab::GuiTest::pickStaleClear(3, "same_batch_move_press_is_current");
+    g_presentedPick.staleAssertions_[1] = IRPrefab::GuiTest::predicate(
+        &eventCursorPickPredicate,
+        nullptr,
+        "same_batch_click_and_hover_target_b"
+    );
+    g_presentedPick.staleAssertions_[2] = IRPrefab::GuiTest::predicate(
+        &eventCursorStaleTicksPredicate,
+        nullptr,
+        "event_cursor_stale_input_ticks"
+    );
     g_presentedPick.destroyedAssertions_[0] =
         IRPrefab::GuiTest::pickEntityEmpty("destroyed_entity_is_filtered");
     IR_LOG_INFO(
@@ -2795,10 +2864,21 @@ void onPresentedPickAssertFrame(int shotIndex) {
     const ivec2 target = IRRender::worldPos3DToMouseScreenPx(
         kHoverParityVoxelWorld + vec3(0.0f, 0.0f, kHoverParityBelowDiagonalZ)
     );
-    if (shotIndex == kPresentedPickStaleShotIndex && !g_presentedPick.aimed_) {
-        g_presentedPick.aimed_ = true;
-        for (IRVideo::GuiInputEvent &event : g_presentedPick.staleEvents_) {
-            event.screenPx_ = target + ivec2(96, 0);
+    if ((shotIndex == kPresentedPickStaleShotIndex || shotIndex == kEventCursorRotatedShotIndex) &&
+        shotIndex != g_presentedPick.activeShot_) {
+        g_presentedPick.activeShot_ = shotIndex;
+        g_presentedPick.clicked_ = IREntity::kNullEntity;
+        g_presentedPick.hoveredAtClick_ = IREntity::kNullEntity;
+        g_presentedPick.clickFrame_ = 0;
+        g_presentedPick.staleTicksAtStart_ =
+            IRRender::getRenderManager().staleMouseTrixelPickInputTicks();
+        const ivec2 first =
+            IRRender::worldPos3DToMouseScreenPx(kHoverParityVoxelWorld + vec3(0.0f, 0.0f, -0.5f));
+        const ivec2 second =
+            IRRender::worldPos3DToMouseScreenPx(kEventCursorTargetWorld + vec3(0.0f, 0.0f, -0.5f));
+        g_presentedPick.staleEvents_[0].screenPx_ = first;
+        for (int i = 1; i < 4; ++i) {
+            g_presentedPick.staleEvents_[i].screenPx_ = second;
         }
     }
     if (shotIndex == kPresentedPickDestroyedShotIndex && !g_presentedPick.destroyAimed_) {
@@ -3315,7 +3395,24 @@ constexpr IRVideo::GuiTestShot kHelpOverlayGuiShots[] = {
       0.0f,
       "presented_pick_stale_same_batch"},
      g_presentedPick.staleEvents_,
-     3},
+     4},
+    {{kHoverParityZoom,
+      -IRMath::pos3DtoPos2DIso(kHoverParityVoxelWorld),
+      0.35f,
+      "presented_pick_rotated_same_batch",
+      nullptr,
+      0,
+      IRVideo::CullAction::NONE,
+      kHoverParityVoxelWorld,
+      true},
+     g_presentedPick.staleEvents_,
+     4},
+    {{kHoverParityZoom,
+      -IRMath::pos3DtoPos2DIso(kHoverParityVoxelWorld),
+      0.0f,
+      "presented_pick_cardinal_after_rotation"},
+     nullptr,
+     0},
     {{kHoverParityZoom,
       -IRMath::pos3DtoPos2DIso(kHoverParityVoxelWorld),
       0.0f,
@@ -3971,6 +4068,8 @@ const ShotAssertions kShotAssertions[] = {
     shotAssertions(g_hoverParity.shots_[2].assertions_),
     shotAssertions(g_presentedPick.currentAssertions_),
     shotAssertions(g_presentedPick.staleAssertions_),
+    shotAssertions(g_presentedPick.staleAssertions_),
+    shotAssertions(g_presentedPick.currentAssertions_),
     shotAssertions(g_dragPan.assertions_),
     shotAssertions(g_presentedPick.destroyedAssertions_),
     shotAssertions(kHelpOpenAssertions, true),
@@ -4618,6 +4717,9 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()
     };
     inputPipeline.splice(inputPipeline.end(), IRPrefab::SettingsMenu::inputSystems());
+    if (g_guiTest) {
+        inputPipeline.push_back(IRSystem::createSystem<IRSystem::ENTITY_HOVER_DETECT>());
+    }
     IRSystem::registerPipeline(IRTime::Events::INPUT, inputPipeline);
 
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();

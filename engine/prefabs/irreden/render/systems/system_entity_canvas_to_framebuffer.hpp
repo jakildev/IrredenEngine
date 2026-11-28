@@ -462,6 +462,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // is the sole gate here.
         fd.anyPerTrixelPriority_ = canvasTextures->anyPerTrixelPriority_;
         fd.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
+        fd.presentedPickEnabled_ = 0;
         fd.effectiveSubdivisionsForHover_ = vec2(cubeSubDensity, depthScale);
         fd.detachedResidual_ = canvasTextures->sourceFaceRotation_;
         fd.detachedDepthAxis_ = viewToWorld_;

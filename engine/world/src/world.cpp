@@ -571,6 +571,7 @@ void World::input() {
 
     m_systemManager.executePipeline(IRTime::Events::INPUT);
     IRPrefab::Static::drain();
+    m_renderer.prepareMouseTrixelPickQuery();
 }
 
 void World::start() {

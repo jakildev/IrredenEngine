@@ -126,6 +126,26 @@ TEST(PresentedPick, NewestCompletedFrameWinsEvenWhenSlotsDrainOutOfFrameOrder) {
     EXPECT_EQ(history.served(true)->frameId_, 11u);
 }
 
+TEST(PresentedPick, HistoryKeepsTheNewestTwoCompletedFrames) {
+    IRRender::PresentedPickHistory history;
+    IRRender::PresentedPickRecord record;
+    record.frameId_ = 3;
+    history.accept(record);
+    record.frameId_ = 1;
+    history.accept(record);
+    record.frameId_ = 2;
+    history.accept(record);
+    EXPECT_EQ(history.served(false)->frameId_, 3u);
+    EXPECT_EQ(history.served(true)->frameId_, 2u);
+    record.frameId_ = 4;
+    history.accept(record);
+    EXPECT_EQ(history.served(true)->frameId_, 3u);
+    record.frameId_ = 1;
+    history.accept(record);
+    EXPECT_EQ(history.served(false)->frameId_, 4u);
+    EXPECT_EQ(history.served(true)->frameId_, 3u);
+}
+
 TEST(PresentedPick, PendingSlotIsNotServedAndFullRingDropsItsOldestPendingFrame) {
     GpuReadbackRing<IRRender::PresentedPickRecord, 2> ring;
     IRRender::PresentedPickHistory history;

@@ -1,32 +1,52 @@
 # Pick frame contract
 
-The GPU hover buffer describes the trixel under the cursor sampled for one rendered frame. It is
-not an answer for the cursor at the time an INPUT handler later asks for a pick.
+The normal render publishes a compact pick record for the cursor sampled while that frame was
+rendered. INPUT consumes only completed records. If the event cursor differs from the completed
+record's cursor, hover and click dispatch are deferred while the GPU re-queries that cursor
+against the presented frame. No CPU texture copy or GPU completion wait occurs in INPUT.
 
-## Record
+## Normal record
 
-Each `TRIXEL_TO_FRAMEBUFFER` pass publishes a GPU-timeline copy after its final hover writer. The
-copy is tagged with:
+Each hover-enabled `TRIXEL_TO_FRAMEBUFFER` pass contributes to the shared 32-byte
+`HoveredEntityIdLayout`. Gather accepts raw-texel identity with alpha at least 0.1 and the nearest
+depth. Rotating scatter resolves its `RG32UI` owner attachment only when its depth is bitwise
+identical to the final framebuffer depth. After the last writer, a GPU-timeline copy publishes the
+record with the rendered frame id, render-time main-framebuffer cursor pixel and submission
+serial.
 
-- the rendered frame id;
-- the main-framebuffer cursor pixel used by that frame; and
-- the submission serial that contains the copy.
+The CPU serves only records whose submission serial has completed. If several records complete
+together, the greatest frame id wins; the newest two records remain in history for the
+previous-completed-frame fault. A full eight-slot ring drops its oldest pending record. Frame
+distance and call order are not completion evidence.
 
-The CPU serves only slots whose submission serial has completed. If several slots become readable
-together, the record with the greatest frame id wins. A full ring drops its oldest pending slot;
-the read path never waits for room and never maps the live buffer a queued submission can still
-write.
+`IRRender::getMouseTrixelPick()` compares the current event cursor with the record's rendered
+cursor. A match uses the record immediately. A mismatch is stale and queues an event-cursor query.
+Entity ids are filtered after readback if they have since been destroyed or marked for deletion.
 
-## INPUT result
+## Event-cursor query
 
-`IRRender::getMouseTrixelPick()` returns the most recent completed record. Its entity is cleared if
-that id has since been destroyed or marked for deletion. Entity ids are monotonic, so a surviving
-record cannot alias a later entity.
+The render system retains the presented frame's draw order, frame-data values, programs and
+canvas resource identities. After INPUT and before UPDATE, a queued query begins the device frame
+early, GPU-clears one compact destination record, and replays those draws in query mode. Query
+mode discards every fragment except the event cursor pixel, runs the same gather rule, and discards
+the colour output. The rotating attachment resolve uses the same cursor pixel before and after the
+gather replay. Depth testing and depth writes are disabled, so the presented framebuffer is not
+changed.
 
-The result is stale when its recorded cursor and the current INPUT cursor occupy different
-main-framebuffer pixels. Staleness is reported without suppressing the entity: hover and click
-dispatch retain their existing behaviour while the profile report counts stale INPUT ticks once
-per tick, regardless of how many consumers ask for the pick.
+The query records its submission serial and returns control without waiting. Hover transitions
+and button presses captured from that input batch remain pending until
+`completedSubmissionSerial()` reaches the query. Hitbox candidates are retained with the pending
+event: GUI hitboxes still have precedence, and world hitboxes still share the authored
+priority/depth comparison with the queried trixel. The measured request-to-dispatch delay is
+reported as `EVENT-CURSOR-PICK` evidence.
+
+Still-cursor frames never enter query mode. Their steady path retains the existing compact record,
+one 32-byte timeline copy and completion-gated ring drain; it has no framebuffer-sized pick
+allocation, clear, write or copy. An event-cursor query adds GPU work only for a stale input batch.
+
+Detached entity canvases do not contribute to the main-framebuffer trixel query. They retain
+their authored world hitboxes and priority/depth arbitration in `ENTITY_HOVER_DETECT`; GUI
+hitboxes retain precedence.
 
 ## One result per comparison
 
@@ -38,10 +58,12 @@ result, never from a second query.
 
 ## Backend boundary
 
-OpenGL and Metal share this contract through `submissionSerial()` and
-`completedSubmissionSerial()`. Frame distance and call order are not completion evidence. Metal
-shared storage does not make an uncommitted command buffer visible to the CPU, and OpenGL may keep
-multiple submitted frames in flight.
+OpenGL and Metal share the record layout, binding 14, shader gather/scatter rules, cursor Y
+conversion and submission-completion gate. Metal shared storage does not make an uncommitted
+command buffer visible to the CPU, and OpenGL may keep multiple submitted frames in flight.
 
-The 32-byte `HoveredEntityIdLayout`, its binding, GPU writers, per-frame reset, and visible hover
-highlight are unchanged.
+The rejected whole-frame prototype retained one 32-byte record per framebuffer pixel. At 1282 by
+722, each allocation was 29,619,360 bytes and the bounded ring plus two history images could reach
+296,193,600 bytes. Five paired runs measured +0.290 ms input-to-present, +0.292 ms frame mean and
++0.271 ms GPU span, exceeding the locked bounds. The selected compact re-query removes those
+steady per-pixel costs while preserving the GPU as the sole owner of pick semantics.

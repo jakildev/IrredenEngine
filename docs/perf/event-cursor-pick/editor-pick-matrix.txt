@@ -1,0 +1,31 @@
+Criterion 7 editor controls, Apple M4 Max, macOS/Metal, 2026-11-17
+
+Head, legacy view
+job=20261117T103317Z-gui-verify-41b68c
+command=fleet-jobs start gui-verify --name pick-head-face-legacy -- IRVoxelEditor --no-build -- --gui-session face_pick --legacy-view
+zoom2_pick_matches_render PASS texels=51 agree=51 worstDepthError=0.250002
+zoom4_pick_matches_render PASS texels=448 agree=448 worstDepthError=0.250004
+[gui-verify] 14/14 assertions passed
+
+Head, legacy-view gizmo reach
+job=20261117T103839Z-gui-verify-bc85c2
+command=fleet-jobs start gui-verify --name pick-head-gizmo -- IRVoxelEditor --no-build -- --gui-session part_gizmo_reach --legacy-view
+[gui-verify] 24/24 assertions passed
+
+Head, default view
+job=20261117T103848Z-gui-verify-c9d796
+command=fleet-jobs start gui-verify --name pick-head-default -- IRVoxelEditor --no-build -- --gui-session face_pick
+zoom2_pick_matches_render FAIL texels=0 agree=0 worstDepthError=0.000000
+zoom4_pick_matches_render FAIL texels=0 agree=0 worstDepthError=0.000000
+[gui-verify] 12/14 assertions passed
+
+Parent e5c0ce71386f4cad2a3e65d24c6b395caa05ab4d, default view
+job=20261117T103900Z-gui-verify-ff328d
+command=fleet-jobs start gui-verify --name pick-parent-default -- IRVoxelEditor --no-build -- --gui-session face_pick
+zoom2_pick_matches_render FAIL texels=0 agree=0 worstDepthError=0.000000
+zoom4_pick_matches_render FAIL texels=0 agree=0 worstDepthError=0.000000
+[gui-verify] 12/14 assertions passed
+
+The head and parent default-view result strings are identical. The two default-
+view failures remain tracked by open issue #5133; the required legacy-view
+controls pass.

@@ -1,0 +1,35 @@
+Job: 20261117T121938Z-gui-verify-d348ac
+[fleet-jobs] display: 1 online CoreGraphics display(s), awake=1, NSScreen=1
++ fleet-run --timeout 120 IRShapeDebug --auto-screenshot 10 --gui-test
+[2026-11-17 04:19:46.060] [ClientLog] [info] CaptureCamera: label=presented_pick_stale_same_batch yaw=0 zoom=(16,16) effectiveIso=(0,-80) subdivisions=16 gameResolution=(1280,720)
+[2026-11-17 04:19:46.345] [EngineLog] [info] EVENT-CURSOR-PICK frame=190 pixel=642,345 delay_ms=7.910
+[2026-11-17 04:19:46.371] [EngineLog] [info] EVENT-CURSOR-PICK frame=193 pixel=478,307 delay_ms=9.087
+[2026-11-17 04:19:46.625] [ClientLog] [info] GUI-ASSERT shot=5 label=presented_pick_rotated_same_batch kind=PICK_STALE_CLEAR target=0 name=same_batch_move_press_is_current result=PASS actual=current=3/3
+[2026-11-17 04:19:46.625] [ClientLog] [info] GUI-ASSERT shot=5 label=presented_pick_rotated_same_batch kind=PREDICATE target=0 name=same_batch_click_and_hover_target_b result=PASS actual=clicked=491 hover-at-click=491 expected=491 frame=194 stale=false
+[2026-11-17 04:19:46.625] [ClientLog] [info] GUI-ASSERT shot=5 label=presented_pick_rotated_same_batch kind=PREDICATE target=0 name=event_cursor_stale_input_ticks result=PASS actual=stale-input-ticks=0
+[2026-11-17 04:19:47.033] [ClientLog] [info] GUI-ASSERT shot=6 label=presented_pick_cardinal_after_rotation kind=PICK_FRAME_CURRENT target=0 name=newest_completed_pick_frame result=PASS actual=current=30/30
+[2026-11-17 04:19:47.033] [ClientLog] [info] GUI-ASSERT shot=6 label=presented_pick_cardinal_after_rotation kind=PICK_STALE_CLEAR target=0 name=settled_cursor_is_current result=PASS actual=current=30/30
+[2026-11-17 04:19:47.206] [EngineLog] [info] EVENT-CURSOR-PICK frame=262 pixel=658,357 delay_ms=8.248
+[2026-11-17 04:19:47.222] [EngineLog] [info] EVENT-CURSOR-PICK frame=264 pixel=818,453 delay_ms=8.248
+[2026-11-17 04:19:47.483] [ClientLog] [info] GUI-ASSERT shot=7 label=drag_pan_tracks_cursor kind=HOVERED_ENTITY_ID target=488 name=hover_id_follows_drag_pan result=PASS actual=hovered=488,488
+[2026-11-17 04:19:47.686] [EngineLog] [info] EVENT-CURSOR-PICK frame=301 pixel=658,357 delay_ms=8.717
+[2026-11-17 04:19:47.929] [ClientLog] [info] GUI-ASSERT shot=8 label=presented_pick_destroyed_entity kind=PICK_ENTITY_EMPTY target=0 name=destroyed_entity_is_filtered result=PASS actual=entity=0
+
+shot   label                           kind           name                         result   actual
+0      hover_parity_above_diagonal    HOVERED_ENTITY_ID hover_id_above_diagonal_is_raw_texel PASS     hovered=488
+1      hover_parity_below_diagonal    HOVERED_ENTITY_ID hover_id_below_diagonal_is_voxel PASS     hovered=488
+2      hover_parity_row_above_occupied HOVERED_ENTITY_ID hover_id_row_above_occupied_is_stable PASS     hovered=489,489,489
+3      presented_pick_current_30_frames PICK_FRAME_CURRENT newest_completed_pick_frame PASS     current=30/30
+3      presented_pick_current_30_frames PICK_STALE_CLEAR settled_cursor_is_current  PASS     current=30/30
+4      presented_pick_stale_same_batch PICK_STALE_CLEAR same_batch_move_press_is_current PASS     current=3/3
+4      presented_pick_stale_same_batch PREDICATE      same_batch_click_and_hover_target_b PASS     clicked=491 hover-at-click=491 expected=491 frame=155 stale=false
+4      presented_pick_stale_same_batch PREDICATE      event_cursor_stale_input_ticks PASS     stale-input-ticks=0
+5      presented_pick_rotated_same_batch PICK_STALE_CLEAR same_batch_move_press_is_current PASS     current=3/3
+5      presented_pick_rotated_same_batch PREDICATE      same_batch_click_and_hover_target_b PASS     clicked=491 hover-at-click=491 expected=491 frame=194 stale=false
+5      presented_pick_rotated_same_batch PREDICATE      event_cursor_stale_input_ticks PASS     stale-input-ticks=0
+6      presented_pick_cardinal_after_rotation PICK_FRAME_CURRENT newest_completed_pick_frame PASS     current=30/30
+6      presented_pick_cardinal_after_rotation PICK_STALE_CLEAR settled_cursor_is_current  PASS     current=30/30
+7      drag_pan_tracks_cursor         HOVERED_ENTITY_ID hover_id_follows_drag_pan  PASS     hovered=488,488
+8      presented_pick_destroyed_entity PICK_ENTITY_EMPTY destroyed_entity_is_filtered PASS     entity=0
+
+56/56 assertions passed; job succeeded with exit 0.

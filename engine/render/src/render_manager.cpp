@@ -245,6 +245,101 @@ void RenderManager::drainCompletedMouseTrixelPicks() {
     );
 }
 
+void RenderManager::setMouseTrixelPickQuery(
+    std::function<void(std::uint64_t, ivec2, Buffer *)> query
+) {
+    m_presentedPickQueryCallback = std::move(query);
+}
+
+bool RenderManager::requestMouseTrixelPickQuery(std::uint64_t frameId, ivec2 cursorPixel) {
+    if (!m_presentedPickQueryCallback || frameId == 0) {
+        return false;
+    }
+    if ((m_presentedPickQuery.queued_ || m_presentedPickQuery.submitted_ ||
+         m_presentedPickQuery.ready_) &&
+        m_presentedPickQuery.frameId_ == frameId &&
+        m_presentedPickQuery.cursorPixel_ == cursorPixel) {
+        return true;
+    }
+    if (m_presentedPickQuery.queued_ || m_presentedPickQuery.submitted_) {
+        return false;
+    }
+    if (m_presentedPickQuery.buffer_ == nullptr) {
+        m_presentedPickQuery.buffer_ =
+            IRRender::createResource<Buffer>(
+                nullptr,
+                sizeof(HoveredEntityIdLayout),
+                BUFFER_STORAGE_DYNAMIC | BUFFER_STORAGE_MAP_READ | BUFFER_STORAGE_MAP_PERSISTENT |
+                    BUFFER_STORAGE_MAP_COHERENT
+            )
+                .second;
+    }
+    m_presentedPickQuery.frameId_ = frameId;
+    m_presentedPickQuery.cursorPixel_ = cursorPixel;
+    m_presentedPickQuery.requestedAt_ = std::chrono::steady_clock::now();
+    m_presentedPickQuery.queued_ = true;
+    m_presentedPickQuery.submitted_ = false;
+    m_presentedPickQuery.ready_ = false;
+    IRInput::InputManager &input = IRInput::getInputManager();
+    if (m_lastStalePickInputTick == input.inputTick() && m_stalePickInputTicks > 0) {
+        --m_stalePickInputTicks;
+    }
+    return true;
+}
+
+void RenderManager::prepareMouseTrixelPickQuery() {
+    if (!m_presentedPickQuery.queued_ || !m_presentedPickQueryCallback) {
+        return;
+    }
+    if (!m_deviceFrameBegunEarly) {
+        IRRender::device()->beginFrame();
+        m_deviceFrameBegunEarly = true;
+    }
+    m_presentedPickQueryCallback(
+        m_presentedPickQuery.frameId_,
+        m_presentedPickQuery.cursorPixel_,
+        m_presentedPickQuery.buffer_
+    );
+    m_presentedPickQuery.submissionSerial_ = IRRender::device()->submissionSerial();
+    m_presentedPickQuery.queued_ = false;
+    m_presentedPickQuery.submitted_ = true;
+}
+
+bool RenderManager::takeMouseTrixelPickQuery(
+    std::uint64_t frameId, ivec2 cursorPixel, MouseTrixelPick &result, double &delayMs
+) {
+    if (m_presentedPickQuery.submitted_ &&
+        IRRender::device()->completedSubmissionSerial() >= m_presentedPickQuery.submissionSerial_) {
+        m_presentedPickQuery.buffer_->getSubData(
+            0,
+            sizeof(m_presentedPickQuery.record_.layout_),
+            &m_presentedPickQuery.record_.layout_
+        );
+        m_presentedPickQuery.record_.frameId_ = m_presentedPickQuery.frameId_;
+        m_presentedPickQuery.record_.cursorPixel_ = m_presentedPickQuery.cursorPixel_;
+        m_presentedPickQuery.submitted_ = false;
+        m_presentedPickQuery.ready_ = true;
+    }
+    if (!m_presentedPickQuery.ready_ || m_presentedPickQuery.frameId_ != frameId ||
+        m_presentedPickQuery.cursorPixel_ != cursorPixel) {
+        return false;
+    }
+    result = resolvePresentedPick(
+        &m_presentedPickQuery.record_,
+        cursorPixel,
+        [](IREntity::EntityId entity) {
+            return IREntity::entityExists(entity) &&
+                   !IREntity::getEntityManager().isMarkedForDeletion(entity);
+        }
+    );
+    delayMs = std::chrono::duration<double, std::milli>(
+                  std::chrono::steady_clock::now() - m_presentedPickQuery.requestedAt_
+    )
+                  .count();
+    m_presentedPickQuery.ready_ = false;
+    return true;
+}
+
 MouseTrixelPick RenderManager::mouseTrixelPick() {
     drainCompletedMouseTrixelPicks();
     const ivec2 currentCursor = IRRender::mouseMainFramebufferPixel();
@@ -287,7 +382,9 @@ void RenderManager::beginFrame() {
     IRWindow::getWindowSize(m_windowExtentPoints);
     updateOutputResolution();
     updateDefaultRotationPivotFocus();
-    IRRender::device()->beginFrame();
+    if (!m_deviceFrameBegunEarly) {
+        IRRender::device()->beginFrame();
+    }
 }
 
 void RenderManager::renderFrame() {
@@ -300,6 +397,7 @@ void RenderManager::presentFrame() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
     IRRender::device()->present();
+    m_deviceFrameBegunEarly = false;
 }
 
 VoxelPoolAllocation RenderManager::allocateVoxels(unsigned int numVoxels, std::string canvasName) {
