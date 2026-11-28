@@ -1244,6 +1244,15 @@ condition the tools cannot change:
 | the online display stayed asleep | a display that refuses the wake |
 | an awake CoreGraphics display but no Aqua `NSScreen` | the run's session has no window-server connection (ssh, LaunchDaemon, another console user) |
 
+One condition comes before all of these, and it is checked first: the
+launching process runs inside a sandbox that denies the WindowServer
+lookup. A Codex shell command that misses its allow rule runs this way
+([`docs/agents/CODEX.md`](agents/CODEX.md) § "Capability
+qualification"). The tools ask the kernel, so it is detected rather than
+inferred. The run stops before any wake or probe, the message names the
+bare-command remedy, and the fleet records it as a `sandbox` decline, so
+the target moves to another runtime.
+
 A display probe that cannot run is reported and the launch proceeds;
 an engine that still logs `Discovered 0 display monitors` is stopped by
 `ir-run`'s runtime check as `RESULT=NO-DISPLAY`, exit 69, and the fleet

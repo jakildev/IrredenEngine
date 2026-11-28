@@ -193,15 +193,21 @@ host and after upgrading Codex:
 | GitHub review and PR publication | read-only `gh pr view`; a real assigned review or publication | login, network, trusted rules are separate from filesystem access |
 | Skills and helpers | read the named `SKILL.md` and procedures; use equivalent tools | slash commands do not run in Codex; the launcher emits the supported quiet-window hook above |
 
-The macOS sandbox grants no WindowServer access: a demo launched from
-inside it logs `Discovered 0 display monitors` and idles until the
-`fleet-run` watchdog reports `RESULT=ALIVE-TIMEOUT`. `fleet-run` and the
-display-backed drivers in `DISPLAY_VALIDATORS`
-(`scripts/fleet/fleet_codex_policy.py`) run outside it through generated
+The macOS sandbox denies the WindowServer lookup, so a demo launched from
+inside it would discover 0 display monitors. The shared display check
+(`scripts/fleet/fleet_display_session.py`) asks the kernel first and stops
+a capture run before launch: `ir-run` names the sandbox and reports
+`RESULT=NO-DISPLAY` with exit 69, and a verifier or `fleet-jobs` display
+profile fails its preflight with exit 69. A launch that gets past it and
+still logs zero monitors hits the same `NO-DISPLAY`/69 backstop.
+`fleet-run` and the display-backed drivers in `DISPLAY_VALIDATORS`
+(`scripts/fleet/fleet_codex_policy.py`) run outside the sandbox through generated
 allow rules, which match only the bare form — `python3 scripts/render-verify.py …`,
 `python3 scripts/perf/repeat_profile.py …`, as relative or absolute path.
-A `VAR=value` or `env` prefix, or an interpreter flag, falls back into
-the sandbox. For a probe switch, keep the launcher bare and pass it as a
+Any other shape falls back into the sandbox: a `VAR=value` or `env`
+prefix, an interpreter flag, a redirection (`fleet-run … > log 2>&1`), a
+compound statement (`if …; then …; fi`), a subshell, or a `cd … &&`
+prefix. For a probe switch, keep the launcher bare and pass it as a
 pre-executable wrapper option, for example `fleet-run --env IR_SHAPE_PROBE=1
 IRShapeDebug --auto-screenshot 10`; `--env` also supports `IR_WINDOW_MODE`.
 Set a build-tree override in the launch environment instead. A new driver

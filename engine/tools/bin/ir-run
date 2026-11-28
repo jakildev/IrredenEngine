@@ -343,8 +343,9 @@ Run mode
         nothing about shutdown-path health (teardown never ran).
     ir-run: RESULT=NO-DISPLAY exe=<name> exit=69
         macOS capture runs: the display could not be woken into a state the
-        engine can discover (the line before it names the condition), so the
-        program never ran. Otherwise: the program reported zero display
+        engine can discover, or ir-run itself runs inside a sandbox that
+        denies the WindowServer lookup (the line before it names the
+        condition), so the program never ran. Otherwise: the program reported zero display
         monitors and remained alive past IR_RUN_NO_DISPLAY_GRACE (default 5
         seconds).
     ir-run: RESULT=LOCK-FAILED exe=<name> exit=<rc> ...
@@ -1065,7 +1066,8 @@ ir_report_result() {
 # until this script exits (caffeinate -w on $$ covers SIGKILL; the EXIT trap
 # covers the rest). The helper reuses an outer run's hold named by
 # FLEET_DISPLAY_HOLDER and prints no pid then, so this run never ends a hold
-# it does not own. A host it cannot make ready is NO-DISPLAY before launch.
+# it does not own. A host it cannot make ready, or a sandbox that denies the
+# WindowServer lookup to this process, is NO-DISPLAY before launch.
 # A helper that cannot run leaves the launch to the zero-monitor backstop.
 DISPLAY_SESSION="$SCRIPT_DIR/../../../scripts/fleet/fleet_display_session.py"
 DISPLAY_HOLDER=""
