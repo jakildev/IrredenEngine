@@ -223,9 +223,9 @@ the sun query on occluded fragments ([cost mechanism](#cost-mechanism)).
   on OpenGL in `docs/evidence/receiver-model-gl/README.md`. The polygon and
   crossing counts match the Metal figures above to the pixel wherever both hosts
   read the same case. The lone-frame ratios differ by host (1x frames against
-  2x) and pass on both. The crossing reading at 90° and 270°, which Metal has
-  not taken, fails on the continuous route from shadow-edge motion with no
-  lone-frame pixel (#5184).
+  2x) and pass on both. Under the cardinal-only class-change rule, the kept
+  OpenGL 90° crossing passes with zero lone-cardinal pixels; Metal has not
+  taken the 90° or 270° readings.
 - Pipelines that register a fog pass: unchanged by stage 1. Stage 2 (#5123)
   measured them ([below](#stage-2-measurements-fog-pass-pipelines)).
 
