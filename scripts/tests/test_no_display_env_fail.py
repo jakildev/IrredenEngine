@@ -21,6 +21,8 @@ IR_RUN = REPO_ROOT / "engine/tools/bin/ir-run"
 sys.path.insert(0, str(SCRIPTS))
 
 import verify_common  # noqa: E402
+from fleet import fleet_display_session  # noqa: E402
+from fleet.tests.fake_display import FakeDisplay, gone, wait_gone  # noqa: E402
 
 
 def _load(name: str, filename: str):
@@ -95,6 +97,189 @@ class IrRunNoDisplayTest(unittest.TestCase):
         self.assertNotIn("RESULT=NO-DISPLAY", result.stderr)
 
 
+# Records the display hold it ran under, then behaves as its last argument says.
+HOLD_PROBE_STUB = """
+holder="${FLEET_DISPLAY_HOLDER:-}"
+alive=dead
+[[ -n "$holder" ]] && kill -0 "$holder" 2>/dev/null && alive=alive
+echo "$holder $alive $(cat "$FAKE_DISPLAY_STATE")" > "$STUB_RECORD"
+case "${*: -1}" in
+  fail) exit 3 ;;
+  hang) exec sleep 30 ;;
+  zero) echo 'Discovered 0 display monitors'; exec sleep 30 ;;
+esac
+exit 0
+"""
+
+
+class IrRunDisplayWakeTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        root = Path(self.temp.name)
+        self.build = root / "build"
+        self.build.mkdir()
+        self.record = root / "record"
+        self.display = FakeDisplay(root / "display")
+        stub = self.build / "IRHoldProbe"
+        stub.write_text(f"#!/usr/bin/env bash\n{HOLD_PROBE_STUB}")
+        stub.chmod(0o755)
+
+    def env(self, **overrides: str) -> dict[str, str]:
+        env = {k: v for k, v in os.environ.items() if not k.startswith("FLEET_DISPLAY_")}
+        env |= self.display.env() | {
+            "IR_LOCK_ROOT": str(self.build / "locks"),
+            "IR_RUN_NO_DISPLAY_GRACE": "1",
+            "STUB_RECORD": str(self.record),
+        }
+        return env | overrides
+
+    def run_ir(self, *args: str, env: dict[str, str] | None = None,
+               timeout: str | None = None) -> subprocess.CompletedProcess[str]:
+        argv = [str(IR_RUN), "--build-dir", str(self.build)]
+        if timeout is not None:
+            argv += ["--timeout", timeout]
+        return subprocess.run([*argv, "IRHoldProbe", *args], text=True, capture_output=True,
+                              env=env or self.env(), check=False, timeout=60)
+
+    def held_run(self) -> tuple[int, list[str]]:
+        """The one caffeinate this run started, after asserting it has ended."""
+        [(pid, argv)] = self.display.invocations()
+        self.assertTrue(wait_gone(pid), f"display holder {pid} outlived the run")
+        return pid, argv
+
+    def test_sleeping_display_wakes_and_is_held_for_the_run(self) -> None:
+        for timeout in (None, "20"):
+            with self.subTest(timeout=timeout):
+                self.display.log.unlink(missing_ok=True)
+                self.display.set_state("1 0 1")
+                result = self.run_ir("--auto-screenshot", "1", timeout=timeout)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("RESULT=CLEAN", result.stdout)
+                pid, argv = self.held_run()
+                self.assertEqual(argv[:3], ["-d", "-u", "-w"])
+                holder, alive, *state = self.record.read_text().split()
+                self.assertEqual((holder, alive, state), (str(pid), "alive", ["1", "1", "1"]))
+                self.assertIn("display before wake: CoreGraphics online=1 awake=0 NSScreen=1",
+                              result.stderr)
+                self.assertIn("display ready after", result.stderr)
+
+    def test_holder_is_bound_to_the_ir_run_process(self) -> None:
+        proc = subprocess.Popen(
+            [str(IR_RUN), "--build-dir", str(self.build), "IRHoldProbe", "--auto-screenshot",
+             "1", "hang"], env=self.env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(lambda: proc.poll() is None and proc.kill())
+        deadline = time.monotonic() + 20
+        while not self.record.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        [(pid, argv)] = self.display.invocations()
+        self.assertEqual(argv[argv.index("-w") + 1], str(proc.pid))
+        # SIGKILL skips the EXIT trap: only the -w binding ends the hold.
+        proc.kill()
+        proc.wait()
+        self.assertTrue(wait_gone(pid), f"display holder {pid} outlived a killed ir-run")
+
+    def test_every_terminal_arm_ends_the_hold(self) -> None:
+        cases = (("fail", None, 3, "RESULT=CRASH"),
+                 ("fail", "20", 1, "RESULT=CRASH"),
+                 ("hang", "1", 0, "RESULT=ALIVE-TIMEOUT"),
+                 ("zero", "20", 69, "RESULT=NO-DISPLAY"))
+        for mode, timeout, code, verdict in cases:
+            with self.subTest(mode=mode, timeout=timeout):
+                self.display.log.unlink(missing_ok=True)
+                result = self.run_ir("--auto-screenshot", "1", mode, timeout=timeout)
+                self.assertEqual(result.returncode, code, result.stderr)
+                self.assertIn(verdict, result.stdout + result.stderr)
+                self.held_run()
+
+    def test_unready_display_is_no_display_before_launch(self) -> None:
+        cases = (("1 0 1", "the online display stayed asleep"),
+                 ("0 0 0", "no online CoreGraphics display"),
+                 ("1 1 0", "an awake CoreGraphics display but no Aqua NSScreen"))
+        for state, condition in cases:
+            with self.subTest(state=state):
+                self.display.log.unlink(missing_ok=True)
+                self.record.unlink(missing_ok=True)
+                self.display.set_state(state)
+                env = self.env(FLEET_DISPLAY_WAKE_TIMEOUT="0.5")
+                env.pop("FAKE_WAKE_TO")
+                result = self.run_ir("--auto-screenshot", "1", env=env, timeout="20")
+                self.assertEqual(result.returncode, verify_common.EXIT_ENV_FAIL, result.stderr)
+                self.assertIn("RESULT=NO-DISPLAY exe=IRHoldProbe exit=69", result.stderr)
+                self.assertIn("display not ready after requesting a wake and waiting",
+                              result.stderr)
+                self.assertIn(f"{condition} (CoreGraphics online={state[0]}", result.stderr)
+                self.assertFalse(self.record.exists(), "the exe ran on an unready display")
+                self.held_run()
+
+    def test_probe_failure_launches_without_waiting(self) -> None:
+        env = self.env(FLEET_DISPLAY_PROBE="false", FLEET_DISPLAY_WAKE_TIMEOUT="30")
+        started = time.monotonic()
+        result = self.run_ir("--auto-screenshot", "1", env=env)
+        self.assertLess(time.monotonic() - started, 15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("the CoreGraphics/AppKit display probe failed", result.stderr)
+        self.held_run()
+
+    def test_outer_hold_is_reused_and_left_running(self) -> None:
+        outer = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(outer.kill)
+        self.display.set_state("1 1 1")
+        result = self.run_ir("--auto-screenshot", "1",
+                             env=self.env(FLEET_DISPLAY_HOLDER=str(outer.pid)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.display.invocations(), [])
+        self.assertFalse(gone(outer.pid), "ir-run ended a hold it did not own")
+        self.assertEqual(self.record.read_text().split()[:2], [str(outer.pid), "alive"])
+
+    def test_no_caffeinate_off_macos_or_outside_capture_verbs(self) -> None:
+        cases = ((self.env(FLEET_DISPLAY_PLATFORM="linux"), ("--auto-screenshot", "1"), None),
+                 (self.env(), (), "5"))
+        for env, args, timeout in cases:
+            with self.subTest(platform=env["FLEET_DISPLAY_PLATFORM"], args=args):
+                result = self.run_ir(*args, env=env, timeout=timeout)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.display.invocations(), [])
+                self.assertNotIn("ir-run: display", result.stderr)
+
+
+class DisplaySessionTest(unittest.TestCase):
+    def test_conditions_name_exactly_one_unmet_requirement(self) -> None:
+        self.assertEqual(fleet_display_session.condition((1, 1, 1)), "ok")
+        self.assertEqual(fleet_display_session.condition((0, 0, 0)), "none")
+        self.assertEqual(fleet_display_session.condition((0, 1, 1)), "none")
+        self.assertEqual(fleet_display_session.condition((1, 0, 1)), "asleep")
+        self.assertEqual(fleet_display_session.condition((1, 0, 0)), "asleep")
+        self.assertEqual(fleet_display_session.condition((1, 1, 0)), "no-aqua")
+
+    def test_hold_waits_on_an_injected_clock(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            display = FakeDisplay(Path(tmp))
+            env = display.env(timeout="5")
+            env.pop("FAKE_WAKE_TO")
+            now = [0.0]
+            hold = fleet_display_session.hold_display(
+                os.getpid(), env=env, clock=lambda: now[0],
+                sleep=lambda seconds: now.__setitem__(0, now[0] + 1.0))
+            self.assertFalse(hold.ready)
+            self.assertEqual(hold.condition, "asleep")
+            self.assertIn("waiting 5.0s", hold.lines[-1])
+            # The fake holder reads its log path from the injected env only.
+            deadline = time.monotonic() + 10
+            while not display.invocations() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertEqual([pid for pid, _ in display.invocations()], [hold.holder_pid])
+            self.assertIsNone(hold.holder.poll(), "the holder exited before release")
+            hold.release()
+            self.assertTrue(wait_gone(hold.holder_pid))
+
+    def test_off_macos_does_nothing(self) -> None:
+        hold = fleet_display_session.hold_display(os.getpid(),
+                                                  env={"FLEET_DISPLAY_PLATFORM": "linux"})
+        self.assertTrue(hold.ready)
+        self.assertEqual((hold.lines, hold.holder_pid), ([], None))
+
+
 class VerifierNoDisplayTest(unittest.TestCase):
     def test_gui_verify_exits_with_env_fail(self) -> None:
         with patch.object(sys, "argv", ["gui-verify.py", "IRFake", "--no-build"]), \
@@ -163,13 +348,42 @@ class VerifierNoDisplayTest(unittest.TestCase):
         self.assertEqual(run_pass.call_count, 1)
         self.assertEqual(captured.getvalue().count("ENV-FAIL:"), 1)
 
+    def display_env(self, tmp: str, **overrides: str) -> dict[str, str]:
+        env = {k: v for k, v in os.environ.items() if not k.startswith("FLEET_DISPLAY_")}
+        return env | FakeDisplay(Path(tmp)).env() | overrides
+
+    def test_preflight_wakes_and_hands_the_hold_to_fleet_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.dict(os.environ, self.display_env(tmp), clear=True), \
+                patch.object(verify_common.atexit, "register") as register, \
+                redirect_stdout(io.StringIO()) as captured:
+            self.assertIsNone(verify_common.display_preflight("[test] "))
+            holder = os.environ[fleet_display_session.HOLDER_ENV]
+            [(release,), _] = register.call_args
+            self.assertFalse(gone(int(holder)))
+            # A second target in the same verifier reuses the hold.
+            self.assertIsNone(verify_common.display_preflight("[test] "))
+            release()
+        self.assertTrue(wait_gone(int(holder)))
+        output = captured.getvalue()
+        self.assertIn("[test] display ready after", output)
+        self.assertIn(f"[test] display held by the outer run (caffeinate pid {holder})", output)
+        self.assertNotIn("ENV-FAIL", output)
+
     def test_display_domain_mismatch_stops_each_verifier_before_fleet_run(self) -> None:
-        with patch.object(verify_common.platform, "system", return_value="Darwin"), \
-                patch.object(verify_common, "display_counts", return_value=(1, 0, 0)), \
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.dict(os.environ, self.display_env(tmp, FAKE_WAKE_TO="1 1 0",
+                                                        FLEET_DISPLAY_WAKE_TIMEOUT="0.5"),
+                           clear=True), \
                 redirect_stdout(io.StringIO()) as captured:
             self.assertEqual(verify_common.display_preflight("[test] "),
                              verify_common.EXIT_ENV_FAIL)
-        self.assertIn("display domain mismatch", captured.getvalue())
+            self.assertNotIn(fleet_display_session.HOLDER_ENV, os.environ)
+        output = captured.getvalue()
+        self.assertEqual(output.count("ENV-FAIL:"), 1)
+        self.assertIn("ENV-FAIL: display not ready after requesting a wake", output)
+        self.assertIn("an awake CoreGraphics display but no Aqua NSScreen", output)
+        self.assertIn("0 display monitors", output)
 
         with patch.object(sys, "argv", ["gui-verify.py", "IRFake", "--no-build"]), \
                 patch.object(verify_common, "display_preflight",
