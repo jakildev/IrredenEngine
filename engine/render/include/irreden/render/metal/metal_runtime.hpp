@@ -264,20 +264,24 @@ bool metalRenderPassAttaches(MTL::Texture *texture);
 // The counters RenderDevice::deviceStats() reports for draws and passes.
 RenderPassStats &metalRenderPassStats();
 
-// A CPU write to a buffer in the encoded set must not land before queued GPU
+// A CPU write to a buffer in either encoded set must not land before queued GPU
 // work that reads it. Word-aligned partial writes are staged and copied in
 // command order; unaligned ones wait; full writes swap in a fresh backing whose
-// predecessor is released here after the next wait. Unencoded buffers are
-// written directly. Encoder bindings and copy destinations enter the encoded
-// set; releaseDeferredMetalBuffers clears it only after GPU completion.
+// predecessor is released after its submission completes. Unencoded buffers
+// are written directly. Encoder bindings and copy destinations enter the
+// recording set; the submitted set stays live until GPU completion.
 void deferReleaseMetalBuffer(MTL::Buffer *buffer);
+// Call only after draining both the submitted and recording command buffers.
 void releaseDeferredMetalBuffers();
+// One executing submission; recording storage remains writable and disjoint.
+void submitMetalResources();
+void completeMetalSubmission();
 // Retired backings awaiting the next wait point. Diagnostic only: tests read
 // the delta across one upload to count backing swaps.
 std::size_t deferredMetalBufferReleaseCount();
 // Arena slices for texture and buffer uploads, 256-byte aligned. A slice stays
-// valid and unwritten until releaseDeferredMetalBuffers(), which reuses its
-// storage only after the caller has waited for GPU completion. Chunks persist
+// valid and unwritten until its submission completes. Completion recycles only
+// submitted storage; a full drain also recycles recording storage. Chunks persist
 // across frames, an upload larger than a standard chunk included, and are
 // released after a long run of drains that left them unused.
 MetalStagingBufferSlice reserveMetalStaging(std::size_t byteCount);

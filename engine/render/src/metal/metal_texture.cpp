@@ -356,20 +356,22 @@ class MetalTexture3DImpl final : public Texture3DImpl {
             return;
         }
         const std::size_t bytesPerPixel = pixelSizeBytes(format, type);
-        // NOTE: unlike uploadSubImage2D, this path does not check metalCommandBuffer()
-        // and always uses a direct CPU replaceRegion. 3D textures (light-volume RGBA8
-        // volumes) are seeded once at init and never cleared via GPU blit in the same
-        // frame as a CPU write, so the deferred-clear ordering hazard cannot
-        // occur today. If a future system clears a 3D texture per-frame via the command
-        // buffer and writes it via uploadSubImage3D in the same tick, apply the same
-        // commandBuffer-guard + staging-blit pattern used in uploadSubImage2D.
+        const auto bytesPerRow = static_cast<NS::UInteger>(width * bytesPerPixel);
+        const auto bytesPerImage = bytesPerRow * height;
+        if (auto *commandBuffer = metalCommandBuffer(); commandBuffer != nullptr) {
+            const auto staging = stageMetalUpload(data, bytesPerImage * depth);
+            auto *blit = commandBuffer->blitCommandEncoder();
+            blit->copyFromBuffer(
+                staging.buffer_, staging.offset_, bytesPerRow, bytesPerImage,
+                MTL::Size::Make(width, height, depth), m_texture, 0, 0,
+                MTL::Origin::Make(0, 0, 0)
+            );
+            blit->endEncoding();
+            return;
+        }
         m_texture->replaceRegion(
-            MTL::Region(0, 0, 0, width, height, depth),
-            0,
-            0,
-            data,
-            static_cast<NS::UInteger>(width * bytesPerPixel),
-            static_cast<NS::UInteger>(width * height * bytesPerPixel)
+            MTL::Region(0, 0, 0, width, height, depth), 0, 0,
+            data, bytesPerRow, bytesPerImage
         );
     }
 

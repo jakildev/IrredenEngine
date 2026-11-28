@@ -252,6 +252,10 @@ class WorldConfig {
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(1)
         );
         m_config.addEntry(
+            "metal_frame_overlap",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(true)
+        );
+        m_config.addEntry(
             "presented_pick_previous_completed_test_fault",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false)
         );

@@ -234,6 +234,8 @@ struct InputLatencySummary {
     std::vector<InputLatencyFrame> frames_;
     double clockMappingErrorMs_ = 0.0;
     uint64_t stalePickInputTicks_ = 0;
+    uint64_t midFrameGpuDrains_ = 0;
+    std::vector<float> pickAgeMs_;
 };
 
 /// Aggregated data for a profile report, populated by World at shutdown.

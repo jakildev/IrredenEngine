@@ -1,0 +1,248 @@
+=== PROFILE REPORT (300 frames) ===
+Frame time:   avg=10.57ms   p50=10.54ms   p95=10.79ms   p99=11.04ms   min=10.35ms   max=11.47ms
+Steady frame time (first 75 of 300 frames excluded):   avg=10.54ms   p50=10.51ms   p95=10.72ms   p99=10.81ms   min=10.35ms   max=11.06ms
+Update ticks: avg=0.6/frame  max=1
+Entity count: 1000194 (57 archetypes)
+
+--- Per-system timing (by pipeline, then total descending) ---
+Pipeline System                                Total(ms)   Avg(ms)   Min(ms)   Max(ms)   Calls   Entities     Walked
+INPUT    StaticFixtureWindow                        0.69     0.004     0.001     0.294     191        191        191
+INPUT    InputKeyMouse                              0.32     0.002     0.001     0.004     191      23875      23875
+UPDATE   PropagateTransform                         2.52     0.013     0.009     0.019     191      25021      25021
+UPDATE   FogRevealEval                              0.53     0.003     0.002     0.005     191  191000000          0
+UPDATE   FogSubjectAdopt                            0.44     0.002     0.001     0.004     191          0          0
+UPDATE   FogRevealEvalGhost                         0.28     0.001     0.001     0.002     191          0          0
+UPDATE   FogRevealEvalShapeGhost                    0.26     0.001     0.001     0.003     191          0          0
+UPDATE   FogRevealEvalCanvasGhost                   0.19     0.001     0.001     0.002     191          0          0
+UPDATE   FogSubjectAdoptShape                       0.18     0.001     0.001     0.002     191          0          0
+UPDATE   FogRevealEvalShape                         0.17     0.001     0.001     0.002     191          0          0
+UPDATE   FogSubjectExempt                           0.14     0.001     0.000     0.012     191          0          0
+UPDATE   FogSubjectExemptCanvas                     0.14     0.001     0.000     0.001     191          0          0
+UPDATE   ModifierDecay                              0.13     0.001     0.000     0.002     191          0          0
+UPDATE   FogRevealEvalCanvas                        0.11     0.001     0.000     0.001     191          0          0
+UPDATE   FogSubjectAdoptCanvas                      0.09     0.000     0.000     0.001     191          0          0
+UPDATE   FogSubjectExemptShape                      0.07     0.000     0.000     0.001     191          0          0
+UPDATE   PeriodicIdle                               0.05     0.000     0.000     0.001     191          0          0
+UPDATE   PeriodicIdlePositionOffset                 0.03     0.000     0.000     0.000     191          0          0
+RENDER   SingleVoxelToCanvasFirst                 126.62     0.422     0.331     0.897     300        300        300
+RENDER   BuildLightOcclusionGrid                   69.80     0.233     0.193     0.784     300        300        300
+RENDER   CanvasToFramebuffer                       23.38     0.078     0.063     0.096     300        900        900
+RENDER   ComputeLightVolume                         8.46     0.028     0.024     0.035     300        300        300
+RENDER   LightingToTrixel                           8.07     0.027     0.022     0.037     300        300        300
+RENDER   FogToTrixel                                6.86     0.023     0.019     0.028     300        300        300
+RENDER   ComputeVoxelAO                             6.35     0.021     0.017     0.028     300        300        300
+RENDER   ComputeSunShadow                           5.00     0.017     0.013     0.024     300        300        300
+RENDER   BakeSunShadowMap                           4.60     0.015     0.012     0.021     300        300        300
+RENDER   GuiCanvasToScreen                          3.15     0.010     0.008     0.015     300        300        300
+RENDER   FramebufferToScreen                        2.41     0.008     0.006     0.011     300        300        300
+RENDER   TextToTrixel                               1.51     0.005     0.003     0.009     300          0          0
+RENDER   StaticFixtureWatch                         0.94     0.003     0.002     0.009     300       1200       1200
+RENDER   ShapesToTrixel                             0.87     0.003     0.002     0.006     300          0          0
+RENDER   AutoProfile                                0.84     0.003     0.002     0.022     300       1200       1200
+RENDER   ResolvePerAxisScreenDepth                  0.62     0.002     0.002     0.003     300        600        600
+RENDER   FogLosBuild                                0.59     0.002     0.001     0.008     300        300        300
+RENDER   BuildDistanceHiZ                           0.52     0.002     0.001     0.002     300        600        600
+RENDER   UpdateVoxelSetChildren                     0.45     0.001     0.001     0.004     300          0          0
+RENDER   Camera                                     0.33     0.001     0.001     0.003     300        300        300
+RENDER   CameraMouseRotate                          0.32     0.001     0.001     0.002     300        300        300
+RENDER   CameraMousePan                             0.31     0.001     0.001     0.002     300        300        300
+RENDER   CameraKeyDragPan                           0.26     0.001     0.001     0.002     300        300        300
+RENDER   CameraKeyDragRotate                        0.25     0.001     0.001     0.002     300        300        300
+
+--- GPU frame timing ---
+Envelope includes inter-submission gaps; buffer spans include GPU stalls.
+Neither is GPU busy time. commandBuffers counts valid frames only.
+Coverage: supported=1 attempted=300 valid=300 invalid=0 commandBuffers=300
+Metric Avg(ms) Min(ms) Max(ms) Samples
+envelope 9.699 9.552 9.871 300
+commandBufferSpans 9.699 9.552 9.871 300
+
+--- Frame decomposition ---
+Mean over the 300 recorded frames of the Frame time line; the rows add up to the frame mean.
+System rows are a pipeline's summed Total(ms) over those frames. GPU is the commandBufferSpans mean.
+Pacing is the offscreen pacer's sleep. Remainder is the frame mean minus the other rows; a negative remainder means the terms overlap.
+Term         ms/frame     Share
+INPUT           0.003     0.03%
+UPDATE          0.018     0.17%
+RENDER          0.908     8.59%
+GPU             9.699    91.73%
+Pacing          0.000     0.00%
+Remainder      -0.055    -0.52%
+Frame          10.573   100.00%
+
+--- Input latency ---
+End event: gpu-complete
+Stale pick input ticks: 0
+input_to_present runs from the frame's last OS-event poll to the end event; cursor_to_present
+from RENDER's cursor sample; submit_to_present from the frame's last commit.
+frame_start_to_submit is the frame's CPU time, from CPU work's start after frame pacing to that commit.
+Steady frames: 225 (first 75 of 300 excluded) samples=225
+input_to_present_ms: mean=14.517 p99=21.547 max=21.976
+cursor_to_present_ms: mean=10.649 p99=10.930 max=11.116
+frame_start_to_submit_ms: mean=0.935 p99=1.183 max=1.463
+submit_to_present_ms: mean=9.755 p99=9.914 max=9.920
+Frames in flight at frame start: max=1
+Steady frames starting with GPU work in flight: 225/225 (100.00%)
+Mid-frame GPU drains: 0
+pick_age_at_dispatch_ms: mean=21.119 p99=21.829 max=22.352
+End observed by the CPU after the end event: mean=0.099ms max=0.211ms; clock mapping error <= 0.0001ms
+
+--- Render device counters ---
+Supported: 1
+Counter                                       Total   Steady/frame      Max/frame
+bufferPartialWriteAllocations                     0          0.000              0
+bufferPartialWriteAllocatedBytes                  0          0.000              0
+bufferStagedPatches                           17277         57.649             60
+bufferStagedBytes                         185358188     678462.844        2129208
+bufferFullReplacements                         8173         27.276             32
+bufferMidFrameWaits                               0          0.000              0
+commandBufferErrors                               0          0.000              0
+skippedFrames                                     0          0.000              0
+GPU process allocation: peak=792182784 bytes
+
+--- Light occlusion chunk stats ---
+                        Avg            Max    Samples
+Visited               377.0            377        300
+Total                3907.0           3907        300
+StaleVisit              0.0              0        300
+WorldRebuild            0.0              0        300
+
+--- CPU phase timing ---
+Phase                                  Avg(ms)   Max(ms) Samples
+BuildLightOcclusionGrid::Clear           0.010     0.013     300
+BuildLightOcclusionGrid::Refresh         0.000     0.000     300
+BuildLightOcclusionGrid::Visit           0.163     0.364     300
+BuildLightOcclusionGrid::Upload          0.055     0.594     300
+ComputeLightVolume::Clear                0.004     0.007     300
+ComputeLightVolume::Populate             0.019     0.024     300
+ComputeLightVolume::Upload               0.004     0.009     300
+FogWindowGather                          0.001     0.003     600
+bakeSunShadowMap                         0.015     0.021     300
+buildLightOcclusionGrid                  0.233     0.784     300
+computeLightVolume                       0.028     0.035     300
+computeSunShadow                         0.017     0.024     300
+computeVoxelAO                           0.016     0.021     300
+fbToScreen                               0.008     0.012     300
+fogToTrixel                              0.021     0.026     300
+fogWindowGather                          0.001     0.003     600
+guiCanvasToScreen                        0.009     0.014     300
+input                                    0.014     0.316     191
+lightingToTrixel                         0.022     0.029     300
+offscreenPacing                          0.000     0.000     300
+render                                   0.925     1.742     300
+resolvePerAxisScreenDepth                0.002     0.003     300
+shapeEncode                              0.000     0.000     300
+staticDrain                              0.001     0.005     682
+textToTrixel                             0.005     0.009     300
+trixelToFb                               0.032     0.066     600
+ttf_hover_reset                          0.001     0.001     300
+update                                   0.031     0.052     191
+voxelStage1                              0.400     0.839     300
+voxelSunFaces                            0.008     0.021     300
+vs1_clear                                0.015     0.056     300
+vs1_compact                              0.007     0.029     300
+vs1_pa_cells                             0.011     0.018     300
+vs1_pa_ctrl_readback                     0.000     0.001     300
+vs1_pa_finalize                          0.042     0.146     300
+vs1_pa_overflow                          0.200     0.245     300
+vs1_pa_store                             0.017     0.047     300
+vs1_per_axis                             0.274     0.438     300
+vs1_pos                                  0.000     0.001     300
+
+--- Run witness ---
+Camera yaw: first=58.310deg last=58.310deg travel=0.000deg samples=300
+Camera zoom: first=4.000 last=4.000
+Camera zoom range: min=4.000 max=4.000
+Camera pivot: explicit focus on 300 of 300 frames
+Per-axis overflow rejection: candidates=2370015 unsampled=99177 hidden=2212323 surviving=58515
+Per-axis overflow census: records=0 owners=0 interior=0 unsampled=0 samples=0
+Per-axis overflow: maxEntries=58515 maxDropped=0 cap=8388608 samples=300
+Voxel record upload bytes: first=0 laterMean=0.0 laterMax=0 frames=300
+Voxel mask upload bytes: first=0 laterMean=0.0 laterMax=0 frames=300
+
+--- Static residents ---
+Population: static=1000000 settling=0 settled=1000000
+Transitions: promoted=1000000 thawed=0 resettled=0 restarted=0 held=0 held_by_global=0 refused=0
+Transition cost: promotion_ms_max=283.242 drain_ms_max=286.634
+Position upload: bytes=0 max_frame_bytes=0 frames=0 of 300
+Cull bounds: slots_rebuilt=0 max_frame_slots=0 frames=0 of 300
+Cull bounds camera/full rebuild: slots=0 frames=0 of 300
+Cull writes: notifications=0 frames=0 of 300
+
+--- Frame times (ms, in order) ---
+11.044 10.692 10.629 10.731 10.768 10.726 10.844 10.777 10.739 10.765
+10.719 10.628 11.472 10.883 10.791 10.748 10.714 10.808 10.788 10.719
+10.681 10.645 10.787 10.768 10.609 10.725 10.798 10.694 10.847 10.630
+10.696 10.719 10.717 10.695 10.788 10.668 10.592 10.646 10.628 10.561
+10.659 10.589 10.561 10.645 10.590 10.589 10.455 10.503 10.555 10.546
+10.627 10.557 10.474 10.464 10.695 10.517 10.617 10.478 10.545 10.644
+10.612 10.638 10.548 10.484 10.602 10.511 10.632 10.565 10.715 10.658
+10.685 10.494 10.777 10.658 10.518 10.751 10.713 10.577 10.634 10.730
+10.664 10.679 10.669 10.640 10.611 10.694 10.697 10.704 10.545 10.642
+10.652 10.647 10.618 10.667 10.767 10.632 10.704 10.642 10.727 10.666
+10.719 10.809 10.561 10.749 10.559 10.649 10.720 10.567 10.630 10.680
+10.498 10.511 10.569 10.470 10.602 10.493 10.555 10.478 10.535 10.479
+10.503 10.486 10.489 10.494 10.553 10.479 10.415 10.490 10.528 10.547
+10.650 10.555 10.514 10.547 10.563 10.546 10.527 10.481 10.513 10.499
+10.541 10.518 10.446 10.469 10.539 10.495 10.518 10.448 10.452 10.505
+10.479 10.587 10.517 10.545 10.517 10.513 10.484 10.493 10.494 10.426
+10.513 10.420 10.506 10.494 10.574 10.578 11.064 10.796 10.514 10.423
+10.352 10.488 10.415 10.561 10.531 10.455 10.497 10.491 10.414 10.499
+10.445 10.485 10.460 10.485 10.504 10.448 10.451 10.477 10.441 10.512
+10.465 10.425 10.462 10.520 10.537 10.580 10.448 10.474 10.498 10.526
+10.585 10.498 10.450 10.477 10.483 10.406 10.465 10.571 10.535 10.580
+10.467 10.507 10.525 10.481 10.807 10.591 10.639 10.622 10.469 10.759
+10.541 10.504 10.608 10.540 10.471 10.635 10.548 10.628 10.590 10.462
+10.614 10.556 10.408 10.516 10.559 10.459 10.469 10.528 10.564 10.695
+10.587 10.543 10.562 10.485 10.489 10.474 10.439 10.505 10.502 10.562
+10.497 10.540 10.698 10.527 10.542 10.469 10.424 10.535 10.505 10.470
+10.511 10.490 10.583 10.560 10.481 10.534 10.641 10.473 10.484 10.514
+10.433 10.473 10.465 10.446 10.560 10.456 10.442 10.512 10.543 10.527
+10.484 10.451 10.464 10.491 10.513 10.495 10.422 10.454 10.479 10.498
+10.646 10.542 10.519 10.508 10.579 10.557 10.554 10.505 10.475 10.514
+
+--- Update ticks (per frame, in order) ---
+1 1 0 1 0 1 1 0 1 1 0 1 1 0 1 1 0 1 1 0 1 0 1 1 0 1 1 0 1 1
+0 1 1 0 1 0 1 1 0 1 1 0 1 1 0 1 0 1 1 0 1 1 0 1 1 0 1 0 1 1
+0 1 1 0 1 0 1 1 0 1 1 0 1 1 0 1 1 0 1 0 1 1 0 1 1 0 1 1 0 1
+0 1 1 0 1 1 0 1 1 0 1 1 0 1 0 1 1 0 1 1 0 1 1 0 1 0 1 1 0 1
+1 0 1 0 1 1 0 1 1 0 1 1 0 1 0 1 1 0 1 1 0 1 0 1 1 0 1 1 0 1
+0 1 1 0 1 1 0 1 1 0 1 0 1 1 0 1 1 0 1 1 0 1 0 1 1 0 1 1 0 1
+0 1 1 0 1 1 0 1 0 1 1 0 1 1 0 1 0 1 1 0 1 1 0 1 1 0 1 0 1 1
+0 1 1 0 1 0 1 1 0 1 1 0 1 1 0 1 0 1 1 0 1 1 0 1 1 0 1 0 1 1
+0 1 1 0 1 0 1 1 0 1 1 0 1 1 0 1 0 1 1 0 1 1 0 1 0 1 1 0 1 1
+0 1 1 0 1 0 1 1 0 1 1 0 1 0 1 1 0 1 1 0 1 0 1 1 0 1 1 0 1 1
+
+--- Input to present (ms, in order; - = no end) ---
+- 10.828 21.605 10.900 21.689 10.894 10.934 21.841 10.933 10.892
+21.609 10.717 11.997 22.516 10.845 10.878 21.528 10.925 10.852 21.558
+10.685 21.434 10.793 10.772 21.610 10.869 10.828 21.521 10.836 10.710
+21.439 10.916 10.930 21.525 10.772 21.565 10.697 10.708 21.281 10.625
+10.687 21.431 10.761 10.701 21.321 10.687 21.228 10.584 10.580 21.208
+10.691 10.643 21.133 10.617 10.894 21.365 10.736 21.219 10.721 10.751
+21.343 10.781 10.714 21.184 10.738 21.187 10.804 10.743 21.457 10.778
+10.663 21.265 10.910 10.782 21.308 10.849 10.819 21.439 10.803 21.554
+10.915 10.830 21.537 10.668 10.674 21.416 10.852 10.745 21.328 10.786
+21.441 10.754 10.677 21.418 10.820 10.811 21.537 10.741 10.870 21.547
+10.862 10.915 21.509 10.888 21.366 10.718 10.840 21.481 10.708 10.748
+21.271 10.699 10.642 21.122 10.724 21.171 10.570 10.582 21.114 10.597
+10.655 21.089 10.595 21.093 10.682 10.603 21.222 10.639 10.672 21.194
+10.857 10.683 21.210 10.707 21.202 10.587 10.689 21.093 10.594 10.720
+21.081 10.557 20.993 10.666 10.774 21.121 10.627 10.547 21.066 10.698
+21.134 10.722 10.750 21.333 10.607 10.609 21.097 10.660 10.591 21.024
+10.625 21.114 10.708 10.621 21.155 10.744 11.150 21.976 10.689 10.534
+20.881 10.631 21.121 10.711 10.665 21.133 10.560 10.618 21.000 10.631
+21.035 10.633 10.558 21.032 10.605 10.596 21.100 10.650 21.113 10.544
+10.611 21.121 10.581 10.601 21.201 10.688 21.142 10.651 10.631 21.151
+10.657 10.594 21.261 10.638 10.579 21.085 10.657 21.159 10.619 10.688
+21.203 10.633 10.803 21.227 11.019 21.472 10.728 10.723 21.316 10.559
+10.722 21.156 10.718 10.620 21.142 10.740 21.333 10.733 10.665 21.089
+10.761 10.674 21.093 10.719 10.709 21.191 10.629 21.170 10.675 10.758
+21.374 10.710 10.708 21.099 10.772 21.065 10.636 10.746 21.084 10.725
+10.590 21.163 10.818 10.648 21.172 10.569 21.044 10.703 10.671 21.109
+10.633 10.598 21.162 10.628 21.167 10.632 10.747 21.228 10.610 10.622
+21.141 10.654 10.612 21.061 10.618 21.178 10.589 10.730 21.148 10.607
+10.542 21.025 10.608 21.072 10.597 10.613 21.025 10.595 10.685 21.105
+10.752 21.341 10.612 10.795 21.149 10.617 10.654 21.189 10.689 10.615
+
+=== END REPORT ===
