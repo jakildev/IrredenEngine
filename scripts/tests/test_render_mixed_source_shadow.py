@@ -41,6 +41,7 @@ struct ivec2 {int x, y;};
 struct vec2 {
     float x, y;
     vec2(float a, float b): x(a), y(b) {}
+    explicit vec2(float a): x(a), y(a) {}
     vec2(ivec2 a): x(a.x), y(a.y) {}
 };
 struct vec3 {float x, y, z;};
@@ -50,6 +51,8 @@ vec2 operator-(vec2 a, vec2 b) {return {a.x-b.x, a.y-b.y};}
 vec2 operator*(vec2 a, vec2 b) {return {a.x*b.x, a.y*b.y};}
 vec2 operator+(vec2 a, float b) {return {a.x+b, a.y+b};}
 vec2 operator/(vec2 a, float b) {return {a.x/b, a.y/b};}
+vec2 operator/(vec2 a, vec2 b) {return {a.x/b.x, a.y/b.y};}
+vec2 floor(vec2 a) {return {std::floor(a.x), std::floor(a.y)};}
 float dot(vec2 a, vec2 b) {return a.x*b.x+a.y*b.y;}
 float dot(vec3 a, vec3 b) {return a.x*b.x+a.y*b.y+a.z*b.z;}
 // The fixture uses the +Z face and identity rotation exclusively.
